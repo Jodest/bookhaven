@@ -5,7 +5,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "type-check": "tsc --noEmit",
+    "type-check": "pnpm exec tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@bookhaven/config": "workspace:*",
+    "@types/node": "^20.19.43",
     "typescript": "^5.5.0"
   }
 }

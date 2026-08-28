@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 .pnp
 .pnp.js
 
@@ -9,6 +10,8 @@ out/
 build/
 dist/
 *.tsbuildinfo
+.turbo/
+backend/tmp/
 
 # Go
 bin/

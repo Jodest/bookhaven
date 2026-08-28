@@ -4,7 +4,7 @@ export default function AdminPage() {
   return (
     <main className="container mx-auto px-4 py-16">
       <div className="mx-auto max-w-2xl text-center">
-        <h1 className="mb-6 text-4xl font-bold tracking-tight">
+        <h1 className="mb-6 text-4xl font-bold tracking-tight sm:text-6xl">
           BookHaven Admin
         </h1>
         <p className="mb-8 text-lg text-muted-foreground">

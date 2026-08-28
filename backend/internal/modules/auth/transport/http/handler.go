@@ -7,6 +7,7 @@ import (
 	authDomain "github.com/bookhaven/backend/internal/modules/auth/domain"
 	"github.com/bookhaven/backend/internal/modules/auth/service"
 	"github.com/bookhaven/backend/internal/modules/users/domain"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -158,9 +159,18 @@ func (h *Handler) Refresh(c echo.Context) error {
 
 // Logout handles user logout.
 func (h *Handler) Logout(c echo.Context) error {
-	userID, ok := c.Get("user_id").(string)
-	if !ok || userID == "" {
+	userIDStr, ok := c.Get("user_id").(string)
+	if !ok || userIDStr == "" {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid user"})
+	}
+
+	if err := h.service.Logout(c.Request().Context(), userID); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to logout"})
 	}
 
 	// Clear cookies
