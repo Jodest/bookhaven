@@ -9,10 +9,17 @@ import (
 	"time"
 
 	"github.com/bookhaven/backend/internal/config"
+	"github.com/bookhaven/backend/internal/infrastructure/validator"
+	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
+	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
+	"github.com/bookhaven/backend/internal/modules/users/repository"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
+	"github.com/bookhaven/backend/internal/transport/http/middleware"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -24,15 +31,40 @@ func main() {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
 
+	// Database connection
+	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+	if err != nil {
+		logger.Fatal("failed to connect to database", zap.Error(err))
+	}
+
+	// Repositories
+	usersRepo := repository.NewGormRepository(db)
+
+	// Services
+	authService := authservice.NewService(authservice.Config{
+		JWTSecret:       cfg.JWTSecret,
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 30 * 24 * time.Hour,
+		Issuer:          "bookhaven",
+	}, db, usersRepo)
+
+	// Validator
 	e := echo.New()
 	e.HideBanner = true
+	e.Validator = validator.New()
 
-	e.Use(middleware.Recover())
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+	e.Use(echomiddleware.Recover())
+	e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
+		AllowOrigins: []string{"http://localhost:3000", "http://localhost:3001"},
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowCredentials: true,
+	}))
+	e.Use(echomiddleware.RequestLoggerWithConfig(echomiddleware.RequestLoggerConfig{
 		LogStatus: true,
 		LogURI:    true,
 		LogMethod: true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+		LogValuesFunc: func(c echo.Context, v echomiddleware.RequestLoggerValues) error {
 			logger.Info("request",
 				zap.String("method", v.Method),
 				zap.String("uri", v.URI),
@@ -42,7 +74,20 @@ func main() {
 		},
 	}))
 
+	// Public routes
 	httptransport.RegisterRoutes(e)
+
+	// Auth routes
+	authHandler := authhttp.NewHandler(authService)
+	api := e.Group("/api/v1")
+	api.POST("/auth/register", authHandler.Register)
+	api.POST("/auth/login", authHandler.Login)
+	api.POST("/auth/refresh", authHandler.Refresh)
+
+	// Protected routes
+	authMiddleware := middleware.Auth(authService, usersRepo)
+	api.GET("/auth/me", authHandler.Me, authMiddleware)
+	api.POST("/auth/logout", authHandler.Logout, authMiddleware)
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
