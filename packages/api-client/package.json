@@ -1,0 +1,18 @@
+{
+  "name": "@bookhaven/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@bookhaven/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@bookhaven/config": "workspace:*",
+    "typescript": "^5.5.0"
+  }
+}

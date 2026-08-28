@@ -1,0 +1,101 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bookhaven-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bookhaven}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bookhaven}
+      POSTGRES_DB: ${POSTGRES_DB:-bookhaven}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bookhaven} -d ${POSTGRES_DB:-bookhaven}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bookhaven-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: bookhaven-backend
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: ${BACKEND_PORT:-8080}
+      DATABASE_URL: postgres://${POSTGRES_USER:-bookhaven}:${POSTGRES_PASSWORD:-bookhaven}@postgres:5432/${POSTGRES_DB:-bookhaven}?sslmode=disable
+      REDIS_URL: redis:6379
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./backend:/app
+      - go-cache:/go/pkg/mod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["air", "-c", ".air.toml"]
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.node
+      target: dev
+    container_name: bookhaven-web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8080}
+      API_URL: http://backend:8080
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - /app/apps/web/.next
+      - /app/apps/web/node_modules
+      - /app/packages/ui/node_modules
+    depends_on:
+      - backend
+    command: ["pnpm", "--filter", "web", "run", "dev"]
+
+  admin:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.node
+      target: dev
+    container_name: bookhaven-admin
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8080}
+      API_URL: http://backend:8080
+    ports:
+      - "${ADMIN_PORT:-3001}:3000"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - /app/apps/admin/.next
+      - /app/apps/admin/node_modules
+      - /app/packages/ui/node_modules
+    depends_on:
+      - backend
+    command: ["pnpm", "--filter", "admin", "run", "dev"]
+
+volumes:
+  postgres-data:
+  redis-data:
+  go-cache:
+  node_modules:

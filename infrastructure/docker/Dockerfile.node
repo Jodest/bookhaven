@@ -1,0 +1,45 @@
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+WORKDIR /app
+
+FROM base AS dev
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/web/package.json ./apps/web/
+COPY apps/admin/package.json ./apps/admin/
+COPY packages/ui/package.json ./packages/ui/
+COPY packages/config/package.json ./packages/config/
+COPY packages/api-client/package.json ./packages/api-client/
+COPY packages/types/package.json ./packages/types/
+RUN pnpm install --frozen-lockfile
+COPY . .
+EXPOSE 3000
+CMD ["pnpm", "run", "dev"]
+
+FROM base AS builder
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/web/package.json ./apps/web/
+COPY apps/admin/package.json ./apps/admin/
+COPY packages/ui/package.json ./packages/ui/
+COPY packages/config/package.json ./packages/config/
+COPY packages/api-client/package.json ./packages/api-client/
+COPY packages/types/package.json ./packages/types/
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm run build
+
+FROM base AS web-production
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+EXPOSE 3000
+CMD ["node", "apps/web/server.js"]
+
+FROM base AS admin-production
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY --from=builder /app/apps/admin/.next/standalone ./
+COPY --from=builder /app/apps/admin/public ./apps/admin/public
+COPY --from=builder /app/apps/admin/.next/static ./apps/admin/.next/static
+EXPOSE 3000
+CMD ["node", "apps/admin/server.js"]
