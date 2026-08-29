@@ -8,9 +8,7 @@
     "type-check": "pnpm exec tsc --noEmit",
     "clean": "rm -rf dist"
   },
-  "dependencies": {
-    "@bookhaven/types": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@bookhaven/config": "workspace:*",
     "@types/node": "^20.19.43",

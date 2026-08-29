@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -71,7 +72,7 @@ func seed(db *gorm.DB) error {
 		Slug:      "lev-tolstoy",
 		Biography: ptr("Русский писатель, автор романов «Война и мир», «Анна Каренина», «Воскресение»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL26783A-L.jpg"),
-		BirthDate: ptr("1828-09-09"),
+		BirthDate: ptrTime("1828-09-09"),
 	}
 	dostoevsky := catalogDomain.Author{
 		ID:        uuid.New(),
@@ -79,7 +80,7 @@ func seed(db *gorm.DB) error {
 		Slug:      "fyodor-dostoevsky",
 		Biography: ptr("Русский писатель, автор романов «Преступление и наказание», «Идиот», «Братья Карамазовы»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL22266A-L.jpg"),
-		BirthDate: ptr("1821-11-11"),
+		BirthDate: ptrTime("1821-11-11"),
 	}
 	orwell := catalogDomain.Author{
 		ID:        uuid.New(),
@@ -87,7 +88,7 @@ func seed(db *gorm.DB) error {
 		Slug:      "george-orwell",
 		Biography: ptr("Английский писатель и публицист, автор «1984» и «Скотный двор»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL31827A-L.jpg"),
-		BirthDate: ptr("1903-06-25"),
+		BirthDate: ptrTime("1903-06-25"),
 	}
 	bulgakov := catalogDomain.Author{
 		ID:        uuid.New(),
@@ -95,7 +96,7 @@ func seed(db *gorm.DB) error {
 		Slug:      "mikhail-bulgakov",
 		Biography: ptr("Русский писатель, автор романа «Мастер и Маргарита»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL22149A-L.jpg"),
-		BirthDate: ptr("1891-05-15"),
+		BirthDate: ptrTime("1891-05-15"),
 	}
 
 	authors := []catalogDomain.Author{tolstoy, dostoevsky, orwell, bulgakov}
@@ -210,4 +211,9 @@ func ptr(s string) *string {
 
 func ptrInt(n int) *int {
 	return &n
+}
+
+func ptrTime(s string) *time.Time {
+	t, _ := time.Parse("2006-01-02", s)
+	return &t
 }

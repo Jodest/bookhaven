@@ -19,8 +19,7 @@
     "target": "ES2022",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@bookhaven/types": ["../types/src/index.ts"]
+      "@/*": ["./src/*"]
     },
     "types": ["node"]
   },

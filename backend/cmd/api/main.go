@@ -12,6 +12,8 @@ import (
 	"github.com/bookhaven/backend/internal/infrastructure/validator"
 	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
+	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
+	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	"github.com/bookhaven/backend/internal/modules/users/repository"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
 	"github.com/bookhaven/backend/internal/transport/http/middleware"
@@ -39,8 +41,11 @@ func main() {
 
 	// Repositories
 	usersRepo := repository.NewGormRepository(db)
+	catalogRepo := catalogrepository.NewGormRepository(db)
 
 	// Services
+	catalogService := catalogservice.NewService(catalogRepo)
+
 	authService := authservice.NewService(authservice.Config{
 		JWTSecret:       cfg.JWTSecret,
 		AccessTokenTTL:  15 * time.Minute,
@@ -75,7 +80,7 @@ func main() {
 	}))
 
 	// Public routes
-	httptransport.RegisterRoutes(e)
+	httptransport.RegisterRoutes(e, catalogService)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)

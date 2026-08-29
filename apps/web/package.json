@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@bookhaven/api-client": "workspace:*",
-    "@bookhaven/types": "workspace:*",
     "@bookhaven/ui": "workspace:*",
     "@tanstack/react-query": "^5.52.0",
     "next": "14.2.6",
