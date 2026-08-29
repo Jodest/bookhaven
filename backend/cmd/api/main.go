@@ -14,6 +14,8 @@ import (
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
+	shelvesrepository "github.com/bookhaven/backend/internal/modules/shelves/repository"
+	shelvesservice "github.com/bookhaven/backend/internal/modules/shelves/service"
 	"github.com/bookhaven/backend/internal/modules/users/repository"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
 	"github.com/bookhaven/backend/internal/transport/http/middleware"
@@ -42,9 +44,11 @@ func main() {
 	// Repositories
 	usersRepo := repository.NewGormRepository(db)
 	catalogRepo := catalogrepository.NewGormRepository(db)
+	shelvesRepo := shelvesrepository.NewGormRepository(db)
 
 	// Services
 	catalogService := catalogservice.NewService(catalogRepo)
+	shelvesService := shelvesservice.NewService(shelvesRepo)
 
 	authService := authservice.NewService(authservice.Config{
 		JWTSecret:       cfg.JWTSecret,
@@ -60,9 +64,9 @@ func main() {
 
 	e.Use(echomiddleware.Recover())
 	e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
-		AllowOrigins: []string{"http://localhost:3000", "http://localhost:3001"},
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
-		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:3001"},
+		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: true,
 	}))
 	e.Use(echomiddleware.RequestLoggerWithConfig(echomiddleware.RequestLoggerConfig{
@@ -79,8 +83,11 @@ func main() {
 		},
 	}))
 
-	// Public routes
-	httptransport.RegisterRoutes(e, catalogService)
+	// Auth middleware
+	authMiddleware := middleware.Auth(authService, usersRepo)
+
+	// Public + protected routes
+	httptransport.RegisterRoutes(e, catalogService, shelvesService, authMiddleware)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)
@@ -88,9 +95,6 @@ func main() {
 	api.POST("/auth/register", authHandler.Register)
 	api.POST("/auth/login", authHandler.Login)
 	api.POST("/auth/refresh", authHandler.Refresh)
-
-	// Protected routes
-	authMiddleware := middleware.Auth(authService, usersRepo)
 	api.GET("/auth/me", authHandler.Me, authMiddleware)
 	api.POST("/auth/logout", authHandler.Logout, authMiddleware)
 

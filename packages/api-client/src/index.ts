@@ -63,7 +63,9 @@ export interface Shelf {
   userId: string;
   name: string;
   type: 'reading' | 'read' | 'want_to_read' | 'abandoned' | 'favorite' | 'custom';
-  books: Book[];
+  booksCount: number;
+  hasBook?: boolean;
+  books?: Book[];
   createdAt: string;
   updatedAt: string;
 }
@@ -176,6 +178,57 @@ export const api = {
     refresh: () =>
       fetcher<AuthResponse>('/api/v1/auth/refresh', {
         method: 'POST',
+      }),
+  },
+  shelves: {
+    list: (params?: { book_id?: string }) => {
+      const queryParams: Record<string, string> = {};
+      if (params?.book_id) {
+        queryParams.book_id = params.book_id;
+      }
+      const query = new URLSearchParams(queryParams).toString();
+      return fetcher<{ items: Shelf[]; total: number }>(
+        `/api/v1/shelves${query ? `?${query}` : ''}`
+      );
+    },
+    get: (
+      id: string,
+      params?: { page?: number; limit?: number }
+    ) => {
+      const queryParams: Record<string, string> = {};
+      if (params?.page !== undefined) queryParams.page = String(params.page);
+      if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+      const query = new URLSearchParams(queryParams).toString();
+      return fetcher<{
+        shelf: Shelf;
+        items: Book[];
+        total: number;
+        page: number;
+        limit: number;
+      }>(`/api/v1/shelves/${id}${query ? `?${query}` : ''}`);
+    },
+    create: (data: { name: string }) =>
+      fetcher<Shelf>('/api/v1/shelves', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    rename: (id: string, data: { name: string }) =>
+      fetcher<Shelf>(`/api/v1/shelves/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    remove: (id: string) =>
+      fetcher<{ status: string }>(`/api/v1/shelves/${id}`, {
+        method: 'DELETE',
+      }),
+    addBook: (id: string, bookId: string) =>
+      fetcher<{ status: string }>(`/api/v1/shelves/${id}/books`, {
+        method: 'POST',
+        body: JSON.stringify({ book_id: bookId }),
+      }),
+    removeBook: (id: string, bookId: string) =>
+      fetcher<{ status: string }>(`/api/v1/shelves/${id}/books/${bookId}`, {
+        method: 'DELETE',
       }),
   },
 };

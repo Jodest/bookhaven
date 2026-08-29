@@ -1,4 +1,5 @@
 import { api } from '@bookhaven/api-client';
+import { ShelveBookButtons } from '@/components/shelve-book-buttons';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -49,6 +50,10 @@ export default async function BookPage({ params }: BookPageProps) {
                 {author.name}
               </Link>
             ))}
+          </div>
+
+          <div className="mt-6">
+            <ShelveBookButtons bookId={book.id} slug={book.slug} />
           </div>
 
           {book.rating > 0 && (
