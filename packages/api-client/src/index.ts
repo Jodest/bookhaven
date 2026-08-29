@@ -1,12 +1,10 @@
 export interface User {
   id: string;
   email: string;
-  name: string | null;
+  name: string;
   avatarUrl: string | null;
   role: 'user' | 'contributor' | 'moderator' | 'admin';
   profileType: 'reader' | 'librarian' | 'bookseller' | 'other';
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface Book {
@@ -111,6 +109,24 @@ export type PaginatedResponse<T> = {
   limit: number;
 };
 
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+export interface RegisterInput {
+  email: string;
+  password: string;
+  name: string;
+}
+
+export interface AuthResponse {
+  user: User;
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
 export const api = {
   books: {
     list: (params?: { page?: number; limit?: number; search?: string; genre_id?: string; author_id?: string }) => {
@@ -136,6 +152,30 @@ export const api = {
     list: (bookId: string) => fetcher<Review[]>(`/api/v1/books/${bookId}/reviews`),
   },
   auth: {
-    me: () => fetcher<User | null>('/api/v1/auth/me'),
+    me: async () => {
+      try {
+        return await fetcher<User>('/api/v1/auth/me');
+      } catch {
+        return null;
+      }
+    },
+    login: (data: LoginInput) =>
+      fetcher<AuthResponse>('/api/v1/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    register: (data: RegisterInput) =>
+      fetcher<AuthResponse>('/api/v1/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    logout: () =>
+      fetcher<{ status: string }>('/api/v1/auth/logout', {
+        method: 'POST',
+      }),
+    refresh: () =>
+      fetcher<AuthResponse>('/api/v1/auth/refresh', {
+        method: 'POST',
+      }),
   },
 };
