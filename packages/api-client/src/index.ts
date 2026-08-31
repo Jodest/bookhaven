@@ -19,6 +19,7 @@ export interface Book {
   language: string;
   rating: number;
   ratingsCount: number;
+  reviewsCount: number;
   authors: Author[];
   genres: Genre[];
   createdAt: string;
@@ -47,15 +48,39 @@ export interface Genre {
 
 export interface Review {
   id: string;
-  bookId: string;
-  userId: string;
-  user: Pick<User, 'id' | 'name' | 'avatarUrl'>;
+  book_id: string;
+  user_id: string;
+  user: { id: string; name: string | null; avatar_url: string | null };
   rating: number;
   content: string;
-  likesCount: number;
-  isHidden: boolean;
-  createdAt: string;
-  updatedAt: string;
+  likes_count: number;
+  liked_by_me?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewsListResponse {
+  items: Review[];
+  total: number;
+  page: number;
+  limit: number;
+  my_review?: Review;
+}
+
+export interface MyRating {
+  value: number;
+}
+
+export interface SetRatingResponse {
+  book_id: string;
+  value: number;
+  rating: number;
+  ratings_count: number;
+}
+
+export interface ToggleLikeResponse {
+  likes_count: number;
+  liked: boolean;
 }
 
 export interface Shelf {
@@ -87,6 +112,17 @@ const API_URL =
     ? process.env.API_URL || 'http://backend:8080'
     : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public statusText: string,
+    message?: string
+  ) {
+    super(message || `API error: ${status} ${statusText}`);
+    this.name = 'ApiError';
+  }
+}
+
 async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -98,7 +134,16 @@ async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+    let message: string | undefined;
+    try {
+      const body = await response.json();
+      if (body && typeof body.error === 'string') {
+        message = body.error;
+      }
+    } catch {
+      // ignore
+    }
+    throw new ApiError(response.status, response.statusText, message);
   }
 
   return response.json() as Promise<T>;
@@ -110,6 +155,65 @@ export type PaginatedResponse<T> = {
   page: number;
   limit: number;
 };
+
+// Backend returns snake_case for catalog entities; normalize to the camelCase
+// Book/Author/Genre types consumed by the frontend.
+type RawBook = Book & {
+  cover_url: string | null;
+  published_year: number | null;
+  page_count: number | null;
+  ratings_count: number;
+  reviews_count: number;
+  authors: RawAuthor[];
+  genres: RawGenre[];
+  created_at: string;
+  updated_at: string;
+};
+
+type RawAuthor = Author & {
+  photo_url: string | null;
+  birth_date: string | null;
+  death_date: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type RawGenre = Genre & {
+  created_at: string;
+};
+
+function normalizeAuthor(raw: RawAuthor): Author {
+  return {
+    ...raw,
+    photoUrl: raw.photo_url,
+    birthDate: raw.birth_date,
+    deathDate: raw.death_date,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+function normalizeGenre(raw: RawGenre): Genre {
+  return {
+    ...raw,
+    createdAt: raw.created_at,
+  };
+}
+
+function normalizeBook(raw: RawBook): Book {
+  return {
+    ...raw,
+    coverUrl: raw.cover_url,
+    publishedYear: raw.published_year,
+    pageCount: raw.page_count,
+    ratingsCount: raw.ratings_count,
+    reviewsCount: raw.reviews_count,
+    authors: raw.authors.map(normalizeAuthor),
+    genres: raw.genres.map(normalizeGenre),
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
 
 export interface LoginInput {
   email: string;
@@ -131,7 +235,13 @@ export interface AuthResponse {
 
 export const api = {
   books: {
-    list: (params?: { page?: number; limit?: number; search?: string; genre_id?: string; author_id?: string }) => {
+    list: (params?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      genre_id?: string;
+      author_id?: string;
+    }) => {
       const queryParams: Record<string, string> = {};
       if (params) {
         if (params.page !== undefined) queryParams.page = String(params.page);
@@ -140,9 +250,14 @@ export const api = {
         if (params.genre_id) queryParams.genre_id = params.genre_id;
         if (params.author_id) queryParams.author_id = params.author_id;
       }
-      return fetcher<PaginatedResponse<Book>>(`/api/v1/books?${new URLSearchParams(queryParams)}`);
+      return fetcher<PaginatedResponse<Book>>(
+        `/api/v1/books?${new URLSearchParams(queryParams)}`
+      );
     },
-    get: (slug: string) => fetcher<Book>(`/api/v1/books/${slug}`),
+    get: async (slug: string) => {
+      const raw = await fetcher<RawBook>(`/api/v1/books/${slug}`);
+      return normalizeBook(raw);
+    },
   },
   authors: {
     get: (slug: string) => fetcher<Author>(`/api/v1/authors/${slug}`),
@@ -150,8 +265,42 @@ export const api = {
   genres: {
     list: () => fetcher<{ items: Genre[]; total: number }>('/api/v1/genres'),
   },
+  ratings: {
+    set: (bookId: string, value: number) =>
+      fetcher<SetRatingResponse>(`/api/v1/books/${bookId}/ratings`, {
+        method: 'POST',
+        body: JSON.stringify({ value }),
+      }),
+    my: (bookId: string) =>
+      fetcher<MyRating>(`/api/v1/books/${bookId}/ratings/me`).catch(() => null),
+  },
   reviews: {
-    list: (bookId: string) => fetcher<Review[]>(`/api/v1/books/${bookId}/reviews`),
+    list: (bookId: string, params?: { page?: number; limit?: number }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.page !== undefined) queryParams.set('page', String(params.page));
+      if (params?.limit !== undefined) queryParams.set('limit', String(params.limit));
+      return fetcher<ReviewsListResponse>(
+        `/api/v1/books/${bookId}/reviews?${queryParams.toString()}`
+      );
+    },
+    create: (bookId: string, data: { rating: number; content: string }) =>
+      fetcher<Review>(`/api/v1/books/${bookId}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    update: (id: string, data: { rating?: number; content?: string }) =>
+      fetcher<Review>(`/api/v1/reviews/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    remove: (id: string) =>
+      fetcher<{ status: string }>(`/api/v1/reviews/${id}`, {
+        method: 'DELETE',
+      }),
+    toggleLike: (id: string) =>
+      fetcher<ToggleLikeResponse>(`/api/v1/reviews/${id}/likes`, {
+        method: 'POST',
+      }),
   },
   auth: {
     me: async () => {

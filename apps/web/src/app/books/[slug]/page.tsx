@@ -1,4 +1,6 @@
 import { api } from '@bookhaven/api-client';
+import { BookRating } from '@/components/book-rating';
+import { ReviewsSection } from '@/components/reviews-section';
 import { ShelveBookButtons } from '@/components/shelve-book-buttons';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -56,12 +58,14 @@ export default async function BookPage({ params }: BookPageProps) {
             <ShelveBookButtons bookId={book.id} slug={book.slug} />
           </div>
 
-          {book.rating > 0 && (
-            <p className="mt-4 text-lg">
-              Рейтинг: <span className="font-semibold">{book.rating.toFixed(1)}</span>
-              <span className="text-muted-foreground"> ({book.ratingsCount} оценок)</span>
-            </p>
-          )}
+          <div className="mt-6">
+            <BookRating
+              bookId={book.id}
+              slug={book.slug}
+              rating={book.rating}
+              ratingsCount={book.ratingsCount}
+            />
+          </div>
 
           {book.description && (
             <div className="mt-6">
@@ -103,6 +107,8 @@ export default async function BookPage({ params }: BookPageProps) {
               </span>
             ))}
           </div>
+
+          <ReviewsSection bookId={book.id} slug={book.slug} />
         </div>
       </div>
     </main>
