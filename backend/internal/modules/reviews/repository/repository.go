@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
@@ -76,13 +77,15 @@ func (r *GormRepository) ListByBook(ctx context.Context, bookID uuid.UUID, userI
 		offset = 0
 	}
 
-	var userIDValue *uuid.UUID
+	likedByMeExpr := "false"
+	args := []interface{}{bookID, limit, offset}
 	if userID != nil {
-		userIDValue = userID
+		likedByMeExpr = "EXISTS (SELECT 1 FROM review_likes rl WHERE rl.review_id = r.id AND rl.user_id = ?)"
+		args = append([]interface{}{*userID}, args...)
 	}
 
 	var rows []reviewListRow
-	sql := `
+	sql := fmt.Sprintf(`
 		SELECT
 			r.id,
 			r.book_id,
@@ -95,16 +98,14 @@ func (r *GormRepository) ListByBook(ctx context.Context, bookID uuid.UUID, userI
 			r.updated_at,
 			u.name AS user_name,
 			u.avatar_url AS user_avatar_url,
-			(? IS NOT NULL AND EXISTS (
-				SELECT 1 FROM review_likes rl WHERE rl.review_id = r.id AND rl.user_id = ?
-			)) AS liked_by_me
+			%s AS liked_by_me
 		FROM reviews r
 		JOIN users u ON u.id = r.user_id
 		WHERE r.book_id = ? AND r.is_hidden = false
 		ORDER BY r.created_at DESC
 		LIMIT ? OFFSET ?
-	`
-	err := r.db.WithContext(ctx).Raw(sql, userIDValue, userIDValue, bookID, limit, offset).Scan(&rows).Error
+	`, likedByMeExpr)
+	err := r.db.WithContext(ctx).Raw(sql, args...).Scan(&rows).Error
 	if err != nil {
 		return nil, 0, err
 	}
