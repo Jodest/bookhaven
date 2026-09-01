@@ -1,17 +1,23 @@
-# BookHaven — правила разработки с использованием ИИ
+# BookHaven AI Development Rules
 
-## 1. О проекте
+## Project
 
-BookHaven — социальный каталог книг для рынка РФ и СНГ, аналог Goodreads.
+BookHaven is a social book catalog for the Russian/CIS market.
 
-Перед началом работы над любой функциональностью обязательно прочитать:
+Core features:
 
-- `AGENTS.md`
-- `docs/ROADMAP.md`
+- Book catalog
+- Authors and genres
+- Authentication
+- User shelves
+- Ratings and reviews
+- User lists
+- User profiles
+- Admin panel
 
-## 2. Технологический стек
+## Stack
 
-### Backend
+Backend:
 
 - Go 1.23
 - Echo
@@ -19,7 +25,7 @@ BookHaven — социальный каталог книг для рынка Р�
 - PostgreSQL 16
 - Redis 7
 
-### Frontend
+Frontend:
 
 - Next.js 14
 - React 18
@@ -27,176 +33,274 @@ BookHaven — социальный каталог книг для рынка Р�
 - Tailwind CSS
 - shadcn/ui
 
-### Монорепозиторий
+Monorepo:
 
 - Turborepo
 - pnpm workspaces
 
-### Инфраструктура
+Infrastructure:
 
 - Docker
 - Docker Compose
 
-### Миграции
+Migrations:
 
-- SQL-файлы
-- схема, совместимая с golang-migrate
+- SQL migrations
+- golang-migrate compatible
 
-## 3. Структура проекта
+## Repository Structure
 
-- `apps/web` — публичный frontend
-- `apps/admin` — административная панель
-- `backend` — Go backend
-- `backend/internal/modules` — модули предметной области
-- `backend/migrations` — миграции базы данных
-- `packages/api-client` — HTTP-клиент frontend → backend
-- `packages/types` — общие TypeScript-типы
-- `packages/ui` — общие UI-компоненты
-- `packages/config` — общая конфигурация TypeScript
-- `docs` — документация проекта
+- apps/web: public Next.js application
+- apps/admin: admin Next.js application
+- backend: Go backend
+- packages/api-client: API client
+- packages/types: shared TypeScript types
+- packages/config: shared TypeScript configuration
+- packages/ui: shared UI components
+- docs: project documentation
 
-## 4. Главный принцип
+## General Rules
 
-Сначала необходимо понять существующий проект, затем спроектировать изменения и только после этого изменять код.
+1. Prefer existing project patterns over introducing new patterns.
+2. Reuse existing abstractions when appropriate.
+3. Do not introduce abstractions without a concrete need.
+4. Do not perform unrelated refactoring.
+5. Keep changes scoped to the requested feature.
+6. Do not modify existing migrations. Create a new migration when schema changes are required.
+7. Do not change dependencies unless necessary.
+8. Preserve existing API contracts unless the feature explicitly requires a change.
+9. Follow existing naming and directory conventions.
+10. Prefer simple solutions over speculative extensibility.
 
-Не следует автоматически доверять только документации.
+## Exploration Budget
 
-Если документация и код расходятся, сначала необходимо исследовать реальное состояние проекта.
+Agents must minimize repository exploration.
 
-Не следует переписывать или рефакторить код, который не относится к текущей задаче.
+Default limits:
 
-## 5. Работа с существующей архитектурой
+- Read at most 2 similar implementations.
+- Read only files relevant to the feature.
+- Read only migrations affecting relevant tables.
+- Do not inspect the entire migration history unless schema evolution is relevant.
+- Do not read the entire repository to understand a local feature.
+- Stop exploring once enough information is available to implement safely.
 
-Перед созданием нового решения необходимо найти аналогичные решения в существующем коде.
+Use progressive disclosure:
 
-Предпочтение всегда отдаётся:
+1. Read the relevant roadmap entry.
+2. Read the feature document.
+3. Inspect 1–2 relevant implementations.
+4. Inspect relevant migrations only if needed.
+5. Implement.
 
-1. существующим паттернам проекта;
-2. существующим модулям;
-3. существующим компонентам;
-4. существующим API-подходам;
-5. существующим механизмам валидации;
-6. существующим механизмам обработки ошибок.
+If the existing pattern is clear, stop searching.
 
-Новые абстракции должны создаваться только тогда, когда они действительно необходимы.
+## Documentation
 
-## 6. Правила backend
+Documentation hierarchy:
 
-Backend следует организовывать по существующей архитектуре проекта.
+- README.md: setup and developer usage
+- docs/PROJECT.md: project-wide description and stack
+- docs/ROADMAP.md: feature status and priorities
+- docs/features/<feature>.md: requirements and behavior of a feature
+- docs/architecture/OVERVIEW.md: architecture overview
+- docs/adr/: significant architectural decisions only
 
-При необходимости изменения функциональности следует учитывать:
+Do not duplicate detailed feature requirements in ROADMAP.md.
 
-- domain;
-- repository;
-- service;
-- handler;
-- routes;
-- DTO;
-- validation;
-- authorization.
+ROADMAP.md is an index and status document.
 
-Изменения базы данных должны сопровождаться миграцией.
+One feature should normally have one feature document.
 
-Нельзя изменять структуру базы данных вручную без соответствующей миграции.
+Update documentation when implementation changes behavior, API, architecture, or feature status.
 
-## 7. Правила frontend
+## Feature Documentation
 
-Frontend должен использовать существующие проектные паттерны.
+Feature documents are the source of truth for feature requirements.
 
-При изменении API необходимо обновлять:
+Use:
 
-- `@bookhaven/api-client`;
-- необходимые TypeScript-типы;
-- соответствующие frontend-компоненты.
+docs/features/<feature>.md
 
-Не следует создавать отдельные типы там, где уже существует подходящий общий тип.
+Do not create multiple documents for business, UX, API, database, and testing unless the feature is unusually large.
 
-## 8. Безопасность
+## Security
 
-При разработке любой функциональности необходимо учитывать:
+For authenticated or user-owned resources always verify:
 
-- аутентификацию;
-- авторизацию;
-- права владельца ресурса;
-- доступ пользователя к чужим данным;
-- валидацию входных данных;
-- утечку данных;
-- IDOR;
-- повторные запросы;
-- некорректные состояния.
+- authentication
+- authorization
+- resource ownership
+- IDOR risks
+- input validation
+- sensitive data exposure
 
-## 9. Стандартный жизненный цикл фичи
+Never assume that having an authenticated user is sufficient authorization.
 
-Каждая значимая фича должна проходить следующий процесс:
+## Testing
 
-1. бизнес-анализ;
-2. анализ пользовательского опыта;
-3. архитектурный анализ;
-4. разработка;
-5. code review;
-6. QA;
-7. исправление замечаний;
-8. повторный review;
-9. повторный QA;
-10. обновление документации;
-11. обновление `docs/ROADMAP.md`;
-12. проверка Git diff;
-13. создание Git commit.
+Use automated tools instead of LLM reasoning whenever possible.
 
-## 10. Критерии готовности
+Backend:
 
-Фича считается готовой только если:
+- go test ./...
+- go vet ./...
 
-- требования определены;
-- архитектура определена;
-- реализация завершена;
-- code review пройден;
-- отсутствуют нерешённые критические замечания;
-- отсутствуют нерешённые замечания высокого приоритета;
-- QA пройден;
-- необходимые тесты проходят;
-- lint проходит;
-- type-check проходит;
-- `go vet` проходит;
-- документация обновлена;
-- `ROADMAP.md` соответствует фактическому состоянию проекта;
-- в Git нет случайных изменений;
-- изменения закоммичены.
+Frontend:
 
-## 11. Что запрещено
+- pnpm type-check
+- pnpm lint
 
-Нельзя:
+Run only the checks relevant to changed areas when possible.
 
-- пропускать бизнес-анализ для новой фичи;
-- пропускать архитектурный анализ;
-- коммитить код с проваленным QA;
-- коммитить код с нерешёнными критическими замечаниями;
-- выдавать предположение за результат тестирования;
-- утверждать, что тест пройден, если он фактически не запускался;
-- изменять несвязанный с задачей код;
-- добавлять секреты в Git;
-- выполнять `git push`, если пользователь явно этого не попросил.
+Do not repeat checks that have already passed unless changes were made afterward.
 
-## 12. WSL2
+## Mechanical vs Reasoning Checks
 
-Известна проблема с автоматическим обнаружением изменений Go-файлов через Air при работе с Windows FS.
+Mechanical checks belong to tools:
 
-Если изменения `.go` не подхватываются backend-контейнером, можно выполнить:
+- compilation
+- type checking
+- linting
+- tests
+- formatting
+- git diff validation
 
-docker compose restart backend
+Reasoning checks belong to agents:
 
-## 13. Проверка проекта
+- business rules
+- architecture
+- authorization logic
+- UX behavior
+- acceptance criteria
+- unintended behavior
 
-Для frontend:
+Do not ask an agent to reproduce mechanical checks manually.
 
-docker compose exec web pnpm type-check
+## Definition of Done
 
-docker compose exec web pnpm lint
+A feature is done only when:
 
-Для backend:
+- acceptance criteria are satisfied;
+- implementation follows existing architecture;
+- relevant tests exist and pass;
+- relevant automated checks pass;
+- authentication and authorization are correct;
+- documentation is updated;
+- ROADMAP.md reflects the current state;
+- no unrelated changes were introduced;
+- review status is PASS.
 
-docker compose exec backend go vet ./...
+## Feature Workflow
 
-docker compose exec backend go test ./...
+Normal feature workflow:
 
-Дополнительные проверки должны выполняться в зависимости от конкретной фичи.
+Planner
+→ Developer
+→ automated checks
+→ Reviewer
+→ PASS
+→ commit
+
+Small feature workflow:
+
+Developer
+→ automated checks
+→ Reviewer
+→ PASS
+→ commit
+
+Do not add unnecessary agent stages.
+
+## Failure States
+
+CODE_FAIL:
+
+The implementation needs correction.
+
+Return to Developer.
+
+PLAN_INVALID:
+
+The feature contract is technically or architecturally invalid.
+
+Return to Planner.
+
+Do not ask Developer to solve an invalid plan by silently changing the architecture.
+
+## Review Cycles
+
+Maximum review/fix cycles: 3.
+
+If the feature still fails after 3 cycles, stop and report the remaining issues.
+
+Do not enter an infinite fix/review loop.
+
+## Git
+
+The feature command may create the commit after Review returns PASS.
+
+Never commit a failed feature.
+
+Never push automatically.
+
+Before starting a feature, check git status.
+
+Do not mix pre-existing user changes with feature changes.
+
+Recommended commit format:
+
+<type>(<scope>): <description>
+
+Examples:
+
+feat(shelves): add book shelves
+fix(reviews): prevent duplicate likes
+refactor(api): simplify catalog client
+
+Do not create a commit containing unrelated changes.
+
+## No-Go List
+
+Do not:
+
+- rewrite existing modules without need;
+- redesign the architecture without a feature requirement;
+- modify unrelated files;
+- rewrite migration history;
+- add dependencies without justification;
+- create documentation that duplicates existing documentation;
+- create an agent for a task that can be handled by an existing agent;
+- repeat repository exploration unnecessarily;
+- repeat automated checks unnecessarily;
+- produce long explanations when a structured result is sufficient.
+
+## AI Output
+
+Prefer concise structured output.
+
+Avoid unnecessary explanations, summaries, and repetition.
+
+Use English for agent-to-agent communication unless a project document explicitly requires another language.
+
+User-facing responses may use Russian.
+
+## Workflow Optimization
+
+The workflow optimizer is not part of the normal feature execution path.
+
+It is invoked separately to analyze:
+
+- token usage;
+- context size;
+- execution time;
+- repository exploration;
+- repeated work;
+- retry/rework rate;
+- agent responsibilities;
+- documentation overhead;
+- unnecessary workflow stages.
+
+Optimizer recommendations must be evidence-based when metrics are available.
+
+Do not automatically change workflow configuration without explicit approval.

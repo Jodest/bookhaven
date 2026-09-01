@@ -25,6 +25,8 @@ make migrate
 make seed
 ```
 
+Тестовый аккаунт (создаётся сидом, только для разработки): `test@bookhaven.local` / `test1234`
+
 ## Сервисы
 
 - Web: http://localhost:3000
