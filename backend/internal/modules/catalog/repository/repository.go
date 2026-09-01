@@ -14,15 +14,22 @@ type Repository interface {
 	GetBookBySlug(ctx context.Context, slug string) (*domain.Book, error)
 	GetAuthorBySlug(ctx context.Context, slug string) (*domain.Author, error)
 	ListGenres(ctx context.Context) ([]domain.Genre, error)
+	ListAuthors(ctx context.Context, search string, limit int) ([]domain.Author, int64, error)
+	ListLanguages(ctx context.Context) ([]string, error)
 }
 
 // BookFilter defines filtering options for books.
 type BookFilter struct {
-	Search   string
-	GenreID  *uuid.UUID
-	AuthorID *uuid.UUID
-	Limit    int
-	Offset   int
+	Search    string
+	GenreID   []uuid.UUID
+	AuthorID  *uuid.UUID
+	RatingMin *int
+	Language  *string
+	YearFrom  *int
+	YearTo    *int
+	Sort      string // "rating" (default), "new", "title"
+	Limit     int
+	Offset    int
 }
 
 // GormRepository is a GORM-based implementation of Repository.
@@ -45,18 +52,36 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]do
 		Where("is_hidden = ?", false)
 
 	if filter.Search != "" {
-		searchQuery := "%" + filter.Search + "%"
-		query = query.Where("title ILIKE ? OR isbn ILIKE ?", searchQuery, searchQuery)
+		query = query.Where(
+			"to_tsvector('russian', title || ' ' || COALESCE(isbn, '') || ' ' || COALESCE(description, '')) @@ plainto_tsquery('russian', ?)",
+			filter.Search,
+		)
 	}
 
-	if filter.GenreID != nil {
+	if len(filter.GenreID) > 0 {
 		query = query.Joins("JOIN book_genres ON book_genres.book_id = books.id").
-			Where("book_genres.genre_id = ?", filter.GenreID)
+			Where("book_genres.genre_id IN ?", filter.GenreID)
 	}
 
 	if filter.AuthorID != nil {
 		query = query.Joins("JOIN book_authors ON book_authors.book_id = books.id").
 			Where("book_authors.author_id = ?", filter.AuthorID)
+	}
+
+	if filter.RatingMin != nil {
+		query = query.Where("rating >= ?", *filter.RatingMin)
+	}
+
+	if filter.Language != nil {
+		query = query.Where("language = ?", *filter.Language)
+	}
+
+	if filter.YearFrom != nil {
+		query = query.Where("published_year >= ?", *filter.YearFrom)
+	}
+
+	if filter.YearTo != nil {
+		query = query.Where("published_year <= ?", *filter.YearTo)
 	}
 
 	if err := query.Count(&total).Error; err != nil {
@@ -75,7 +100,15 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]do
 		offset = 0
 	}
 
-	if err := query.Order("rating DESC, created_at DESC").
+	order := "rating DESC, created_at DESC"
+	switch filter.Sort {
+	case "new":
+		order = "published_year DESC NULLS LAST, created_at DESC"
+	case "title":
+		order = "title ASC"
+	}
+
+	if err := query.Order(order).
 		Limit(limit).
 		Offset(offset).
 		Find(&books).Error; err != nil {
@@ -118,4 +151,47 @@ func (r *GormRepository) ListGenres(ctx context.Context) ([]domain.Genre, error)
 		return nil, err
 	}
 	return genres, nil
+}
+
+func (r *GormRepository) ListAuthors(ctx context.Context, search string, limit int) ([]domain.Author, int64, error) {
+	var authors []domain.Author
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&domain.Author{})
+
+	if search != "" {
+		query = query.Where(
+			"to_tsvector('russian', name || ' ' || COALESCE(biography, '')) @@ plainto_tsquery('russian', ?)",
+			search,
+		)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+
+	if err := query.Order("name ASC").
+		Limit(limit).
+		Find(&authors).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return authors, total, nil
+}
+
+func (r *GormRepository) ListLanguages(ctx context.Context) ([]string, error) {
+	var languages []string
+	if err := r.db.WithContext(ctx).
+		Model(&domain.Book{}).
+		Where("is_hidden = ?", false).
+		Distinct("language").
+		Order("language ASC").
+		Pluck("language", &languages).Error; err != nil {
+		return nil, err
+	}
+	return languages, nil
 }

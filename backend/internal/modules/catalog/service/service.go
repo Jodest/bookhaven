@@ -66,6 +66,24 @@ func (s *Service) ListGenres(ctx context.Context) ([]domain.Genre, error) {
 	return genres, nil
 }
 
+// ListAuthors returns authors matching a search query.
+func (s *Service) ListAuthors(ctx context.Context, search string, limit int) ([]domain.Author, int64, error) {
+	authors, total, err := s.repo.ListAuthors(ctx, search, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list authors: %w", err)
+	}
+	return authors, total, nil
+}
+
+// ListLanguages returns distinct language values from books.
+func (s *Service) ListLanguages(ctx context.Context) ([]string, error) {
+	languages, err := s.repo.ListLanguages(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list languages: %w", err)
+	}
+	return languages, nil
+}
+
 // ParseUUID parses a UUID string.
 func ParseUUID(s string) (uuid.UUID, error) {
 	return uuid.Parse(s)

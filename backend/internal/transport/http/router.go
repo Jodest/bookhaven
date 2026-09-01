@@ -27,8 +27,10 @@ func RegisterRoutes(
 	catalogHandler := cataloghttp.NewHandler(catalogService)
 	api.GET("/books", catalogHandler.ListBooks)
 	api.GET("/books/:slug", catalogHandler.GetBook)
+	api.GET("/authors", catalogHandler.ListAuthors)
 	api.GET("/authors/:slug", catalogHandler.GetAuthor)
 	api.GET("/genres", catalogHandler.ListGenres)
+	api.GET("/languages", catalogHandler.ListLanguages)
 
 	shelvesHandler := shelveshttp.NewHandler(shelvesService)
 	shelves := api.Group("/shelves", authMiddleware)

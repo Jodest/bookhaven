@@ -84,6 +84,20 @@ type listBooksResponse struct {
 	Limit int                    `json:"limit"`
 }
 
+type listAuthorsResponse struct {
+	Items []authorResponse `json:"items"`
+	Total int64            `json:"total"`
+}
+
+type languageResponse struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+type listLanguagesResponse struct {
+	Items []languageResponse `json:"items"`
+}
+
 func formatDate(t *time.Time) *string {
 	if t == nil {
 		return nil
@@ -200,12 +214,15 @@ func (h *Handler) ListBooks(c echo.Context) error {
 
 	filter := repository.BookFilter{
 		Search: c.QueryParam("search"),
+		Sort:   c.QueryParam("sort"),
 	}
 
-	if genreID := c.QueryParam("genre_id"); genreID != "" {
-		id, err := uuid.Parse(genreID)
+	// Parse multi-value genre_id params
+	genreIDs := c.QueryParams()["genre_id"]
+	for _, gid := range genreIDs {
+		id, err := uuid.Parse(gid)
 		if err == nil {
-			filter.GenreID = &id
+			filter.GenreID = append(filter.GenreID, id)
 		}
 	}
 
@@ -213,6 +230,31 @@ func (h *Handler) ListBooks(c echo.Context) error {
 		id, err := uuid.Parse(authorID)
 		if err == nil {
 			filter.AuthorID = &id
+		}
+	}
+
+	if ratingMin := c.QueryParam("rating_min"); ratingMin != "" {
+		val, err := strconv.Atoi(ratingMin)
+		if err == nil && val >= 1 && val <= 5 {
+			filter.RatingMin = &val
+		}
+	}
+
+	if language := c.QueryParam("language"); language != "" {
+		filter.Language = &language
+	}
+
+	if yearFrom := c.QueryParam("year_from"); yearFrom != "" {
+		val, err := strconv.Atoi(yearFrom)
+		if err == nil {
+			filter.YearFrom = &val
+		}
+	}
+
+	if yearTo := c.QueryParam("year_to"); yearTo != "" {
+		val, err := strconv.Atoi(yearTo)
+		if err == nil {
+			filter.YearTo = &val
 		}
 	}
 
@@ -280,6 +322,32 @@ func (h *Handler) GetAuthor(c echo.Context) error {
 	return c.JSON(http.StatusOK, toAuthorDetailResponse(*author))
 }
 
+// ListAuthors handles GET /api/v1/authors.
+func (h *Handler) ListAuthors(c echo.Context) error {
+	ctx := c.Request().Context()
+	search := c.QueryParam("search")
+
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	if limit <= 0 {
+		limit = 20
+	}
+
+	authors, total, err := h.service.ListAuthors(ctx, search, limit)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list authors"})
+	}
+
+	items := make([]authorResponse, 0, len(authors))
+	for _, a := range authors {
+		items = append(items, toAuthorResponse(a))
+	}
+
+	return c.JSON(http.StatusOK, listAuthorsResponse{
+		Items: items,
+		Total: total,
+	})
+}
+
 // ListGenres handles GET /api/v1/genres.
 func (h *Handler) ListGenres(c echo.Context) error {
 	ctx := c.Request().Context()
@@ -297,5 +365,34 @@ func (h *Handler) ListGenres(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"items": items,
 		"total": len(items),
+	})
+}
+
+// ListLanguages handles GET /api/v1/languages.
+func (h *Handler) ListLanguages(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	languages, err := h.service.ListLanguages(ctx)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list languages"})
+	}
+
+	items := make([]languageResponse, 0, len(languages))
+	for _, code := range languages {
+		name := code
+		switch code {
+		case "ru":
+			name = "Русский"
+		case "en":
+			name = "English"
+		}
+		items = append(items, languageResponse{
+			Code: code,
+			Name: name,
+		})
+	}
+
+	return c.JSON(http.StatusOK, listLanguagesResponse{
+		Items: items,
 	})
 }

@@ -107,6 +107,11 @@ export interface BookList {
   updatedAt: string;
 }
 
+export interface Language {
+  code: string;
+  name: string;
+}
+
 const API_URL =
   typeof window === 'undefined'
     ? process.env.API_URL || 'http://backend:8080'
@@ -235,24 +240,46 @@ export interface AuthResponse {
 
 export const api = {
   books: {
-    list: (params?: {
+    list: async (params?: {
       page?: number;
       limit?: number;
       search?: string;
-      genre_id?: string;
+      genre_id?: string[];
       author_id?: string;
+      rating_min?: number;
+      language?: string;
+      year_from?: number;
+      year_to?: number;
+      sort?: string;
     }) => {
       const queryParams: Record<string, string> = {};
+      const genreSearchParams = new URLSearchParams();
       if (params) {
         if (params.page !== undefined) queryParams.page = String(params.page);
         if (params.limit !== undefined) queryParams.limit = String(params.limit);
         if (params.search) queryParams.search = params.search;
-        if (params.genre_id) queryParams.genre_id = params.genre_id;
+        if (params.genre_id) {
+          for (const id of params.genre_id) {
+            genreSearchParams.append('genre_id', id);
+          }
+        }
         if (params.author_id) queryParams.author_id = params.author_id;
+        if (params.rating_min !== undefined) queryParams.rating_min = String(params.rating_min);
+        if (params.language) queryParams.language = params.language;
+        if (params.year_from !== undefined) queryParams.year_from = String(params.year_from);
+        if (params.year_to !== undefined) queryParams.year_to = String(params.year_to);
+        if (params.sort) queryParams.sort = params.sort;
       }
-      return fetcher<PaginatedResponse<Book>>(
-        `/api/v1/books?${new URLSearchParams(queryParams)}`
+      // Merge scalar params + genre array params
+      const merged = new URLSearchParams(queryParams);
+      genreSearchParams.forEach((v, k) => merged.append(k, v));
+      const raw = await fetcher<{ items: RawBook[]; total: number; page: number; limit: number }>(
+        `/api/v1/books?${merged.toString()}`
       );
+      return {
+        ...raw,
+        items: raw.items.map(normalizeBook),
+      };
     },
     get: async (slug: string) => {
       const raw = await fetcher<RawBook>(`/api/v1/books/${slug}`);
@@ -260,10 +287,23 @@ export const api = {
     },
   },
   authors: {
+    list: (params?: { search?: string; limit?: number }) => {
+      const queryParams: Record<string, string> = {};
+      if (params) {
+        if (params.search) queryParams.search = params.search;
+        if (params.limit !== undefined) queryParams.limit = String(params.limit);
+      }
+      return fetcher<PaginatedResponse<Author>>(
+        `/api/v1/authors?${new URLSearchParams(queryParams)}`
+      );
+    },
     get: (slug: string) => fetcher<Author>(`/api/v1/authors/${slug}`),
   },
   genres: {
     list: () => fetcher<{ items: Genre[]; total: number }>('/api/v1/genres'),
+  },
+  languages: {
+    list: () => fetcher<{ items: Language[] }>('/api/v1/languages'),
   },
   ratings: {
     set: (bookId: string, value: number) =>

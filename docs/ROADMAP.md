@@ -6,15 +6,15 @@
 - [x] Catalog
 - [x] Shelves
 - [x] Ratings and Reviews
+- [x] Search and Filters (see [docs/features/search-and-filters.md](features/search-and-filters.md))
 
 
 ## Next
 
-1. Search and Filters
-2. Lists
-3. User Profiles
-4. Admin
-5. Tests, CI/CD and Production
+- [ ] Lists
+- [ ] User Profiles
+- [ ] Admin
+- [ ] Tests, CI/CD and Production
 
 ## Technical Debt
 
