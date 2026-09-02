@@ -1,4 +1,5 @@
 import { api } from '@bookhaven/api-client';
+import { AddToListButton } from '@/components/add-to-list-button';
 import { BookRating } from '@/components/book-rating';
 import { ReviewsSection } from '@/components/reviews-section';
 import { ShelveBookButtons } from '@/components/shelve-book-buttons';
@@ -56,6 +57,10 @@ export default async function BookPage({ params }: BookPageProps) {
 
           <div className="mt-6">
             <ShelveBookButtons bookId={book.id} slug={book.slug} />
+          </div>
+
+          <div className="mt-6">
+            <AddToListButton bookId={book.id} slug={book.slug} />
           </div>
 
           <div className="mt-6">

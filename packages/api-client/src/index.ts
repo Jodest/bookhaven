@@ -107,6 +107,25 @@ export interface BookList {
   updatedAt: string;
 }
 
+export interface List {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  isPublic: boolean;
+  booksCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListDetail {
+  list: List;
+  items: Book[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface Language {
   code: string;
   name: string;
@@ -419,5 +438,51 @@ export const api = {
       fetcher<{ status: string }>(`/api/v1/shelves/${id}/books/${bookId}`, {
         method: 'DELETE',
       }),
+  },
+  lists: {
+    list: (params?: { book_id?: string }) => {
+      const queryParams: Record<string, string> = {};
+      if (params?.book_id) {
+        queryParams.book_id = params.book_id;
+      }
+      const query = new URLSearchParams(queryParams).toString();
+      return fetcher<{ items: List[]; total: number; book_in_lists?: string[] }>(
+        `/api/v1/lists${query ? `?${query}` : ''}`
+      );
+    },
+    create: (data: { title: string; description?: string; is_public?: boolean }) =>
+      fetcher<List>('/api/v1/lists', { method: 'POST', body: JSON.stringify(data) }),
+    get: (id: string, params?: { page?: number; limit?: number }) => {
+      const queryParams: Record<string, string> = {};
+      if (params?.page !== undefined) queryParams.page = String(params.page);
+      if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+      const query = new URLSearchParams(queryParams).toString();
+      return fetcher<ListDetail>(`/api/v1/lists/${id}${query ? `?${query}` : ''}`);
+    },
+    update: (id: string, data: { title?: string; description?: string; is_public?: boolean }) =>
+      fetcher<List>(`/api/v1/lists/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    remove: (id: string) =>
+      fetcher<{ status: string }>(`/api/v1/lists/${id}`, { method: 'DELETE' }),
+    addBook: (id: string, bookId: string) =>
+      fetcher<{ status: string }>(`/api/v1/lists/${id}/books`, {
+        method: 'POST',
+        body: JSON.stringify({ book_id: bookId }),
+      }),
+    removeBook: (id: string, bookId: string) =>
+      fetcher<{ status: string }>(`/api/v1/lists/${id}/books/${bookId}`, {
+        method: 'DELETE',
+      }),
+    reorder: (id: string, bookIds: string[]) =>
+      fetcher<{ status: string }>(`/api/v1/lists/${id}/books/reorder`, {
+        method: 'PATCH',
+        body: JSON.stringify({ book_ids: bookIds }),
+      }),
+    getPublic: (id: string, params?: { page?: number; limit?: number }) => {
+      const queryParams: Record<string, string> = {};
+      if (params?.page !== undefined) queryParams.page = String(params.page);
+      if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+      const query = new URLSearchParams(queryParams).toString();
+      return fetcher<ListDetail>(`/api/v1/lists/public/${id}${query ? `?${query}` : ''}`);
+    },
   },
 };
