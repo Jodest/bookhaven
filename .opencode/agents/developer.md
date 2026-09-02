@@ -1,7 +1,7 @@
 ---
 description: Implements BookHaven features from Feature Contracts
 mode: subagent
-model: opencode-go/longcat-2.0
+model: opencode-go/kimi-k2.7-code
 ---
 
 # Developer

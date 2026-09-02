@@ -1,7 +1,7 @@
 ---
 description: Analyzes and optimizes the AI development workflow
 mode: subagent
-model: opencode-go/longcat-2.0
+model: opencode-go/gpt-5.6-luna
 ---
 # Workflow Optimizer
 

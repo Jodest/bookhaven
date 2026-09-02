@@ -134,7 +134,7 @@ export interface Language {
 const API_URL =
   typeof window === 'undefined'
     ? process.env.API_URL || 'http://backend:8080'
-    : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    : '';
 
 export class ApiError extends Error {
   constructor(
@@ -206,6 +206,14 @@ type RawGenre = Genre & {
   created_at: string;
 };
 
+type RawList = List & {
+  user_id: string;
+  is_public: boolean;
+  books_count: number;
+  created_at: string;
+  updated_at?: string;
+};
+
 function normalizeAuthor(raw: RawAuthor): Author {
   return {
     ...raw,
@@ -236,6 +244,17 @@ function normalizeBook(raw: RawBook): Book {
     genres: raw.genres.map(normalizeGenre),
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+  };
+}
+
+function normalizeList(raw: RawList): List {
+  return {
+    ...raw,
+    userId: raw.user_id,
+    isPublic: raw.is_public,
+    booksCount: raw.books_count,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at ?? raw.created_at,
   };
 }
 
@@ -440,27 +459,48 @@ export const api = {
       }),
   },
   lists: {
-    list: (params?: { book_id?: string }) => {
+    list: async (params?: { book_id?: string }) => {
       const queryParams: Record<string, string> = {};
       if (params?.book_id) {
         queryParams.book_id = params.book_id;
       }
       const query = new URLSearchParams(queryParams).toString();
-      return fetcher<{ items: List[]; total: number; book_in_lists?: string[] }>(
+      const raw = await fetcher<{
+        items: RawList[];
+        total: number;
+        book_in_lists?: string[];
+      }>(
         `/api/v1/lists${query ? `?${query}` : ''}`
       );
+      return {
+        ...raw,
+        items: raw.items.map(normalizeList),
+      };
     },
-    create: (data: { title: string; description?: string; is_public?: boolean }) =>
-      fetcher<List>('/api/v1/lists', { method: 'POST', body: JSON.stringify(data) }),
-    get: (id: string, params?: { page?: number; limit?: number }) => {
+    create: async (data: { title: string; description?: string; is_public?: boolean }) => {
+      const raw = await fetcher<RawList>('/api/v1/lists', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      return normalizeList(raw);
+    },
+    get: async (id: string, params?: { page?: number; limit?: number }) => {
       const queryParams: Record<string, string> = {};
       if (params?.page !== undefined) queryParams.page = String(params.page);
       if (params?.limit !== undefined) queryParams.limit = String(params.limit);
       const query = new URLSearchParams(queryParams).toString();
-      return fetcher<ListDetail>(`/api/v1/lists/${id}${query ? `?${query}` : ''}`);
+      const raw = await fetcher<Omit<ListDetail, 'list'> & { list: RawList }>(
+        `/api/v1/lists/${id}${query ? `?${query}` : ''}`
+      );
+      return { ...raw, list: normalizeList(raw.list) };
     },
-    update: (id: string, data: { title?: string; description?: string; is_public?: boolean }) =>
-      fetcher<List>(`/api/v1/lists/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    update: async (id: string, data: { title?: string; description?: string; is_public?: boolean }) => {
+      const raw = await fetcher<RawList>(`/api/v1/lists/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+      return normalizeList(raw);
+    },
     remove: (id: string) =>
       fetcher<{ status: string }>(`/api/v1/lists/${id}`, { method: 'DELETE' }),
     addBook: (id: string, bookId: string) =>

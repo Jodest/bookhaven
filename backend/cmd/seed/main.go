@@ -115,10 +115,59 @@ func seed(db *gorm.DB) error {
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL22149A-L.jpg"),
 		BirthDate: ptrTime("1891-05-15"),
 	}
+	gogol := catalogDomain.Author{
+		Name:      "Николай Гоголь",
+		Slug:      "nikolai-gogol",
+		Biography: ptr("Русский писатель, автор «Мёртвые души», «Ревизор»."),
+		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL25067A-L.jpg"),
+		BirthDate: ptrTime("1809-04-01"),
+	}
+	turgenev := catalogDomain.Author{
+		Name:      "Иван Тургенев",
+		Slug:      "ivan-turgenev",
+		Biography: ptr("Русский писатель, автор «Отцы и дети»."),
+		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL27049A-L.jpg"),
+		BirthDate: ptrTime("1818-11-09"),
+	}
+	chekhov := catalogDomain.Author{
+		Name:      "Антон Чехов",
+		Slug:      "anton-chekhov",
+		Biography: ptr("Русский писатель и драматург, автор «Вишнёвый сад», «Чайка»."),
+		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL22753A-L.jpg"),
+		BirthDate: ptrTime("1860-01-29"),
+	}
+	lermontov := catalogDomain.Author{
+		Name:      "Михаил Лермонтов",
+		Slug:      "mikhail-lermontov",
+		Biography: ptr("Русский поэт и писатель, автор «Герой нашего времени»."),
+		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL21554A-L.jpg"),
+		BirthDate: ptrTime("1814-10-15"),
+	}
+	pushkin := catalogDomain.Author{
+		Name:      "Александр Пушкин",
+		Slug:      "aleksandr-pushkin",
+		Biography: ptr("Русский поэт, автор «Евгений Онегин», «Капитанская дочка»."),
+		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL23919A-L.jpg"),
+		BirthDate: ptrTime("1799-06-06"),
+	}
+	huxley := catalogDomain.Author{
+		Name:      "Олдос Хаксли",
+		Slug:      "aldous-huxley",
+		Biography: ptr("Английский писатель, автор «Дивный новый мир»."),
+		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL18053A-L.jpg"),
+		BirthDate: ptrTime("1894-07-26"),
+	}
+	remarque := catalogDomain.Author{
+		Name:      "Эрих Мария Ремарк",
+		Slug:      "erich-maria-remarque",
+		Biography: ptr("Немецкий писатель, автор «На Западе без перемен»."),
+		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL27074A-L.jpg"),
+		BirthDate: ptrTime("1898-06-22"),
+	}
 
 	// Authors are created via pointers so that FirstOrCreate fills in the
 	// actual DB IDs, which are used below to link books to authors.
-	authors := []*catalogDomain.Author{&tolstoy, &dostoevsky, &orwell, &bulgakov}
+	authors := []*catalogDomain.Author{&tolstoy, &dostoevsky, &orwell, &bulgakov, &gogol, &turgenev, &chekhov, &lermontov, &pushkin, &huxley, &remarque}
 	for _, a := range authors {
 		if err := db.FirstOrCreate(a, catalogDomain.Author{Slug: a.Slug}).Error; err != nil {
 			return fmt.Errorf("create author %s: %w", a.Slug, err)
@@ -186,6 +235,216 @@ func seed(db *gorm.DB) error {
 			},
 			author: bulgakov,
 			genres: []string{"classics", "fiction", "fantasy"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Анна Каренина",
+				Slug:          "anna-karenina",
+				Description:   ptr("Роман о трагической любви замужней женщины и молодого офицера."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264187-L.jpg"),
+				ISBN:          ptr("9780143035008"),
+				PublishedYear: ptrInt(1877),
+				PageCount:     ptrInt(864),
+				Language:      "ru",
+			},
+			author: tolstoy,
+			genres: []string{"classics", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Воскресение",
+				Slug:          "resurrection",
+				Description:   ptr("Роман о духовном перерождении помещика Нехлюдова."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264175-L.jpg"),
+				ISBN:          ptr("9780140448092"),
+				PublishedYear: ptrInt(1899),
+				PageCount:     ptrInt(552),
+				Language:      "ru",
+			},
+			author: tolstoy,
+			genres: []string{"classics", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Братья Карамазовы",
+				Slug:          "brothers-karamazov",
+				Description:   ptr("Философский роман о семейных конфликтах и нравственных исканиях."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264393-L.jpg"),
+				ISBN:          ptr("9780140449136"),
+				PublishedYear: ptrInt(1880),
+				PageCount:     ptrInt(796),
+				Language:      "ru",
+			},
+			author: dostoevsky,
+			genres: []string{"classics", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Идиот",
+				Slug:          "the-idiot",
+				Description:   ptr("Роман о «идеальном человеке» князе Мышкине."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264389-L.jpg"),
+				ISBN:          ptr("9780140447927"),
+				PublishedYear: ptrInt(1869),
+				PageCount:     ptrInt(608),
+				Language:      "ru",
+			},
+			author: dostoevsky,
+			genres: []string{"classics", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Мёртвые души",
+				Slug:          "dead-souls",
+				Description:   ptr("Поэма о приключениях Чичикова, скупающего мёртвых крепостных."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264015-L.jpg"),
+				ISBN:          ptr("9780140448078"),
+				PublishedYear: ptrInt(1842),
+				PageCount:     ptrInt(352),
+				Language:      "ru",
+			},
+			author: gogol,
+			genres: []string{"classics", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Ревизор",
+				Slug:          "the-government-inspector",
+				Description:   ptr("Комедия о чиновниках provincialного города, принятивших бродягу за ревизора."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264021-L.jpg"),
+				ISBN:          ptr("9780140447941"),
+				PublishedYear: ptrInt(1836),
+				PageCount:     ptrInt(128),
+				Language:      "ru",
+			},
+			author: gogol,
+			genres: []string{"classics"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Отцы и дети",
+				Slug:          "fathers-and-sons",
+				Description:   ptr("Роман о конфликте поколений и спорах о нигилизме."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264031-L.jpg"),
+				ISBN:          ptr("9780140448108"),
+				PublishedYear: ptrInt(1862),
+				PageCount:     ptrInt(288),
+				Language:      "ru",
+			},
+			author: turgenev,
+			genres: []string{"classics", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Вишнёвый сад",
+				Slug:          "the-cherry-orchard",
+				Description:   ptr("Пьеса о старой дворянской семье, теряющей имение."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264041-L.jpg"),
+				ISBN:          ptr("9780142437872"),
+				PublishedYear: ptrInt(1904),
+				PageCount:     ptrInt(128),
+				Language:      "ru",
+			},
+			author: chekhov,
+			genres: []string{"classics"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Чайка",
+				Slug:          "the-seagull",
+				Description:   ptr("Пьеса о любви, литературных амбициях и творческом поиске."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264047-L.jpg"),
+				ISBN:          ptr("9780142437865"),
+				PublishedYear: ptrInt(1896),
+				PageCount:     ptrInt(128),
+				Language:      "ru",
+			},
+			author: chekhov,
+			genres: []string{"classics"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Герой нашего времени",
+				Slug:          "a-hero-of-our-time",
+				Description:   ptr("Роман о молодом офицере Печорине — «лишнем человеке»."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264051-L.jpg"),
+				ISBN:          ptr("9780140448115"),
+				PublishedYear: ptrInt(1840),
+				PageCount:     ptrInt(224),
+				Language:      "ru",
+			},
+			author: lermontov,
+			genres: []string{"classics", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Евгений Онегин",
+				Slug:          "yevgeny-onegin",
+				Description:   ptr("Роман в стихах о судьбе молодого петербургского дворянина."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264057-L.jpg"),
+				ISBN:          ptr("9780140448122"),
+				PublishedYear: ptrInt(1833),
+				PageCount:     ptrInt(240),
+				Language:      "ru",
+			},
+			author: pushkin,
+			genres: []string{"classics", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Капитанская дочка",
+				Slug:          "the-captain's-daughter",
+				Description:   ptr("Исторический роман о восстании Пугачёва."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264061-L.jpg"),
+				ISBN:          ptr("9780140448139"),
+				PublishedYear: ptrInt(1836),
+				PageCount:     ptrInt(208),
+				Language:      "ru",
+			},
+			author: pushkin,
+			genres: []string{"classics", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Дивный новый мир",
+				Slug:          "brave-new-world",
+				Description:   ptr("Антиутопия о будущем обществе, контролируемом с помощью генетики и наркотиков."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8579167-L.jpg"),
+				ISBN:          ptr("9780060850524"),
+				PublishedYear: ptrInt(1932),
+				PageCount:     ptrInt(288),
+				Language:      "en",
+			},
+			author: huxley,
+			genres: []string{"fiction", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "На Западе без перемен",
+				Slug:          "all-quiet-on-the-western-front",
+				Description:   ptr("Антивоенный роман о судьбе немецких солдат в Первой мировой войне."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264401-L.jpg"),
+				ISBN:          ptr("9780449212387"),
+				PublishedYear: ptrInt(1929),
+				PageCount:     ptrInt(200),
+				Language:      "en",
+			},
+			author: remarque,
+			genres: []string{"fiction", "novel"},
+		},
+		{
+			book: catalogDomain.Book{
+				Title:         "Скотный двор",
+				Slug:          "animal-farm",
+				Description:   ptr("Аллегорическая сказка о револении животных на ферме."),
+				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8579157-L.jpg"),
+				ISBN:          ptr("9780451526342"),
+				PublishedYear: ptrInt(1945),
+				PageCount:     ptrInt(112),
+				Language:      "en",
+			},
+			author: orwell,
+			genres: []string{"fiction"},
 		},
 	}
 

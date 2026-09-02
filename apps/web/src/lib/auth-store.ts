@@ -32,7 +32,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ error: null });
     try {
       const response = await api.auth.login({ email, password });
-      set({ user: response.user, isAuthenticated: true });
+      set({ user: response.user, isAuthenticated: true, isLoading: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Ошибка входа';
       set({ error: message });
@@ -44,7 +44,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ error: null });
     try {
       const response = await api.auth.register({ email, password, name });
-      set({ user: response.user, isAuthenticated: true });
+      set({ user: response.user, isAuthenticated: true, isLoading: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Ошибка регистрации';
       set({ error: message });
@@ -56,7 +56,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await api.auth.logout();
     } finally {
-      set({ user: null, isAuthenticated: false });
+      set({ user: null, isAuthenticated: false, isLoading: false });
     }
   },
 

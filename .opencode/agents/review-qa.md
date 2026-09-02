@@ -1,7 +1,7 @@
 ---
 description: Reviews implementation, verifies requirements, and performs QA
 mode: subagent
-model: opencode-go/mimo-v2.5
+model: opencode-go/gpt-5.6-luna
 ---
 # Review and QA
 

@@ -1,7 +1,7 @@
 ---
 description: Plans features from business, UX, and architecture perspectives
 mode: subagent
-model: opencode-go/mimo-v2.5
+model: opencode-go/gpt-5.6-luna
 ---
 
 # Feature Planner
