@@ -1,10 +1,61 @@
 export interface User {
   id: string;
   email: string;
-  name: string;
+  name: string | null;
   avatarUrl: string | null;
   role: 'user' | 'contributor' | 'moderator' | 'admin';
   profileType: 'reader' | 'librarian' | 'bookseller' | 'other';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicProfile {
+  user: {
+    id: string;
+    name: string | null;
+    avatarUrl: string | null;
+    profileType: 'reader' | 'librarian' | 'bookseller' | 'other';
+    joinedAt: string;
+  };
+  lists: {
+    id: string;
+    title: string;
+    description: string;
+    isPublic: boolean;
+    booksCount: number;
+    createdAt: string;
+    updatedAt: string;
+  }[];
+}
+
+export interface UpdateProfileInput {
+  name?: string;
+  avatarUrl?: string | null;
+  profileType?: 'reader' | 'librarian' | 'bookseller' | 'other';
+}
+
+type RawUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  avatar_url: string | null;
+  role: 'user' | 'contributor' | 'moderator' | 'admin';
+  profile_type: 'reader' | 'librarian' | 'bookseller' | 'other';
+  created_at: string;
+  updated_at: string;
+};
+
+function normalizeUser(raw: RawUser): User {
+  return {
+    id: raw.id,
+    email: raw.email,
+    name: raw.name,
+    avatarUrl: raw.avatar_url,
+    role: raw.role,
+    profileType: raw.profile_type,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
 }
 
 export interface Book {
@@ -303,6 +354,22 @@ export interface AuthResponse {
   expiresIn: number;
 }
 
+type RawAuthResponse = {
+  user: RawUser;
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+};
+
+function normalizeAuthResponse(raw: RawAuthResponse): AuthResponse {
+  return {
+    user: normalizeUser(raw.user),
+    accessToken: raw.access_token,
+    refreshToken: raw.refresh_token,
+    expiresIn: raw.expires_in,
+  };
+}
+
 export const api = {
   books: {
     list: async (params?: {
@@ -410,29 +477,79 @@ export const api = {
   auth: {
     me: async () => {
       try {
-        return await fetcher<User>('/api/v1/auth/me');
+        const raw = await fetcher<RawUser>('/api/v1/auth/me');
+        return normalizeUser(raw);
       } catch {
         return null;
       }
     },
-    login: (data: LoginInput) =>
-      fetcher<AuthResponse>('/api/v1/auth/login', {
+    login: async (data: LoginInput) => {
+      const raw = await fetcher<RawAuthResponse>('/api/v1/auth/login', {
         method: 'POST',
         body: JSON.stringify(data),
-      }),
-    register: (data: RegisterInput) =>
-      fetcher<AuthResponse>('/api/v1/auth/register', {
+      });
+      return normalizeAuthResponse(raw);
+    },
+    register: async (data: RegisterInput) => {
+      const raw = await fetcher<RawAuthResponse>('/api/v1/auth/register', {
         method: 'POST',
         body: JSON.stringify(data),
-      }),
+      });
+      return normalizeAuthResponse(raw);
+    },
     logout: () =>
       fetcher<{ status: string }>('/api/v1/auth/logout', {
         method: 'POST',
       }),
-    refresh: () =>
-      fetcher<AuthResponse>('/api/v1/auth/refresh', {
+    refresh: async () => {
+      const raw = await fetcher<{
+        access_token: string;
+        refresh_token: string;
+        expires_in: number;
+      }>('/api/v1/auth/refresh', {
         method: 'POST',
-      }),
+      });
+      return {
+        accessToken: raw.access_token,
+        refreshToken: raw.refresh_token,
+        expiresIn: raw.expires_in,
+      };
+    },
+  },
+  users: {
+    getPublic: async (id: string) => {
+      const raw = await fetcher<{
+        user: {
+          id: string;
+          name: string | null;
+          avatar_url: string | null;
+          profile_type: 'reader' | 'librarian' | 'bookseller' | 'other';
+          joined_at: string;
+        };
+        lists: RawPublicList[];
+      }>(`/api/v1/users/${id}`);
+      return {
+        user: {
+          id: raw.user.id,
+          name: raw.user.name,
+          avatarUrl: raw.user.avatar_url,
+          profileType: raw.user.profile_type,
+          joinedAt: raw.user.joined_at,
+        },
+        lists: raw.lists.map(normalizePublicList),
+      };
+    },
+    updateMe: async (data: UpdateProfileInput) => {
+      const body: Record<string, unknown> = {};
+      if (data.name !== undefined) body.name = data.name;
+      if (data.avatarUrl !== undefined) body.avatar_url = data.avatarUrl;
+      if (data.profileType !== undefined) body.profile_type = data.profileType;
+      const raw = await fetcher<RawUser>('/api/v1/users/me', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      return normalizeUser(raw);
+    },
   },
   shelves: {
     list: (params?: { book_id?: string }) => {

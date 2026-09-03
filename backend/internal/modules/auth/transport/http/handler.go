@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	authDomain "github.com/bookhaven/backend/internal/modules/auth/domain"
 	"github.com/bookhaven/backend/internal/modules/auth/service"
@@ -44,24 +45,26 @@ type authResponse struct {
 }
 
 type userResponse struct {
-	ID          string `json:"id"`
-	Email       string `json:"email"`
-	Name        string `json:"name"`
-	Role        string `json:"role"`
-	ProfileType string `json:"profile_type"`
+	ID          string     `json:"id"`
+	Email       string     `json:"email"`
+	Name        *string    `json:"name"`
+	AvatarURL   *string    `json:"avatar_url"`
+	Role        string     `json:"role"`
+	ProfileType string     `json:"profile_type"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 func toUserResponse(u *domain.User) userResponse {
-	name := ""
-	if u.Name != nil {
-		name = *u.Name
-	}
 	return userResponse{
 		ID:          u.ID.String(),
 		Email:       u.Email,
-		Name:        name,
+		Name:        u.Name,
+		AvatarURL:   u.AvatarURL,
 		Role:        string(u.Role),
 		ProfileType: string(u.ProfileType),
+		CreatedAt:   u.CreatedAt,
+		UpdatedAt:   u.UpdatedAt,
 	}
 }
 

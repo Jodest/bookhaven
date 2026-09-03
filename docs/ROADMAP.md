@@ -8,11 +8,11 @@
 - [x] Ratings and Reviews
 - [x] Search and Filters (see [docs/features/search-and-filters.md](features/search-and-filters.md))
 - [x] Lists — viewing verified (see [docs/features/lists.md](features/lists.md))
+- [x] User Profiles (see [docs/features/user-profiles.md](features/user-profiles.md))
 
 
 ## Next
 
-- [ ] User Profiles
 - [ ] Admin
 - [ ] Tests, CI/CD and Production
 

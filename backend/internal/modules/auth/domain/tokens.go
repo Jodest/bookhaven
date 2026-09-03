@@ -4,9 +4,9 @@ import "github.com/google/uuid"
 
 // TokenPair represents access and refresh tokens.
 type TokenPair struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresIn    int64
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
 }
 
 // RefreshToken represents a refresh token stored in the database.

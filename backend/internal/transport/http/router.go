@@ -11,6 +11,8 @@ import (
 	reviewshttp "github.com/bookhaven/backend/internal/modules/reviews/transport/http"
 	shelvesservice "github.com/bookhaven/backend/internal/modules/shelves/service"
 	shelveshttp "github.com/bookhaven/backend/internal/modules/shelves/transport/http"
+	usersservice "github.com/bookhaven/backend/internal/modules/users/service"
+	usershttp "github.com/bookhaven/backend/internal/modules/users/transport/http"
 	"github.com/labstack/echo/v4"
 )
 
@@ -22,6 +24,7 @@ func RegisterRoutes(
 	listsService *listsservice.Service,
 	ratingsService *ratingsservice.Service,
 	reviewsService *reviewsservice.Service,
+	usersService *usersservice.Service,
 	authMiddleware echo.MiddlewareFunc,
 	optionalAuth echo.MiddlewareFunc,
 ) {
@@ -69,4 +72,8 @@ func RegisterRoutes(
 	reviews.PATCH("/:id", reviewsHandler.UpdateReview)
 	reviews.DELETE("/:id", reviewsHandler.DeleteReview)
 	reviews.POST("/:id/likes", reviewsHandler.ToggleLike)
+
+	usersHandler := usershttp.NewHandler(usersService, listsService)
+	api.GET("/users/:id", usersHandler.GetUser, optionalAuth)
+	api.PATCH("/users/me", usersHandler.UpdateMe, authMiddleware)
 }

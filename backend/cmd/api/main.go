@@ -23,6 +23,7 @@ import (
 	shelvesrepository "github.com/bookhaven/backend/internal/modules/shelves/repository"
 	shelvesservice "github.com/bookhaven/backend/internal/modules/shelves/service"
 	"github.com/bookhaven/backend/internal/modules/users/repository"
+	usersservice "github.com/bookhaven/backend/internal/modules/users/service"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
 	"github.com/bookhaven/backend/internal/transport/http/middleware"
 	"github.com/labstack/echo/v4"
@@ -49,6 +50,8 @@ func main() {
 
 	// Repositories
 	usersRepo := repository.NewGormRepository(db)
+	usersService := usersservice.NewService(usersRepo)
+
 	catalogRepo := catalogrepository.NewGormRepository(db)
 	shelvesRepo := shelvesrepository.NewGormRepository(db)
 	listsRepo := listsrepository.NewGormRepository(db)
@@ -100,7 +103,7 @@ func main() {
 	optionalAuth := middleware.OptionalAuth(authService, usersRepo)
 
 	// Public + protected routes
-	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, authMiddleware, optionalAuth)
+	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, authMiddleware, optionalAuth)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)

@@ -9,6 +9,31 @@ export interface User {
   updatedAt: string;
 }
 
+export interface PublicProfile {
+  user: {
+    id: string;
+    name: string | null;
+    avatarUrl: string | null;
+    profileType: 'reader' | 'librarian' | 'bookseller' | 'other';
+    joinedAt: string;
+  };
+  lists: {
+    id: string;
+    title: string;
+    description: string;
+    isPublic: boolean;
+    booksCount: number;
+    createdAt: string;
+    updatedAt: string;
+  }[];
+}
+
+export interface UpdateProfileInput {
+  name?: string;
+  avatarUrl?: string | null;
+  profileType?: 'reader' | 'librarian' | 'bookseller' | 'other';
+}
+
 export interface Book {
   id: string;
   title: string;

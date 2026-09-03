@@ -116,6 +116,23 @@ func (s *Service) GetList(ctx context.Context, userID uuid.UUID, listID uuid.UUI
 	return list, books, total, nil
 }
 
+// ListPublicByUser returns all public lists owned by the user.
+func (s *Service) ListPublicByUser(ctx context.Context, userID uuid.UUID) ([]domain.List, error) {
+	lists, err := s.repo.ListByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list public lists: %w", err)
+	}
+
+	public := make([]domain.List, 0, len(lists))
+	for _, l := range lists {
+		if l.IsPublic {
+			public = append(public, l)
+		}
+	}
+
+	return public, nil
+}
+
 // GetPublicList returns a public list with paginated books.
 func (s *Service) GetPublicList(ctx context.Context, listID uuid.UUID, page, limit int) (*domain.List, []catalogDomain.Book, int64, error) {
 	list, err := s.repo.GetPublicByID(ctx, listID)
