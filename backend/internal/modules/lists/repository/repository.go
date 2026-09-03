@@ -174,7 +174,7 @@ func (r *GormRepository) ListBooks(ctx context.Context, listID uuid.UUID, limit,
 	query := r.db.WithContext(ctx).Model(&catalogDomain.Book{}).
 		Joins("JOIN list_items ON list_items.book_id = books.id").
 		Where("list_items.list_id = ? AND books.is_hidden = ?", listID, false).
-		Order("list_items.position ASC")
+		Order("list_items.position ASC, list_items.added_at ASC, list_items.book_id ASC")
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err

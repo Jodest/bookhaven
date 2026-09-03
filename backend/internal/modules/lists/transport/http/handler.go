@@ -103,6 +103,24 @@ type listDetailResponse struct {
 	Limit int                    `json:"limit"`
 }
 
+type publicListResponse struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	IsPublic    bool      `json:"is_public"`
+	BooksCount  int64     `json:"books_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type publicListDetailResponse struct {
+	List  publicListResponse     `json:"list"`
+	Items []bookListItemResponse `json:"items"`
+	Total int64                  `json:"total"`
+	Page  int                    `json:"page"`
+	Limit int                    `json:"limit"`
+}
+
 func formatDate(t *time.Time) *string {
 	if t == nil {
 		return nil
@@ -165,6 +183,18 @@ func toListResponse(l domain.List) listResponse {
 	return listResponse{
 		ID:          l.ID.String(),
 		UserID:      l.UserID.String(),
+		Title:       l.Title,
+		Description: l.Description,
+		IsPublic:    l.IsPublic,
+		BooksCount:  l.BooksCount,
+		CreatedAt:   l.CreatedAt,
+		UpdatedAt:   l.UpdatedAt,
+	}
+}
+
+func toPublicListResponse(l domain.List) publicListResponse {
+	return publicListResponse{
+		ID:          l.ID.String(),
 		Title:       l.Title,
 		Description: l.Description,
 		IsPublic:    l.IsPublic,
@@ -543,8 +573,8 @@ func (h *Handler) GetPublicList(c echo.Context) error {
 		items = append(items, toBookListItemResponse(b))
 	}
 
-	return c.JSON(http.StatusOK, listDetailResponse{
-		List:  toListResponse(*list),
+	return c.JSON(http.StatusOK, publicListDetailResponse{
+		List:  toPublicListResponse(*list),
 		Items: items,
 		Total: total,
 		Page:  page,

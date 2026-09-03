@@ -5,7 +5,7 @@ import { Button } from '@bookhaven/ui';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -24,14 +24,18 @@ interface ListPageProps {
 export default function ListPage({ params }: ListPageProps) {
   const router = useRouter();
   const [list, setList] = useState<List | null>(null);
+  const currentIdRef = useRef(params.id);
+  currentIdRef.current = params.id;
   const [books, setBooks] = useState<Book[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [limit] = useState(12);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
+  const shareTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     register,
@@ -43,11 +47,19 @@ export default function ListPage({ params }: ListPageProps) {
   });
 
   const fetchList = useCallback(
-    async (targetPage: number) => {
+    async (targetPage: number, context: 'initial' | 'refresh') => {
+      const requestedId = params.id;
       setLoading(true);
-      setError(null);
+      if (context === 'initial') {
+        setLoadError(null);
+      } else {
+        setMutationError(null);
+      }
       try {
-        const response = await api.lists.get(params.id, { page: targetPage, limit });
+        const response = await api.lists.get(requestedId, { page: targetPage, limit });
+        if (requestedId !== currentIdRef.current) {
+          return;
+        }
         setList(response.list);
         setBooks(response.items);
         setTotal(response.total);
@@ -57,42 +69,86 @@ export default function ListPage({ params }: ListPageProps) {
           description: response.list.description,
         });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Ошибка загрузки списка');
+        if (requestedId !== currentIdRef.current) {
+          return;
+        }
+        if (context === 'initial') {
+          setLoadError(mapErrorToRussian(err));
+        } else {
+          setMutationError(mapErrorToRussian(err, 'Не удалось обновить данные списка'));
+        }
       } finally {
-        setLoading(false);
+        if (requestedId === currentIdRef.current) {
+          setLoading(false);
+        }
       }
     },
     [params.id, limit, reset]
   );
 
   useEffect(() => {
-    fetchList(1);
-  }, [fetchList]);
+    setList(null);
+    setBooks([]);
+    setTotal(0);
+    setPage(1);
+    setLoadError(null);
+    setMutationError(null);
+    setIsEditing(false);
+    setShareSuccess(false);
+    if (shareTimeoutRef.current) {
+      clearTimeout(shareTimeoutRef.current);
+      shareTimeoutRef.current = null;
+    }
+    fetchList(1, 'initial');
+  }, [params.id, fetchList]);
+
+  useEffect(() => {
+    return () => {
+      if (shareTimeoutRef.current) {
+        clearTimeout(shareTimeoutRef.current);
+        shareTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const onUpdate = async (data: EditListForm) => {
-    setError(null);
+    const listId = currentIdRef.current;
+    setMutationError(null);
     try {
-      await api.lists.update(params.id, {
+      await api.lists.update(listId, {
         title: data.title,
         description: data.description,
       });
+      if (listId !== currentIdRef.current) {
+        return;
+      }
       setIsEditing(false);
-      await fetchList(page);
+      await fetchList(page, 'refresh');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка обновления списка');
+      if (listId !== currentIdRef.current) {
+        return;
+      }
+      setMutationError(mapErrorToRussian(err, 'Ошибка обновления списка'));
     }
   };
 
   const onToggleVisibility = async () => {
     if (!list) return;
-    setError(null);
+    const listId = currentIdRef.current;
+    setMutationError(null);
     try {
-      await api.lists.update(params.id, {
+      await api.lists.update(listId, {
         is_public: !list.isPublic,
       });
-      await fetchList(page);
+      if (listId !== currentIdRef.current) {
+        return;
+      }
+      await fetchList(page, 'refresh');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка изменения видимости');
+      if (listId !== currentIdRef.current) {
+        return;
+      }
+      setMutationError(mapErrorToRussian(err, 'Ошибка изменения видимости списка'));
     }
   };
 
@@ -100,33 +156,63 @@ export default function ListPage({ params }: ListPageProps) {
     if (!confirm('Удалить список? Книги будут убраны из него.')) {
       return;
     }
-    setError(null);
+    const listId = currentIdRef.current;
+    setMutationError(null);
     try {
-      await api.lists.remove(params.id);
+      await api.lists.remove(listId);
+      if (listId !== currentIdRef.current) {
+        return;
+      }
       router.push('/lists');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления списка');
+      if (listId !== currentIdRef.current) {
+        return;
+      }
+      setMutationError(mapErrorToRussian(err, 'Ошибка удаления списка'));
     }
   };
 
   const onRemoveBook = async (bookId: string) => {
-    setError(null);
+    const listId = currentIdRef.current;
+    setMutationError(null);
     try {
-      await api.lists.removeBook(params.id, bookId);
-      await fetchList(page);
+      await api.lists.removeBook(listId, bookId);
+      if (listId !== currentIdRef.current) {
+        return;
+      }
+      await fetchList(page, 'refresh');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления книги');
+      if (listId !== currentIdRef.current) {
+        return;
+      }
+      setMutationError(mapErrorToRussian(err, 'Ошибка удаления книги из списка'));
     }
   };
 
   const onShare = async () => {
-    const url = `${window.location.origin}/lists/public/${params.id}`;
+    const listId = currentIdRef.current;
+    setMutationError(null);
+    const url = `${window.location.origin}/lists/public/${listId}`;
     try {
       await navigator.clipboard.writeText(url);
+      if (listId !== currentIdRef.current) {
+        return;
+      }
+      if (shareTimeoutRef.current) {
+        clearTimeout(shareTimeoutRef.current);
+      }
       setShareSuccess(true);
-      setTimeout(() => setShareSuccess(false), 2000);
+      shareTimeoutRef.current = setTimeout(() => {
+        shareTimeoutRef.current = null;
+        if (listId === currentIdRef.current) {
+          setShareSuccess(false);
+        }
+      }, 2000);
     } catch {
-      setError('Не удалось скопировать ссылку');
+      if (listId !== currentIdRef.current) {
+        return;
+      }
+      setMutationError('Не удалось скопировать ссылку');
     }
   };
 
@@ -134,6 +220,16 @@ export default function ListPage({ params }: ListPageProps) {
     return (
       <main className="container mx-auto px-4 py-8">
         <p className="text-muted-foreground">Загрузка...</p>
+      </main>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <main className="container mx-auto px-4 py-8">
+        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          {loadError}
+        </div>
       </main>
     );
   }
@@ -197,9 +293,9 @@ export default function ListPage({ params }: ListPageProps) {
         </div>
       )}
 
-      {error && (
+      {mutationError && (
         <div className="mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
+          {mutationError}
         </div>
       )}
 
@@ -234,6 +330,11 @@ export default function ListPage({ params }: ListPageProps) {
                   <p className="line-clamp-1 text-xs text-muted-foreground">
                     {book.authors.map((a) => a.name).join(', ')}
                   </p>
+                  {book.genres.length > 0 && (
+                    <p className="line-clamp-1 text-xs text-muted-foreground">
+                      {book.genres.map((g) => g.name).join(', ')}
+                    </p>
+                  )}
                 </Link>
                 <Button
                   variant="outline"
@@ -250,7 +351,7 @@ export default function ListPage({ params }: ListPageProps) {
           <div className="mt-8 flex items-center justify-center gap-4">
             <Button
               variant="outline"
-              onClick={() => fetchList(page - 1)}
+              onClick={() => fetchList(page - 1, 'refresh')}
               disabled={page <= 1 || loading}
             >
               Назад
@@ -260,7 +361,7 @@ export default function ListPage({ params }: ListPageProps) {
             </span>
             <Button
               variant="outline"
-              onClick={() => fetchList(page + 1)}
+              onClick={() => fetchList(page + 1, 'refresh')}
               disabled={page * limit >= total || loading}
             >
               Вперёд
@@ -278,4 +379,20 @@ function pluralizeBooks(count: number): string {
   if (mod10 === 1 && mod100 !== 11) return 'книга';
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'книги';
   return 'книг';
+}
+
+function mapErrorToRussian(err: unknown, fallback = 'Ошибка загрузки списка'): string {
+  if (err instanceof Error) {
+    const message = err.message.toLowerCase();
+    if (message.includes('invalid list id')) {
+      return 'Некорректный идентификатор списка';
+    }
+    if (message.includes('list not found')) {
+      return 'Список не найден или недоступен';
+    }
+    if (message.includes('forbidden')) {
+      return 'Нет доступа к списку';
+    }
+  }
+  return fallback;
 }

@@ -126,6 +126,16 @@ export interface ListDetail {
   limit: number;
 }
 
+export interface PublicList {
+  id: string;
+  title: string;
+  description: string;
+  isPublic: boolean;
+  booksCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Language {
   code: string;
   name: string;
@@ -214,6 +224,13 @@ type RawList = List & {
   updated_at?: string;
 };
 
+type RawPublicList = PublicList & {
+  is_public: boolean;
+  books_count: number;
+  created_at: string;
+  updated_at?: string;
+};
+
 function normalizeAuthor(raw: RawAuthor): Author {
   return {
     ...raw,
@@ -251,6 +268,16 @@ function normalizeList(raw: RawList): List {
   return {
     ...raw,
     userId: raw.user_id,
+    isPublic: raw.is_public,
+    booksCount: raw.books_count,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at ?? raw.created_at,
+  };
+}
+
+function normalizePublicList(raw: RawPublicList): PublicList {
+  return {
+    ...raw,
     isPublic: raw.is_public,
     booksCount: raw.books_count,
     createdAt: raw.created_at,
@@ -489,10 +516,14 @@ export const api = {
       if (params?.page !== undefined) queryParams.page = String(params.page);
       if (params?.limit !== undefined) queryParams.limit = String(params.limit);
       const query = new URLSearchParams(queryParams).toString();
-      const raw = await fetcher<Omit<ListDetail, 'list'> & { list: RawList }>(
+      const raw = await fetcher<Omit<ListDetail, 'list' | 'items'> & { list: RawList; items: RawBook[] }>(
         `/api/v1/lists/${id}${query ? `?${query}` : ''}`
       );
-      return { ...raw, list: normalizeList(raw.list) };
+      return {
+        ...raw,
+        list: normalizeList(raw.list),
+        items: raw.items.map(normalizeBook),
+      };
     },
     update: async (id: string, data: { title?: string; description?: string; is_public?: boolean }) => {
       const raw = await fetcher<RawList>(`/api/v1/lists/${id}`, {
@@ -517,12 +548,19 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ book_ids: bookIds }),
       }),
-    getPublic: (id: string, params?: { page?: number; limit?: number }) => {
+    getPublic: async (id: string, params?: { page?: number; limit?: number }) => {
       const queryParams: Record<string, string> = {};
       if (params?.page !== undefined) queryParams.page = String(params.page);
       if (params?.limit !== undefined) queryParams.limit = String(params.limit);
       const query = new URLSearchParams(queryParams).toString();
-      return fetcher<ListDetail>(`/api/v1/lists/public/${id}${query ? `?${query}` : ''}`);
+      const raw = await fetcher<Omit<ListDetail, 'list' | 'items'> & { list: RawPublicList; items: RawBook[] }>(
+        `/api/v1/lists/public/${id}${query ? `?${query}` : ''}`
+      );
+      return {
+        ...raw,
+        list: normalizePublicList(raw.list),
+        items: raw.items.map(normalizeBook),
+      };
     },
   },
 };

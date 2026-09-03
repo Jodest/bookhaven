@@ -1,46 +1,62 @@
 'use client';
 
-import { api, Book, List } from '@bookhaven/api-client';
+import { api, Book, PublicList } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface PublicListPageProps {
   params: { id: string };
 }
 
 export default function PublicListPage({ params }: PublicListPageProps) {
-  const [list, setList] = useState<List | null>(null);
+  const [list, setList] = useState<PublicList | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [limit] = useState(12);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const currentIdRef = useRef(params.id);
+  currentIdRef.current = params.id;
 
   const fetchList = useCallback(
     async (targetPage: number) => {
+      const requestedId = params.id;
       setLoading(true);
       setError(null);
       try {
-        const response = await api.lists.getPublic(params.id, { page: targetPage, limit });
+        const response = await api.lists.getPublic(requestedId, { page: targetPage, limit });
+        if (requestedId !== currentIdRef.current) {
+          return;
+        }
         setList(response.list);
         setBooks(response.items);
         setTotal(response.total);
         setPage(response.page);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Ошибка загрузки списка');
+        if (requestedId !== currentIdRef.current) {
+          return;
+        }
+        setError(mapErrorToRussian(err));
       } finally {
-        setLoading(false);
+        if (requestedId === currentIdRef.current) {
+          setLoading(false);
+        }
       }
     },
     [params.id, limit]
   );
 
   useEffect(() => {
+    setList(null);
+    setBooks([]);
+    setTotal(0);
+    setPage(1);
+    setError(null);
     fetchList(1);
-  }, [fetchList]);
+  }, [params.id, fetchList]);
 
   if (loading && !list) {
     return (
@@ -105,6 +121,11 @@ export default function PublicListPage({ params }: PublicListPageProps) {
                   <p className="line-clamp-1 text-xs text-muted-foreground">
                     {book.authors.map((a) => a.name).join(', ')}
                   </p>
+                  {book.genres.length > 0 && (
+                    <p className="line-clamp-1 text-xs text-muted-foreground">
+                      {book.genres.map((g) => g.name).join(', ')}
+                    </p>
+                  )}
                 </Link>
               </div>
             ))}
@@ -141,4 +162,20 @@ function pluralizeBooks(count: number): string {
   if (mod10 === 1 && mod100 !== 11) return 'книга';
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'книги';
   return 'книг';
+}
+
+function mapErrorToRussian(err: unknown): string {
+  if (err instanceof Error) {
+    const message = err.message.toLowerCase();
+    if (message.includes('invalid list id')) {
+      return 'Некорректный идентификатор списка';
+    }
+    if (message.includes('list not found')) {
+      return 'Список не найден или недоступен';
+    }
+    if (message.includes('forbidden')) {
+      return 'Нет доступа к списку';
+    }
+  }
+  return 'Ошибка загрузки списка';
 }
