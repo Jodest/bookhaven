@@ -34,6 +34,9 @@ export function Header() {
                     <Link href="/shelves">Мои полки</Link>
                   </Button>
                   <Button variant="ghost" asChild>
+                    <Link href="/lists">Мои списки</Link>
+                  </Button>
+                  <Button variant="ghost" asChild>
                     <Link href="/profile">{user.name || user.email}</Link>
                   </Button>
                   <Button variant="outline" onClick={handleLogout}>
