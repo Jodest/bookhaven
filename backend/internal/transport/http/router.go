@@ -1,6 +1,8 @@
 package http
 
 import (
+	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
+	adminhttp "github.com/bookhaven/backend/internal/modules/admin/transport/http"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	cataloghttp "github.com/bookhaven/backend/internal/modules/catalog/transport/http"
 	listsservice "github.com/bookhaven/backend/internal/modules/lists/service"
@@ -11,8 +13,10 @@ import (
 	reviewshttp "github.com/bookhaven/backend/internal/modules/reviews/transport/http"
 	shelvesservice "github.com/bookhaven/backend/internal/modules/shelves/service"
 	shelveshttp "github.com/bookhaven/backend/internal/modules/shelves/transport/http"
+	usersdomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	usersservice "github.com/bookhaven/backend/internal/modules/users/service"
 	usershttp "github.com/bookhaven/backend/internal/modules/users/transport/http"
+	"github.com/bookhaven/backend/internal/transport/http/middleware"
 	"github.com/labstack/echo/v4"
 )
 
@@ -76,4 +80,42 @@ func RegisterRoutes(
 	usersHandler := usershttp.NewHandler(usersService, listsService)
 	api.GET("/users/:id", usersHandler.GetUser, optionalAuth)
 	api.PATCH("/users/me", usersHandler.UpdateMe, authMiddleware)
+}
+
+// RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
+func RegisterAdminRoutes(
+	e *echo.Echo,
+	adminService *adminservice.Service,
+	authMiddleware echo.MiddlewareFunc,
+) {
+	admin := e.Group("/api/v1/admin", authMiddleware)
+
+	adminHandler := adminhttp.NewHandler(adminService)
+
+	adminRole := middleware.RequireRole(usersdomain.RoleAdmin)
+	adminOrModerator := middleware.RequireRole(usersdomain.RoleAdmin, usersdomain.RoleModerator)
+
+	admin.GET("/dashboard", adminHandler.Dashboard, adminRole)
+
+	requireBearer := middleware.RequireBearerAuth()
+
+	books := admin.Group("/books", adminRole)
+	books.GET("", adminHandler.ListBooks)
+	books.POST("", adminHandler.CreateBook, requireBearer)
+	books.GET("/:id", adminHandler.GetBook)
+	books.PATCH("/:id", adminHandler.UpdateBook, requireBearer)
+
+	authors := admin.Group("/authors", adminRole)
+	authors.GET("", adminHandler.ListAuthors)
+	authors.POST("", adminHandler.CreateAuthor, requireBearer)
+	authors.PATCH("/:id", adminHandler.UpdateAuthor, requireBearer)
+
+	genres := admin.Group("/genres", adminRole)
+	genres.GET("", adminHandler.ListGenres)
+	genres.POST("", adminHandler.CreateGenre, requireBearer)
+	genres.PATCH("/:id", adminHandler.UpdateGenre, requireBearer)
+
+	reviews := admin.Group("/reviews", adminOrModerator)
+	reviews.GET("", adminHandler.ListReviews)
+	reviews.PATCH("/:id", adminHandler.ModerateReview, requireBearer)
 }

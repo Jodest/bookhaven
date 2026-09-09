@@ -21,6 +21,7 @@ type Review struct {
 
 	Author    *usersDomain.User `gorm:"-"`
 	LikedByMe bool              `gorm:"-"`
+	BookTitle string            `gorm:"-"`
 }
 
 // ReviewLike represents a like on a review.

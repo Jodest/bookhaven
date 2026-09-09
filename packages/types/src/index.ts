@@ -105,3 +105,89 @@ export interface BookList {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface AdminDashboard {
+  books: number;
+  hidden_books: number;
+  authors: number;
+  genres: number;
+  pending_reviews: number;
+}
+
+export interface AdminBook {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  cover_url: string | null;
+  isbn: string | null;
+  published_year: number | null;
+  page_count: number | null;
+  language: string;
+  rating: number;
+  ratings_count: number;
+  reviews_count: number;
+  is_hidden: boolean;
+  authors: AdminAuthor[];
+  genres: AdminGenre[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminAuthor {
+  id: string;
+  name: string;
+  slug: string;
+  biography: string | null;
+  photo_url: string | null;
+  birth_date: string | null;
+  death_date: string | null;
+}
+
+export interface AdminGenre {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface AdminReview {
+  id: string;
+  book_id: string;
+  book_title: string;
+  user_id: string;
+  user: { id: string; name: string | null; avatar_url: string | null } | null;
+  rating: number;
+  content: string;
+  likes_count: number;
+  is_hidden: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminBookInput {
+  title: string;
+  slug?: string;
+  description?: string | null;
+  cover_url?: string | null;
+  isbn?: string | null;
+  published_year?: number | null;
+  page_count?: number | null;
+  language: string;
+  author_ids: string[];
+  genre_ids: string[];
+  is_hidden: boolean;
+}
+
+export interface AdminAuthorInput {
+  name: string;
+  slug?: string;
+  biography?: string | null;
+  photo_url?: string | null;
+  birth_date?: string | null;
+  death_date?: string | null;
+}
+
+export interface AdminGenreInput {
+  name: string;
+  slug?: string;
+}

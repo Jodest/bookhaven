@@ -192,29 +192,141 @@ export interface Language {
   name: string;
 }
 
+export interface AdminDashboard {
+  books: number;
+  hidden_books: number;
+  authors: number;
+  genres: number;
+  pending_reviews: number;
+}
+
+export interface AdminBook {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  cover_url: string | null;
+  isbn: string | null;
+  published_year: number | null;
+  page_count: number | null;
+  language: string;
+  rating: number;
+  ratings_count: number;
+  reviews_count: number;
+  is_hidden: boolean;
+  authors: AdminAuthor[];
+  genres: AdminGenre[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminAuthor {
+  id: string;
+  name: string;
+  slug: string;
+  biography: string | null;
+  photo_url: string | null;
+  birth_date: string | null;
+  death_date: string | null;
+}
+
+export interface AdminGenre {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface AdminReview {
+  id: string;
+  book_id: string;
+  book_title: string;
+  user_id: string;
+  user: { id: string; name: string | null; avatar_url: string | null } | null;
+  rating: number;
+  content: string;
+  likes_count: number;
+  is_hidden: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminBookInput {
+  title: string;
+  slug?: string;
+  description?: string | null;
+  cover_url?: string | null;
+  isbn?: string | null;
+  published_year?: number | null;
+  page_count?: number | null;
+  language: string;
+  author_ids: string[];
+  genre_ids: string[];
+  is_hidden: boolean;
+}
+
+export interface AdminAuthorInput {
+  name: string;
+  slug?: string;
+  biography?: string | null;
+  photo_url?: string | null;
+  birth_date?: string | null;
+  death_date?: string | null;
+}
+
+export interface AdminGenreInput {
+  name: string;
+  slug?: string;
+}
+
 const API_URL =
   typeof window === 'undefined'
     ? process.env.API_URL || 'http://backend:8080'
-    : '';
+    : process.env.NEXT_PUBLIC_API_URL || '';
+
+let accessToken: string | null = null;
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
 
 export class ApiError extends Error {
   constructor(
     public status: number,
     public statusText: string,
-    message?: string
+    message?: string,
+    public path: string = ''
   ) {
     super(message || `API error: ${status} ${statusText}`);
     this.name = 'ApiError';
   }
 }
 
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
 async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  headers.set('Content-Type', 'application/json');
+  // Attach bearer token to state-changing admin requests. Reads continue to
+  // rely on the HttpOnly cookie so cookie auth for admin reads is preserved.
+  const method = (options?.method ?? 'GET').toUpperCase();
+  if (
+    accessToken &&
+    path.startsWith('/api/v1/admin') &&
+    method !== 'GET' &&
+    method !== 'HEAD'
+  ) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
+  }
+
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers,
     credentials: 'include',
   });
 
@@ -228,7 +340,7 @@ async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
     } catch {
       // ignore
     }
-    throw new ApiError(response.status, response.statusText, message);
+    throw new ApiError(response.status, response.statusText, message, path);
   }
 
   return response.json() as Promise<T>;
@@ -678,6 +790,107 @@ export const api = {
         list: normalizePublicList(raw.list),
         items: raw.items.map(normalizeBook),
       };
+    },
+  },
+  admin: {
+    dashboard: () => fetcher<AdminDashboard>('/api/v1/admin/dashboard'),
+    books: {
+      list: async (params?: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        visibility?: 'visible' | 'hidden' | '';
+      }) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        if (params?.search) queryParams.search = params.search;
+        if (params?.visibility) queryParams.visibility = params.visibility;
+        return fetcher<PaginatedResponse<AdminBook>>(
+          `/api/v1/admin/books?${new URLSearchParams(queryParams)}`
+        );
+      },
+      get: (id: string) => fetcher<AdminBook>(`/api/v1/admin/books/${id}`),
+      create: (data: AdminBookInput) =>
+        fetcher<AdminBook>('/api/v1/admin/books', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: AdminBookInput) =>
+        fetcher<AdminBook>(`/api/v1/admin/books/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+    },
+    authors: {
+      list: async (params?: {
+        page?: number;
+        limit?: number;
+        search?: string;
+      }) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        if (params?.search) queryParams.search = params.search;
+        return fetcher<PaginatedResponse<AdminAuthor>>(
+          `/api/v1/admin/authors?${new URLSearchParams(queryParams)}`
+        );
+      },
+      create: (data: AdminAuthorInput) =>
+        fetcher<AdminAuthor>('/api/v1/admin/authors', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: AdminAuthorInput) =>
+        fetcher<AdminAuthor>(`/api/v1/admin/authors/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+    },
+    genres: {
+      list: async (params?: {
+        page?: number;
+        limit?: number;
+        search?: string;
+      }) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        if (params?.search) queryParams.search = params.search;
+        return fetcher<PaginatedResponse<AdminGenre>>(
+          `/api/v1/admin/genres?${new URLSearchParams(queryParams)}`
+        );
+      },
+      create: (data: AdminGenreInput) =>
+        fetcher<AdminGenre>('/api/v1/admin/genres', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: AdminGenreInput) =>
+        fetcher<AdminGenre>(`/api/v1/admin/genres/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+    },
+    reviews: {
+      list: async (params?: {
+        page?: number;
+        limit?: number;
+        visibility?: 'visible' | 'hidden' | '';
+      }) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        if (params?.visibility) queryParams.visibility = params.visibility;
+        return fetcher<PaginatedResponse<AdminReview>>(
+          `/api/v1/admin/reviews?${new URLSearchParams(queryParams)}`
+        );
+      },
+      moderate: (id: string, isHidden: boolean) =>
+        fetcher<AdminReview>(`/api/v1/admin/reviews/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ is_hidden: isHidden }),
+        }),
     },
   },
 };

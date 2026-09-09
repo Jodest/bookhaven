@@ -81,6 +81,34 @@ func RequireRole(roles ...domain.Role) echo.MiddlewareFunc {
 	}
 }
 
+// RequireBearerAuth ensures the request was authenticated with an
+// Authorization: Bearer header. It must be used after the Auth middleware so
+// the user is already validated; this middleware only verifies the token was
+// presented as a bearer header to protect cookie-authenticated requests from
+// CSRF on state-changing routes.
+func RequireBearerAuth() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			user, ok := c.Get("user").(*domain.User)
+			if !ok || user == nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			}
+
+			authHeader := c.Request().Header.Get("Authorization")
+			if authHeader == "" {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "bearer token required"})
+			}
+
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization header"})
+			}
+
+			return next(c)
+		}
+	}
+}
+
 func extractToken(c echo.Context) string {
 	// Try Authorization header
 	authHeader := c.Request().Header.Get("Authorization")

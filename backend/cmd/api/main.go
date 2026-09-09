@@ -12,6 +12,8 @@ import (
 	"github.com/bookhaven/backend/internal/infrastructure/validator"
 	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
+	adminrepository "github.com/bookhaven/backend/internal/modules/admin/repository"
+	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	listsrepository "github.com/bookhaven/backend/internal/modules/lists/repository"
@@ -53,6 +55,7 @@ func main() {
 	usersService := usersservice.NewService(usersRepo)
 
 	catalogRepo := catalogrepository.NewGormRepository(db)
+	adminRepo := adminrepository.NewGormRepository(db)
 	shelvesRepo := shelvesrepository.NewGormRepository(db)
 	listsRepo := listsrepository.NewGormRepository(db)
 	ratingsRepo := ratingsrepository.NewGormRepository(db)
@@ -60,6 +63,7 @@ func main() {
 
 	// Services
 	catalogService := catalogservice.NewService(catalogRepo)
+	adminService := adminservice.NewService(adminRepo)
 	shelvesService := shelvesservice.NewService(shelvesRepo)
 	listsService := listsservice.NewService(listsRepo)
 	ratingsService := ratingsservice.NewService(ratingsRepo)
@@ -104,6 +108,9 @@ func main() {
 
 	// Public + protected routes
 	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, authMiddleware, optionalAuth)
+
+	// Admin routes
+	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)
