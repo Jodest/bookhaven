@@ -220,7 +220,17 @@ func parseListID(c echo.Context) (uuid.UUID, error) {
 	return uuid.Parse(c.Param("id"))
 }
 
-// ListLists handles GET /api/v1/lists.
+// ListLists godoc
+// @Summary Список списков пользователя
+// @Tags lists
+// @Produce json
+// @Security BearerAuth
+// @Param book_id query string false "Если указан, возвращается book_in_lists с ID списков, содержащих книгу"
+// @Success 200 {object} listListsResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /lists [get]
 func (h *Handler) ListLists(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -269,7 +279,18 @@ func (h *Handler) ListLists(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
-// CreateList handles POST /api/v1/lists.
+// CreateList godoc
+// @Summary Создать список
+// @Tags lists
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body createListRequest true "Данные списка"
+// @Success 201 {object} listResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /lists [post]
 func (h *Handler) CreateList(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -302,7 +323,21 @@ func (h *Handler) CreateList(c echo.Context) error {
 	return c.JSON(http.StatusCreated, toListResponse(*list))
 }
 
-// GetList handles GET /api/v1/lists/:id.
+// GetList godoc
+// @Summary Получить список с книгами
+// @Tags lists
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID списка"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 100"
+// @Success 200 {object} listDetailResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /lists/{id} [get]
 func (h *Handler) GetList(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -353,7 +388,21 @@ func (h *Handler) GetList(c echo.Context) error {
 	})
 }
 
-// UpdateList handles PATCH /api/v1/lists/:id.
+// UpdateList godoc
+// @Summary Обновить список
+// @Tags lists
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID списка"
+// @Param body body updateListRequest true "Поля для обновления"
+// @Success 200 {object} listResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /lists/{id} [patch]
 func (h *Handler) UpdateList(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -389,7 +438,19 @@ func (h *Handler) UpdateList(c echo.Context) error {
 	return c.JSON(http.StatusOK, toListResponse(*list))
 }
 
-// DeleteList handles DELETE /api/v1/lists/:id.
+// DeleteList godoc
+// @Summary Удалить список
+// @Tags lists
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID списка"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /lists/{id} [delete]
 func (h *Handler) DeleteList(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -417,7 +478,22 @@ func (h *Handler) DeleteList(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// AddBook handles POST /api/v1/lists/:id/books.
+// AddBook godoc
+// @Summary Добавить книгу в список
+// @Tags lists
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID списка"
+// @Param body body addBookRequest true "ID книги"
+// @Success 201 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /lists/{id}/books [post]
 func (h *Handler) AddBook(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -462,7 +538,20 @@ func (h *Handler) AddBook(c echo.Context) error {
 	return c.JSON(http.StatusCreated, map[string]string{"status": "ok"})
 }
 
-// RemoveBook handles DELETE /api/v1/lists/:id/books/:bookId.
+// RemoveBook godoc
+// @Summary Убрать книгу из списка
+// @Tags lists
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID списка"
+// @Param bookId path string true "ID книги"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /lists/{id}/books/{bookId} [delete]
 func (h *Handler) RemoveBook(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -497,7 +586,21 @@ func (h *Handler) RemoveBook(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// ReorderBooks handles PATCH /api/v1/lists/:id/books/reorder.
+// ReorderBooks godoc
+// @Summary Изменить порядок книг в списке
+// @Tags lists
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID списка"
+// @Param body body reorderBooksRequest true "Новый порядок ID книг"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /lists/{id}/books/reorder [patch]
 func (h *Handler) ReorderBooks(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -539,7 +642,19 @@ func (h *Handler) ReorderBooks(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// GetPublicList handles GET /api/v1/lists/public/:id.
+// GetPublicList godoc
+// @Summary Получить публичный список с книгами
+// @Description Доступно без авторизации, если список публичный
+// @Tags lists
+// @Produce json
+// @Param id path string true "ID списка"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 100"
+// @Success 200 {object} publicListDetailResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /lists/public/{id} [get]
 func (h *Handler) GetPublicList(c echo.Context) error {
 	ctx := c.Request().Context()
 

@@ -1,0 +1,3362 @@
+basePath: /api/v1
+definitions:
+  internal_modules_admin_transport_http.authorResponse:
+    properties:
+      biography:
+        type: string
+      birth_date:
+        type: string
+      death_date:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.bookResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.authorResponse'
+        type: array
+      cover_url:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      genres:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+        type: array
+      id:
+        type: string
+      is_hidden:
+        type: boolean
+      isbn:
+        type: string
+      language:
+        type: string
+      page_count:
+        type: integer
+      published_year:
+        type: integer
+      rating:
+        type: number
+      ratings_count:
+        type: integer
+      reviews_count:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.createUpdateAuthorRequest:
+    properties:
+      biography:
+        type: string
+      birth_date:
+        type: string
+      death_date:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.createUpdateBookRequest:
+    properties:
+      author_ids:
+        items:
+          type: string
+        type: array
+      cover_url:
+        type: string
+      description:
+        type: string
+      genre_ids:
+        items:
+          type: string
+        type: array
+      is_hidden:
+        type: boolean
+      isbn:
+        type: string
+      language:
+        type: string
+      page_count:
+        type: integer
+      published_year:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.createUpdateGenreRequest:
+    properties:
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.dashboardResponse:
+    properties:
+      authors:
+        type: integer
+      books:
+        type: integer
+      genres:
+        type: integer
+      hidden_books:
+        type: integer
+      pending_reviews:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.genreResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.listAuthorsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.authorResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.listBooksResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.bookResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.listGenresResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.listReviewsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.reviewResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.moderateReviewRequest:
+    properties:
+      is_hidden:
+        type: boolean
+    type: object
+  internal_modules_admin_transport_http.reviewResponse:
+    properties:
+      book_id:
+        type: string
+      book_title:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_hidden:
+        type: boolean
+      likes_count:
+        type: integer
+      rating:
+        type: integer
+      updated_at:
+        type: string
+      user:
+        $ref: '#/definitions/internal_modules_admin_transport_http.reviewUserResponse'
+      user_id:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.reviewUserResponse:
+    properties:
+      avatar_url:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  internal_modules_auth_transport_http.authResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+      user:
+        $ref: '#/definitions/internal_modules_auth_transport_http.userResponse'
+    type: object
+  internal_modules_auth_transport_http.loginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  internal_modules_auth_transport_http.refreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  internal_modules_auth_transport_http.registerRequest:
+    properties:
+      email:
+        type: string
+      name:
+        minLength: 2
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  internal_modules_auth_transport_http.userResponse:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      profile_type:
+        type: string
+      role:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_modules_catalog_transport_http.authorDetailResponse:
+    properties:
+      biography:
+        type: string
+      birth_date:
+        type: string
+      books:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.bookListItemResponse'
+        type: array
+      death_date:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_catalog_transport_http.authorResponse:
+    properties:
+      birth_date:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_catalog_transport_http.bookListItemResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.authorResponse'
+        type: array
+      cover_url:
+        type: string
+      genres:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.genreResponse'
+        type: array
+      id:
+        type: string
+      published_year:
+        type: integer
+      rating:
+        type: number
+      ratings_count:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_catalog_transport_http.bookResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.authorResponse'
+        type: array
+      cover_url:
+        type: string
+      description:
+        type: string
+      genres:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.genreResponse'
+        type: array
+      id:
+        type: string
+      isbn:
+        type: string
+      language:
+        type: string
+      page_count:
+        type: integer
+      published_year:
+        type: integer
+      rating:
+        type: number
+      ratings_count:
+        type: integer
+      reviews_count:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_catalog_transport_http.genreResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_catalog_transport_http.languageResponse:
+    properties:
+      code:
+        type: string
+      name:
+        type: string
+    type: object
+  internal_modules_catalog_transport_http.listAuthorsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.authorResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  internal_modules_catalog_transport_http.listBooksResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.bookListItemResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_catalog_transport_http.listLanguagesResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.languageResponse'
+        type: array
+    type: object
+  internal_modules_lists_transport_http.addBookRequest:
+    properties:
+      book_id:
+        type: string
+    required:
+    - book_id
+    type: object
+  internal_modules_lists_transport_http.authorResponse:
+    properties:
+      birth_date:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_lists_transport_http.bookListItemResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_lists_transport_http.authorResponse'
+        type: array
+      cover_url:
+        type: string
+      genres:
+        items:
+          $ref: '#/definitions/internal_modules_lists_transport_http.genreResponse'
+        type: array
+      id:
+        type: string
+      published_year:
+        type: integer
+      rating:
+        type: number
+      ratings_count:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_lists_transport_http.createListRequest:
+    properties:
+      description:
+        type: string
+      is_public:
+        type: boolean
+      title:
+        maxLength: 255
+        minLength: 2
+        type: string
+    required:
+    - title
+    type: object
+  internal_modules_lists_transport_http.genreResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_lists_transport_http.listDetailResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_lists_transport_http.bookListItemResponse'
+        type: array
+      limit:
+        type: integer
+      list:
+        $ref: '#/definitions/internal_modules_lists_transport_http.listResponse'
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_lists_transport_http.listListItemResponse:
+    properties:
+      books_count:
+        type: integer
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_public:
+        type: boolean
+      title:
+        type: string
+    type: object
+  internal_modules_lists_transport_http.listListsResponse:
+    properties:
+      book_in_lists:
+        items:
+          type: string
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_lists_transport_http.listListItemResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  internal_modules_lists_transport_http.listResponse:
+    properties:
+      books_count:
+        type: integer
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_public:
+        type: boolean
+      title:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  internal_modules_lists_transport_http.publicListDetailResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_lists_transport_http.bookListItemResponse'
+        type: array
+      limit:
+        type: integer
+      list:
+        $ref: '#/definitions/internal_modules_lists_transport_http.publicListResponse'
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_lists_transport_http.publicListResponse:
+    properties:
+      books_count:
+        type: integer
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_public:
+        type: boolean
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_modules_lists_transport_http.reorderBooksRequest:
+    properties:
+      book_ids:
+        items:
+          type: string
+        type: array
+    required:
+    - book_ids
+    type: object
+  internal_modules_lists_transport_http.updateListRequest:
+    properties:
+      description:
+        type: string
+      is_public:
+        type: boolean
+      title:
+        type: string
+    type: object
+  internal_modules_ratings_transport_http.myRatingResponse:
+    properties:
+      value:
+        type: integer
+    type: object
+  internal_modules_ratings_transport_http.setRatingRequest:
+    properties:
+      value:
+        maximum: 5
+        minimum: 1
+        type: integer
+    required:
+    - value
+    type: object
+  internal_modules_ratings_transport_http.setRatingResponse:
+    properties:
+      book_id:
+        type: string
+      rating:
+        type: number
+      ratings_count:
+        type: integer
+      value:
+        type: integer
+    type: object
+  internal_modules_reading_challenges_transport_http.listProgressResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_reading_challenges_transport_http.progressResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  internal_modules_reading_challenges_transport_http.progressResponse:
+    properties:
+      books_read:
+        type: integer
+      completed:
+        type: boolean
+      goal:
+        type: integer
+      progress_percent:
+        type: integer
+      year:
+        type: integer
+    type: object
+  internal_modules_reading_challenges_transport_http.upsertGoalRequest:
+    properties:
+      goal:
+        maximum: 10000
+        minimum: 1
+        type: integer
+    type: object
+  internal_modules_reviews_transport_http.createReviewRequest:
+    properties:
+      content:
+        maxLength: 10000
+        minLength: 1
+        type: string
+      rating:
+        maximum: 5
+        minimum: 1
+        type: integer
+    required:
+    - content
+    - rating
+    type: object
+  internal_modules_reviews_transport_http.listReviewsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_reviews_transport_http.reviewResponse'
+        type: array
+      limit:
+        type: integer
+      my_review:
+        $ref: '#/definitions/internal_modules_reviews_transport_http.reviewResponse'
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_reviews_transport_http.reviewAuthorResponse:
+    properties:
+      avatar_url:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  internal_modules_reviews_transport_http.reviewResponse:
+    properties:
+      book_id:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      liked_by_me:
+        type: boolean
+      likes_count:
+        type: integer
+      rating:
+        type: integer
+      updated_at:
+        type: string
+      user:
+        $ref: '#/definitions/internal_modules_reviews_transport_http.reviewAuthorResponse'
+      user_id:
+        type: string
+    type: object
+  internal_modules_reviews_transport_http.toggleLikeResponse:
+    properties:
+      liked:
+        type: boolean
+      likes_count:
+        type: integer
+    type: object
+  internal_modules_reviews_transport_http.updateReviewRequest:
+    properties:
+      content:
+        maxLength: 10000
+        minLength: 1
+        type: string
+      rating:
+        maximum: 5
+        minimum: 1
+        type: integer
+    type: object
+  internal_modules_shelves_transport_http.addBookRequest:
+    properties:
+      book_id:
+        type: string
+    required:
+    - book_id
+    type: object
+  internal_modules_shelves_transport_http.authorResponse:
+    properties:
+      birth_date:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_shelves_transport_http.bookListItemResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.authorResponse'
+        type: array
+      cover_url:
+        type: string
+      genres:
+        items:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.genreResponse'
+        type: array
+      id:
+        type: string
+      published_year:
+        type: integer
+      rating:
+        type: number
+      ratings_count:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_shelves_transport_http.createShelfRequest:
+    properties:
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - name
+    type: object
+  internal_modules_shelves_transport_http.genreResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_shelves_transport_http.listShelvesResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.shelfListItemResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  internal_modules_shelves_transport_http.renameShelfRequest:
+    properties:
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - name
+    type: object
+  internal_modules_shelves_transport_http.shelfDetailResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.bookListItemResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      shelf:
+        $ref: '#/definitions/internal_modules_shelves_transport_http.shelfResponse'
+      total:
+        type: integer
+    type: object
+  internal_modules_shelves_transport_http.shelfListItemResponse:
+    properties:
+      books_count:
+        type: integer
+      created_at:
+        type: string
+      has_book:
+        type: boolean
+      id:
+        type: string
+      name:
+        type: string
+      type:
+        type: string
+    type: object
+  internal_modules_shelves_transport_http.shelfResponse:
+    properties:
+      books_count:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  internal_modules_users_transport_http.ownerUserResponse:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      profile_type:
+        type: string
+      role:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_modules_users_transport_http.presentString:
+    type: object
+  internal_modules_users_transport_http.publicListActivityResponse:
+    properties:
+      books_count:
+        type: integer
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_public:
+        type: boolean
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_modules_users_transport_http.publicProfileResponse:
+    properties:
+      lists:
+        items:
+          $ref: '#/definitions/internal_modules_users_transport_http.publicListActivityResponse'
+        type: array
+      user:
+        $ref: '#/definitions/internal_modules_users_transport_http.publicUserResponse'
+    type: object
+  internal_modules_users_transport_http.publicUserResponse:
+    properties:
+      avatar_url:
+        type: string
+      id:
+        type: string
+      joined_at:
+        type: string
+      name:
+        type: string
+      profile_type:
+        type: string
+    type: object
+  internal_modules_users_transport_http.updateProfileRequest:
+    properties:
+      avatar_url:
+        $ref: '#/definitions/internal_modules_users_transport_http.presentString'
+      name:
+        type: string
+      profile_type:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Социальный каталог книг для рынка РФ и СНГ. REST API для веб- и админ-приложений
+    BookHaven.
+  title: BookHaven API
+  version: "1.0"
+paths:
+  /admin/authors:
+    get:
+      description: Требуется роль admin
+      parameters:
+      - description: Поиск
+        in: query
+        name: search
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.listAuthorsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список авторов (админ)
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен
+      parameters:
+      - description: Данные автора
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.createUpdateAuthorRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.authorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создать автора (админ)
+      tags:
+      - admin
+  /admin/authors/{id}:
+    patch:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен
+      parameters:
+      - description: ID автора
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные автора
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.createUpdateAuthorRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.authorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Обновить автора (админ)
+      tags:
+      - admin
+  /admin/books:
+    get:
+      description: Требуется роль admin
+      parameters:
+      - description: Поиск
+        in: query
+        name: search
+        type: string
+      - description: Фильтр видимости (all/visible/hidden)
+        in: query
+        name: visibility
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.listBooksResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список книг (админ)
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен (state-changing запросы не
+        принимаются по cookie)
+      parameters:
+      - description: Данные книги
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.createUpdateBookRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.bookResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создать книгу (админ)
+      tags:
+      - admin
+  /admin/books/{id}:
+    get:
+      description: Требуется роль admin
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.bookResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получить книгу по ID (админ)
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен (state-changing запросы не
+        принимаются по cookie)
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные книги
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.createUpdateBookRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.bookResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Обновить книгу (админ)
+      tags:
+      - admin
+  /admin/dashboard:
+    get:
+      description: Требуется роль admin
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.dashboardResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Сводка для админ-панели
+      tags:
+      - admin
+  /admin/genres:
+    get:
+      description: Требуется роль admin
+      parameters:
+      - description: Поиск
+        in: query
+        name: search
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.listGenresResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список жанров (админ)
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен
+      parameters:
+      - description: Данные жанра
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.createUpdateGenreRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создать жанр (админ)
+      tags:
+      - admin
+  /admin/genres/{id}:
+    patch:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен
+      parameters:
+      - description: ID жанра
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные жанра
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.createUpdateGenreRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Обновить жанр (админ)
+      tags:
+      - admin
+  /admin/reviews:
+    get:
+      description: Требуется роль admin или moderator
+      parameters:
+      - description: Фильтр видимости (all/visible/hidden)
+        in: query
+        name: visibility
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.listReviewsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список рецензий (модерация)
+      tags:
+      - admin
+  /admin/reviews/{id}:
+    patch:
+      consumes:
+      - application/json
+      description: Требуется роль admin или moderator, и Bearer-токен
+      parameters:
+      - description: ID рецензии
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Флаг видимости
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.moderateReviewRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.reviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Скрыть/показать рецензию (модерация)
+      tags:
+      - admin
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Учётные данные
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_auth_transport_http.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.authResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Вход пользователя
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Выход пользователя
+      tags:
+      - auth
+  /auth/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.userResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Текущий пользователь
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Принимает refresh-токен в теле запроса или в cookie refresh_token
+      parameters:
+      - description: Refresh-токен (опционально, можно передать через cookie)
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/internal_modules_auth_transport_http.refreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Обновить пару токенов
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Создаёт пользователя и сразу выполняет вход, устанавливая auth-cookies
+      parameters:
+      - description: Данные регистрации
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_auth_transport_http.registerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.authResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Регистрация пользователя
+      tags:
+      - auth
+  /authors:
+    get:
+      parameters:
+      - description: Поиск по имени
+        in: query
+        name: search
+        type: string
+      - description: Размер страницы (по умолчанию 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_catalog_transport_http.listAuthorsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Список авторов
+      tags:
+      - catalog
+  /authors/{slug}:
+    get:
+      parameters:
+      - description: Slug автора
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_catalog_transport_http.authorDetailResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить автора по slug
+      tags:
+      - catalog
+  /books:
+    get:
+      description: Возвращает постраничный список книг с фильтрацией и сортировкой
+      parameters:
+      - description: Поиск по названию/описанию
+        in: query
+        name: search
+        type: string
+      - collectionFormat: csv
+        description: Фильтр по жанру (можно указать несколько)
+        in: query
+        items:
+          type: string
+        name: genre_id
+        type: array
+      - description: Фильтр по автору (UUID)
+        in: query
+        name: author_id
+        type: string
+      - description: Минимальный рейтинг (1-5)
+        in: query
+        name: rating_min
+        type: integer
+      - description: Фильтр по языку
+        in: query
+        name: language
+        type: string
+      - description: Год издания от
+        in: query
+        name: year_from
+        type: integer
+      - description: Год издания до
+        in: query
+        name: year_to
+        type: integer
+      - description: Сортировка
+        in: query
+        name: sort
+        type: string
+      - description: Номер страницы (по умолчанию 1)
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100 (по умолчанию 20)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_catalog_transport_http.listBooksResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Список книг
+      tags:
+      - catalog
+  /books/{id}/ratings:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Оценка от 1 до 5
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_ratings_transport_http.setRatingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_ratings_transport_http.setRatingResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_ratings_transport_http.setRatingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Поставить/обновить оценку книге
+      tags:
+      - ratings
+  /books/{id}/ratings/me:
+    get:
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_ratings_transport_http.myRatingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получить свою оценку книге
+      tags:
+      - ratings
+  /books/{id}/reviews:
+    get:
+      description: Если пользователь авторизован, дополнительно возвращается его собственная
+        рецензия в my_review
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_reviews_transport_http.listReviewsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Список рецензий на книгу
+      tags:
+      - reviews
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Оценка и текст рецензии
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_reviews_transport_http.createReviewRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_reviews_transport_http.reviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создать рецензию на книгу
+      tags:
+      - reviews
+  /books/{slug}:
+    get:
+      parameters:
+      - description: Slug книги
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_catalog_transport_http.bookResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить книгу по slug
+      tags:
+      - catalog
+  /genres:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Список жанров
+      tags:
+      - catalog
+  /languages:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_catalog_transport_http.listLanguagesResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Список языков, представленных в каталоге
+      tags:
+      - catalog
+  /lists:
+    get:
+      parameters:
+      - description: Если указан, возвращается book_in_lists с ID списков, содержащих
+          книгу
+        in: query
+        name: book_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_lists_transport_http.listListsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список списков пользователя
+      tags:
+      - lists
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные списка
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_lists_transport_http.createListRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_lists_transport_http.listResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создать список
+      tags:
+      - lists
+  /lists/{id}:
+    delete:
+      parameters:
+      - description: ID списка
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удалить список
+      tags:
+      - lists
+    get:
+      parameters:
+      - description: ID списка
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_lists_transport_http.listDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получить список с книгами
+      tags:
+      - lists
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID списка
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Поля для обновления
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_lists_transport_http.updateListRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_lists_transport_http.listResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Обновить список
+      tags:
+      - lists
+  /lists/{id}/books:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID списка
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID книги
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_lists_transport_http.addBookRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Добавить книгу в список
+      tags:
+      - lists
+  /lists/{id}/books/{bookId}:
+    delete:
+      parameters:
+      - description: ID списка
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID книги
+        in: path
+        name: bookId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Убрать книгу из списка
+      tags:
+      - lists
+  /lists/{id}/books/reorder:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID списка
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Новый порядок ID книг
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_lists_transport_http.reorderBooksRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Изменить порядок книг в списке
+      tags:
+      - lists
+  /lists/public/{id}:
+    get:
+      description: Доступно без авторизации, если список публичный
+      parameters:
+      - description: ID списка
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_lists_transport_http.publicListDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить публичный список с книгами
+      tags:
+      - lists
+  /reading-challenges:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_reading_challenges_transport_http.listProgressResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: История читательского вызова по годам
+      tags:
+      - reading-challenges
+  /reading-challenges/{year}:
+    get:
+      parameters:
+      - description: Год
+        in: path
+        name: year
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_reading_challenges_transport_http.progressResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Прогресс читательского вызова за год
+      tags:
+      - reading-challenges
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Год
+        in: path
+        name: year
+        required: true
+        type: integer
+      - description: Цель по количеству книг
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_reading_challenges_transport_http.upsertGoalRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_reading_challenges_transport_http.progressResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Установить/обновить цель читательского вызова на год
+      tags:
+      - reading-challenges
+  /reviews/{id}:
+    delete:
+      parameters:
+      - description: ID рецензии
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удалить рецензию
+      tags:
+      - reviews
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID рецензии
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Поля для обновления
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_reviews_transport_http.updateReviewRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_reviews_transport_http.reviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Обновить рецензию
+      tags:
+      - reviews
+  /reviews/{id}/likes:
+    post:
+      parameters:
+      - description: ID рецензии
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_reviews_transport_http.toggleLikeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Поставить/убрать лайк рецензии
+      tags:
+      - reviews
+  /shelves:
+    get:
+      parameters:
+      - description: Если указан, для каждой полки помечается наличие книги
+        in: query
+        name: book_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_shelves_transport_http.listShelvesResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список полок пользователя
+      tags:
+      - shelves
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Название полки
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.createShelfRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_shelves_transport_http.shelfResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создать полку
+      tags:
+      - shelves
+  /shelves/{id}:
+    delete:
+      parameters:
+      - description: ID полки
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удалить полку
+      tags:
+      - shelves
+    get:
+      parameters:
+      - description: ID полки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_shelves_transport_http.shelfDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Получить полку с книгами
+      tags:
+      - shelves
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID полки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Новое название
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.renameShelfRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_shelves_transport_http.shelfResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Переименовать полку
+      tags:
+      - shelves
+  /shelves/{id}/books:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID полки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID книги
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.addBookRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Добавить книгу на полку
+      tags:
+      - shelves
+  /shelves/{id}/books/{bookId}:
+    delete:
+      parameters:
+      - description: ID полки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID книги
+        in: path
+        name: bookId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Убрать книгу с полки
+      tags:
+      - shelves
+  /users/{id}:
+    get:
+      parameters:
+      - description: ID пользователя
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_users_transport_http.publicProfileResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Публичный профиль пользователя
+      tags:
+      - users
+  /users/me:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Поля для обновления
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_users_transport_http.updateProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_users_transport_http.ownerUserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Обновить свой профиль
+      tags:
+      - users
+securityDefinitions:
+  BearerAuth:
+    description: 'Введите access-токен в формате: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '@bookhaven/api-client';
-import { Select } from '@/components/ui/select';
+import { Select } from '@bookhaven/ui';
 
 interface Language {
   code: string;

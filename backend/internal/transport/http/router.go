@@ -9,6 +9,8 @@ import (
 	listshttp "github.com/bookhaven/backend/internal/modules/lists/transport/http"
 	ratingsservice "github.com/bookhaven/backend/internal/modules/ratings/service"
 	ratingshttp "github.com/bookhaven/backend/internal/modules/ratings/transport/http"
+	readingchallengesservice "github.com/bookhaven/backend/internal/modules/reading_challenges/service"
+	readingchallengeshttp "github.com/bookhaven/backend/internal/modules/reading_challenges/transport/http"
 	reviewsservice "github.com/bookhaven/backend/internal/modules/reviews/service"
 	reviewshttp "github.com/bookhaven/backend/internal/modules/reviews/transport/http"
 	shelvesservice "github.com/bookhaven/backend/internal/modules/shelves/service"
@@ -29,6 +31,7 @@ func RegisterRoutes(
 	ratingsService *ratingsservice.Service,
 	reviewsService *reviewsservice.Service,
 	usersService *usersservice.Service,
+	readingChallengesService *readingchallengesservice.Service,
 	authMiddleware echo.MiddlewareFunc,
 	optionalAuth echo.MiddlewareFunc,
 ) {
@@ -80,6 +83,12 @@ func RegisterRoutes(
 	usersHandler := usershttp.NewHandler(usersService, listsService)
 	api.GET("/users/:id", usersHandler.GetUser, optionalAuth)
 	api.PATCH("/users/me", usersHandler.UpdateMe, authMiddleware)
+
+	readingChallengesHandler := readingchallengeshttp.NewHandler(readingChallengesService)
+	readingChallenges := api.Group("/reading-challenges", authMiddleware)
+	readingChallenges.GET("", readingChallengesHandler.ListChallenges)
+	readingChallenges.GET("/:year", readingChallengesHandler.GetChallenge)
+	readingChallenges.PUT("/:year", readingChallengesHandler.UpsertGoal)
 }
 
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.

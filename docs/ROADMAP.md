@@ -10,6 +10,7 @@
 - [x] Lists — viewing verified (see [docs/features/lists.md](features/lists.md))
 - [x] User Profiles (see [docs/features/user-profiles.md](features/user-profiles.md))
 - [x] Admin (see [docs/features/admin.md](features/admin.md))
+- [x] Reading Challenge (see [docs/features/reading-challenge.md](features/reading-challenge.md))
 
 
 ## Next

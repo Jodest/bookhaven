@@ -5,6 +5,7 @@ WORKDIR /app
 # Development stage
 FROM base AS dev
 RUN go install github.com/air-verse/air@v1.61.5
+RUN go install github.com/swaggo/swag/cmd/swag@v1.16.4
 COPY go.mod ./
 RUN go mod download
 COPY . .

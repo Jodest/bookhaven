@@ -1,6 +1,6 @@
 'use client';
 
-import { Input } from '@/components/ui/input';
+import { Input } from '@bookhaven/ui';
 
 interface YearFilterProps {
   yearFrom: number | null;

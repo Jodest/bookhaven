@@ -278,7 +278,17 @@ func parsePagination(c echo.Context) (page, limit int) {
 	return page, limit
 }
 
-// Dashboard handles GET /api/v1/admin/dashboard.
+// Dashboard godoc
+// @Summary Сводка для админ-панели
+// @Description Требуется роль admin
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} dashboardResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/dashboard [get]
 func (h *Handler) Dashboard(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -296,7 +306,21 @@ func (h *Handler) Dashboard(c echo.Context) error {
 	})
 }
 
-// ListBooks handles GET /api/v1/admin/books.
+// ListBooks godoc
+// @Summary Список книг (админ)
+// @Description Требуется роль admin
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param search query string false "Поиск"
+// @Param visibility query string false "Фильтр видимости (all/visible/hidden)"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 100"
+// @Success 200 {object} listBooksResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/books [get]
 func (h *Handler) ListBooks(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -326,7 +350,20 @@ func (h *Handler) ListBooks(c echo.Context) error {
 	})
 }
 
-// GetBook handles GET /api/v1/admin/books/:id.
+// GetBook godoc
+// @Summary Получить книгу по ID (админ)
+// @Description Требуется роль admin
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID книги"
+// @Success 200 {object} bookResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/books/{id} [get]
 func (h *Handler) GetBook(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -346,7 +383,21 @@ func (h *Handler) GetBook(c echo.Context) error {
 	return c.JSON(http.StatusOK, toBookResponse(*book))
 }
 
-// CreateBook handles POST /api/v1/admin/books.
+// CreateBook godoc
+// @Summary Создать книгу (админ)
+// @Description Требуется роль admin и Bearer-токен (state-changing запросы не принимаются по cookie)
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body createUpdateBookRequest true "Данные книги"
+// @Success 201 {object} bookResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/books [post]
 func (h *Handler) CreateBook(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -389,7 +440,23 @@ func (h *Handler) CreateBook(c echo.Context) error {
 	return c.JSON(http.StatusCreated, toBookResponse(*book))
 }
 
-// UpdateBook handles PATCH /api/v1/admin/books/:id.
+// UpdateBook godoc
+// @Summary Обновить книгу (админ)
+// @Description Требуется роль admin и Bearer-токен (state-changing запросы не принимаются по cookie)
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID книги"
+// @Param body body createUpdateBookRequest true "Данные книги"
+// @Success 200 {object} bookResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/books/{id} [patch]
 func (h *Handler) UpdateBook(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -439,7 +506,20 @@ func (h *Handler) UpdateBook(c echo.Context) error {
 	return c.JSON(http.StatusOK, toBookResponse(*book))
 }
 
-// ListAuthors handles GET /api/v1/admin/authors.
+// ListAuthors godoc
+// @Summary Список авторов (админ)
+// @Description Требуется роль admin
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param search query string false "Поиск"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 100"
+// @Success 200 {object} listAuthorsResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/authors [get]
 func (h *Handler) ListAuthors(c echo.Context) error {
 	ctx := c.Request().Context()
 	search := c.QueryParam("search")
@@ -463,7 +543,21 @@ func (h *Handler) ListAuthors(c echo.Context) error {
 	})
 }
 
-// CreateAuthor handles POST /api/v1/admin/authors.
+// CreateAuthor godoc
+// @Summary Создать автора (админ)
+// @Description Требуется роль admin и Bearer-токен
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body createUpdateAuthorRequest true "Данные автора"
+// @Success 201 {object} authorResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/authors [post]
 func (h *Handler) CreateAuthor(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -496,7 +590,23 @@ func (h *Handler) CreateAuthor(c echo.Context) error {
 	return c.JSON(http.StatusCreated, toAuthorResponse(*author))
 }
 
-// UpdateAuthor handles PATCH /api/v1/admin/authors/:id.
+// UpdateAuthor godoc
+// @Summary Обновить автора (админ)
+// @Description Требуется роль admin и Bearer-токен
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID автора"
+// @Param body body createUpdateAuthorRequest true "Данные автора"
+// @Success 200 {object} authorResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/authors/{id} [patch]
 func (h *Handler) UpdateAuthor(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -536,7 +646,20 @@ func (h *Handler) UpdateAuthor(c echo.Context) error {
 	return c.JSON(http.StatusOK, toAuthorResponse(*author))
 }
 
-// ListGenres handles GET /api/v1/admin/genres.
+// ListGenres godoc
+// @Summary Список жанров (админ)
+// @Description Требуется роль admin
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param search query string false "Поиск"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 100"
+// @Success 200 {object} listGenresResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/genres [get]
 func (h *Handler) ListGenres(c echo.Context) error {
 	ctx := c.Request().Context()
 	search := c.QueryParam("search")
@@ -560,7 +683,21 @@ func (h *Handler) ListGenres(c echo.Context) error {
 	})
 }
 
-// CreateGenre handles POST /api/v1/admin/genres.
+// CreateGenre godoc
+// @Summary Создать жанр (админ)
+// @Description Требуется роль admin и Bearer-токен
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body createUpdateGenreRequest true "Данные жанра"
+// @Success 201 {object} genreResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/genres [post]
 func (h *Handler) CreateGenre(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -588,7 +725,23 @@ func (h *Handler) CreateGenre(c echo.Context) error {
 	return c.JSON(http.StatusCreated, toGenreResponse(*genre))
 }
 
-// UpdateGenre handles PATCH /api/v1/admin/genres/:id.
+// UpdateGenre godoc
+// @Summary Обновить жанр (админ)
+// @Description Требуется роль admin и Bearer-токен
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID жанра"
+// @Param body body createUpdateGenreRequest true "Данные жанра"
+// @Success 200 {object} genreResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/genres/{id} [patch]
 func (h *Handler) UpdateGenre(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -623,7 +776,20 @@ func (h *Handler) UpdateGenre(c echo.Context) error {
 	return c.JSON(http.StatusOK, toGenreResponse(*genre))
 }
 
-// ListReviews handles GET /api/v1/admin/reviews.
+// ListReviews godoc
+// @Summary Список рецензий (модерация)
+// @Description Требуется роль admin или moderator
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param visibility query string false "Фильтр видимости (all/visible/hidden)"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 100"
+// @Success 200 {object} listReviewsResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/reviews [get]
 func (h *Handler) ListReviews(c echo.Context) error {
 	ctx := c.Request().Context()
 	page, limit := parsePagination(c)
@@ -652,7 +818,22 @@ func (h *Handler) ListReviews(c echo.Context) error {
 	})
 }
 
-// ModerateReview handles PATCH /api/v1/admin/reviews/:id.
+// ModerateReview godoc
+// @Summary Скрыть/показать рецензию (модерация)
+// @Description Требуется роль admin или moderator, и Bearer-токен
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID рецензии"
+// @Param body body moderateReviewRequest true "Флаг видимости"
+// @Success 200 {object} reviewResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/reviews/{id} [patch]
 func (h *Handler) ModerateReview(c echo.Context) error {
 	ctx := c.Request().Context()
 

@@ -179,7 +179,16 @@ func parseShelfID(c echo.Context) (uuid.UUID, error) {
 	return uuid.Parse(c.Param("id"))
 }
 
-// ListShelves handles GET /api/v1/shelves.
+// ListShelves godoc
+// @Summary Список полок пользователя
+// @Tags shelves
+// @Produce json
+// @Security BearerAuth
+// @Param book_id query string false "Если указан, для каждой полки помечается наличие книги"
+// @Success 200 {object} listShelvesResponse
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /shelves [get]
 func (h *Handler) ListShelves(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -222,7 +231,18 @@ func (h *Handler) ListShelves(c echo.Context) error {
 	})
 }
 
-// CreateShelf handles POST /api/v1/shelves.
+// CreateShelf godoc
+// @Summary Создать полку
+// @Tags shelves
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body createShelfRequest true "Название полки"
+// @Success 201 {object} shelfResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /shelves [post]
 func (h *Handler) CreateShelf(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -250,7 +270,21 @@ func (h *Handler) CreateShelf(c echo.Context) error {
 	return c.JSON(http.StatusCreated, toShelfResponse(*shelf))
 }
 
-// GetShelf handles GET /api/v1/shelves/:id.
+// GetShelf godoc
+// @Summary Получить полку с книгами
+// @Tags shelves
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID полки"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 100"
+// @Success 200 {object} shelfDetailResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /shelves/{id} [get]
 func (h *Handler) GetShelf(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -301,7 +335,21 @@ func (h *Handler) GetShelf(c echo.Context) error {
 	})
 }
 
-// RenameShelf handles PATCH /api/v1/shelves/:id.
+// RenameShelf godoc
+// @Summary Переименовать полку
+// @Tags shelves
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID полки"
+// @Param body body renameShelfRequest true "Новое название"
+// @Success 200 {object} shelfResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /shelves/{id} [patch]
 func (h *Handler) RenameShelf(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -340,7 +388,19 @@ func (h *Handler) RenameShelf(c echo.Context) error {
 	return c.JSON(http.StatusOK, toShelfResponse(*shelf))
 }
 
-// DeleteShelf handles DELETE /api/v1/shelves/:id.
+// DeleteShelf godoc
+// @Summary Удалить полку
+// @Tags shelves
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID полки"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /shelves/{id} [delete]
 func (h *Handler) DeleteShelf(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -370,7 +430,22 @@ func (h *Handler) DeleteShelf(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// AddBook handles POST /api/v1/shelves/:id/books.
+// AddBook godoc
+// @Summary Добавить книгу на полку
+// @Tags shelves
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID полки"
+// @Param body body addBookRequest true "ID книги"
+// @Success 201 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /shelves/{id}/books [post]
 func (h *Handler) AddBook(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -415,7 +490,20 @@ func (h *Handler) AddBook(c echo.Context) error {
 	return c.JSON(http.StatusCreated, map[string]string{"status": "ok"})
 }
 
-// RemoveBook handles DELETE /api/v1/shelves/:id/books/:bookId.
+// RemoveBook godoc
+// @Summary Убрать книгу с полки
+// @Tags shelves
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID полки"
+// @Param bookId path string true "ID книги"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /shelves/{id}/books/{bookId} [delete]
 func (h *Handler) RemoveBook(c echo.Context) error {
 	ctx := c.Request().Context()
 

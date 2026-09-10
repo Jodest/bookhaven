@@ -113,7 +113,19 @@ func parseReviewID(c echo.Context) (uuid.UUID, error) {
 	return uuid.Parse(c.Param("id"))
 }
 
-// ListReviews handles GET /api/v1/books/:id/reviews.
+// ListReviews godoc
+// @Summary Список рецензий на книгу
+// @Description Если пользователь авторизован, дополнительно возвращается его собственная рецензия в my_review
+// @Tags reviews
+// @Produce json
+// @Param id path string true "ID книги"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы"
+// @Success 200 {object} listReviewsResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /books/{id}/reviews [get]
 func (h *Handler) ListReviews(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -158,7 +170,21 @@ func (h *Handler) ListReviews(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
-// CreateReview handles POST /api/v1/books/:id/reviews.
+// CreateReview godoc
+// @Summary Создать рецензию на книгу
+// @Tags reviews
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID книги"
+// @Param body body createReviewRequest true "Оценка и текст рецензии"
+// @Success 201 {object} reviewResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /books/{id}/reviews [post]
 func (h *Handler) CreateReview(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -197,7 +223,21 @@ func (h *Handler) CreateReview(c echo.Context) error {
 	return c.JSON(http.StatusCreated, toReviewResponse(*review))
 }
 
-// UpdateReview handles PATCH /api/v1/reviews/:id.
+// UpdateReview godoc
+// @Summary Обновить рецензию
+// @Tags reviews
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID рецензии"
+// @Param body body updateReviewRequest true "Поля для обновления"
+// @Success 200 {object} reviewResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /reviews/{id} [patch]
 func (h *Handler) UpdateReview(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -236,7 +276,19 @@ func (h *Handler) UpdateReview(c echo.Context) error {
 	return c.JSON(http.StatusOK, toReviewResponse(*review))
 }
 
-// DeleteReview handles DELETE /api/v1/reviews/:id.
+// DeleteReview godoc
+// @Summary Удалить рецензию
+// @Tags reviews
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID рецензии"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /reviews/{id} [delete]
 func (h *Handler) DeleteReview(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -264,7 +316,18 @@ func (h *Handler) DeleteReview(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// ToggleLike handles POST /api/v1/reviews/:id/likes.
+// ToggleLike godoc
+// @Summary Поставить/убрать лайк рецензии
+// @Tags reviews
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID рецензии"
+// @Success 200 {object} toggleLikeResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /reviews/{id}/likes [post]
 func (h *Handler) ToggleLike(c echo.Context) error {
 	ctx := c.Request().Context()
 

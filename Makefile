@@ -1,4 +1,4 @@
-.PHONY: help up down build logs shell-backend shell-web shell-admin migrate migrate-down test-backend test-web lint-backend lint-web
+.PHONY: help up down build logs shell-backend shell-web shell-admin migrate migrate-down seed swagger test-backend test-web lint-backend lint-web
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -29,6 +29,12 @@ migrate: ## Run database migrations
 
 migrate-down: ## Rollback database migrations
 	docker compose exec backend go run cmd/migrate/main.go down
+
+seed: ## Seed the database with test data
+	docker compose exec backend go run cmd/seed/main.go
+
+swagger: ## Regenerate Swagger/OpenAPI docs (backend/docs)
+	docker compose exec backend swag init -g cmd/api/main.go -o docs --parseDependency --parseInternal
 
 test-backend: ## Run backend tests
 	docker compose exec backend go test ./...

@@ -208,7 +208,24 @@ func toAuthorDetailResponse(a domain.Author) authorDetailResponse {
 	}
 }
 
-// ListBooks handles GET /api/v1/books.
+// ListBooks godoc
+// @Summary Список книг
+// @Description Возвращает постраничный список книг с фильтрацией и сортировкой
+// @Tags catalog
+// @Produce json
+// @Param search query string false "Поиск по названию/описанию"
+// @Param genre_id query []string false "Фильтр по жанру (можно указать несколько)"
+// @Param author_id query string false "Фильтр по автору (UUID)"
+// @Param rating_min query int false "Минимальный рейтинг (1-5)"
+// @Param language query string false "Фильтр по языку"
+// @Param year_from query int false "Год издания от"
+// @Param year_to query int false "Год издания до"
+// @Param sort query string false "Сортировка"
+// @Param page query int false "Номер страницы (по умолчанию 1)"
+// @Param limit query int false "Размер страницы, максимум 100 (по умолчанию 20)"
+// @Success 200 {object} listBooksResponse
+// @Failure 500 {object} map[string]string
+// @Router /books [get]
 func (h *Handler) ListBooks(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -290,7 +307,15 @@ func (h *Handler) ListBooks(c echo.Context) error {
 	})
 }
 
-// GetBook handles GET /api/v1/books/:slug.
+// GetBook godoc
+// @Summary Получить книгу по slug
+// @Tags catalog
+// @Produce json
+// @Param slug path string true "Slug книги"
+// @Success 200 {object} bookResponse
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /books/{slug} [get]
 func (h *Handler) GetBook(c echo.Context) error {
 	ctx := c.Request().Context()
 	slug := c.Param("slug")
@@ -306,7 +331,15 @@ func (h *Handler) GetBook(c echo.Context) error {
 	return c.JSON(http.StatusOK, toBookResponse(*book))
 }
 
-// GetAuthor handles GET /api/v1/authors/:slug.
+// GetAuthor godoc
+// @Summary Получить автора по slug
+// @Tags catalog
+// @Produce json
+// @Param slug path string true "Slug автора"
+// @Success 200 {object} authorDetailResponse
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /authors/{slug} [get]
 func (h *Handler) GetAuthor(c echo.Context) error {
 	ctx := c.Request().Context()
 	slug := c.Param("slug")
@@ -322,7 +355,15 @@ func (h *Handler) GetAuthor(c echo.Context) error {
 	return c.JSON(http.StatusOK, toAuthorDetailResponse(*author))
 }
 
-// ListAuthors handles GET /api/v1/authors.
+// ListAuthors godoc
+// @Summary Список авторов
+// @Tags catalog
+// @Produce json
+// @Param search query string false "Поиск по имени"
+// @Param limit query int false "Размер страницы (по умолчанию 20)"
+// @Success 200 {object} listAuthorsResponse
+// @Failure 500 {object} map[string]string
+// @Router /authors [get]
 func (h *Handler) ListAuthors(c echo.Context) error {
 	ctx := c.Request().Context()
 	search := c.QueryParam("search")
@@ -348,7 +389,13 @@ func (h *Handler) ListAuthors(c echo.Context) error {
 	})
 }
 
-// ListGenres handles GET /api/v1/genres.
+// ListGenres godoc
+// @Summary Список жанров
+// @Tags catalog
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 500 {object} map[string]string
+// @Router /genres [get]
 func (h *Handler) ListGenres(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -368,7 +415,13 @@ func (h *Handler) ListGenres(c echo.Context) error {
 	})
 }
 
-// ListLanguages handles GET /api/v1/languages.
+// ListLanguages godoc
+// @Summary Список языков, представленных в каталоге
+// @Tags catalog
+// @Produce json
+// @Success 200 {object} listLanguagesResponse
+// @Failure 500 {object} map[string]string
+// @Router /languages [get]
 func (h *Handler) ListLanguages(c echo.Context) error {
 	ctx := c.Request().Context()
 

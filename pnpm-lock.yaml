@@ -166,15 +166,6 @@ importers:
 
   packages/config: {}
 
-  packages/types:
-    devDependencies:
-      '@bookhaven/config':
-        specifier: workspace:*
-        version: link:../config
-      typescript:
-        specifier: ^5.5.0
-        version: 5.9.3
-
   packages/ui:
     dependencies:
       '@radix-ui/react-slot':

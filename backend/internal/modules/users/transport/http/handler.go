@@ -132,7 +132,16 @@ func parseUserID(c echo.Context) (uuid.UUID, error) {
 	return uuid.Parse(c.Param("id"))
 }
 
-// GetUser handles GET /api/v1/users/:id and returns a public profile.
+// GetUser godoc
+// @Summary Публичный профиль пользователя
+// @Tags users
+// @Produce json
+// @Param id path string true "ID пользователя"
+// @Success 200 {object} publicProfileResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /users/{id} [get]
 func (h *Handler) GetUser(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -179,7 +188,19 @@ func (h *Handler) GetUser(c echo.Context) error {
 	})
 }
 
-// UpdateMe handles PATCH /api/v1/users/me.
+// UpdateMe godoc
+// @Summary Обновить свой профиль
+// @Tags users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body updateProfileRequest true "Поля для обновления"
+// @Success 200 {object} ownerUserResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /users/me [patch]
 func (h *Handler) UpdateMe(c echo.Context) error {
 	ctx := c.Request().Context()
 

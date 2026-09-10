@@ -68,7 +68,18 @@ func toUserResponse(u *domain.User) userResponse {
 	}
 }
 
-// Register handles user registration.
+// Register godoc
+// @Summary Регистрация пользователя
+// @Description Создаёт пользователя и сразу выполняет вход, устанавливая auth-cookies
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body registerRequest true "Данные регистрации"
+// @Success 201 {object} authResponse
+// @Failure 400 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /auth/register [post]
 func (h *Handler) Register(c echo.Context) error {
 	var req registerRequest
 	if err := c.Bind(&req); err != nil {
@@ -102,7 +113,17 @@ func (h *Handler) Register(c echo.Context) error {
 	})
 }
 
-// Login handles user login.
+// Login godoc
+// @Summary Вход пользователя
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body loginRequest true "Учётные данные"
+// @Success 200 {object} authResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /auth/login [post]
 func (h *Handler) Login(c echo.Context) error {
 	var req loginRequest
 	if err := c.Bind(&req); err != nil {
@@ -130,7 +151,17 @@ func (h *Handler) Login(c echo.Context) error {
 	})
 }
 
-// Refresh handles token refresh.
+// Refresh godoc
+// @Summary Обновить пару токенов
+// @Description Принимает refresh-токен в теле запроса или в cookie refresh_token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body refreshRequest false "Refresh-токен (опционально, можно передать через cookie)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /auth/refresh [post]
 func (h *Handler) Refresh(c echo.Context) error {
 	var req refreshRequest
 	if err := c.Bind(&req); err != nil {
@@ -160,7 +191,15 @@ func (h *Handler) Refresh(c echo.Context) error {
 	return c.JSON(http.StatusOK, tokens)
 }
 
-// Logout handles user logout.
+// Logout godoc
+// @Summary Выход пользователя
+// @Tags auth
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /auth/logout [post]
 func (h *Handler) Logout(c echo.Context) error {
 	userIDStr, ok := c.Get("user_id").(string)
 	if !ok || userIDStr == "" {
@@ -182,7 +221,14 @@ func (h *Handler) Logout(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// Me returns current user info.
+// Me godoc
+// @Summary Текущий пользователь
+// @Tags auth
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} userResponse
+// @Failure 401 {object} map[string]string
+// @Router /auth/me [get]
 func (h *Handler) Me(c echo.Context) error {
 	user, ok := c.Get("user").(*domain.User)
 	if !ok || user == nil {

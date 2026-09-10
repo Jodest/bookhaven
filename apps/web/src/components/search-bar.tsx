@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Search } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { Input } from '@bookhaven/ui';
 
 interface SearchBarProps {
   onSearch: (value: string) => void;

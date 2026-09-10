@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '@bookhaven/api-client';
-import { Input } from '@/components/ui/input';
+import { Input } from '@bookhaven/ui';
 import { Search } from 'lucide-react';
 
 interface Author {

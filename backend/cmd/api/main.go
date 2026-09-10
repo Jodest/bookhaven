@@ -20,6 +20,8 @@ import (
 	listsservice "github.com/bookhaven/backend/internal/modules/lists/service"
 	ratingsrepository "github.com/bookhaven/backend/internal/modules/ratings/repository"
 	ratingsservice "github.com/bookhaven/backend/internal/modules/ratings/service"
+	readingchallengesrepository "github.com/bookhaven/backend/internal/modules/reading_challenges/repository"
+	readingchallengesservice "github.com/bookhaven/backend/internal/modules/reading_challenges/service"
 	reviewsrepository "github.com/bookhaven/backend/internal/modules/reviews/repository"
 	reviewsservice "github.com/bookhaven/backend/internal/modules/reviews/service"
 	shelvesrepository "github.com/bookhaven/backend/internal/modules/shelves/repository"
@@ -33,8 +35,19 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+
+	_ "github.com/bookhaven/backend/docs"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
+// @title BookHaven API
+// @version 1.0
+// @description Социальный каталог книг для рынка РФ и СНГ. REST API для веб- и админ-приложений BookHaven.
+// @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Введите access-токен в формате: Bearer {token}
 func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
@@ -60,6 +73,7 @@ func main() {
 	listsRepo := listsrepository.NewGormRepository(db)
 	ratingsRepo := ratingsrepository.NewGormRepository(db)
 	reviewsRepo := reviewsrepository.NewGormRepository(db)
+	readingChallengesRepo := readingchallengesrepository.NewGormRepository(db)
 
 	// Services
 	catalogService := catalogservice.NewService(catalogRepo)
@@ -68,6 +82,7 @@ func main() {
 	listsService := listsservice.NewService(listsRepo)
 	ratingsService := ratingsservice.NewService(ratingsRepo)
 	reviewsService := reviewsservice.NewService(reviewsRepo)
+	readingChallengesService := readingchallengesservice.NewService(readingChallengesRepo)
 
 	authService := authservice.NewService(authservice.Config{
 		JWTSecret:       cfg.JWTSecret,
@@ -107,7 +122,7 @@ func main() {
 	optionalAuth := middleware.OptionalAuth(authService, usersRepo)
 
 	// Public + protected routes
-	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, authMiddleware, optionalAuth)
+	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, authMiddleware, optionalAuth)
 
 	// Admin routes
 	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware)
@@ -126,6 +141,8 @@ func main() {
 			"status": "ok",
 		})
 	})
+
+	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
 	go func() {
 		if err := e.Start(":" + cfg.Port); err != nil && err != http.ErrServerClosed {

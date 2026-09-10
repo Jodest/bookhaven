@@ -1,6 +1,6 @@
 'use client';
 
-import { Select } from '@/components/ui/select';
+import { Select } from '@bookhaven/ui';
 
 interface SortSelectorProps {
   sort: string;

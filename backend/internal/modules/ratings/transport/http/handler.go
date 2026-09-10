@@ -46,7 +46,21 @@ func parseBookID(c echo.Context) (uuid.UUID, error) {
 	return uuid.Parse(c.Param("id"))
 }
 
-// SetRating handles POST /api/v1/books/:id/ratings.
+// SetRating godoc
+// @Summary Поставить/обновить оценку книге
+// @Tags ratings
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID книги"
+// @Param body body setRatingRequest true "Оценка от 1 до 5"
+// @Success 200 {object} setRatingResponse
+// @Success 201 {object} setRatingResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /books/{id}/ratings [post]
 func (h *Handler) SetRating(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -93,7 +107,18 @@ func (h *Handler) SetRating(c echo.Context) error {
 	})
 }
 
-// GetMyRating handles GET /api/v1/books/:id/ratings/me.
+// GetMyRating godoc
+// @Summary Получить свою оценку книге
+// @Tags ratings
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID книги"
+// @Success 200 {object} myRatingResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /books/{id}/ratings/me [get]
 func (h *Handler) GetMyRating(c echo.Context) error {
 	ctx := c.Request().Context()
 

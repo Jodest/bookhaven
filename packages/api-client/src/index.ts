@@ -192,6 +192,36 @@ export interface Language {
   name: string;
 }
 
+export interface ReadingChallenge {
+  year: number;
+  goal: number | null;
+  booksRead: number;
+  progressPercent: number | null;
+  completed: boolean;
+}
+
+export interface UpsertReadingChallengeInput {
+  goal: number;
+}
+
+type RawReadingChallenge = {
+  year: number;
+  goal: number | null;
+  books_read: number;
+  progress_percent: number | null;
+  completed: boolean;
+};
+
+function normalizeReadingChallenge(raw: RawReadingChallenge): ReadingChallenge {
+  return {
+    year: raw.year,
+    goal: raw.goal,
+    booksRead: raw.books_read,
+    progressPercent: raw.progress_percent,
+    completed: raw.completed,
+  };
+}
+
 export interface AdminDashboard {
   books: number;
   hidden_books: number;
@@ -713,6 +743,28 @@ export const api = {
       fetcher<{ status: string }>(`/api/v1/shelves/${id}/books/${bookId}`, {
         method: 'DELETE',
       }),
+  },
+  readingChallenges: {
+    list: async () => {
+      const raw = await fetcher<{ items: RawReadingChallenge[]; total: number }>(
+        '/api/v1/reading-challenges'
+      );
+      return {
+        ...raw,
+        items: raw.items.map(normalizeReadingChallenge),
+      };
+    },
+    get: async (year: number) => {
+      const raw = await fetcher<RawReadingChallenge>(`/api/v1/reading-challenges/${year}`);
+      return normalizeReadingChallenge(raw);
+    },
+    upsert: async (year: number, data: UpsertReadingChallengeInput) => {
+      const raw = await fetcher<RawReadingChallenge>(`/api/v1/reading-challenges/${year}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+      return normalizeReadingChallenge(raw);
+    },
   },
   lists: {
     list: async (params?: { book_id?: string }) => {
