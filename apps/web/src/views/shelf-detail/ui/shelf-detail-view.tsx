@@ -108,7 +108,7 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
+    <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
       {isEditing && shelf ? (
         <form onSubmit={handleSubmit(onRename)} className="flex max-w-md items-start gap-2">
           <div className="flex-1">
@@ -129,7 +129,9 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
         </form>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">{shelf?.name}</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
+            {shelf?.name}
+          </h1>
           {shelf?.type === 'custom' && (
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setIsEditing(true)}>
@@ -161,7 +163,7 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
             {books.map((book) => (
               <div key={book.id} className="group relative">
                 <Link href={`/books/${book.slug}`}>
-                  <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-muted">
+                  <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted transition group-hover:-translate-y-0.5 group-hover:shadow-card">
                     {book.coverUrl ? (
                       <Image
                         src={book.coverUrl}
@@ -176,7 +178,9 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
                       </div>
                     )}
                   </div>
-                  <h3 className="mt-2 line-clamp-2 text-sm font-medium">{book.title}</h3>
+                  <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-tight">
+                    {book.title}
+                  </h3>
                   <p className="line-clamp-1 text-xs text-muted-foreground">
                     {book.authors.map((a) => a.name).join(', ')}
                   </p>

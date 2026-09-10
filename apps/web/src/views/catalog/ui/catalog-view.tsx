@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { booksApi } from '@/entities/book';
+import { booksApi, BookCard } from '@/entities/book';
 import { Book } from '@bookhaven/api-client';
 import {
   SearchBar,
@@ -14,8 +14,6 @@ import type { FilterChip } from '@/widgets/catalog-filters';
 import { EmptyState } from '@/shared/ui';
 import { SlidersHorizontal } from 'lucide-react';
 import { Button } from '@bookhaven/ui';
-import Image from 'next/image';
-import Link from 'next/link';
 
 function parseNumberParam(value: string | null): number | null {
   if (value === null) return null;
@@ -295,9 +293,9 @@ export function CatalogView() {
   const totalPages = Math.ceil(total / limit);
 
   return (
-    <main className="container mx-auto px-4 py-8">
+    <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+        <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
           Каталог книг
         </h1>
         <Button
@@ -318,35 +316,37 @@ export function CatalogView() {
       <div className="flex gap-8">
         {/* Desktop filter panel */}
         <aside className="hidden w-64 shrink-0 lg:block">
-          <FilterPanel
-            genreIds={genreIds}
-            onGenreChange={handleGenreChange}
-            authorId={authorId}
-            authorName={authorName}
-            onAuthorSelect={handleAuthorSelect}
-            ratingMin={ratingMin}
-            onRatingChange={handleRatingChange}
-            language={language}
-            onLanguageChange={handleLanguageChange}
-            yearFrom={yearFrom}
-            yearTo={yearTo}
-            onYearFromChange={handleYearFromChange}
-            onYearToChange={handleYearToChange}
-          />
+          <div className="rounded-xl border bg-card p-4">
+            <FilterPanel
+              genreIds={genreIds}
+              onGenreChange={handleGenreChange}
+              authorId={authorId}
+              authorName={authorName}
+              onAuthorSelect={handleAuthorSelect}
+              ratingMin={ratingMin}
+              onRatingChange={handleRatingChange}
+              language={language}
+              onLanguageChange={handleLanguageChange}
+              yearFrom={yearFrom}
+              yearTo={yearTo}
+              onYearFromChange={handleYearFromChange}
+              onYearToChange={handleYearToChange}
+            />
+          </div>
         </aside>
 
         <div className="flex-1">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <ActiveFilters chips={chips} onClearAll={clearAllFilters} />
             <SortSelector sort={sort} onSortChange={handleSortChange} />
           </div>
 
           {loading ? (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-[400px] animate-pulse rounded-lg bg-muted"
+                  className="h-[400px] animate-pulse rounded-xl bg-muted"
                 />
               ))}
             </div>
@@ -354,43 +354,9 @@ export function CatalogView() {
             <EmptyState />
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {books.map((book) => (
-                  <article
-                    key={book.id}
-                    className="group overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md"
-                  >
-                    <Link href={`/books/${book.slug}`} className="block">
-                      <div className="relative aspect-[2/3] overflow-hidden bg-muted">
-                        {book.coverUrl ? (
-                          <Image
-                            src={book.coverUrl}
-                            alt={book.title}
-                            fill
-                            className="object-cover transition-transform group-hover:scale-105"
-                            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center text-muted-foreground">
-                            Нет обложки
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-4">
-                        <h2 className="line-clamp-2 font-semibold leading-tight">
-                          {book.title}
-                        </h2>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {book.authors.map((author) => author.name).join(', ')}
-                        </p>
-                        {book.rating > 0 && (
-                          <p className="mt-2 text-sm font-medium">
-                            Рейтинг: {book.rating.toFixed(1)}
-                          </p>
-                        )}
-                      </div>
-                    </Link>
-                  </article>
+                  <BookCard key={book.id} book={book} />
                 ))}
               </div>
 

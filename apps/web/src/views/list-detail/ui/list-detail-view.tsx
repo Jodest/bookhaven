@@ -236,7 +236,7 @@ export function ListDetailView({ id }: ListDetailViewProps) {
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
+    <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
       {isEditing && list ? (
         <form onSubmit={handleSubmit(onUpdate)} className="max-w-md space-y-3">
           <div>
@@ -270,7 +270,9 @@ export function ListDetailView({ id }: ListDetailViewProps) {
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">{list?.title}</h1>
+            <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
+              {list?.title}
+            </h1>
             {list?.description && (
               <p className="mt-2 text-muted-foreground">{list.description}</p>
             )}
@@ -312,7 +314,7 @@ export function ListDetailView({ id }: ListDetailViewProps) {
             {books.map((book) => (
               <div key={book.id} className="group relative">
                 <Link href={`/books/${book.slug}`}>
-                  <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-muted">
+                  <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted transition group-hover:-translate-y-0.5 group-hover:shadow-card">
                     {book.coverUrl ? (
                       <Image
                         src={book.coverUrl}
@@ -327,7 +329,9 @@ export function ListDetailView({ id }: ListDetailViewProps) {
                       </div>
                     )}
                   </div>
-                  <h3 className="mt-2 line-clamp-2 text-sm font-medium">{book.title}</h3>
+                  <h3 className="mt-2 line-clamp-2 text-sm font-semibold leading-tight">
+                    {book.title}
+                  </h3>
                   <p className="line-clamp-1 text-xs text-muted-foreground">
                     {book.authors.map((a) => a.name).join(', ')}
                   </p>

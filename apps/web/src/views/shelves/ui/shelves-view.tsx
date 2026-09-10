@@ -96,8 +96,10 @@ export function ShelvesView() {
   const customShelves = shelves.filter((s) => s.type === 'custom');
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight">Мои полки</h1>
+    <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
+      <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
+        Мои полки
+      </h1>
 
       {error && (
         <div className="mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -165,7 +167,7 @@ function ShelfCard({
   };
 
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <div className="rounded-xl border bg-card p-6 text-card-foreground shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       {isEditing ? (
         <form onSubmit={handleRenameSubmit} className="flex gap-2">
           <input
@@ -180,7 +182,7 @@ function ShelfCard({
       ) : (
         <Link
           href={`/shelves/${shelf.id}`}
-          className="text-xl font-semibold hover:underline"
+          className="text-base font-semibold leading-tight hover:underline"
         >
           {shelf.name}
         </Link>

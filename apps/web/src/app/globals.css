@@ -4,26 +4,31 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Warm "literary" palette: paper + ink + deep emerald accent. */
+    --background: 40 38% 97%;
+    --foreground: 222 39% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 39% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 222 39% 11%;
+    --primary: 158 64% 24%;
+    --primary-foreground: 40 38% 97%;
+    --secondary: 32 25% 92%;
+    --secondary-foreground: 222 39% 11%;
+    --muted: 32 20% 93%;
+    --muted-foreground: 222 15% 40%;
+    --accent: 32 25% 90%;
+    --accent-foreground: 222 39% 11%;
+    --destructive: 0 72% 42%;
+    --destructive-foreground: 40 38% 97%;
+    --border: 32 20% 87%;
+    --input: 32 20% 87%;
+    --ring: 158 64% 24%;
+    --radius: 0.75rem;
+
+    /* Web-local only: amber highlight for rating/genre badges. */
+    --highlight: 38 92% 50%;
+    --highlight-foreground: 222 39% 11%;
   }
 }
 

@@ -3,6 +3,8 @@ import { AddToListButton } from '@/features/add-to-list';
 import { BookRating } from '@/features/rate-book';
 import { ShelveBookButtons } from '@/features/shelve-book';
 import { ReviewsSection } from '@/widgets/reviews-section';
+import { Badge } from '@bookhaven/ui';
+import { Star } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -19,9 +21,9 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
+    <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
       <div className="grid grid-cols-1 gap-8 md:grid-cols-[300px_1fr]">
-        <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-muted">
+        <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted">
           {book.coverUrl ? (
             <Image
               src={book.coverUrl}
@@ -36,10 +38,16 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
               Нет обложки
             </div>
           )}
+          {book.rating > 0 && (
+            <div className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-highlight px-2 py-0.5 text-xs font-semibold text-highlight-foreground shadow-sm">
+              <Star className="h-3 w-3 fill-current" />
+              {book.rating.toFixed(1)}
+            </div>
+          )}
         </div>
 
         <div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
             {book.title}
           </h1>
 
@@ -74,8 +82,8 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
 
           {book.description && (
             <div className="mt-6">
-              <h2 className="text-xl font-semibold">Описание</h2>
-              <p className="mt-2 leading-relaxed text-muted-foreground">
+              <h2 className="font-display text-xl font-semibold">Описание</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground md:text-base">
                 {book.description}
               </p>
             </div>
@@ -104,12 +112,9 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
 
           <div className="mt-6 flex flex-wrap gap-2">
             {book.genres.map((genre) => (
-              <span
-                key={genre.id}
-                className="rounded-full border px-3 py-1 text-sm"
-              >
+              <Badge key={genre.id} variant="outline">
                 {genre.name}
-              </span>
+              </Badge>
             ))}
           </div>
 

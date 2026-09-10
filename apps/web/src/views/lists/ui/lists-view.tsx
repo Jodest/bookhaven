@@ -2,7 +2,7 @@
 
 import { listsApi } from '@/entities/list';
 import { List } from '@bookhaven/api-client';
-import { Button } from '@bookhaven/ui';
+import { Badge, Button } from '@bookhaven/ui';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -94,8 +94,10 @@ export function ListsView() {
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight">Мои списки</h1>
+    <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
+      <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
+        Мои списки
+      </h1>
 
       {error && (
         <div className="mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -179,7 +181,7 @@ function ListCard({
   };
 
   return (
-    <div className="rounded-lg border bg-card p-6 text-card-foreground shadow-sm">
+    <div className="rounded-xl border bg-card p-6 text-card-foreground shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       {isEditing ? (
         <form onSubmit={handleUpdateSubmit} className="space-y-3">
           <input
@@ -219,7 +221,7 @@ function ListCard({
         <>
           <Link
             href={`/lists/${list.id}`}
-            className="text-xl font-semibold hover:underline"
+            className="text-base font-semibold leading-tight hover:underline"
           >
             {list.title}
           </Link>
@@ -232,15 +234,9 @@ function ListCard({
             {list.booksCount} {pluralizeBooks(list.booksCount)}
           </p>
           <div className="mt-2 flex items-center gap-2">
-            <span
-              className={`inline-block rounded-full px-2 py-0.5 text-xs ${
-                list.isPublic
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-gray-100 text-gray-800'
-              }`}
-            >
+            <Badge variant={list.isPublic ? 'default' : 'secondary'}>
               {list.isPublic ? 'Публичный' : 'Приватный'}
-            </span>
+            </Badge>
           </div>
           <div className="mt-4 flex gap-2">
             <Button variant="outline" size="sm" onClick={onStartEdit}>

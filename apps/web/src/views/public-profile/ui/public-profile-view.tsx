@@ -76,8 +76,8 @@ export function PublicProfileView({ id }: PublicProfileViewProps) {
   });
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="mx-auto max-w-3xl rounded-lg border bg-card p-8 text-card-foreground shadow-sm">
+    <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
+      <div className="mx-auto max-w-3xl rounded-xl border bg-card p-8 text-card-foreground shadow-sm">
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
           {user.avatarUrl ? (
             <img
@@ -92,7 +92,9 @@ export function PublicProfileView({ id }: PublicProfileViewProps) {
           )}
 
           <div className="text-center sm:text-left">
-            <h1 className="text-3xl font-bold tracking-tight">{displayName}</h1>
+            <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
+              {displayName}
+            </h1>
             <p className="mt-1 text-muted-foreground">
               {profileTypeLabels[user.profileType] ?? user.profileType}
             </p>
@@ -101,17 +103,17 @@ export function PublicProfileView({ id }: PublicProfileViewProps) {
         </div>
 
         <div className="mt-8">
-          <h2 className="text-xl font-semibold">Публичные списки</h2>
+          <h2 className="font-display text-xl font-semibold">Публичные списки</h2>
 
           {lists.length === 0 ? (
             <p className="mt-4 text-muted-foreground">Публичных списков пока нет</p>
           ) : (
             <ul className="mt-4 space-y-3">
               {lists.map((list) => (
-                <li key={list.id} className="rounded-md border p-4">
+                <li key={list.id} className="rounded-lg border p-4">
                   <Link
                     href={`/lists/public/${list.id}`}
-                    className="text-lg font-medium hover:underline"
+                    className="text-base font-semibold leading-tight hover:underline"
                   >
                     {list.title}
                   </Link>

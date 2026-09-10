@@ -97,8 +97,10 @@ export function ChallengeView() {
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold tracking-tight">Читательский вызов</h1>
+    <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
+      <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
+        Читательский вызов
+      </h1>
 
       <div className="mt-6 flex items-center gap-3">
         <label htmlFor="year" className="text-sm font-medium text-muted-foreground">
@@ -130,8 +132,8 @@ export function ChallengeView() {
 
       {history.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-lg font-semibold">История</h2>
-          <ul className="mt-3 max-w-xl divide-y rounded-lg border bg-card text-card-foreground shadow-sm">
+          <h2 className="font-display text-lg font-semibold">История</h2>
+          <ul className="mt-3 max-w-xl divide-y rounded-xl border bg-card text-card-foreground shadow-sm">
             {history.map((item) => (
               <li key={item.year} className="flex items-center justify-between px-4 py-3">
                 <button

@@ -1,6 +1,6 @@
 import { authorsApi } from '@/entities/author';
+import { BookCard } from '@/entities/book';
 import Image from 'next/image';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 interface AuthorDetailViewProps {
@@ -15,9 +15,9 @@ export async function AuthorDetailView({ slug }: AuthorDetailViewProps) {
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
+    <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
       <div className="grid grid-cols-1 gap-8 md:grid-cols-[200px_1fr]">
-        <div className="relative aspect-square overflow-hidden rounded-lg bg-muted">
+        <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
           {author.photoUrl ? (
             <Image
               src={author.photoUrl}
@@ -35,7 +35,7 @@ export async function AuthorDetailView({ slug }: AuthorDetailViewProps) {
         </div>
 
         <div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
             {author.name}
           </h1>
 
@@ -48,8 +48,8 @@ export async function AuthorDetailView({ slug }: AuthorDetailViewProps) {
 
           {author.biography && (
             <div className="mt-6">
-              <h2 className="text-xl font-semibold">Биография</h2>
-              <p className="mt-2 leading-relaxed text-muted-foreground">
+              <h2 className="font-display text-xl font-semibold">Биография</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground md:text-base">
                 {author.biography}
               </p>
             </div>
@@ -58,42 +58,13 @@ export async function AuthorDetailView({ slug }: AuthorDetailViewProps) {
       </div>
 
       {author.books && author.books.length > 0 && (
-        <section className="mt-12">
-          <h2 className="mb-6 text-2xl font-semibold">Книги автора</h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <section className="py-12 md:py-16">
+          <h2 className="font-display mb-8 text-2xl font-semibold tracking-tight md:text-3xl">
+            Книги автора
+          </h2>
+          <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {author.books.map((book) => (
-              <article
-                key={book.id}
-                className="group overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md"
-              >
-                <Link href={`/books/${book.slug}`} className="block">
-                  <div className="relative aspect-[2/3] overflow-hidden bg-muted">
-                    {book.coverUrl ? (
-                      <Image
-                        src={book.coverUrl}
-                        alt={book.title}
-                        fill
-                        className="object-cover transition-transform group-hover:scale-105"
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-muted-foreground">
-                        Нет обложки
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="line-clamp-2 font-semibold leading-tight">
-                      {book.title}
-                    </h3>
-                    {book.rating > 0 && (
-                      <p className="mt-2 text-sm font-medium">
-                        Рейтинг: {book.rating.toFixed(1)}
-                      </p>
-                    )}
-                  </div>
-                </Link>
-              </article>
+              <BookCard key={book.id} book={book} />
             ))}
           </div>
         </section>
