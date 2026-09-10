@@ -11,6 +11,7 @@
 - [x] User Profiles (see [docs/features/user-profiles.md](features/user-profiles.md))
 - [x] Admin (see [docs/features/admin.md](features/admin.md))
 - [x] Reading Challenge (see [docs/features/reading-challenge.md](features/reading-challenge.md))
+- [x] Frontend FSD Migration (see [docs/features/frontend-fsd-migration.md](features/frontend-fsd-migration.md))
 
 
 ## Next

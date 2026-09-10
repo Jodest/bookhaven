@@ -1,0 +1,1 @@
+export { authorsApi } from './api';

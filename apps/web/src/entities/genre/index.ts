@@ -1,0 +1,1 @@
+export { genresApi } from './api';

@@ -1,0 +1,1 @@
+export { adminGenresApi } from './api';

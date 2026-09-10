@@ -1,3 +1,113 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "plugins": ["boundaries"],
+  "settings": {
+    "boundaries/include": ["src/**/*"],
+    "boundaries/elements": [
+      {
+        "type": "app-root",
+        "mode": "file",
+        "pattern": ["app/layout.tsx", "app/providers.tsx"]
+      },
+      {
+        "type": "views",
+        "mode": "folder",
+        "pattern": ["views/*"],
+        "capture": ["slice"]
+      },
+      {
+        "type": "widgets",
+        "mode": "folder",
+        "pattern": ["widgets/*"],
+        "capture": ["slice"]
+      },
+      {
+        "type": "features",
+        "mode": "folder",
+        "pattern": ["features/*"],
+        "capture": ["slice"]
+      },
+      {
+        "type": "entities",
+        "mode": "folder",
+        "pattern": ["entities/*"],
+        "capture": ["slice"]
+      },
+      {
+        "type": "shared",
+        "mode": "folder",
+        "pattern": ["shared/*"],
+        "capture": ["slice"]
+      },
+      {
+        "type": "app",
+        "mode": "folder",
+        "pattern": ["app"]
+      }
+    ]
+  },
+  "rules": {
+    "boundaries/element-types": [
+      2,
+      {
+        "default": "disallow",
+        "message": "${file.type} is not allowed to import ${dependency.type}. FSD layers may only import strictly lower layers (shared < entities < features < widgets < views < app), and entities/features may not import sibling slices of the same layer.",
+        "rules": [
+          { "from": ["shared"], "allow": ["shared"] },
+          {
+            "from": ["entities"],
+            "allow": ["shared", ["entities", { "slice": "${from.slice}" }]]
+          },
+          {
+            "from": ["features"],
+            "allow": [
+              "shared",
+              "entities",
+              ["features", { "slice": "${from.slice}" }]
+            ]
+          },
+          {
+            "from": ["widgets"],
+            "allow": [
+              "shared",
+              "entities",
+              "features",
+              ["widgets", { "slice": "${from.slice}" }]
+            ]
+          },
+          {
+            "from": ["views"],
+            "allow": [
+              "shared",
+              "entities",
+              "features",
+              "widgets",
+              ["views", { "slice": "${from.slice}" }]
+            ]
+          },
+          { "from": ["app"], "allow": ["shared", "views"] },
+          {
+            "from": ["app-root"],
+            "allow": ["shared", "entities", "widgets", "views", "app-root", "app"]
+          }
+        ]
+      }
+    ],
+    "boundaries/entry-point": [
+      2,
+      {
+        "default": "disallow",
+        "rules": [
+          {
+            "target": ["entities", "features", "widgets"],
+            "allow": "index.ts"
+          },
+          {
+            "target": ["views", "shared", "app", "app-root"],
+            "allow": "**/*"
+          }
+        ]
+      }
+    ]
+  }
 }

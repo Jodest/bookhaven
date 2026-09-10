@@ -1,7 +1,6 @@
 'use client';
 
-import { AuthInitializer } from '@/components/auth-initializer';
-import { createAdminQueryClient } from '@/lib/admin-query-client';
+import { SessionInitializer, createAdminQueryClient } from '@/entities/session';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -10,7 +9,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthInitializer />
+      <SessionInitializer />
       {children}
     </QueryClientProvider>
   );
