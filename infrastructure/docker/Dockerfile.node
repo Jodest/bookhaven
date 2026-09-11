@@ -10,7 +10,6 @@ COPY apps/admin/package.json ./apps/admin/
 COPY packages/ui/package.json ./packages/ui/
 COPY packages/config/package.json ./packages/config/
 COPY packages/api-client/package.json ./packages/api-client/
-COPY packages/types/package.json ./packages/types/
 RUN pnpm install --frozen-lockfile
 COPY . .
 EXPOSE 3000
@@ -23,7 +22,6 @@ COPY apps/admin/package.json ./apps/admin/
 COPY packages/ui/package.json ./packages/ui/
 COPY packages/config/package.json ./packages/config/
 COPY packages/api-client/package.json ./packages/api-client/
-COPY packages/types/package.json ./packages/types/
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build

@@ -18,11 +18,14 @@ COPY go.mod ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/migrate ./cmd/migrate
 
 # Production stage
 FROM gcr.io/distroless/static-debian12:nonroot AS production
-COPY --from=builder /app/bin/api /api
-COPY --from=builder /app/migrations /migrations
+WORKDIR /app
+COPY --from=builder /app/bin/api /app/api
+COPY --from=builder /app/bin/migrate /app/migrate
+COPY --from=builder /app/migrations /app/migrations
 EXPOSE 8080
 USER nonroot:nonroot
-ENTRYPOINT ["/api"]
+ENTRYPOINT ["/app/api"]

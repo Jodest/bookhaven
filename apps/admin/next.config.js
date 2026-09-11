@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  transpilePackages: ['@bookhaven/ui', '@bookhaven/api-client', '@bookhaven/types'],
+  transpilePackages: ['@bookhaven/ui', '@bookhaven/api-client'],
   experimental: {
     typedRoutes: true,
   },

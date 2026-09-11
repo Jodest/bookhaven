@@ -17,7 +17,7 @@
 
 ## Next
 
-- [ ] Tests, CI/CD and Production
+- [ ] Tests, CI/CD and Production — deployment architecture, CI/CD, and prerequisite fixes planned (see [docs/DEPLOYMENT.md](DEPLOYMENT.md)); server not yet provisioned
 
 ## Technical Debt
 

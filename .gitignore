@@ -26,8 +26,10 @@ vendor/
 # Environment variables
 .env
 .env.local
+.env.production
 .env.*.local
 !.env.example
+!.env.production.example
 
 # IDE
 .idea/
