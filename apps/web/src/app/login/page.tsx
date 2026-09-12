@@ -1,9 +1,14 @@
 import { LoginView } from '@/views/login';
+import { Suspense } from 'react';
 
 export const metadata = {
   title: 'Вход — BookHaven',
 };
 
 export default function Page() {
-  return <LoginView />;
+  return (
+    <Suspense>
+      <LoginView />
+    </Suspense>
+  );
 }

@@ -5,13 +5,13 @@ const protectedRoutes = ['/profile', '/shelves'];
 const authRoutes = ['/login', '/register'];
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
   const accessToken = request.cookies.get('access_token')?.value;
   const isAuthenticated = Boolean(accessToken);
 
   if (protectedRoutes.some((route) => pathname.startsWith(route)) && !isAuthenticated) {
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
+    loginUrl.searchParams.set('redirect', pathname + search);
     return NextResponse.redirect(loginUrl);
   }
 

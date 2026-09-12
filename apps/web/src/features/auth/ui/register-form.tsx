@@ -1,10 +1,11 @@
 'use client';
 
 import { useAuthStore } from '@/entities/session';
+import { isSafeRedirectPath } from '@/shared/lib/safe-redirect';
 import { Button } from '@bookhaven/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -18,6 +19,7 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 
 export function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { register: registerUser, error, clearError } = useAuthStore();
 
   const {
@@ -32,7 +34,8 @@ export function RegisterForm() {
     clearError();
     try {
       await registerUser(data.email, data.password, data.name);
-      router.push('/profile');
+      const redirect = searchParams.get('redirect');
+      router.push((isSafeRedirectPath(redirect) ? redirect : '/profile') as any);
     } catch {
       // ошибка уже в store
     }
