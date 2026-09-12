@@ -4,6 +4,8 @@ import { useAuthStore } from '@/entities/session';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Suspense } from 'react';
+import { HeaderLoginLink } from './header-login-link';
 import { HeaderSearch } from './header-search';
 
 export function Header() {
@@ -62,9 +64,15 @@ export function Header() {
                 </>
               ) : (
                 <>
-                  <Button variant="ghost" asChild>
-                    <Link href="/login">Войти</Link>
-                  </Button>
+                  <Suspense
+                    fallback={
+                      <Button variant="ghost" asChild>
+                        <Link href="/login">Войти</Link>
+                      </Button>
+                    }
+                  >
+                    <HeaderLoginLink />
+                  </Suspense>
                   <Button variant="secondary" asChild>
                     <Link href="/register">Регистрация</Link>
                   </Button>
