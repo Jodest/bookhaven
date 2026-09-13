@@ -339,11 +339,91 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
-async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
+export interface RefreshedTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+// Paths that must never trigger an auto-refresh-and-retry: a 401 from these
+// means "bad credentials" / "refresh itself is dead" / "already logging out",
+// not "access token expired" — retrying would be wasteful or recursive.
+const AUTH_REFRESH_EXCLUDED_PATHS = [
+  '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/auth/refresh',
+  '/api/v1/auth/logout',
+];
+
+// Mirrors backend/cmd/api/main.go's `AccessTokenTTL` (currently 15 minutes).
+// Used as a fallback TTL when scheduling a proactive refresh from a context
+// without a real `expires_in` (e.g. after `GET /api/v1/auth/me`). Keep this in
+// sync manually if the backend TTL ever changes.
+export const FALLBACK_ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+
+let refreshPromise: Promise<RefreshedTokens> | null = null;
+const refreshListeners = new Set<(tokens: RefreshedTokens) => void>();
+
+export function onTokenRefresh(listener: (tokens: RefreshedTokens) => void): () => void {
+  refreshListeners.add(listener);
+  return () => {
+    refreshListeners.delete(listener);
+  };
+}
+
+async function rawRefresh(): Promise<RefreshedTokens> {
+  const raw = await fetcher<{
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+  }>('/api/v1/auth/refresh', {
+    method: 'POST',
+  });
+  return {
+    accessToken: raw.access_token,
+    refreshToken: raw.refresh_token,
+    expiresIn: raw.expires_in,
+  };
+}
+
+// Dedups concurrent refresh attempts (reactive 401s and the proactive timer
+// alike) so only one `/auth/refresh` call is ever in flight at a time — the
+// backend rotates the refresh token on every call, so a second parallel call
+// would legitimately fail.
+function performRefresh(): Promise<RefreshedTokens> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  refreshPromise = rawRefresh()
+    .then((tokens) => {
+      setAccessToken(tokens.accessToken);
+      refreshListeners.forEach((listener) => listener(tokens));
+      return tokens;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+  return refreshPromise;
+}
+
+// Schedules `onDue` at ~80% of the access-token TTL (clamped to a small
+// minimum) so both apps can proactively refresh identically. Best-effort:
+// the reactive 401-retry path in `fetcher()` is the correctness backstop if
+// this timer fires late, or not at all (e.g. a throttled background tab).
+export function scheduleTokenRefresh(expiresInSeconds: number, onDue: () => void): () => void {
+  const MIN_DELAY_MS = 5000;
+  const delayMs = Math.max(expiresInSeconds * 1000 * 0.8, MIN_DELAY_MS);
+  const timeoutId = setTimeout(onDue, delayMs);
+  return () => clearTimeout(timeoutId);
+}
+
+// Attach bearer token to state-changing admin requests. Reads continue to
+// rely on the HttpOnly cookie so cookie auth for admin reads is preserved.
+// Extracted so the 401-retry path below can rebuild headers with a
+// freshly-rotated access token before retrying.
+function buildRequestHeaders(path: string, options?: RequestInit): Headers {
   const headers = new Headers(options?.headers);
   headers.set('Content-Type', 'application/json');
-  // Attach bearer token to state-changing admin requests. Reads continue to
-  // rely on the HttpOnly cookie so cookie auth for admin reads is preserved.
   const method = (options?.method ?? 'GET').toUpperCase();
   if (
     accessToken &&
@@ -353,6 +433,11 @@ async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
   ) {
     headers.set('Authorization', `Bearer ${accessToken}`);
   }
+  return headers;
+}
+
+async function fetcher<T>(path: string, options?: RequestInit, isRetry = false): Promise<T> {
+  const headers = buildRequestHeaders(path, options);
 
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -362,6 +447,28 @@ async function fetcher<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      !isRetry &&
+      !AUTH_REFRESH_EXCLUDED_PATHS.includes(path)
+    ) {
+      let refreshed = false;
+      try {
+        await performRefresh();
+        refreshed = true;
+      } catch {
+        // Refresh failed — fall through and surface the *original* 401
+        // below so existing "treat 401 as logged out" logic in callers is
+        // unaffected.
+      }
+      if (refreshed) {
+        // Rebuild headers (via the recursive call) so a rotated access
+        // token is used, and retry exactly once. Any failure here
+        // (including a second 401) is surfaced as-is — no second refresh.
+        return fetcher<T>(path, options, true);
+      }
+    }
+
     let message: string | undefined;
     try {
       const body = await response.json();
@@ -644,20 +751,7 @@ export const api = {
       fetcher<{ status: string }>('/api/v1/auth/logout', {
         method: 'POST',
       }),
-    refresh: async () => {
-      const raw = await fetcher<{
-        access_token: string;
-        refresh_token: string;
-        expires_in: number;
-      }>('/api/v1/auth/refresh', {
-        method: 'POST',
-      });
-      return {
-        accessToken: raw.access_token,
-        refreshToken: raw.refresh_token,
-        expiresIn: raw.expires_in,
-      };
-    },
+    refresh: (): Promise<RefreshedTokens> => performRefresh(),
   },
   users: {
     getPublic: async (id: string) => {

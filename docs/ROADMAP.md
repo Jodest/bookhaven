@@ -2,7 +2,7 @@
 
 ## Completed
 
-- [x] Frontend authentication
+- [x] Frontend authentication — silent token refresh fix (see [docs/features/silent-token-refresh.md](features/silent-token-refresh.md))
 - [x] Catalog
 - [x] Shelves
 - [x] Ratings and Reviews
