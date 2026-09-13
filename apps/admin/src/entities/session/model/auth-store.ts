@@ -1,4 +1,11 @@
-import { api, setAccessToken, User } from '@bookhaven/api-client';
+import {
+  api,
+  FALLBACK_ACCESS_TOKEN_TTL_SECONDS,
+  onTokenRefresh,
+  scheduleTokenRefresh,
+  setAccessToken,
+  User,
+} from '@bookhaven/api-client';
 import { create } from 'zustand';
 import { sanitizeRedirect } from '@/shared/lib';
 
@@ -42,6 +49,28 @@ if (initialToken) {
   setAccessToken(initialToken);
 }
 
+let cancelRefreshTimer: (() => void) | null = null;
+
+function scheduleRefresh(expiresIn: number): void {
+  cancelRefreshTimer?.();
+  cancelRefreshTimer = scheduleTokenRefresh(expiresIn, () => {
+    api.auth.refresh().catch(() => {
+      // Proactive refresh failed — the reactive 401-retry path is the
+      // correctness backstop for the next real request.
+    });
+  });
+}
+
+// Any successful refresh — proactive or reactive, triggered from inside
+// `fetcher()` or from this store's own timer — reschedules the next one
+// using the accurate `expires_in`, and persists the rotated bearer token.
+// This is the piece that would otherwise be missed for reactive refreshes
+// triggered deep inside `fetcher()` (invisible to this store otherwise).
+onTokenRefresh((tokens) => {
+  setStoredToken(tokens.accessToken);
+  scheduleRefresh(tokens.expiresIn);
+});
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isLoading: true,
@@ -59,7 +88,9 @@ export const useAuthStore = create<AuthState>((set) => ({
         isLoading: false,
         forbiddenPath: null,
       });
-      if (!user) {
+      if (user) {
+        scheduleRefresh(FALLBACK_ACCESS_TOKEN_TTL_SECONDS);
+      } else {
         setAccessToken(null);
         setStoredToken(null);
       }
@@ -69,6 +100,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: false,
         isLoading: false,
       });
+      cancelRefreshTimer?.();
+      cancelRefreshTimer = null;
       setAccessToken(null);
       setStoredToken(null);
     }
@@ -87,6 +120,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         isSigningOut: false,
         forbiddenPath: null,
       });
+      scheduleRefresh(response.expiresIn);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Ошибка входа';
       set({ error: message });
@@ -98,6 +132,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await api.auth.logout();
     } finally {
+      cancelRefreshTimer?.();
+      cancelRefreshTimer = null;
       setAccessToken(null);
       setStoredToken(null);
       set({
@@ -119,6 +155,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       // ignore: token may already be invalid
     } finally {
+      cancelRefreshTimer?.();
+      cancelRefreshTimer = null;
       setAccessToken(null);
       setStoredToken(null);
       set({
@@ -140,6 +178,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       // ignore: token may already be invalid
     } finally {
+      cancelRefreshTimer?.();
+      cancelRefreshTimer = null;
       setAccessToken(null);
       setStoredToken(null);
       set({
