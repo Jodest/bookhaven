@@ -4,6 +4,7 @@
 
 - [x] Frontend authentication — silent token refresh fix (see [docs/features/silent-token-refresh.md](features/silent-token-refresh.md))
 - [x] Middleware session persistence — stop hard-redirecting protected routes when only the short-lived access token has expired (see [docs/features/middleware-session-persistence.md](features/middleware-session-persistence.md))
+- [x] Backend authentication — refresh token hash lookup fix (see [docs/features/refresh-token-hash-fix.md](features/refresh-token-hash-fix.md))
 - [x] Catalog
 - [x] Shelves
 - [x] Ratings and Reviews
