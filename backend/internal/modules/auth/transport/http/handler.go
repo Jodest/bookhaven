@@ -258,7 +258,23 @@ func setAuthCookies(c echo.Context, tokens *authDomain.TokenPair) {
 		Secure:   false,
 		SameSite: http.SameSiteStrictMode,
 		Path:     "/api/v1/auth/refresh",
-		MaxAge:   60 * 60 * 24 * 30, // 30 days
+		MaxAge:   60 * 60 * 24 * 30, // 30 days -- keep in sync with has_session's MaxAge below
+	})
+	// has_session is a non-sensitive marker cookie: it carries no authorization
+	// value and is never validated server-side. It exists purely so that
+	// Edge middleware can tell "maybe still logged in, let the client resolve
+	// it" apart from "definitely logged out" without being able to read the
+	// HttpOnly refresh_token (whose Path is restricted to the refresh endpoint).
+	// It must always be set/cleared alongside refresh_token with the exact same
+	// MaxAge, so the two can never diverge in the browser.
+	c.SetCookie(&http.Cookie{
+		Name:     "has_session",
+		Value:    "1",
+		HttpOnly: true, // no legitimate reason for client JS to read/write it
+		Secure:   false, // matches existing cookies; set true in production with HTTPS
+		SameSite: http.SameSiteStrictMode,
+		Path:     "/",
+		MaxAge:   60 * 60 * 24 * 30, // 30 days -- must always match refresh_token's MaxAge above
 	})
 }
 
@@ -275,6 +291,13 @@ func clearAuthCookies(c echo.Context) {
 		Value:    "",
 		HttpOnly: true,
 		Path:     "/api/v1/auth/refresh",
+		MaxAge:   -1,
+	})
+	c.SetCookie(&http.Cookie{
+		Name:     "has_session",
+		Value:    "",
+		HttpOnly: true,
+		Path:     "/",
 		MaxAge:   -1,
 	})
 }
