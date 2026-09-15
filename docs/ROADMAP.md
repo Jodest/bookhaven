@@ -3,6 +3,7 @@
 ## Completed
 
 - [x] Frontend authentication — silent token refresh fix (see [docs/features/silent-token-refresh.md](features/silent-token-refresh.md))
+- [x] Backend authentication — refresh token hash lookup fix (see [docs/features/refresh-token-hash-fix.md](features/refresh-token-hash-fix.md))
 - [x] Catalog
 - [x] Shelves
 - [x] Ratings and Reviews
