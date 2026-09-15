@@ -6,6 +6,8 @@ Status: done
 
 Stop logging users out after ~15 minutes of access-token life when they still hold a valid 30-day refresh token. The backend refresh flow (`POST /api/v1/auth/refresh`) is complete and correct; nothing on the frontend ever calls it. Fix is frontend-only: retry transparently on a 401 (reactive), and refresh proactively before expiry via a timer, for both `apps/web` and `apps/admin`, which share `packages/api-client`.
 
+> **Correction:** the claim above that the backend refresh flow was "complete and correct" was wrong. `hashToken()` used a non-deterministic hash, so `POST /api/v1/auth/refresh` always returned 401 regardless of the frontend changes in this document. That bug was independent of (and masked by) the fact that the frontend/client-side fixes described here were still correct and necessary for their own scope — they just had no working backend to exercise until the fix below shipped. See [docs/features/refresh-token-hash-fix.md](refresh-token-hash-fix.md) for the root cause and fix.
+
 ## User Stories
 
 - As a logged-in user who has been idle (or just has an app tab open) for more than 15 minutes, when I take my next action, I want it to succeed transparently instead of bouncing me to `/login`, as long as my refresh token (30 days) is still valid.

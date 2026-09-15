@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
@@ -226,8 +227,8 @@ func (s *Service) Logout(ctx context.Context, userID uuid.UUID) error {
 }
 
 func hashToken(token string) string {
-	hash, _ := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-	return string(hash)
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 // ConstantTimeCompare performs constant time comparison of two hashes.
