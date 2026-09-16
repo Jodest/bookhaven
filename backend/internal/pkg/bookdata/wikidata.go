@@ -1,0 +1,344 @@
+package bookdata
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+// defaultWikidataBaseURL is the public Wikidata SPARQL query endpoint.
+const defaultWikidataBaseURL = "https://query.wikidata.org/sparql"
+
+// WikidataClient queries the public Wikidata SPARQL endpoint and normalizes
+// results into ExternalBookRecord. It is the source of structured facts
+// (title, authors, genre, published year) per the catalog-data-import
+// business analysis. Construct with NewWikidataClient.
+type WikidataClient struct {
+	cfg *config
+}
+
+// Compile-time check that WikidataClient satisfies Client.
+var _ Client = (*WikidataClient)(nil)
+
+// NewWikidataClient builds a WikidataClient with the given options applied
+// on top of sane defaults (public endpoint, DefaultUserAgent, ~1 req/sec
+// rate limit, retry-with-backoff on 429/5xx).
+func NewWikidataClient(opts ...Option) *WikidataClient {
+	cfg := newConfig(opts)
+	if cfg.baseURL == "" {
+		cfg.baseURL = defaultWikidataBaseURL
+	}
+	return &WikidataClient{cfg: cfg}
+}
+
+// SourceName returns "wikidata".
+func (c *WikidataClient) SourceName() string { return "wikidata" }
+
+// Query executes an arbitrary, caller-supplied SPARQL query against the
+// configured endpoint and parses the standard SPARQL JSON results format
+// (results.bindings[]) into normalized records. Query is a bulk-capable
+// method not on the shared Client interface — it is the intended entry
+// point for the future cmd/harvest increment.
+//
+// Query expects (but does not require the caller to alias exactly) the
+// following result variables, matching what buildTitleAuthorQuery and
+// buildISBNQuery produce: item, itemLabel, authors (pipe-separated), genres
+// (pipe-separated), isbn, published (a date literal), language (an English
+// language name label). Missing optional variables simply leave the
+// corresponding ExternalBookRecord field unset.
+func (c *WikidataClient) Query(ctx context.Context, sparql string) ([]ExternalBookRecord, error) {
+	if strings.TrimSpace(sparql) == "" {
+		return nil, ErrInvalidQuery
+	}
+
+	u, err := url.Parse(c.cfg.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("bookdata: invalid wikidata base URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("query", sparql)
+	q.Set("format", "json")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("bookdata: build wikidata request: %w", err)
+	}
+	req.Header.Set("Accept", "application/sparql-results+json")
+
+	resp, err := c.cfg.doRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusBadRequest {
+		return nil, ErrInvalidQuery
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("%w: wikidata returned status %d", ErrSourceUnavailable, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("bookdata: read wikidata response: %w", err)
+	}
+
+	var parsed sparqlResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("bookdata: parse wikidata response: %w", err)
+	}
+
+	return parseSparqlBindings(parsed.Results.Bindings), nil
+}
+
+// FindByISBN looks up a single book by ISBN-10 or ISBN-13 (Wikidata
+// properties P957 and P212 respectively). Returns ErrNotFound if Wikidata
+// has no matching item.
+func (c *WikidataClient) FindByISBN(ctx context.Context, isbn string) (*ExternalBookRecord, error) {
+	clean := normalizeISBNStructural(isbn)
+	if clean == "" {
+		return nil, ErrInvalidQuery
+	}
+	records, err := c.Query(ctx, buildISBNQuery(clean))
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, ErrNotFound
+	}
+	return &records[0], nil
+}
+
+// FindByTitleAuthor builds an internal, parameterized SPARQL query for a
+// point lookup by title and (optionally empty) author, and returns the
+// first result. Returns ErrNotFound if Wikidata has no matching item.
+func (c *WikidataClient) FindByTitleAuthor(ctx context.Context, title, author string) (*ExternalBookRecord, error) {
+	if strings.TrimSpace(title) == "" {
+		return nil, ErrInvalidQuery
+	}
+	records, err := c.Query(ctx, buildTitleAuthorQuery(title, author))
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, ErrNotFound
+	}
+	return &records[0], nil
+}
+
+// buildTitleAuthorQuery constructs a SPARQL query that finds literary works
+// whose (ru or en) label contains title, optionally constrained to items
+// with a matching author label. Preference for `ru` labels follows the
+// business analysis' language guidance for the catalog's primary audience.
+func buildTitleAuthorQuery(title, author string) string {
+	authorFilter := ""
+	if strings.TrimSpace(author) != "" {
+		authorFilter = fmt.Sprintf(`
+    ?item wdt:P50 ?author .
+    ?author rdfs:label ?authorLabel .
+    FILTER(LANG(?authorLabel) IN ("ru","en"))
+    FILTER(CONTAINS(LCASE(?authorLabel), LCASE("%s")))`, escapeSPARQLString(author))
+	}
+
+	return fmt.Sprintf(`SELECT ?item ?itemLabel
+  (GROUP_CONCAT(DISTINCT ?authorLabel; separator="|") AS ?authors)
+  (GROUP_CONCAT(DISTINCT ?genreLabel; separator="|") AS ?genres)
+  (SAMPLE(?isbn13) AS ?isbn)
+  (SAMPLE(?pubDate) AS ?published)
+  (SAMPLE(?languageLabel) AS ?language)
+WHERE {
+  ?item wdt:P31/wdt:P279* wd:Q7725634 .
+  ?item rdfs:label ?itemLabel .
+  FILTER(LANG(?itemLabel) IN ("ru","en"))
+  FILTER(CONTAINS(LCASE(?itemLabel), LCASE("%s")))
+  OPTIONAL {%s
+  }
+  OPTIONAL {
+    ?item wdt:P136 ?genre .
+    ?genre rdfs:label ?genreLabel .
+    FILTER(LANG(?genreLabel) IN ("ru","en"))
+  }
+  OPTIONAL { ?item wdt:P212 ?isbn13 . }
+  OPTIONAL { ?item wdt:P577 ?pubDate . }
+  OPTIONAL {
+    ?item wdt:P407 ?language .
+    ?language rdfs:label ?languageLabel .
+    FILTER(LANG(?languageLabel) = "en")
+  }
+}
+GROUP BY ?item ?itemLabel
+LIMIT 5`, escapeSPARQLString(title), authorFilter)
+}
+
+// buildISBNQuery constructs a SPARQL query that finds the literary work
+// edition matching the given (already structurally-normalized) ISBN via
+// either P212 (ISBN-13) or P957 (ISBN-10).
+func buildISBNQuery(isbn string) string {
+	escaped := escapeSPARQLString(isbn)
+	return fmt.Sprintf(`SELECT ?item ?itemLabel
+  (GROUP_CONCAT(DISTINCT ?authorLabel; separator="|") AS ?authors)
+  (GROUP_CONCAT(DISTINCT ?genreLabel; separator="|") AS ?genres)
+  (SAMPLE(?isbn13) AS ?isbn)
+  (SAMPLE(?pubDate) AS ?published)
+  (SAMPLE(?languageLabel) AS ?language)
+WHERE {
+  { ?item wdt:P212 "%s" . } UNION { ?item wdt:P957 "%s" . }
+  ?item rdfs:label ?itemLabel .
+  FILTER(LANG(?itemLabel) IN ("ru","en"))
+  OPTIONAL {
+    ?item wdt:P50 ?author .
+    ?author rdfs:label ?authorLabel .
+    FILTER(LANG(?authorLabel) IN ("ru","en"))
+  }
+  OPTIONAL {
+    ?item wdt:P136 ?genre .
+    ?genre rdfs:label ?genreLabel .
+    FILTER(LANG(?genreLabel) IN ("ru","en"))
+  }
+  OPTIONAL { ?item wdt:P212 ?isbn13 . }
+  OPTIONAL { ?item wdt:P577 ?pubDate . }
+  OPTIONAL {
+    ?item wdt:P407 ?language .
+    ?language rdfs:label ?languageLabel .
+    FILTER(LANG(?languageLabel) = "en")
+  }
+}
+GROUP BY ?item ?itemLabel
+LIMIT 5`, escaped, escaped)
+}
+
+// escapeSPARQLString escapes a Go string for safe embedding inside a
+// double-quoted SPARQL string literal.
+func escapeSPARQLString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
+// sparqlResponse mirrors the standard SPARQL 1.1 JSON results format:
+// https://www.w3.org/TR/sparql11-results-json/
+type sparqlResponse struct {
+	Results struct {
+		Bindings []map[string]sparqlValue `json:"bindings"`
+	} `json:"results"`
+}
+
+type sparqlValue struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	Lang  string `json:"xml:lang,omitempty"`
+}
+
+var wikidataEntityIDPattern = regexp.MustCompile(`([A-Za-z][0-9]+)$`)
+
+// wikidataLanguageCodes is a small, best-effort map from the English
+// language name Wikidata returns (via rdfs:label on the P407 value) to an
+// ISO 639-1 code. Unmapped languages fall back to an empty Language field
+// rather than guessing.
+var wikidataLanguageCodes = map[string]string{
+	"Russian":    "ru",
+	"English":    "en",
+	"French":     "fr",
+	"German":     "de",
+	"Spanish":    "es",
+	"Ukrainian":  "uk",
+	"Polish":     "pl",
+	"Italian":    "it",
+	"Portuguese": "pt",
+}
+
+// parseSparqlBindings converts SPARQL JSON result bindings into
+// ExternalBookRecord values. One binding produces one record; rows with a
+// missing "item" or "itemLabel" value are skipped as unusable.
+func parseSparqlBindings(bindings []map[string]sparqlValue) []ExternalBookRecord {
+	records := make([]ExternalBookRecord, 0, len(bindings))
+	for _, binding := range bindings {
+		itemValue, ok := binding["item"]
+		if !ok || itemValue.Value == "" {
+			continue
+		}
+		titleValue, ok := binding["itemLabel"]
+		if !ok || titleValue.Value == "" {
+			continue
+		}
+
+		record := ExternalBookRecord{
+			Title:      titleValue.Value,
+			SourceName: "wikidata",
+			SourceID:   extractWikidataID(itemValue.Value),
+		}
+
+		if v, ok := binding["authors"]; ok && v.Value != "" {
+			record.Authors = splitConcat(v.Value)
+		}
+		if v, ok := binding["genres"]; ok && v.Value != "" {
+			record.Genres = splitConcat(v.Value)
+		}
+		if v, ok := binding["isbn"]; ok && v.Value != "" {
+			isbn := normalizeISBNStructural(v.Value)
+			if isbn != "" {
+				record.ISBN = &isbn
+			}
+		}
+		if v, ok := binding["published"]; ok && v.Value != "" {
+			if year := parseYearFromDate(v.Value); year != nil {
+				record.PublishedYear = year
+			}
+		}
+		if v, ok := binding["language"]; ok && v.Value != "" {
+			if code, known := wikidataLanguageCodes[v.Value]; known {
+				record.Language = code
+			}
+		}
+
+		records = append(records, record)
+	}
+	return records
+}
+
+// extractWikidataID extracts the trailing entity ID (e.g. "Q170583") from a
+// Wikidata entity URI.
+func extractWikidataID(uri string) string {
+	if match := wikidataEntityIDPattern.FindString(uri); match != "" {
+		return match
+	}
+	return uri
+}
+
+// splitConcat splits a GROUP_CONCAT(... ; separator="|") value back into its
+// individual, non-empty parts.
+func splitConcat(value string) []string {
+	parts := strings.Split(value, "|")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+var yearPattern = regexp.MustCompile(`^-?(\d{1,4})`)
+
+// parseYearFromDate extracts a year from a date literal such as
+// "1869-01-01T00:00:00Z" (the xsd:dateTime shape Wikidata typically
+// returns for P577/publication date).
+func parseYearFromDate(value string) *int {
+	match := yearPattern.FindString(value)
+	if match == "" {
+		return nil
+	}
+	year, err := strconv.Atoi(match)
+	if err != nil {
+		return nil
+	}
+	return &year
+}
