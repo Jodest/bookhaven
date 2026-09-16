@@ -53,6 +53,23 @@ services:
         condition: service_healthy
     networks: [internal]
 
+  worker:
+    image: ${BACKEND_IMAGE}:${IMAGE_TAG:-latest}
+    container_name: bookhaven-worker
+    restart: unless-stopped
+    entrypoint: ["/app/worker"]
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      REDIS_URL: redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [internal]
+
   web:
     image: ${WEB_IMAGE}:${IMAGE_TAG:-latest}
     container_name: bookhaven-web

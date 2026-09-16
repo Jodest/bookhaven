@@ -20,6 +20,10 @@ type Repository interface {
 	// Books (includes hidden records).
 	ListBooks(ctx context.Context, filter BookFilter) ([]catalogDomain.Book, int64, error)
 	GetBookByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Book, error)
+	// GetBookByExternalID looks up a book by its (external_source,
+	// external_id) idempotency key. Returns gorm.ErrRecordNotFound
+	// (passthrough) when no matching book exists.
+	GetBookByExternalID(ctx context.Context, source, id string) (*catalogDomain.Book, error)
 	CreateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error
 	UpdateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error
 	BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
@@ -153,6 +157,15 @@ func (r *GormRepository) GetBookByID(ctx context.Context, id uuid.UUID) (*catalo
 		Preload("Authors").
 		Preload("Genres").
 		First(&book, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &book, nil
+}
+
+func (r *GormRepository) GetBookByExternalID(ctx context.Context, source, id string) (*catalogDomain.Book, error) {
+	var book catalogDomain.Book
+	if err := r.db.WithContext(ctx).
+		First(&book, "external_source = ? AND external_id = ?", source, id).Error; err != nil {
 		return nil, err
 	}
 	return &book, nil
