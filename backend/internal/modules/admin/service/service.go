@@ -68,6 +68,20 @@ func (s *Service) GetBook(ctx context.Context, id uuid.UUID) (*catalogDomain.Boo
 	return book, nil
 }
 
+// FindBookByExternalID returns a book by its (external_source, external_id)
+// idempotency key, including hidden records. Returns ErrBookNotFound when no
+// book has been harvested from that source/id yet.
+func (s *Service) FindBookByExternalID(ctx context.Context, source, id string) (*catalogDomain.Book, error) {
+	book, err := s.repo.GetBookByExternalID(ctx, source, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrBookNotFound
+		}
+		return nil, fmt.Errorf("get book by external id: %w", err)
+	}
+	return book, nil
+}
+
 // BookInput contains fields for creating or updating a book.
 type BookInput struct {
 	Title         string
@@ -81,6 +95,11 @@ type BookInput struct {
 	AuthorIDs     []string
 	GenreIDs      []string
 	IsHidden      bool
+	// ExternalSource/ExternalID identify the origin record for books
+	// created via an automated harvest (e.g. "wikidata" + a QID). Left nil
+	// by existing callers (regular admin create/update flows).
+	ExternalSource *string
+	ExternalID     *string
 }
 
 // CreateBook creates a new book with relationships.
@@ -136,16 +155,18 @@ func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDoma
 	}
 
 	book := &catalogDomain.Book{
-		ID:            uuid.New(),
-		Title:         strings.TrimSpace(input.Title),
-		Slug:          slug,
-		Description:   normalizeOptionalString(input.Description),
-		CoverURL:      normalizeOptionalURL(input.CoverURL),
-		ISBN:          isbn,
-		PublishedYear: input.PublishedYear,
-		PageCount:     input.PageCount,
-		Language:      strings.TrimSpace(input.Language),
-		IsHidden:      input.IsHidden,
+		ID:             uuid.New(),
+		Title:          strings.TrimSpace(input.Title),
+		Slug:           slug,
+		Description:    normalizeOptionalString(input.Description),
+		CoverURL:       normalizeOptionalURL(input.CoverURL),
+		ISBN:           isbn,
+		PublishedYear:  input.PublishedYear,
+		PageCount:      input.PageCount,
+		Language:       strings.TrimSpace(input.Language),
+		IsHidden:       input.IsHidden,
+		ExternalSource: normalizeOptionalString(input.ExternalSource),
+		ExternalID:     normalizeOptionalString(input.ExternalID),
 	}
 
 	if err := s.repo.CreateBook(ctx, book, authorIDs, genreIDs); err != nil {
@@ -229,6 +250,8 @@ func (s *Service) UpdateBook(ctx context.Context, id uuid.UUID, input BookInput)
 	book.PageCount = input.PageCount
 	book.Language = strings.TrimSpace(input.Language)
 	book.IsHidden = input.IsHidden
+	book.ExternalSource = normalizeOptionalString(input.ExternalSource)
+	book.ExternalID = normalizeOptionalString(input.ExternalID)
 
 	if err := s.repo.UpdateBook(ctx, book, authorIDs, genreIDs); err != nil {
 		if isDuplicateKeyError(err) {
