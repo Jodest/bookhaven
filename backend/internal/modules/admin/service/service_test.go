@@ -26,6 +26,8 @@ type fakeRepository struct {
 	authorsExist     bool
 	genresExist      bool
 	duplicateBookErr bool
+	authorLookupErr  error
+	genreLookupErr   error
 }
 
 func (f *fakeRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews int64, err error) {
@@ -55,6 +57,16 @@ func (f *fakeRepository) ListBooks(ctx context.Context, filter repository.BookFi
 func (f *fakeRepository) GetBookByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Book, error) {
 	for i := range f.books {
 		if f.books[i].ID == id {
+			return &f.books[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeRepository) GetBookByExternalID(ctx context.Context, source, id string) (*catalogDomain.Book, error) {
+	for i := range f.books {
+		if f.books[i].ExternalSource != nil && *f.books[i].ExternalSource == source &&
+			f.books[i].ExternalID != nil && *f.books[i].ExternalID == id {
 			return &f.books[i], nil
 		}
 	}
@@ -97,12 +109,15 @@ func (f *fakeRepository) GetAuthorByID(ctx context.Context, id uuid.UUID) (*cata
 }
 
 func (f *fakeRepository) GetAuthorBySlug(ctx context.Context, slug string) (*catalogDomain.Author, error) {
+	if f.authorLookupErr != nil {
+		return nil, f.authorLookupErr
+	}
 	for i := range f.authors {
 		if f.authors[i].Slug == slug {
 			return &f.authors[i], nil
 		}
 	}
-	return nil, errors.New("record not found")
+	return nil, gorm.ErrRecordNotFound
 }
 
 func (f *fakeRepository) CreateAuthor(ctx context.Context, author *catalogDomain.Author) error {
@@ -138,12 +153,15 @@ func (f *fakeRepository) GetGenreByID(ctx context.Context, id uuid.UUID) (*catal
 }
 
 func (f *fakeRepository) GetGenreBySlug(ctx context.Context, slug string) (*catalogDomain.Genre, error) {
+	if f.genreLookupErr != nil {
+		return nil, f.genreLookupErr
+	}
 	for i := range f.genres {
 		if f.genres[i].Slug == slug {
 			return &f.genres[i], nil
 		}
 	}
-	return nil, errors.New("record not found")
+	return nil, gorm.ErrRecordNotFound
 }
 
 func (f *fakeRepository) CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error {
