@@ -47,7 +47,7 @@ func NewService(repo repository.Repository) *Service {
 }
 
 // DashboardCounts returns overview counts for the admin dashboard.
-func (s *Service) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews int64, err error) {
+func (s *Service) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
 	return s.repo.DashboardCounts(ctx)
 }
 

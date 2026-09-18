@@ -17,7 +17,7 @@ import (
 
 // Service defines the admin operations used by the handler.
 type Service interface {
-	DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews int64, err error)
+	DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error)
 	ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error)
 	GetBook(ctx context.Context, id uuid.UUID) (*catalogDomain.Book, error)
 	CreateBook(ctx context.Context, input adminService.BookInput) (*catalogDomain.Book, error)
@@ -61,23 +61,24 @@ type genreResponse struct {
 }
 
 type bookResponse struct {
-	ID            string           `json:"id"`
-	Title         string           `json:"title"`
-	Slug          string           `json:"slug"`
-	Description   *string          `json:"description,omitempty"`
-	CoverURL      *string          `json:"cover_url,omitempty"`
-	ISBN          *string          `json:"isbn,omitempty"`
-	PublishedYear *int             `json:"published_year,omitempty"`
-	PageCount     *int             `json:"page_count,omitempty"`
-	Language      string           `json:"language"`
-	Rating        float64          `json:"rating"`
-	RatingsCount  int              `json:"ratings_count"`
-	ReviewsCount  int              `json:"reviews_count"`
-	IsHidden      bool             `json:"is_hidden"`
-	Authors       []authorResponse `json:"authors"`
-	Genres        []genreResponse  `json:"genres"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
+	ID             string           `json:"id"`
+	Title          string           `json:"title"`
+	Slug           string           `json:"slug"`
+	Description    *string          `json:"description,omitempty"`
+	CoverURL       *string          `json:"cover_url,omitempty"`
+	ISBN           *string          `json:"isbn,omitempty"`
+	PublishedYear  *int             `json:"published_year,omitempty"`
+	PageCount      *int             `json:"page_count,omitempty"`
+	Language       string           `json:"language"`
+	Rating         float64          `json:"rating"`
+	RatingsCount   int              `json:"ratings_count"`
+	ReviewsCount   int              `json:"reviews_count"`
+	IsHidden       bool             `json:"is_hidden"`
+	ExternalSource *string          `json:"external_source,omitempty"`
+	Authors        []authorResponse `json:"authors"`
+	Genres         []genreResponse  `json:"genres"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
 type listBooksResponse struct {
@@ -102,11 +103,12 @@ type listGenresResponse struct {
 }
 
 type dashboardResponse struct {
-	Books           int64 `json:"books"`
-	HiddenBooks     int64 `json:"hidden_books"`
-	Authors         int64 `json:"authors"`
-	Genres          int64 `json:"genres"`
-	PendingReviews  int64 `json:"pending_reviews"`
+	Books               int64 `json:"books"`
+	HiddenBooks         int64 `json:"hidden_books"`
+	Authors             int64 `json:"authors"`
+	Genres              int64 `json:"genres"`
+	PendingReviews      int64 `json:"pending_reviews"`
+	PendingImportReview int64 `json:"pending_import_review"`
 }
 
 type createUpdateBookRequest struct {
@@ -216,23 +218,24 @@ func toBookResponse(b catalogDomain.Book) bookResponse {
 	}
 
 	return bookResponse{
-		ID:            b.ID.String(),
-		Title:         b.Title,
-		Slug:          b.Slug,
-		Description:   b.Description,
-		CoverURL:      b.CoverURL,
-		ISBN:          b.ISBN,
-		PublishedYear: b.PublishedYear,
-		PageCount:     b.PageCount,
-		Language:      b.Language,
-		Rating:        b.Rating,
-		RatingsCount:  b.RatingsCount,
-		ReviewsCount:  b.ReviewsCount,
-		IsHidden:      b.IsHidden,
-		Authors:       authors,
-		Genres:        genres,
-		CreatedAt:     b.CreatedAt,
-		UpdatedAt:     b.UpdatedAt,
+		ID:             b.ID.String(),
+		Title:          b.Title,
+		Slug:           b.Slug,
+		Description:    b.Description,
+		CoverURL:       b.CoverURL,
+		ISBN:           b.ISBN,
+		PublishedYear:  b.PublishedYear,
+		PageCount:      b.PageCount,
+		Language:       b.Language,
+		Rating:         b.Rating,
+		RatingsCount:   b.RatingsCount,
+		ReviewsCount:   b.ReviewsCount,
+		IsHidden:       b.IsHidden,
+		ExternalSource: b.ExternalSource,
+		Authors:        authors,
+		Genres:         genres,
+		CreatedAt:      b.CreatedAt,
+		UpdatedAt:      b.UpdatedAt,
 	}
 }
 
@@ -292,17 +295,18 @@ func parsePagination(c echo.Context) (page, limit int) {
 func (h *Handler) Dashboard(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	books, hiddenBooks, authors, genres, pendingReviews, err := h.service.DashboardCounts(ctx)
+	books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview, err := h.service.DashboardCounts(ctx)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to load dashboard"})
 	}
 
 	return c.JSON(http.StatusOK, dashboardResponse{
-		Books:          books,
-		HiddenBooks:    hiddenBooks,
-		Authors:        authors,
-		Genres:         genres,
-		PendingReviews: pendingReviews,
+		Books:               books,
+		HiddenBooks:         hiddenBooks,
+		Authors:             authors,
+		Genres:              genres,
+		PendingReviews:      pendingReviews,
+		PendingImportReview: pendingImportReview,
 	})
 }
 
@@ -313,7 +317,7 @@ func (h *Handler) Dashboard(c echo.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param search query string false "Поиск"
-// @Param visibility query string false "Фильтр видимости (all/visible/hidden)"
+// @Param visibility query string false "Фильтр видимости (all/visible/hidden/pending_review)"
 // @Param page query int false "Номер страницы"
 // @Param limit query int false "Размер страницы, максимум 100"
 // @Success 200 {object} listBooksResponse

@@ -27,8 +27,8 @@ type fakeAdminRepository struct {
 
 var _ adminrepository.Repository = (*fakeAdminRepository)(nil)
 
-func (f *fakeAdminRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews int64, err error) {
-	return int64(len(f.books)), 0, int64(len(f.authors)), int64(len(f.genres)), 0, nil
+func (f *fakeAdminRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
+	return int64(len(f.books)), 0, int64(len(f.authors)), int64(len(f.genres)), 0, 0, nil
 }
 
 func (f *fakeAdminRepository) ListBooks(ctx context.Context, filter adminrepository.BookFilter) ([]catalogDomain.Book, int64, error) {

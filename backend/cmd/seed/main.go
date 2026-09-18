@@ -1,6 +1,15 @@
+// Command seed populates the database with a fixed set of dev/demo data
+// (a demo admin/test user plus ~19 hardcoded classic-literature books). It
+// is dev/demo-only tooling and must NOT be used to populate a real catalog:
+// its output is a small, hand-picked fixture set, not real production
+// content, and it carries none of the provenance/review metadata
+// (external_source/external_id, pending-review flow) that harvested books
+// get. See docs/features/harvest-review-queue.md for the production
+// guardrail this file enforces below.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -11,12 +20,27 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
+	"github.com/bookhaven/backend/internal/config"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 )
 
 func main() {
+	force := flag.Bool("force", false, "allow running against APP_ENV=production (dangerous, dev/demo data only)")
+	flag.Parse()
+
 	_ = godotenv.Load()
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Printf("failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if shouldRefuseToRun(cfg.Env, *force) {
+		fmt.Println("refusing to run cmd/seed against APP_ENV=production without -force; this seeds fixed dev/demo data, not real catalog content")
+		os.Exit(1)
+	}
 
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -37,6 +61,13 @@ func main() {
 
 	fmt.Println("seed data applied successfully")
 	fmt.Println("test account: test@bookhaven.local / test1234")
+}
+
+// shouldRefuseToRun reports whether cmd/seed must abort given the loaded
+// environment name and whether -force was passed. Mirrors the production
+// guardrail precedent already used for JWT_SECRET in config.Load().
+func shouldRefuseToRun(env string, force bool) bool {
+	return env == "production" && !force
 }
 
 func seed(db *gorm.DB) error {

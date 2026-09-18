@@ -15,7 +15,7 @@ import (
 // Repository defines admin-only catalog and moderation operations.
 type Repository interface {
 	// Dashboard counts.
-	DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews int64, err error)
+	DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error)
 
 	// Books (includes hidden records).
 	ListBooks(ctx context.Context, filter BookFilter) ([]catalogDomain.Book, int64, error)
@@ -58,8 +58,12 @@ type Repository interface {
 
 // BookFilter defines filtering options for admin book list.
 type BookFilter struct {
-	Search     string
-	Visibility string // "", "visible", "hidden"
+	Search string
+	// Visibility is one of "" (all), "visible", "hidden" (all hidden books,
+	// including pending-review ones - unchanged superset behavior), or
+	// "pending_review" (hidden AND harvested: is_hidden = true AND
+	// external_source IS NOT NULL - a narrower, additive filter value).
+	Visibility string
 	Limit      int
 	Offset     int
 }
@@ -81,26 +85,29 @@ func NewGormRepository(db *gorm.DB) Repository {
 	return &GormRepository{db: db}
 }
 
-func (r *GormRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews int64, err error) {
+func (r *GormRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
 	db := r.db.WithContext(ctx)
 
 	if err = db.Model(&catalogDomain.Book{}).Count(&books).Error; err != nil {
-		return 0, 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, 0, err
 	}
 	if err = db.Model(&catalogDomain.Book{}).Where("is_hidden = ?", true).Count(&hiddenBooks).Error; err != nil {
-		return 0, 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, 0, err
 	}
 	if err = db.Model(&catalogDomain.Author{}).Count(&authors).Error; err != nil {
-		return 0, 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, 0, err
 	}
 	if err = db.Model(&catalogDomain.Genre{}).Count(&genres).Error; err != nil {
-		return 0, 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, 0, err
 	}
 	if err = db.Model(&reviewsDomain.Review{}).Where("is_hidden = ?", true).Count(&pendingReviews).Error; err != nil {
-		return 0, 0, 0, 0, 0, err
+		return 0, 0, 0, 0, 0, 0, err
+	}
+	if err = db.Model(&catalogDomain.Book{}).Where("is_hidden = ? AND external_source IS NOT NULL", true).Count(&pendingImportReview).Error; err != nil {
+		return 0, 0, 0, 0, 0, 0, err
 	}
 
-	return books, hiddenBooks, authors, genres, pendingReviews, nil
+	return books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview, nil
 }
 
 func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -123,6 +130,8 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]ca
 		query = query.Where("is_hidden = ?", false)
 	case "hidden":
 		query = query.Where("is_hidden = ?", true)
+	case "pending_review":
+		query = query.Where("is_hidden = ? AND external_source IS NOT NULL", true)
 	}
 
 	if err := query.Count(&total).Error; err != nil {

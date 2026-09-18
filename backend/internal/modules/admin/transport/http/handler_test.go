@@ -20,23 +20,25 @@ import (
 
 // fakeAdminService implements the methods used by Handler.
 type fakeAdminService struct {
-	books         []catalogDomain.Book
-	authors       []catalogDomain.Author
-	genres        []catalogDomain.Genre
-	reviews       []reviewsDomain.Review
-	dashboardErr  error
-	createBookErr error
-	updateBookErr error
+	books          []catalogDomain.Book
+	authors        []catalogDomain.Author
+	genres         []catalogDomain.Genre
+	reviews        []reviewsDomain.Review
+	dashboardErr   error
+	createBookErr  error
+	updateBookErr  error
+	lastBookFilter repository.BookFilter
 }
 
-func (f *fakeAdminService) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews int64, err error) {
+func (f *fakeAdminService) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
 	if f.dashboardErr != nil {
-		return 0, 0, 0, 0, 0, f.dashboardErr
+		return 0, 0, 0, 0, 0, 0, f.dashboardErr
 	}
-	return 10, 2, 5, 4, 3, nil
+	return 10, 2, 5, 4, 3, 1, nil
 }
 
 func (f *fakeAdminService) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
+	f.lastBookFilter = filter
 	return f.books, int64(len(f.books)), nil
 }
 
@@ -185,14 +187,33 @@ func TestDashboard_Admin(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
-	if body.Books != 10 || body.HiddenBooks != 2 || body.PendingReviews != 3 {
+	if body.Books != 10 || body.HiddenBooks != 2 || body.PendingReviews != 3 || body.PendingImportReview != 1 {
 		t.Fatalf("unexpected dashboard counts: %+v", body)
+	}
+}
+
+func TestListBooks_PendingReviewVisibilityFilter(t *testing.T) {
+	h, svc := setupHandler()
+	svc.books = []catalogDomain.Book{{ID: uuid.New(), Title: "Book", Language: "ru"}}
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books?visibility=pending_review", nil)
+	setAdminUser(c)
+
+	if err := h.ListBooks(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if svc.lastBookFilter.Visibility != "pending_review" {
+		t.Fatalf("expected visibility filter %q, got %q", "pending_review", svc.lastBookFilter.Visibility)
 	}
 }
 
 func TestListBooks_Admin(t *testing.T) {
 	h, svc := setupHandler()
-	svc.books = []catalogDomain.Book{{ID: uuid.New(), Title: "Book", Language: "ru"}}
+	source := "wikidata"
+	svc.books = []catalogDomain.Book{{ID: uuid.New(), Title: "Book", Language: "ru", IsHidden: true, ExternalSource: &source}}
 
 	c, rec := newContext(http.MethodGet, "/api/v1/admin/books", nil)
 	setAdminUser(c)
@@ -210,6 +231,9 @@ func TestListBooks_Admin(t *testing.T) {
 	}
 	if len(body.Items) != 1 {
 		t.Fatalf("expected 1 book, got %d", len(body.Items))
+	}
+	if body.Items[0].ExternalSource == nil || *body.Items[0].ExternalSource != "wikidata" {
+		t.Fatalf("expected external_source %q, got %+v", "wikidata", body.Items[0].ExternalSource)
 	}
 }
 
