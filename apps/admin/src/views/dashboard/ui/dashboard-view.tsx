@@ -20,7 +20,7 @@ export function DashboardView() {
   if (isLoading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 5 }).map((_, i) => (
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-32 animate-pulse rounded-lg bg-muted" />
         ))}
       </div>
@@ -41,6 +41,11 @@ export function DashboardView() {
     { label: 'Авторов', value: data.authors, href: '/authors' },
     { label: 'Жанров', value: data.genres, href: '/genres' },
     { label: 'Отзывов на модерации', value: data.pending_reviews, href: '/reviews?visibility=hidden' },
+    {
+      label: 'Импортировано, на проверке',
+      value: data.pending_import_review,
+      href: '/books?visibility=pending_review',
+    },
   ];
 
   return (

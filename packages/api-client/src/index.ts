@@ -228,6 +228,7 @@ export interface AdminDashboard {
   authors: number;
   genres: number;
   pending_reviews: number;
+  pending_import_review: number;
 }
 
 export interface AdminBook {
@@ -244,6 +245,7 @@ export interface AdminBook {
   ratings_count: number;
   reviews_count: number;
   is_hidden: boolean;
+  external_source: string | null;
   authors: AdminAuthor[];
   genres: AdminGenre[];
   created_at: string;
@@ -946,7 +948,7 @@ export const api = {
         page?: number;
         limit?: number;
         search?: string;
-        visibility?: 'visible' | 'hidden' | '';
+        visibility?: 'visible' | 'hidden' | 'pending_review' | '';
       }) => {
         const queryParams: Record<string, string> = {};
         if (params?.page !== undefined) queryParams.page = String(params.page);

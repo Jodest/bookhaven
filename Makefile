@@ -30,8 +30,8 @@ migrate: ## Run database migrations
 migrate-down: ## Rollback database migrations
 	docker compose exec backend go run cmd/migrate/main.go down
 
-seed: ## Seed the database with test data
-	docker compose exec backend go run cmd/seed/main.go
+seed: ## Seed the database with dev/demo test data (refuses to run if APP_ENV=production; pass FORCE=1 to override)
+	docker compose exec backend go run cmd/seed/main.go $(if $(FORCE),-force,)
 
 swagger: ## Regenerate Swagger/OpenAPI docs (backend/docs)
 	docker compose exec backend swag init -g cmd/api/main.go -o docs --parseDependency --parseInternal

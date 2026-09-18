@@ -214,6 +214,99 @@ GROUP BY ?item ?itemLabel
 LIMIT 5`, escaped, escaped)
 }
 
+// wikidataQIDPattern validates a bare Wikidata entity QID (no "wd:" prefix,
+// case-sensitive), e.g. "Q7200".
+var wikidataQIDPattern = regexp.MustCompile(`^Q[0-9]+$`)
+
+const (
+	// defaultAuthorListLimit is applied by BuildAuthorListQuery when the
+	// caller passes limit <= 0.
+	defaultAuthorListLimit = 500
+	// maxAuthorListLimit is the upper bound BuildAuthorListQuery will honor;
+	// requested limits above this are clamped down to it rather than
+	// rejected, matching the product owner's own stated "100 to 5000" range
+	// for a single harvest job's result set.
+	maxAuthorListLimit = 5000
+)
+
+// BuildAuthorListQuery constructs a bounded SPARQL query for "Approach A"
+// curated-author-list harvesting (see
+// docs/features/harvest-review-queue.md): it finds literary works (the same
+// wd:Q7725634 class filter used by buildTitleAuthorQuery/buildISBNQuery)
+// authored (wdt:P50) by any of the given Wikidata author QIDs, constrained
+// by a VALUES clause built from those QIDs, and reuses the same ru/en
+// label-preference idiom for both the work and the author. Output variables
+// (item, itemLabel, authors, genres, isbn, published, language) match what
+// parseSparqlBindings already expects.
+//
+// authorQIDs must be bare QIDs (no "wd:" prefix - this function adds it),
+// case-sensitive, matching ^Q[0-9]+$. Entries are deduped. An empty list or
+// any malformed QID returns an error wrapping ErrInvalidQuery.
+//
+// limit <= 0 applies a default of 500; a requested limit above 5000 is
+// clamped down to 5000 (not rejected) to keep a single harvest job's result
+// set - and the ~1 req/sec Open-Library-enrichment tail that follows in the
+// worker - bounded. limit bounds the query's LIMIT, not the number of
+// author QIDs.
+func BuildAuthorListQuery(authorQIDs []string, limit int) (string, error) {
+	seen := make(map[string]struct{}, len(authorQIDs))
+	values := make([]string, 0, len(authorQIDs))
+	for _, qid := range authorQIDs {
+		qid = strings.TrimSpace(qid)
+		if qid == "" {
+			continue
+		}
+		if !wikidataQIDPattern.MatchString(qid) {
+			return "", fmt.Errorf("%w: invalid author QID %q (expected e.g. \"Q7200\")", ErrInvalidQuery, qid)
+		}
+		if _, ok := seen[qid]; ok {
+			continue
+		}
+		seen[qid] = struct{}{}
+		values = append(values, "wd:"+qid)
+	}
+	if len(values) == 0 {
+		return "", fmt.Errorf("%w: at least one author QID is required", ErrInvalidQuery)
+	}
+
+	if limit <= 0 {
+		limit = defaultAuthorListLimit
+	}
+	if limit > maxAuthorListLimit {
+		limit = maxAuthorListLimit
+	}
+
+	return fmt.Sprintf(`SELECT ?item ?itemLabel
+  (GROUP_CONCAT(DISTINCT ?authorLabel; separator="|") AS ?authors)
+  (GROUP_CONCAT(DISTINCT ?genreLabel; separator="|") AS ?genres)
+  (SAMPLE(?isbn13) AS ?isbn)
+  (SAMPLE(?pubDate) AS ?published)
+  (SAMPLE(?languageLabel) AS ?language)
+WHERE {
+  VALUES ?author { %s }
+  ?item wdt:P31/wdt:P279* wd:Q7725634 .
+  ?item wdt:P50 ?author .
+  ?item rdfs:label ?itemLabel .
+  FILTER(LANG(?itemLabel) IN ("ru","en"))
+  ?author rdfs:label ?authorLabel .
+  FILTER(LANG(?authorLabel) IN ("ru","en"))
+  OPTIONAL {
+    ?item wdt:P136 ?genre .
+    ?genre rdfs:label ?genreLabel .
+    FILTER(LANG(?genreLabel) IN ("ru","en"))
+  }
+  OPTIONAL { ?item wdt:P212 ?isbn13 . }
+  OPTIONAL { ?item wdt:P577 ?pubDate . }
+  OPTIONAL {
+    ?item wdt:P407 ?language .
+    ?language rdfs:label ?languageLabel .
+    FILTER(LANG(?languageLabel) = "en")
+  }
+}
+GROUP BY ?item ?itemLabel
+LIMIT %d`, strings.Join(values, " "), limit), nil
+}
+
 // escapeSPARQLString escapes a Go string for safe embedding inside a
 // double-quoted SPARQL string literal.
 func escapeSPARQLString(s string) string {

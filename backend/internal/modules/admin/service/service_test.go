@@ -30,14 +30,17 @@ type fakeRepository struct {
 	genreLookupErr   error
 }
 
-func (f *fakeRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews int64, err error) {
+func (f *fakeRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
 	if f.dashboardErr != nil {
-		return 0, 0, 0, 0, 0, f.dashboardErr
+		return 0, 0, 0, 0, 0, 0, f.dashboardErr
 	}
 	for _, b := range f.books {
 		books++
 		if b.IsHidden {
 			hiddenBooks++
+		}
+		if b.IsHidden && b.ExternalSource != nil {
+			pendingImportReview++
 		}
 	}
 	authors = int64(len(f.authors))
@@ -47,7 +50,7 @@ func (f *fakeRepository) DashboardCounts(ctx context.Context) (books, hiddenBook
 			pendingReviews++
 		}
 	}
-	return books, hiddenBooks, authors, genres, pendingReviews, nil
+	return books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview, nil
 }
 
 func (f *fakeRepository) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -235,12 +238,35 @@ func TestDashboardCounts(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 
-	books, hiddenBooks, authors, genres, pendingReviews, err := svc.DashboardCounts(ctx)
+	books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview, err := svc.DashboardCounts(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if books != 0 || hiddenBooks != 0 || authors != 0 || genres != 0 || pendingReviews != 0 {
+	if books != 0 || hiddenBooks != 0 || authors != 0 || genres != 0 || pendingReviews != 0 || pendingImportReview != 0 {
 		t.Fatal("expected empty dashboard counts")
+	}
+}
+
+func TestDashboardCounts_PendingImportReview(t *testing.T) {
+	svc, repo := newService()
+	ctx := context.Background()
+
+	source := "wikidata"
+	repo.books = []catalogDomain.Book{
+		{ID: uuid.New(), IsHidden: true, ExternalSource: &source},
+		{ID: uuid.New(), IsHidden: true},
+		{ID: uuid.New(), IsHidden: false},
+	}
+
+	_, hiddenBooks, _, _, _, pendingImportReview, err := svc.DashboardCounts(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hiddenBooks != 2 {
+		t.Fatalf("expected 2 hidden books, got %d", hiddenBooks)
+	}
+	if pendingImportReview != 1 {
+		t.Fatalf("expected 1 pending import review book, got %d", pendingImportReview)
 	}
 }
 
