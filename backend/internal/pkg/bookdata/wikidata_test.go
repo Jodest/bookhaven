@@ -229,3 +229,85 @@ func TestWikidataClient_UsesConfiguredBaseURL(t *testing.T) {
 		t.Fatalf("Query: %v", err)
 	}
 }
+
+func TestBuildAuthorListQuery(t *testing.T) {
+	t.Run("valid QIDs produce a query with VALUES/class-filter/label-filter/LIMIT", func(t *testing.T) {
+		query, err := BuildAuthorListQuery([]string{"Q7200", "Q1183296"}, 250)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, want := range []string{
+			"VALUES ?author { wd:Q7200 wd:Q1183296 }",
+			"wdt:P31/wdt:P279* wd:Q7725634",
+			"?item wdt:P50 ?author",
+			`FILTER(LANG(?itemLabel) IN ("ru","en"))`,
+			`FILTER(LANG(?authorLabel) IN ("ru","en"))`,
+			"LIMIT 250",
+		} {
+			if !strings.Contains(query, want) {
+				t.Errorf("query does not contain %q:\n%s", want, query)
+			}
+		}
+	})
+
+	t.Run("dedupes repeated QIDs", func(t *testing.T) {
+		query, err := BuildAuthorListQuery([]string{"Q7200", "Q7200", " Q7200 "}, 10)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if strings.Count(query, "wd:Q7200") != 1 {
+			t.Errorf("expected deduped single wd:Q7200, got query:\n%s", query)
+		}
+	})
+
+	t.Run("invalid QID format errors", func(t *testing.T) {
+		for _, bad := range []string{"q7200", "Q", "Q12a", "7200", "wd:Q7200", ""} {
+			if bad == "" {
+				continue // empty entries are skipped, not errors, unless the whole list is empty
+			}
+			_, err := BuildAuthorListQuery([]string{bad}, 10)
+			if !errors.Is(err, ErrInvalidQuery) {
+				t.Errorf("BuildAuthorListQuery(%q) err = %v, want ErrInvalidQuery", bad, err)
+			}
+		}
+	})
+
+	t.Run("empty list errors", func(t *testing.T) {
+		_, err := BuildAuthorListQuery(nil, 10)
+		if !errors.Is(err, ErrInvalidQuery) {
+			t.Fatalf("err = %v, want ErrInvalidQuery", err)
+		}
+		_, err = BuildAuthorListQuery([]string{"  ", ""}, 10)
+		if !errors.Is(err, ErrInvalidQuery) {
+			t.Fatalf("err = %v, want ErrInvalidQuery for blank-only list", err)
+		}
+	})
+
+	t.Run("limit <= 0 applies the default", func(t *testing.T) {
+		query, err := BuildAuthorListQuery([]string{"Q7200"}, 0)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(query, "LIMIT 500") {
+			t.Errorf("expected default LIMIT 500, got query:\n%s", query)
+		}
+
+		query, err = BuildAuthorListQuery([]string{"Q7200"}, -5)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(query, "LIMIT 500") {
+			t.Errorf("expected default LIMIT 500 for negative input, got query:\n%s", query)
+		}
+	})
+
+	t.Run("limit above the upper bound is clamped, not rejected", func(t *testing.T) {
+		query, err := BuildAuthorListQuery([]string{"Q7200"}, 999999)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(query, "LIMIT 5000") {
+			t.Errorf("expected clamped LIMIT 5000, got query:\n%s", query)
+		}
+	})
+}

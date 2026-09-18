@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminBooksApi } from '@/entities/book';
-import { AdminBook } from '@bookhaven/api-client';
+import { AdminBook, ApiError } from '@bookhaven/api-client';
 import {
   Button,
   Input,
@@ -25,8 +25,13 @@ export function BooksListView() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
 
   const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [feedback, setFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
   const visibility = searchParams.get('visibility') || '';
   const limit = 20;
@@ -36,11 +41,47 @@ export function BooksListView() {
     queryFn: () =>
       adminBooksApi.list({
         search: search || undefined,
-        visibility: visibility as 'visible' | 'hidden' | '',
+        visibility: visibility as 'visible' | 'hidden' | 'pending_review' | '',
         page,
         limit,
       }),
   });
+
+  const publishMutation = useMutation({
+    mutationFn: (book: AdminBook) =>
+      adminBooksApi.update(book.id, {
+        title: book.title,
+        slug: book.slug,
+        description: book.description,
+        cover_url: book.cover_url,
+        isbn: book.isbn,
+        published_year: book.published_year,
+        page_count: book.page_count,
+        language: book.language,
+        author_ids: book.authors.map((a) => a.id),
+        genre_ids: book.genres.map((g) => g.id),
+        is_hidden: false,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'books'] });
+      setFeedback({ type: 'success', message: 'Книга опубликована.' });
+    },
+    onError: (error) => {
+      const message =
+        error instanceof ApiError
+          ? error.message || 'Не удалось опубликовать книгу.'
+          : 'Не удалось опубликовать книгу.';
+      setFeedback({ type: 'error', message });
+    },
+  });
+
+  const handlePublish = (book: AdminBook) => {
+    setFeedback(null);
+    if (!confirm(`Опубликовать книгу «${book.title}»?`)) {
+      return;
+    }
+    publishMutation.mutate(book);
+  };
 
   const updateParams = (updates: Record<string, string | undefined>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -89,12 +130,32 @@ export function BooksListView() {
             { value: '', label: 'Все' },
             { value: 'visible', label: 'Видимые' },
             { value: 'hidden', label: 'Скрытые' },
+            { value: 'pending_review', label: 'Импортировано (на проверке)' },
           ]}
           value={visibility}
           onChange={(e) => updateParams({ visibility: e.target.value, page: '1' })}
           className="w-full md:w-48"
         />
       </div>
+
+      {feedback && (
+        <div
+          className={`rounded-md p-4 text-sm ${
+            feedback.type === 'success'
+              ? 'bg-green-100 text-green-900'
+              : 'bg-destructive/10 text-destructive'
+          }`}
+        >
+          {feedback.message}
+          <button
+            onClick={() => setFeedback(null)}
+            className="ml-4 underline"
+            type="button"
+          >
+            Скрыть
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-md bg-destructive/10 p-4 text-destructive">
@@ -132,18 +193,35 @@ export function BooksListView() {
                       {book.genres.map((g) => g.name).join(', ') || '—'}
                     </TableCell>
                     <TableCell>
-                      {book.is_hidden ? (
-                        <Badge variant="secondary">Скрыта</Badge>
-                      ) : (
-                        <Badge variant="default">Видима</Badge>
-                      )}
+                      <div className="flex flex-wrap gap-1">
+                        {book.is_hidden ? (
+                          <Badge variant="secondary">Скрыта</Badge>
+                        ) : (
+                          <Badge variant="default">Видима</Badge>
+                        )}
+                        {book.external_source && (
+                          <Badge variant="outline">Импортировано</Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Link href={`/books/${book.id}/edit` as any}>
-                        <Button variant="ghost" size="sm">
-                          Редактировать
-                        </Button>
-                      </Link>
+                      <div className="flex justify-end gap-2">
+                        {book.is_hidden && book.external_source && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePublish(book)}
+                            disabled={publishMutation.isPending}
+                          >
+                            Опубликовать
+                          </Button>
+                        )}
+                        <Link href={`/books/${book.id}/edit` as any}>
+                          <Button variant="ghost" size="sm">
+                            Редактировать
+                          </Button>
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
