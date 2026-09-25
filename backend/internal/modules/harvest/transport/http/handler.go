@@ -14,9 +14,11 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
@@ -47,15 +49,24 @@ type TaskInspector interface {
 	ListCompletedTasks(qname string, opts ...asynq.ListOption) ([]*asynq.TaskInfo, error)
 }
 
-// Handler handles admin harvest-trigger/job-status HTTP requests.
+// AuthorSearcher is the subset of *bookdata.WikidataClient this handler
+// depends on for GET /admin/harvest/authors/search (satisfied directly by
+// *bookdata.WikidataClient, no adapter needed).
+type AuthorSearcher interface {
+	SearchAuthors(ctx context.Context, query string) ([]bookdata.AuthorCandidate, error)
+}
+
+// Handler handles admin harvest-trigger/job-status/author-search HTTP
+// requests.
 type Handler struct {
 	enqueuer  TaskEnqueuer
 	inspector TaskInspector
+	searcher  AuthorSearcher
 }
 
 // NewHandler builds a Handler.
-func NewHandler(enqueuer TaskEnqueuer, inspector TaskInspector) *Handler {
-	return &Handler{enqueuer: enqueuer, inspector: inspector}
+func NewHandler(enqueuer TaskEnqueuer, inspector TaskInspector, searcher AuthorSearcher) *Handler {
+	return &Handler{enqueuer: enqueuer, inspector: inspector, searcher: searcher}
 }
 
 type triggerHarvestRequest struct {
@@ -225,4 +236,65 @@ func (h *Handler) GetHarvestJob(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, toHarvestJobResponse(info))
+}
+
+// authorCandidateResponse is one item of listAuthorCandidatesResponse,
+// mapped from bookdata.AuthorCandidate.
+type authorCandidateResponse struct {
+	QID         string `json:"qid"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// listAuthorCandidatesResponse is the 200 response of
+// GET /admin/harvest/authors/search.
+type listAuthorCandidatesResponse struct {
+	Items []authorCandidateResponse `json:"items"`
+}
+
+// SearchAuthors godoc
+// @Summary Поиск авторов в Wikidata по имени (для подбора QID перед харвестом)
+// @Description Требуется роль admin. Синхронный, только для чтения вызов Wikidata (wbsearchentities) - не создаёт и не изменяет записи; результат - кандидаты для ручного подтверждения администратором перед запуском POST /admin/harvest. Отсутствие совпадений - не ошибка (200, items: []).
+// @Tags admin
+// @Produce json
+// @Param q query string true "Искомое имя автора"
+// @Success 200 {object} listAuthorCandidatesResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 502 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/harvest/authors/search [get]
+func (h *Handler) SearchAuthors(c echo.Context) error {
+	q := strings.TrimSpace(c.QueryParam("q"))
+	if q == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "q is required"})
+	}
+
+	candidates, err := h.searcher.SearchAuthors(c.Request().Context(), q)
+	if err != nil {
+		switch {
+		case errors.Is(err, bookdata.ErrInvalidQuery):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, bookdata.ErrRateLimited), errors.Is(err, bookdata.ErrSourceUnavailable):
+			// 502, not 500: an upstream-dependency (Wikidata) failure, not a
+			// server bug - mirrors admin.LookupBook's convention. Unlike book
+			// lookup, this endpoint always has a manual-QID escape hatch in
+			// the UI, so the message points the admin at it.
+			return c.JSON(http.StatusBadGateway, map[string]string{"error": "search source is unavailable; retry later or enter the QID manually"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to search authors"})
+		}
+	}
+
+	items := make([]authorCandidateResponse, 0, len(candidates))
+	for _, cand := range candidates {
+		items = append(items, authorCandidateResponse{
+			QID:         cand.QID,
+			Label:       cand.Label,
+			Description: cand.Description,
+		})
+	}
+
+	return c.JSON(http.StatusOK, listAuthorCandidatesResponse{Items: items})
 }

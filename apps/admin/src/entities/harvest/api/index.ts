@@ -4,4 +4,5 @@ export const adminHarvestApi = {
   trigger: api.admin.harvest.trigger,
   listJobs: api.admin.harvest.jobs.list,
   getJob: api.admin.harvest.jobs.get,
+  searchAuthors: api.admin.harvest.authors.search,
 };
