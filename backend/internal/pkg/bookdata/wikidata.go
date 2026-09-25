@@ -34,6 +34,9 @@ func NewWikidataClient(opts ...Option) *WikidataClient {
 	if cfg.baseURL == "" {
 		cfg.baseURL = defaultWikidataBaseURL
 	}
+	if cfg.searchBaseURL == "" {
+		cfg.searchBaseURL = defaultWikidataSearchBaseURL
+	}
 	return &WikidataClient{cfg: cfg}
 }
 

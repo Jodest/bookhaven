@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -227,6 +228,168 @@ func TestWikidataClient_UsesConfiguredBaseURL(t *testing.T) {
 	_, err := client.Query(context.Background(), "SELECT * WHERE { ?s ?p ?o }")
 	if err != nil {
 		t.Fatalf("Query: %v", err)
+	}
+}
+
+const wikidataSearchFixture = `{
+  "searchinfo": {"search": "Толстой"},
+  "search": [
+    {"id": "Q7200", "label": "Лев Толстой", "description": "русский писатель", "match": {"type": "label", "language": "ru", "text": "Лев Толстой"}},
+    {"id": "Q171976", "label": "Алексей Николаевич Толстой", "description": "русский писатель", "match": {"type": "label", "language": "ru", "text": "Алексей Николаевич Толстой"}},
+    {"id": "Q368757", "description": "русский поэт", "match": {"type": "alias", "language": "ru", "text": "А. К. Толстой"}}
+  ],
+  "success": 1
+}`
+
+func TestWikidataSearchAuthors_ParsesFixture(t *testing.T) {
+	var gotURL *url.URL
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		gotURL = req.URL
+		return newTestResponse(http.StatusOK, wikidataSearchFixture, nil), nil
+	})
+	client := newWikidataTestClient(t, responder)
+
+	candidates, err := client.SearchAuthors(context.Background(), "Толстой")
+	if err != nil {
+		t.Fatalf("SearchAuthors: %v", err)
+	}
+	if len(candidates) != 3 {
+		t.Fatalf("len(candidates) = %d, want 3", len(candidates))
+	}
+
+	if gotURL.Query().Get("action") != "wbsearchentities" {
+		t.Errorf("action = %q, want wbsearchentities", gotURL.Query().Get("action"))
+	}
+	if gotURL.Query().Get("search") != "Толстой" {
+		t.Errorf("search = %q, want Толстой", gotURL.Query().Get("search"))
+	}
+	if gotURL.Query().Get("type") != "item" {
+		t.Errorf("type = %q, want item", gotURL.Query().Get("type"))
+	}
+	if gotURL.Query().Get("limit") != "10" {
+		t.Errorf("limit = %q, want 10", gotURL.Query().Get("limit"))
+	}
+
+	first := candidates[0]
+	if first.QID != "Q7200" || first.Label != "Лев Толстой" || first.Description != "русский писатель" {
+		t.Errorf("first candidate = %+v", first)
+	}
+
+	// Third result has no top-level "label" - falls back to match.text.
+	third := candidates[2]
+	if third.QID != "Q368757" {
+		t.Errorf("third.QID = %q, want Q368757", third.QID)
+	}
+	if third.Label != "А. К. Толстой" {
+		t.Errorf("third.Label = %q, want fallback to match.text", third.Label)
+	}
+}
+
+func TestWikidataSearchAuthors_ZeroResults_ReturnsEmptySliceNoError(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusOK, `{"search": [], "success": 1}`, nil), nil
+	})
+	client := newWikidataTestClient(t, responder)
+
+	candidates, err := client.SearchAuthors(context.Background(), "Совершенно Несуществующее Имя Xyzzy")
+	if err != nil {
+		t.Fatalf("SearchAuthors: %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("candidates = %v, want empty", candidates)
+	}
+}
+
+func TestWikidataSearchAuthors_EmptyQuery_ReturnsErrInvalidQuery(t *testing.T) {
+	client := newWikidataTestClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatal("should not perform HTTP request for an empty query")
+		return nil, nil
+	}))
+
+	_, err := client.SearchAuthors(context.Background(), "   ")
+	if !errors.Is(err, ErrInvalidQuery) {
+		t.Fatalf("err = %v, want ErrInvalidQuery", err)
+	}
+}
+
+func TestWikidataSearchAuthors_BadRequestStatus_ReturnsErrInvalidQuery(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusBadRequest, "bad search", nil), nil
+	})
+	client := newWikidataTestClient(t, responder)
+
+	_, err := client.SearchAuthors(context.Background(), "Толстой")
+	if !errors.Is(err, ErrInvalidQuery) {
+		t.Fatalf("err = %v, want ErrInvalidQuery", err)
+	}
+}
+
+func TestWikidataSearchAuthors_MalformedJSON_ReturnsWrappedError(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusOK, `{not valid json`, nil), nil
+	})
+	client := newWikidataTestClient(t, responder)
+
+	_, err := client.SearchAuthors(context.Background(), "Толстой")
+	if err == nil {
+		t.Fatal("expected parse error, got nil")
+	}
+	if !strings.Contains(err.Error(), "parse wikidata search response") {
+		t.Errorf("err = %v, want it to mention parse failure", err)
+	}
+}
+
+func TestWikidataSearchAuthors_UsesConfiguredSearchBaseURL_IndependentOfBaseURL(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host != "wikidata-search.test" {
+			t.Errorf("host = %q, want wikidata-search.test", req.URL.Host)
+		}
+		return newTestResponse(http.StatusOK, `{"search":[],"success":1}`, nil), nil
+	})
+	client := NewWikidataClient(
+		WithHTTPClient(&http.Client{Transport: responder}),
+		withLimiter(&fakeLimiter{}),
+		withSleep(func(d time.Duration) {}),
+		WithMaxRetries(0),
+		WithBaseURL("https://wikidata.test/sparql"),
+		WithSearchBaseURL("https://wikidata-search.test/w/api.php"),
+	)
+
+	_, err := client.SearchAuthors(context.Background(), "Толстой")
+	if err != nil {
+		t.Fatalf("SearchAuthors: %v", err)
+	}
+}
+
+func TestWikidataSearchAuthors_RateLimiterAndRetryReused(t *testing.T) {
+	// Confirms SearchAuthors goes through the same cfg.doRequest plumbing as
+	// Query - same rate limiter Wait call, same retry-on-429 behavior - not a
+	// new bespoke HTTP client.
+	attempts := 0
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return newTestResponse(http.StatusTooManyRequests, "", nil), nil
+		}
+		return newTestResponse(http.StatusOK, `{"search":[],"success":1}`, nil), nil
+	})
+	limiter := &fakeLimiter{}
+	client := NewWikidataClient(
+		WithHTTPClient(&http.Client{Transport: responder}),
+		withLimiter(limiter),
+		withSleep(func(d time.Duration) {}),
+		WithMaxRetries(1),
+	)
+
+	_, err := client.SearchAuthors(context.Background(), "Толстой")
+	if err != nil {
+		t.Fatalf("SearchAuthors: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2 (initial 429 + retry)", attempts)
+	}
+	if limiter.waitCalls != 2 {
+		t.Fatalf("limiter.waitCalls = %d, want 2", limiter.waitCalls)
 	}
 }
 

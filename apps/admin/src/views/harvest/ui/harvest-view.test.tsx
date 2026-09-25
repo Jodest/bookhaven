@@ -6,12 +6,14 @@ import { HarvestView } from './harvest-view';
 
 const triggerMock = vi.fn();
 const listJobsMock = vi.fn();
+const searchAuthorsMock = vi.fn();
 
 vi.mock('@/entities/harvest', () => ({
   adminHarvestApi: {
     trigger: (...args: unknown[]) => triggerMock(...args),
     listJobs: (...args: unknown[]) => listJobsMock(...args),
     getJob: vi.fn(),
+    searchAuthors: (...args: unknown[]) => searchAuthorsMock(...args),
   },
 }));
 
@@ -26,10 +28,15 @@ function renderView() {
   );
 }
 
+function switchToManualMode() {
+  fireEvent.click(screen.getByRole('button', { name: 'Ввести QID вручную' }));
+}
+
 describe('HarvestView', () => {
   beforeEach(() => {
     triggerMock.mockReset();
     listJobsMock.mockReset();
+    searchAuthorsMock.mockReset();
     listJobsMock.mockResolvedValue({ items: [] });
   });
 
@@ -38,8 +45,32 @@ describe('HarvestView', () => {
     vi.restoreAllMocks();
   });
 
-  it('requires at least one author QID before submitting', async () => {
+  it('defaults to name-search mode, with a toggle to manual QID entry', async () => {
     renderView();
+
+    expect(screen.getByLabelText('Поиск автора по имени')).toBeInTheDocument();
+    expect(screen.queryByLabelText('QID авторов Wikidata')).not.toBeInTheDocument();
+
+    switchToManualMode();
+
+    expect(screen.getByLabelText('QID авторов Wikidata')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Поиск автора по имени')).not.toBeInTheDocument();
+  });
+
+  it('requires at least one selected author before submitting in name-search mode', async () => {
+    renderView();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Запустить харвест' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Выберите хотя бы одного автора.')).toBeInTheDocument()
+    );
+    expect(triggerMock).not.toHaveBeenCalled();
+  });
+
+  it('requires at least one author QID before submitting in manual mode', async () => {
+    renderView();
+    switchToManualMode();
 
     fireEvent.click(screen.getByRole('button', { name: 'Запустить харвест' }));
 
@@ -49,9 +80,10 @@ describe('HarvestView', () => {
     expect(triggerMock).not.toHaveBeenCalled();
   });
 
-  it('parses comma/newline-separated QIDs into an author_qids array', async () => {
+  it('parses comma/newline-separated QIDs into an author_qids array (manual mode)', async () => {
     triggerMock.mockResolvedValue({ task_id: 'task-1', queue: 'harvest', state: 'pending' });
     renderView();
+    switchToManualMode();
 
     fireEvent.change(screen.getByLabelText('QID авторов Wikidata'), {
       target: { value: 'Q7200, Q1183296\nQ7200\n' },
@@ -68,9 +100,10 @@ describe('HarvestView', () => {
     });
   });
 
-  it('refetches the jobs list after a successful trigger', async () => {
+  it('refetches the jobs list after a successful trigger (manual mode)', async () => {
     triggerMock.mockResolvedValue({ task_id: 'task-1', queue: 'harvest', state: 'pending' });
     renderView();
+    switchToManualMode();
 
     await waitFor(() => expect(listJobsMock).toHaveBeenCalledTimes(1));
 
@@ -83,9 +116,10 @@ describe('HarvestView', () => {
     await waitFor(() => expect(listJobsMock.mock.calls.length).toBeGreaterThan(1));
   });
 
-  it('surfaces the message from a 400 ApiError', async () => {
+  it('surfaces the message from a 400 ApiError on trigger (manual mode)', async () => {
     triggerMock.mockRejectedValue(new ApiError(400, 'Bad Request', 'invalid author QID "bad"'));
     renderView();
+    switchToManualMode();
 
     fireEvent.change(screen.getByLabelText('QID авторов Wikidata'), {
       target: { value: 'bad' },
@@ -94,6 +128,70 @@ describe('HarvestView', () => {
 
     await waitFor(() =>
       expect(screen.getByText('invalid author QID "bad"')).toBeInTheDocument()
+    );
+  });
+
+  it('searches by name, renders candidates, adds one to the selected list, and submits its qid', async () => {
+    searchAuthorsMock.mockResolvedValue({
+      items: [
+        { qid: 'Q7200', label: 'Лев Толстой', description: 'русский писатель' },
+        { qid: 'Q171976', label: 'Алексей Николаевич Толстой', description: 'русский писатель' },
+      ],
+    });
+    triggerMock.mockResolvedValue({ task_id: 'task-1', queue: 'harvest', state: 'pending' });
+    renderView();
+
+    fireEvent.change(screen.getByLabelText('Поиск автора по имени'), {
+      target: { value: 'Толстой' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Найти' }));
+
+    await waitFor(() => expect(searchAuthorsMock).toHaveBeenCalled());
+    expect(searchAuthorsMock.mock.calls[0][0]).toBe('Толстой');
+    await waitFor(() => expect(screen.getByText('Лев Толстой')).toBeInTheDocument());
+    expect(screen.getByText('Алексей Николаевич Толстой')).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Добавить' })[0]);
+
+    await waitFor(() => expect(screen.getByText('Выбранные авторы')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Запустить харвест' }));
+
+    await waitFor(() => expect(triggerMock).toHaveBeenCalled());
+    expect(triggerMock.mock.calls[0][0]).toEqual({ author_qids: ['Q7200'] });
+  });
+
+  it('shows the empty-state message pointing at manual QID entry when a name search has zero results', async () => {
+    searchAuthorsMock.mockResolvedValue({ items: [] });
+    renderView();
+
+    fireEvent.change(screen.getByLabelText('Поиск автора по имени'), {
+      target: { value: 'Несуществующий Автор' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Найти' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Совпадений не найдено. Проверьте написание или используйте ручной ввод QID.')
+      ).toBeInTheDocument()
+    );
+  });
+
+  it('surfaces the message from a 502 ApiError on name search', async () => {
+    searchAuthorsMock.mockRejectedValue(
+      new ApiError(502, 'Bad Gateway', 'search source is unavailable; retry later or enter the QID manually')
+    );
+    renderView();
+
+    fireEvent.change(screen.getByLabelText('Поиск автора по имени'), {
+      target: { value: 'Толстой' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Найти' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('search source is unavailable; retry later or enter the QID manually')
+      ).toBeInTheDocument()
     );
   });
 

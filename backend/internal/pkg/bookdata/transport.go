@@ -42,6 +42,7 @@ type config struct {
 	httpClient     *http.Client
 	userAgent      string
 	baseURL        string
+	searchBaseURL  string
 	limiter        limiter
 	maxRetries     int
 	retryBaseDelay time.Duration
@@ -67,8 +68,20 @@ func WithUserAgent(userAgent string) Option {
 
 // WithBaseURL overrides the source's base URL, primarily so tests can point
 // a client at a local httptest server instead of the real public endpoint.
+// It only affects the SPARQL endpoint (WikidataClient.Query and friends);
+// see WithSearchBaseURL for the separate wbsearchentities search endpoint.
 func WithBaseURL(baseURL string) Option {
 	return func(cfg *config) { cfg.baseURL = baseURL }
+}
+
+// WithSearchBaseURL overrides WikidataClient.SearchAuthors' base URL
+// (default: defaultWikidataSearchBaseURL), independently of WithBaseURL,
+// since SearchAuthors calls a different Wikidata HTTP API (wbsearchentities,
+// a plain JSON search endpoint) than the SPARQL endpoint used by every other
+// WikidataClient method. Primarily so tests can point it at a local
+// httptest server.
+func WithSearchBaseURL(baseURL string) Option {
+	return func(cfg *config) { cfg.searchBaseURL = baseURL }
 }
 
 // WithRateLimit overrides the outbound request rate limiter (default: ~1

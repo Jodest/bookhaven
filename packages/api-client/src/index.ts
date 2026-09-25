@@ -388,6 +388,16 @@ export interface AdminHarvestJob {
   };
 }
 
+// AdminHarvestAuthorCandidate is one item returned by
+// GET /api/v1/admin/harvest/authors/search - an unconfirmed Wikidata item
+// the admin must visually vet (via description) before adding its qid to
+// the harvest set. See docs/features/harvest-author-search.md.
+export interface AdminHarvestAuthorCandidate {
+  qid: string;
+  label: string;
+  description?: string;
+}
+
 const API_URL =
   typeof window === 'undefined'
     ? process.env.API_URL || 'http://backend:8080'
@@ -1159,6 +1169,12 @@ export const api = {
       jobs: {
         list: () => fetcher<{ items: AdminHarvestJob[] }>('/api/v1/admin/harvest/jobs'),
         get: (id: string) => fetcher<AdminHarvestJob>(`/api/v1/admin/harvest/jobs/${id}`),
+      },
+      authors: {
+        search: (q: string) =>
+          fetcher<{ items: AdminHarvestAuthorCandidate[] }>(
+            `/api/v1/admin/harvest/authors/search?${new URLSearchParams({ q })}`
+          ),
       },
     },
   },

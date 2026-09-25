@@ -84,6 +84,12 @@ func main() {
 	// docs/features/bookdata-clients.md for the accepted-risk placeholder
 	// User-Agent contact).
 	adminService := adminservice.NewService(adminRepo, adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()))
+	// wikidataClient is a second, independent bookdata client instance (same
+	// zero-config, placeholder-User-Agent caveat as above) used only for the
+	// admin harvest author-name-search endpoint (see
+	// docs/features/harvest-author-search.md) - it does not share the
+	// OpenLibraryClient's rate-limit budget, nor does it touch the same host.
+	wikidataClient := bookdata.NewWikidataClient()
 	shelvesService := shelvesservice.NewService(shelvesRepo)
 	listsService := listsservice.NewService(listsRepo)
 	ratingsService := ratingsservice.NewService(ratingsRepo)
@@ -139,7 +145,7 @@ func main() {
 	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, authMiddleware, optionalAuth)
 
 	// Admin routes
-	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, harvestClient, harvestInspector)
+	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, harvestClient, harvestInspector, wikidataClient)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)
