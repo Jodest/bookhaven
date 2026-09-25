@@ -278,15 +278,15 @@ func TestCreateBook_Valid(t *testing.T) {
 	repo.authors = append(repo.authors, catalogDomain.Author{ID: uuid.MustParse(authorID), Name: "Tolstoy", Slug: "tolstoy"})
 
 	book, err := svc.CreateBook(ctx, BookInput{
-		Title:     "War and Peace",
+		Title:     "Война и мир",
 		Language:  "ru",
 		AuthorIDs: []string{authorID},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if book.Slug != "war-and-peace" {
-		t.Fatalf("expected slug war-and-peace, got %s", book.Slug)
+	if book.Slug != "voyna-i-mir" {
+		t.Fatalf("expected slug voyna-i-mir, got %s", book.Slug)
 	}
 	if len(repo.books) != 1 {
 		t.Fatalf("expected 1 book, got %d", len(repo.books))
@@ -298,7 +298,7 @@ func TestCreateBook_DuplicateSlug(t *testing.T) {
 	ctx := context.Background()
 	repo.bookSlugExists = true
 
-	_, err := svc.CreateBook(ctx, BookInput{Title: "Book", Language: "ru"})
+	_, err := svc.CreateBook(ctx, BookInput{Title: "Книга", Language: "ru"})
 	if !errors.Is(err, ErrDuplicateSlug) {
 		t.Fatalf("expected duplicate slug error, got %v", err)
 	}
@@ -309,7 +309,7 @@ func TestCreateBook_InvalidISBN(t *testing.T) {
 	ctx := context.Background()
 
 	isbn := "123"
-	_, err := svc.CreateBook(ctx, BookInput{Title: "Book", Language: "ru", ISBN: &isbn})
+	_, err := svc.CreateBook(ctx, BookInput{Title: "Книга", Language: "ru", ISBN: &isbn})
 	if !errors.Is(err, ErrInvalidISBN) {
 		t.Fatalf("expected invalid isbn error, got %v", err)
 	}
@@ -319,7 +319,7 @@ func TestCreateBook_InvalidLanguage(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 
-	_, err := svc.CreateBook(ctx, BookInput{Title: "Book", Language: "xx"})
+	_, err := svc.CreateBook(ctx, BookInput{Title: "Книга", Language: "xx"})
 	if !errors.Is(err, ErrInvalidLanguage) {
 		t.Fatalf("expected invalid language error, got %v", err)
 	}
@@ -330,7 +330,7 @@ func TestCreateBook_InvalidYear(t *testing.T) {
 	ctx := context.Background()
 
 	year := 3000
-	_, err := svc.CreateBook(ctx, BookInput{Title: "Book", Language: "ru", PublishedYear: &year})
+	_, err := svc.CreateBook(ctx, BookInput{Title: "Книга", Language: "ru", PublishedYear: &year})
 	if !errors.Is(err, ErrInvalidYear) {
 		t.Fatalf("expected invalid year error, got %v", err)
 	}
@@ -341,7 +341,7 @@ func TestCreateBook_DuplicateKeyError(t *testing.T) {
 	repo.duplicateBookErr = true
 	ctx := context.Background()
 
-	_, err := svc.CreateBook(ctx, BookInput{Title: "Book", Language: "ru"})
+	_, err := svc.CreateBook(ctx, BookInput{Title: "Книга", Language: "ru"})
 	if !errors.Is(err, ErrDuplicateSlug) {
 		t.Fatalf("expected duplicate slug error, got %v", err)
 	}
@@ -352,9 +352,55 @@ func TestCreateBook_MissingAuthors(t *testing.T) {
 	ctx := context.Background()
 	repo.authorsExist = false
 
-	_, err := svc.CreateBook(ctx, BookInput{Title: "Book", Language: "ru", AuthorIDs: []string{uuid.New().String()}})
+	_, err := svc.CreateBook(ctx, BookInput{Title: "Книга", Language: "ru", AuthorIDs: []string{uuid.New().String()}})
 	if !errors.Is(err, ErrInvalidAuthorIDs) {
 		t.Fatalf("expected invalid author ids error, got %v", err)
+	}
+}
+
+func TestCreateBook_NonRussianTitle(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	_, err := svc.CreateBook(ctx, BookInput{Title: "War and Peace", Language: "ru"})
+	if !errors.Is(err, ErrTitleNotRussian) {
+		t.Fatalf("expected title not russian error, got %v", err)
+	}
+}
+
+func TestCreateBook_NonRussianDescription(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	desc := "An English description"
+	_, err := svc.CreateBook(ctx, BookInput{Title: "Книга", Language: "ru", Description: &desc})
+	if !errors.Is(err, ErrDescriptionNotRussian) {
+		t.Fatalf("expected description not russian error, got %v", err)
+	}
+}
+
+func TestCreateBook_RussianTitleNilDescription_NoError(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	_, err := svc.CreateBook(ctx, BookInput{Title: "Книга", Language: "ru"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCreateBook_EnglishWorkLanguageWithRussianText_Succeeds(t *testing.T) {
+	// Regression guard: Language records the work's original language (e.g.
+	// "en" for a foreign classic with Russian catalog metadata), which this
+	// contract deliberately leaves unvalidated - see Scope boundaries in
+	// docs/features/russian-only-content.md.
+	svc, _ := newService()
+	ctx := context.Background()
+
+	desc := "Роман на английском языке в оригинале"
+	_, err := svc.CreateBook(ctx, BookInput{Title: "О дивный новый мир", Language: "en", Description: &desc})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -362,9 +408,36 @@ func TestUpdateBook_NotFound(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 
-	_, err := svc.UpdateBook(ctx, uuid.New(), BookInput{Title: "Book", Language: "ru"})
+	_, err := svc.UpdateBook(ctx, uuid.New(), BookInput{Title: "Книга", Language: "ru"})
 	if !errors.Is(err, ErrBookNotFound) {
 		t.Fatalf("expected book not found error, got %v", err)
+	}
+}
+
+func TestUpdateBook_NonRussianTitle(t *testing.T) {
+	svc, repo := newService()
+	ctx := context.Background()
+
+	id := uuid.New()
+	repo.books = []catalogDomain.Book{{ID: id, Title: "Книга", Slug: "kniga", Language: "ru"}}
+
+	_, err := svc.UpdateBook(ctx, id, BookInput{Title: "Updated Book", Language: "ru"})
+	if !errors.Is(err, ErrTitleNotRussian) {
+		t.Fatalf("expected title not russian error, got %v", err)
+	}
+}
+
+func TestUpdateBook_NonRussianDescription(t *testing.T) {
+	svc, repo := newService()
+	ctx := context.Background()
+
+	id := uuid.New()
+	repo.books = []catalogDomain.Book{{ID: id, Title: "Книга", Slug: "kniga", Language: "ru"}}
+
+	desc := "An English description"
+	_, err := svc.UpdateBook(ctx, id, BookInput{Title: "Книга", Language: "ru", Description: &desc})
+	if !errors.Is(err, ErrDescriptionNotRussian) {
+		t.Fatalf("expected description not russian error, got %v", err)
 	}
 }
 

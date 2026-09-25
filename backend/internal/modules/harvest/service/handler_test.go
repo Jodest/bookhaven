@@ -260,7 +260,7 @@ func TestProcessRecord_CreatesHiddenBook(t *testing.T) {
 	ctx := context.Background()
 
 	rec := bookdata.ExternalBookRecord{
-		Title:      "War and Peace",
+		Title:      "Война и мир",
 		Authors:    []string{"Leo Tolstoy"},
 		Genres:     []string{"Novel"},
 		Language:   "ru",
@@ -328,7 +328,7 @@ func TestProcessRecord_EnrichmentOnlyFillsEmptyFields(t *testing.T) {
 	ctx := context.Background()
 
 	rec := bookdata.ExternalBookRecord{
-		Title:      "War and Peace",
+		Title:      "Война и мир",
 		Language:   "ru",
 		SourceName: "wikidata",
 		SourceID:   "Q170583",
@@ -340,8 +340,8 @@ func TestProcessRecord_EnrichmentOnlyFillsEmptyFields(t *testing.T) {
 	enrich := &fakeEnrichClient{
 		byISBN: map[string]*bookdata.ExternalBookRecord{
 			"9780140447934": {
-				Title:       "War and Peace",
-				Description: strPtr("An Open Library description"),
+				Title:       "Война и мир",
+				Description: strPtr("Роман-эпопея о жизни русского общества в эпоху войн против Наполеона"),
 				CoverURL:    strPtr("https://openlibrary.example/should-not-win.jpg"),
 				PageCount:   intPtr(1392),
 			},
@@ -360,11 +360,70 @@ func TestProcessRecord_EnrichmentOnlyFillsEmptyFields(t *testing.T) {
 	if book.CoverURL == nil || *book.CoverURL != "https://wikidata.example/cover.jpg" {
 		t.Errorf("CoverURL = %v, want Wikidata's own value preserved", book.CoverURL)
 	}
-	if book.Description == nil || *book.Description != "An Open Library description" {
-		t.Errorf("Description = %v, want Open Library's enrichment value", book.Description)
+	wantDescription := "Роман-эпопея о жизни русского общества в эпоху войн против Наполеона"
+	if book.Description == nil || *book.Description != wantDescription {
+		t.Errorf("Description = %v, want Open Library's (Russian) enrichment value %q", book.Description, wantDescription)
 	}
 	if book.PageCount == nil || *book.PageCount != 1392 {
 		t.Errorf("PageCount = %v, want 1392", book.PageCount)
+	}
+}
+
+func TestProcessRecord_NonRussianEnrichmentDescriptionIsDropped(t *testing.T) {
+	admin, repo := newTestAdmin()
+	ctx := context.Background()
+
+	rec := bookdata.ExternalBookRecord{
+		Title:      "Война и мир",
+		Language:   "ru",
+		SourceName: "wikidata",
+		SourceID:   "Q170583",
+		ISBN:       strPtr("9780140447934"),
+	}
+
+	enrich := &fakeEnrichClient{
+		byISBN: map[string]*bookdata.ExternalBookRecord{
+			"9780140447934": {
+				Title:       "War and Peace",
+				Description: strPtr("An English-language excerpt from Open Library"),
+			},
+		},
+	}
+
+	outcome, err := processRecord(ctx, rec, enrich, admin)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome != outcomeCreated {
+		t.Fatalf("expected outcomeCreated (non-Russian Description must not reject the record), got %v", outcome)
+	}
+
+	book := repo.books[0]
+	if book.Description != nil {
+		t.Errorf("Description = %v, want nil (non-Russian enrichment text silently dropped)", *book.Description)
+	}
+}
+
+func TestProcessRecord_EmptyLanguageDefaultsToRu(t *testing.T) {
+	admin, repo := newTestAdmin()
+	ctx := context.Background()
+
+	rec := bookdata.ExternalBookRecord{
+		Title:      "Война и мир",
+		Language:   "",
+		SourceName: "wikidata",
+		SourceID:   "Q170583",
+	}
+
+	outcome, err := processRecord(ctx, rec, nil, admin)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome != outcomeCreated {
+		t.Fatalf("expected outcomeCreated, got %v", outcome)
+	}
+	if repo.books[0].Language != "ru" {
+		t.Errorf("Language = %q, want default %q", repo.books[0].Language, "ru")
 	}
 }
 
@@ -376,7 +435,7 @@ func TestProcessRecord_ResolvesAuthorsAndGenresBySlug(t *testing.T) {
 	repo.authors = append(repo.authors, catalogDomain.Author{ID: existingAuthorID, Name: "Leo Tolstoy", Slug: "leo-tolstoy"})
 
 	rec := bookdata.ExternalBookRecord{
-		Title:      "War and Peace",
+		Title:      "Война и мир",
 		Authors:    []string{"Leo Tolstoy", "New Author"},
 		Genres:     []string{"Novel"},
 		Language:   "ru",
@@ -416,13 +475,13 @@ func TestRunHarvest_PartialFailureDoesNotAbortBatch(t *testing.T) {
 
 	records := []bookdata.ExternalBookRecord{
 		{
-			Title:      "Good Book",
+			Title:      "Хорошая книга",
 			Language:   "ru",
 			SourceName: "wikidata",
 			SourceID:   "Q1",
 		},
 		{
-			Title:      "Bad ISBN Book",
+			Title:      "Плохой ISBN",
 			Language:   "ru",
 			SourceName: "wikidata",
 			SourceID:   "Q2",
@@ -449,7 +508,50 @@ func TestRunHarvest_PartialFailureDoesNotAbortBatch(t *testing.T) {
 	if len(result.Errors) != 1 {
 		t.Fatalf("Errors = %v, want 1 entry", result.Errors)
 	}
-	if result.Errors[0].Index != 1 || result.Errors[0].Title != "Bad ISBN Book" {
+	if result.Errors[0].Index != 1 || result.Errors[0].Title != "Плохой ISBN" {
+		t.Errorf("unexpected error entry: %+v", result.Errors[0])
+	}
+}
+
+func TestRunHarvest_NonRussianTitlePastSPARQLFilterIsAPerRecordError(t *testing.T) {
+	// Simulates a data-quality edge case (e.g. a "ru"-tagged Wikidata label
+	// that is not actually Cyrillic) that slips past the SPARQL-level
+	// filter - the Cyrillic-ratio check on Title is defense-in-depth for
+	// exactly this case.
+	admin, repo := newTestAdmin()
+
+	records := []bookdata.ExternalBookRecord{
+		{
+			Title:      "Non-Russian Title",
+			Language:   "ru",
+			SourceName: "wikidata",
+			SourceID:   "Q1",
+		},
+		{
+			Title:      "Хорошая книга",
+			Language:   "ru",
+			SourceName: "wikidata",
+			SourceID:   "Q2",
+		},
+	}
+
+	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
+
+	result, err := handler.runHarvest(context.Background(), HarvestPayload{SPARQLQuery: "SELECT * WHERE {}"}, nil)
+	if err != nil {
+		t.Fatalf("runHarvest returned unexpected top-level error: %v", err)
+	}
+
+	if len(repo.books) != 1 {
+		t.Fatalf("expected 1 successfully created book (the other record still processes), got %d", len(repo.books))
+	}
+	if result.Created != 1 {
+		t.Errorf("Created = %d, want 1", result.Created)
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("Errors = %v, want 1 entry", result.Errors)
+	}
+	if result.Errors[0].Index != 0 || result.Errors[0].Title != "Non-Russian Title" {
 		t.Errorf("unexpected error entry: %+v", result.Errors[0])
 	}
 }
@@ -479,9 +581,9 @@ func TestRunHarvest_ReportsProgressPerRecord(t *testing.T) {
 	admin, _ := newTestAdmin()
 
 	records := []bookdata.ExternalBookRecord{
-		{Title: "Book 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
-		{Title: "Book 2", Language: "ru", SourceName: "wikidata", SourceID: "Q2"},
-		{Title: "Book 3", Language: "ru", SourceName: "wikidata", SourceID: "Q3"},
+		{Title: "Книга 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
+		{Title: "Книга 2", Language: "ru", SourceName: "wikidata", SourceID: "Q2"},
+		{Title: "Книга 3", Language: "ru", SourceName: "wikidata", SourceID: "Q3"},
 	}
 	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
 
@@ -515,7 +617,7 @@ func TestRunHarvest_ReportsProgressPerRecord(t *testing.T) {
 func TestRunHarvest_NilProgressWriterDoesNotPanic(t *testing.T) {
 	admin, _ := newTestAdmin()
 	records := []bookdata.ExternalBookRecord{
-		{Title: "Book 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
+		{Title: "Книга 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
 	}
 	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
 
@@ -531,8 +633,8 @@ func TestRunHarvest_NilProgressWriterDoesNotPanic(t *testing.T) {
 func TestRunHarvest_ProgressWriteErrorDoesNotFailHarvest(t *testing.T) {
 	admin, repo := newTestAdmin()
 	records := []bookdata.ExternalBookRecord{
-		{Title: "Book 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
-		{Title: "Book 2", Language: "ru", SourceName: "wikidata", SourceID: "Q2"},
+		{Title: "Книга 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
+		{Title: "Книга 2", Language: "ru", SourceName: "wikidata", SourceID: "Q2"},
 	}
 	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
 

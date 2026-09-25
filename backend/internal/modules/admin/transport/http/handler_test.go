@@ -274,6 +274,48 @@ func TestCreateBook_ValidationError(t *testing.T) {
 	}
 }
 
+func TestCreateBook_NonRussianTitle(t *testing.T) {
+	h, svc := setupHandler()
+	svc.createBookErr = adminService.ErrTitleNotRussian
+	c, rec := newContext(http.MethodPost, "/api/v1/admin/books", []byte(`{"title":"Book","language":"ru"}`))
+	setAdminUser(c)
+
+	if err := h.CreateBook(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if body["error"] != adminService.ErrTitleNotRussian.Error() {
+		t.Fatalf("unexpected error message: %q", body["error"])
+	}
+}
+
+func TestCreateBook_NonRussianDescription(t *testing.T) {
+	h, svc := setupHandler()
+	svc.createBookErr = adminService.ErrDescriptionNotRussian
+	c, rec := newContext(http.MethodPost, "/api/v1/admin/books", []byte(`{"title":"Книга","language":"ru","description":"An English description"}`))
+	setAdminUser(c)
+
+	if err := h.CreateBook(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if body["error"] != adminService.ErrDescriptionNotRussian.Error() {
+		t.Fatalf("unexpected error message: %q", body["error"])
+	}
+}
+
 func TestCreateBook_Conflict(t *testing.T) {
 	h, svc := setupHandler()
 	svc.createBookErr = adminService.ErrDuplicateSlug
@@ -301,6 +343,54 @@ func TestUpdateBook_NotFound(t *testing.T) {
 	}
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestUpdateBook_NonRussianTitle(t *testing.T) {
+	h, svc := setupHandler()
+	svc.updateBookErr = adminService.ErrTitleNotRussian
+	c, rec := newContext(http.MethodPatch, "/api/v1/admin/books/"+uuid.New().String(), []byte(`{"title":"Updated","language":"ru"}`))
+	c.SetPath("/api/v1/admin/books/:id")
+	c.SetParamNames("id")
+	c.SetParamValues(uuid.New().String())
+	setAdminUser(c)
+
+	if err := h.UpdateBook(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if body["error"] != adminService.ErrTitleNotRussian.Error() {
+		t.Fatalf("unexpected error message: %q", body["error"])
+	}
+}
+
+func TestUpdateBook_NonRussianDescription(t *testing.T) {
+	h, svc := setupHandler()
+	svc.updateBookErr = adminService.ErrDescriptionNotRussian
+	c, rec := newContext(http.MethodPatch, "/api/v1/admin/books/"+uuid.New().String(), []byte(`{"title":"Книга","language":"ru","description":"An English description"}`))
+	c.SetPath("/api/v1/admin/books/:id")
+	c.SetParamNames("id")
+	c.SetParamValues(uuid.New().String())
+	setAdminUser(c)
+
+	if err := h.UpdateBook(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if body["error"] != adminService.ErrDescriptionNotRussian.Error() {
+		t.Fatalf("unexpected error message: %q", body["error"])
 	}
 }
 
