@@ -60,12 +60,22 @@ type HarvestPayload struct {
 	SPARQLQuery string `json:"sparql_query"`
 }
 
-// HarvestResult is the JSON result written via task.ResultWriter().Write
-// before the handler returns, retrievable later via
-// asynq.Inspector.GetTaskInfo (TaskInfo.Result, once TaskInfo.State ==
-// asynq.TaskStateCompleted).
+// HarvestResult is the JSON result written via task.ResultWriter().Write.
+// It is written incrementally while the task is still running (see
+// reportProgress/runHarvest) as well as once more, finally, after the
+// handler returns - retrievable at any point via asynq.Inspector.GetTaskInfo
+// (TaskInfo.Result), including while TaskInfo.State == asynq.TaskStateActive,
+// not only once State == asynq.TaskStateCompleted.
+//
+// Confirmed against asynq v0.25.1 source (internal/rdb/rdb.go's WriteResult,
+// internal/rdb/inspect.go's GetTaskInfo Lua script): both operate on the
+// same per-task Redis hash key regardless of task state, and
+// ResultWriter.Write has no restriction on being called more than once per
+// task - so writing progress mid-task and reading it back via GetTaskInfo
+// while the task is still active is safe.
 type HarvestResult struct {
 	Processed int                  `json:"processed"`
+	Total     int                  `json:"total"`
 	Created   int                  `json:"created"`
 	Skipped   int                  `json:"skipped_existing"`
 	Errors    []HarvestRecordError `json:"errors"`
@@ -112,7 +122,7 @@ func (h *Handler) HandleTask(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("harvest: sparql_query is required: %w", asynq.SkipRetry)
 	}
 
-	result, err := h.runHarvest(ctx, payload)
+	result, err := h.runHarvest(ctx, payload, t.ResultWriter())
 	if err != nil {
 		if errors.Is(err, bookdata.ErrInvalidQuery) {
 			return fmt.Errorf("harvest: invalid sparql query: %v: %w", err, asynq.SkipRetry)
@@ -132,19 +142,48 @@ func (h *Handler) HandleTask(ctx context.Context, t *asynq.Task) error {
 	return nil
 }
 
+// progressWriter is the subset of *asynq.ResultWriter (t.ResultWriter())
+// this package depends on for mid-task progress reporting. Satisfied by
+// *asynq.ResultWriter in production; tests supply a fake or nil (a nil
+// progressWriter is a safe no-op - see reportProgress).
+type progressWriter interface {
+	Write(data []byte) (int, error)
+}
+
+// reportProgress marshals result to JSON and writes it via progress, for
+// mid-task visibility of a still-running job (see HarvestResult's doc
+// comment for why this is safe to read back via GetTaskInfo while the task
+// is still active). Progress reporting is best-effort: a nil progress (no
+// live ResultWriter, e.g. in tests) is a no-op, and any marshal/write error
+// is swallowed - it must never fail the harvest job itself (see
+// docs/features/harvest-progress.md Business Rules).
+func reportProgress(progress progressWriter, result HarvestResult) {
+	if progress == nil {
+		return
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		return
+	}
+	_, _ = progress.Write(data)
+}
+
 // runHarvest executes the query and per-record processing loop, returning
 // the aggregated result. It is separated from HandleTask so it can be unit
 // tested without a real asynq.Task/ResultWriter (only tasks dequeued by a
 // live asynq.Server have a usable ResultWriter; asynq.NewTask-constructed
 // tasks do not, so exercising the full success path through HandleTask
-// itself is not possible in a unit test).
-func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload) (HarvestResult, error) {
+// itself is not possible in a unit test). progress may be nil (see
+// reportProgress).
+func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progress progressWriter) (HarvestResult, error) {
 	records, err := h.wikidata.Query(ctx, payload.SPARQLQuery)
 	if err != nil {
 		return HarvestResult{}, err
 	}
 
-	result := HarvestResult{Processed: len(records), Errors: []HarvestRecordError{}}
+	result := HarvestResult{Total: len(records), Errors: []HarvestRecordError{}}
+	reportProgress(progress, result)
+
 	for i, rec := range records {
 		outcome, procErr := processRecord(ctx, rec, h.enrich, h.admin)
 		if procErr != nil {
@@ -153,14 +192,16 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload) (Harve
 				Title:   rec.Title,
 				Message: procErr.Error(),
 			})
-			continue
+		} else {
+			switch outcome {
+			case outcomeCreated:
+				result.Created++
+			case outcomeSkipped:
+				result.Skipped++
+			}
 		}
-		switch outcome {
-		case outcomeCreated:
-			result.Created++
-		case outcomeSkipped:
-			result.Skipped++
-		}
+		result.Processed++
+		reportProgress(progress, result)
 	}
 
 	return result, nil

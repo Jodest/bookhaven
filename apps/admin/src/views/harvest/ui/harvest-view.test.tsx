@@ -129,4 +129,79 @@ describe('HarvestView', () => {
       screen.getAllByRole('link', { name: 'К очереди на проверку' }).length
     ).toBeGreaterThan(0);
   });
+
+  it('renders a progress bar with N / M (P%) text for an active job with a partial result', async () => {
+    listJobsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'job-active',
+          queue: 'harvest',
+          state: 'active',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          result: { processed: 37, total: 200, created: 0, skipped_existing: 0, errors: [] },
+        },
+      ],
+    });
+
+    renderView();
+
+    await waitFor(() => expect(screen.getByText('37 / 200 (19%)')).toBeInTheDocument());
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '19');
+  });
+
+  it('renders "Выполняется…" instead of a bar for an active job with no result yet or total === 0', async () => {
+    listJobsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'job-active-no-result',
+          queue: 'harvest',
+          state: 'active',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+        },
+        {
+          id: 'job-active-zero-total',
+          queue: 'harvest',
+          state: 'active',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          result: { processed: 0, total: 0, created: 0, skipped_existing: 0, errors: [] },
+        },
+      ],
+    });
+
+    renderView();
+
+    await waitFor(() => expect(screen.getAllByText('Выполняется…').length).toBe(2));
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('does not render a stale progress bar for a retry job, keeping the last_error/— summary', async () => {
+    listJobsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'job-retry-stale',
+          queue: 'harvest',
+          state: 'retry',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 1,
+          last_error: 'wikidata: source unavailable',
+          result: { processed: 12, total: 50, created: 0, skipped_existing: 0, errors: [] },
+        },
+      ],
+    });
+
+    renderView();
+
+    await waitFor(() =>
+      expect(screen.getByText('wikidata: source unavailable')).toBeInTheDocument()
+    );
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.queryByText('12 / 50 (24%)')).not.toBeInTheDocument();
+  });
 });

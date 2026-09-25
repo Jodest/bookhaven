@@ -10,6 +10,7 @@ import {
   Button,
   Input,
   Label,
+  Progress,
   Table,
   TableBody,
   TableCell,
@@ -61,6 +62,30 @@ function jobResultSummary(job: AdminHarvestJob): string {
     return job.last_error;
   }
   return '—';
+}
+
+// jobResultCell renders the "Результат" table cell for a single job. Only
+// an "active" job with a partial result whose total is known (> 0) gets a
+// progress bar - everything else (including "retry", whose result if any
+// reflects the previous failed attempt, not the upcoming one) keeps the
+// existing plain-text summary.
+function JobResultCell({ job }: { job: AdminHarvestJob }) {
+  if (job.state === 'active') {
+    if (!job.result || job.result.total === 0) {
+      return <span className="text-muted-foreground">Выполняется…</span>;
+    }
+    const processed = Math.min(job.result.processed, job.result.total);
+    const percent = Math.round((processed / job.result.total) * 100);
+    return (
+      <div className="space-y-1">
+        <Progress value={percent} className="w-32" />
+        <div className="text-xs text-muted-foreground">
+          {processed} / {job.result.total} ({percent}%)
+        </div>
+      </div>
+    );
+  }
+  return <>{jobResultSummary(job)}</>;
 }
 
 export function HarvestView() {
@@ -184,7 +209,9 @@ export function HarvestView() {
                   <TableCell>
                     <Badge variant={stateBadgeVariant(job.state)}>{job.state}</Badge>
                   </TableCell>
-                  <TableCell>{jobResultSummary(job)}</TableCell>
+                  <TableCell>
+                    <JobResultCell job={job} />
+                  </TableCell>
                   <TableCell>
                     {job.state === 'completed' && job.result && job.result.created > 0 && (
                       <Link href={'/books?visibility=pending_review' as any}>

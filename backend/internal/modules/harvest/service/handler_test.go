@@ -432,7 +432,7 @@ func TestRunHarvest_PartialFailureDoesNotAbortBatch(t *testing.T) {
 
 	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
 
-	result, err := handler.runHarvest(context.Background(), HarvestPayload{SPARQLQuery: "SELECT * WHERE {}"})
+	result, err := handler.runHarvest(context.Background(), HarvestPayload{SPARQLQuery: "SELECT * WHERE {}"}, nil)
 	if err != nil {
 		t.Fatalf("runHarvest returned unexpected top-level error: %v", err)
 	}
@@ -451,6 +451,104 @@ func TestRunHarvest_PartialFailureDoesNotAbortBatch(t *testing.T) {
 	}
 	if result.Errors[0].Index != 1 || result.Errors[0].Title != "Bad ISBN Book" {
 		t.Errorf("unexpected error entry: %+v", result.Errors[0])
+	}
+}
+
+// fakeProgressWriter implements progressWriter for tests, capturing every
+// Write call's decoded HarvestResult so tests can assert on the sequence of
+// progress reports. An optional err makes every Write call fail, to assert
+// that a progress-write failure never fails the harvest job itself.
+type fakeProgressWriter struct {
+	writes []HarvestResult
+	err    error
+}
+
+func (f *fakeProgressWriter) Write(data []byte) (int, error) {
+	if f.err != nil {
+		return 0, f.err
+	}
+	var result HarvestResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return 0, err
+	}
+	f.writes = append(f.writes, result)
+	return len(data), nil
+}
+
+func TestRunHarvest_ReportsProgressPerRecord(t *testing.T) {
+	admin, _ := newTestAdmin()
+
+	records := []bookdata.ExternalBookRecord{
+		{Title: "Book 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
+		{Title: "Book 2", Language: "ru", SourceName: "wikidata", SourceID: "Q2"},
+		{Title: "Book 3", Language: "ru", SourceName: "wikidata", SourceID: "Q3"},
+	}
+	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
+
+	progress := &fakeProgressWriter{}
+	result, err := handler.runHarvest(context.Background(), HarvestPayload{SPARQLQuery: "SELECT * WHERE {}"}, progress)
+	if err != nil {
+		t.Fatalf("runHarvest returned unexpected error: %v", err)
+	}
+	if result.Total != 3 || result.Processed != 3 {
+		t.Fatalf("unexpected final result: %+v", result)
+	}
+
+	// One write immediately after the query (Total known, Processed: 0), plus
+	// one per record - 4 total for 3 records.
+	if len(progress.writes) != 4 {
+		t.Fatalf("expected 4 progress writes, got %d: %+v", len(progress.writes), progress.writes)
+	}
+	if progress.writes[0].Total != 3 || progress.writes[0].Processed != 0 {
+		t.Fatalf("first progress write = %+v, want Total=3 Processed=0", progress.writes[0])
+	}
+	for i, want := range []int{1, 2, 3} {
+		if progress.writes[i+1].Processed != want {
+			t.Errorf("progress.writes[%d].Processed = %d, want %d", i+1, progress.writes[i+1].Processed, want)
+		}
+		if progress.writes[i+1].Total != 3 {
+			t.Errorf("progress.writes[%d].Total = %d, want 3", i+1, progress.writes[i+1].Total)
+		}
+	}
+}
+
+func TestRunHarvest_NilProgressWriterDoesNotPanic(t *testing.T) {
+	admin, _ := newTestAdmin()
+	records := []bookdata.ExternalBookRecord{
+		{Title: "Book 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
+	}
+	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
+
+	result, err := handler.runHarvest(context.Background(), HarvestPayload{SPARQLQuery: "SELECT * WHERE {}"}, nil)
+	if err != nil {
+		t.Fatalf("runHarvest returned unexpected error with nil progress writer: %v", err)
+	}
+	if result.Processed != 1 || result.Total != 1 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestRunHarvest_ProgressWriteErrorDoesNotFailHarvest(t *testing.T) {
+	admin, repo := newTestAdmin()
+	records := []bookdata.ExternalBookRecord{
+		{Title: "Book 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
+		{Title: "Book 2", Language: "ru", SourceName: "wikidata", SourceID: "Q2"},
+	}
+	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
+
+	progress := &fakeProgressWriter{err: errors.New("redis unavailable")}
+	result, err := handler.runHarvest(context.Background(), HarvestPayload{SPARQLQuery: "SELECT * WHERE {}"}, progress)
+	if err != nil {
+		t.Fatalf("runHarvest returned unexpected error despite progress-write failures: %v", err)
+	}
+	if result.Processed != 2 || result.Created != 2 {
+		t.Fatalf("unexpected result despite progress-write failures: %+v", result)
+	}
+	if len(repo.books) != 2 {
+		t.Fatalf("expected both books created despite progress-write failures, got %d", len(repo.books))
+	}
+	if len(progress.writes) != 0 {
+		t.Fatalf("expected no successful writes captured, got %d", len(progress.writes))
 	}
 }
 
