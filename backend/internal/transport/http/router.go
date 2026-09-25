@@ -5,6 +5,7 @@ import (
 	adminhttp "github.com/bookhaven/backend/internal/modules/admin/transport/http"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	cataloghttp "github.com/bookhaven/backend/internal/modules/catalog/transport/http"
+	harvesthttp "github.com/bookhaven/backend/internal/modules/harvest/transport/http"
 	listsservice "github.com/bookhaven/backend/internal/modules/lists/service"
 	listshttp "github.com/bookhaven/backend/internal/modules/lists/transport/http"
 	ratingsservice "github.com/bookhaven/backend/internal/modules/ratings/service"
@@ -93,14 +94,22 @@ func RegisterRoutes(
 }
 
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
+// harvestEnqueuer/harvestInspector are the small interfaces the new
+// harvest/transport/http.Handler depends on (satisfied by a real
+// *asynq.Client/*asynq.Inspector in production, see cmd/api/main.go) - kept
+// as separate parameters rather than folding harvest into adminService so
+// the admin module itself stays free of an asynq dependency.
 func RegisterAdminRoutes(
 	e *echo.Echo,
 	adminService *adminservice.Service,
 	authMiddleware echo.MiddlewareFunc,
+	harvestEnqueuer harvesthttp.TaskEnqueuer,
+	harvestInspector harvesthttp.TaskInspector,
 ) {
 	admin := e.Group("/api/v1/admin", authMiddleware)
 
 	adminHandler := adminhttp.NewHandler(adminService)
+	harvestHandler := harvesthttp.NewHandler(harvestEnqueuer, harvestInspector)
 
 	adminRole := middleware.RequireRole(usersdomain.RoleAdmin)
 	adminOrModerator := middleware.RequireRole(usersdomain.RoleAdmin, usersdomain.RoleModerator)
@@ -130,4 +139,9 @@ func RegisterAdminRoutes(
 	reviews := admin.Group("/reviews", adminOrModerator)
 	reviews.GET("", adminHandler.ListReviews)
 	reviews.PATCH("/:id", adminHandler.ModerateReview, requireBearer)
+
+	harvest := admin.Group("/harvest", adminRole)
+	harvest.POST("", harvestHandler.TriggerHarvest, requireBearer)
+	harvest.GET("/jobs", harvestHandler.ListHarvestJobs)
+	harvest.GET("/jobs/:id", harvestHandler.GetHarvestJob)
 }

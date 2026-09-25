@@ -7,13 +7,14 @@ import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { BookOpen, Users, Tag, MessageSquare, LayoutDashboard, LogOut } from 'lucide-react';
+import { BookOpen, Users, Tag, MessageSquare, LayoutDashboard, LogOut, Sparkles } from 'lucide-react';
 
 const adminNav = [
   { href: '/', label: 'Обзор', icon: LayoutDashboard },
   { href: '/books', label: 'Книги', icon: BookOpen },
   { href: '/authors', label: 'Авторы', icon: Users },
   { href: '/genres', label: 'Жанры', icon: Tag },
+  { href: '/harvest', label: 'Харвестер', icon: Sparkles },
 ];
 
 const moderatorNav = [
@@ -96,7 +97,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   ];
 
   // Admin-only route guard: if a moderator navigates to an admin-only path, show forbidden.
-  const adminOnlyPaths = ['/books', '/authors', '/genres'];
+  const adminOnlyPaths = ['/books', '/authors', '/genres', '/harvest'];
   const isAdminOnlyPath = pathname === '/' || adminOnlyPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   if (isAdminOnlyPath && !canAccessAdmin) {
     return (
