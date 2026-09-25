@@ -1,6 +1,7 @@
 // Command seed populates the database with a fixed set of dev/demo data
-// (a demo admin/test user plus ~19 hardcoded classic-literature books). It
-// is dev/demo-only tooling and must NOT be used to populate a real catalog:
+// (a demo admin/test user plus, unless -accounts-only is passed, ~19
+// hardcoded classic-literature books). It is dev/demo-only tooling and
+// must NOT be used to populate a real catalog:
 // its output is a small, hand-picked fixture set, not real production
 // content, and it carries none of the provenance/review metadata
 // (external_source/external_id, pending-review flow) that harvested books
@@ -27,6 +28,7 @@ import (
 
 func main() {
 	force := flag.Bool("force", false, "allow running against APP_ENV=production (dangerous, dev/demo data only)")
+	accountsOnly := flag.Bool("accounts-only", false, "seed only the admin/test user accounts; skip genres/authors/demo books")
 	flag.Parse()
 
 	_ = godotenv.Load()
@@ -54,12 +56,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := seed(db); err != nil {
-		fmt.Printf("failed to seed database: %v\n", err)
+	if err := seedAccounts(db); err != nil {
+		fmt.Printf("failed to seed accounts: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("seed data applied successfully")
+	if *accountsOnly {
+		fmt.Println("account seed data applied successfully (catalog skipped: -accounts-only)")
+	} else {
+		if err := seedCatalog(db); err != nil {
+			fmt.Printf("failed to seed catalog: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("seed data applied successfully")
+	}
 	fmt.Println("test account: test@bookhaven.local / test1234")
 }
 
@@ -70,7 +80,10 @@ func shouldRefuseToRun(env string, force bool) bool {
 	return env == "production" && !force
 }
 
-func seed(db *gorm.DB) error {
+// seedAccounts creates the fixed dev/demo admin fixture and the
+// login-capable test account. Always run, independent of -accounts-only,
+// since neither the account fixtures nor login depend on catalog data.
+func seedAccounts(db *gorm.DB) error {
 	// Create admin user
 	adminID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	admin := usersDomain.User{
@@ -103,6 +116,12 @@ func seed(db *gorm.DB) error {
 		return fmt.Errorf("create test user: %w", err)
 	}
 
+	return nil
+}
+
+// seedCatalog creates the fixed dev/demo genres, authors, and ~19 classic
+// books. Skipped when -accounts-only is passed.
+func seedCatalog(db *gorm.DB) error {
 	// Create genres
 	genres := []catalogDomain.Genre{
 		{Name: "Классика", Slug: "classics"},
