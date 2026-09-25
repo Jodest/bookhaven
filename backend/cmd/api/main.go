@@ -10,10 +10,10 @@ import (
 
 	"github.com/bookhaven/backend/internal/config"
 	"github.com/bookhaven/backend/internal/infrastructure/validator"
-	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
-	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	adminrepository "github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
+	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
+	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	listsrepository "github.com/bookhaven/backend/internal/modules/lists/repository"
@@ -31,6 +31,7 @@ import (
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
 	"github.com/bookhaven/backend/internal/transport/http/middleware"
+	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
@@ -89,6 +90,14 @@ func main() {
 	reviewsService := reviewsservice.NewService(reviewsRepo)
 	readingChallengesService := readingchallengesservice.NewService(readingChallengesRepo)
 
+	// asynq.Client/asynq.Inspector for the admin harvest-trigger endpoints
+	// (see docs/features/admin-harvest-trigger.md), constructed the same way
+	// cmd/harvest already constructs its own client.
+	harvestClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
+	defer harvestClient.Close()
+	harvestInspector := asynq.NewInspector(asynq.RedisClientOpt{Addr: cfg.RedisURL})
+	defer harvestInspector.Close()
+
 	authService := authservice.NewService(authservice.Config{
 		JWTSecret:       cfg.JWTSecret,
 		AccessTokenTTL:  15 * time.Minute,
@@ -130,7 +139,7 @@ func main() {
 	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, authMiddleware, optionalAuth)
 
 	// Admin routes
-	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware)
+	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, harvestClient, harvestInspector)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)
