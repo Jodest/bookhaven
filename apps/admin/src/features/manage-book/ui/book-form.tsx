@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminAuthorsApi } from '@/entities/author';
 import { adminGenresApi } from '@/entities/genre';
-import { AdminBook, AdminBookInput, ApiError } from '@bookhaven/api-client';
+import { adminBooksApi } from '@/entities/book';
+import { AdminBook, AdminBookInput, ApiError, LookupRecord } from '@bookhaven/api-client';
 import {
   Button,
   Input,
@@ -71,6 +72,60 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
   const genreOptions =
     genresData?.items.map((g) => ({ value: g.id, label: g.name })) || [];
 
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupResult, setLookupResult] = useState<LookupRecord | null>(null);
+
+  // Calls the lookup assistant with whatever ISBN/title is currently typed
+  // (ISBN takes priority when both are filled in) and overwrites only the
+  // scalar fields the response actually contains - never author_ids/
+  // genre_ids, which stay a manual MultiSelect action. A 400/404/502 is
+  // shown inline and never blocks manual entry or submission.
+  const handleLookup = async () => {
+    const isbn = (watch('isbn') || '').trim();
+    const title = (watch('title') || '').trim();
+
+    if (!isbn && !title) {
+      setLookupError('Введите ISBN или название для поиска.');
+      setLookupResult(null);
+      return;
+    }
+
+    setLookupLoading(true);
+    setLookupError(null);
+
+    try {
+      const record = await adminBooksApi.lookup(
+        isbn ? { isbn } : { q: title }
+      );
+      setLookupResult(record);
+      if (record.title) setValue('title', record.title);
+      if (record.description) setValue('description', record.description);
+      if (record.isbn) setValue('isbn', record.isbn);
+      if (record.cover_url) setValue('cover_url', record.cover_url);
+      if (record.published_year != null) setValue('published_year', record.published_year);
+      if (record.page_count != null) setValue('page_count', record.page_count);
+      if (record.language) setValue('language', record.language);
+    } catch (error) {
+      let message = 'Не удалось выполнить поиск. Попробуйте позже или введите данные вручную.';
+      if (error instanceof ApiError) {
+        if (error.status === 400) {
+          message = 'Введите ISBN или название для поиска.';
+        } else if (error.status === 404) {
+          message = 'Ничего не найдено. Введите данные вручную.';
+        } else if (error.status === 502) {
+          message =
+            error.message ||
+            'Источник данных недоступен. Попробуйте позже или введите данные вручную.';
+        }
+      }
+      setLookupError(message);
+      setLookupResult(null);
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
   const handleFormSubmit = async (data: AdminBookInput) => {
     setServerError(null);
 
@@ -126,7 +181,23 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="isbn">ISBN</Label>
-          <Input id="isbn" {...register('isbn')} />
+          <div className="flex gap-2">
+            <Input id="isbn" {...register('isbn')} />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleLookup}
+              disabled={lookupLoading}
+            >
+              {lookupLoading ? 'Поиск...' : 'Найти по ISBN/названию'}
+            </Button>
+          </div>
+          {lookupError && <p className="text-sm text-destructive">{lookupError}</p>}
+          {lookupResult && !lookupError && (
+            <p className="text-sm text-muted-foreground">
+              Данные подставлены из источника «{lookupResult.source_name}».
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="language">Язык *</Label>
@@ -167,6 +238,11 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
             value={authorIds || []}
             onChange={(v) => setValue('author_ids', v)}
           />
+          {lookupResult && lookupResult.authors.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Из результата поиска (выберите вручную): {lookupResult.authors.join(', ')}
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Жанры</Label>
@@ -175,6 +251,11 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
             value={genreIds || []}
             onChange={(v) => setValue('genre_ids', v)}
           />
+          {lookupResult && lookupResult.genres.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Из результата поиска (выберите вручную): {lookupResult.genres.join(', ')}
+            </p>
+          )}
         </div>
       </div>
 

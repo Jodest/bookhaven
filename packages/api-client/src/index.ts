@@ -310,6 +310,43 @@ export interface AdminGenreInput {
   slug?: string;
 }
 
+// LookupRecord is the normalized record returned by
+// GET /api/v1/admin/books/lookup (the "Найти по ISBN/названию" assistant).
+// Fields are only present when the source actually reported them - the
+// caller (book-form.tsx) must never overwrite a form field with an absent
+// one.
+export interface LookupRecord {
+  title: string;
+  authors: string[];
+  genres: string[];
+  isbn?: string | null;
+  description?: string | null;
+  cover_url?: string | null;
+  published_year?: number | null;
+  page_count?: number | null;
+  language?: string;
+  source_name: string;
+  source_id: string;
+}
+
+// ImportRowError describes one failed row of a POST /api/v1/admin/books/import
+// batch. row is 1-based over data rows (a CSV header row, if any, is not
+// counted).
+export interface ImportRowError {
+  row: number;
+  title: string;
+  message: string;
+}
+
+// ImportReport is the response of POST /api/v1/admin/books/import, returned
+// with HTTP 200 regardless of per-row outcomes.
+export interface ImportReport {
+  processed: number;
+  created: number;
+  skipped_existing: number;
+  errors: ImportRowError[];
+}
+
 const API_URL =
   typeof window === 'undefined'
     ? process.env.API_URL || 'http://backend:8080'
@@ -425,7 +462,15 @@ export function scheduleTokenRefresh(expiresInSeconds: number, onDue: () => void
 // freshly-rotated access token before retrying.
 function buildRequestHeaders(path: string, options?: RequestInit): Headers {
   const headers = new Headers(options?.headers);
-  headers.set('Content-Type', 'application/json');
+  // A FormData body (used by the admin bulk-import upload) must NOT get a
+  // manually-set Content-Type - the browser needs to set its own
+  // "multipart/form-data; boundary=..." value, which it only does when
+  // Content-Type is left unset. Every other caller passes a JSON string
+  // body and keeps getting the header it always got, so this is additive
+  // and does not change behavior for any existing caller.
+  if (!(options?.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
   const method = (options?.method ?? 'GET').toUpperCase();
   if (
     accessToken &&
@@ -970,6 +1015,29 @@ export const api = {
           method: 'PATCH',
           body: JSON.stringify(data),
         }),
+      lookup: (params: { isbn?: string; q?: string; author?: string }) => {
+        const queryParams: Record<string, string> = {};
+        if (params.isbn) queryParams.isbn = params.isbn;
+        if (params.q) queryParams.q = params.q;
+        if (params.author) queryParams.author = params.author;
+        return fetcher<LookupRecord>(
+          `/api/v1/admin/books/lookup?${new URLSearchParams(queryParams)}`
+        );
+      },
+      import: (file: File, options?: { format?: 'csv' | 'json'; isHidden?: boolean }) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (options?.format) {
+          formData.append('format', options.format);
+        }
+        if (options?.isHidden !== undefined) {
+          formData.append('is_hidden', String(options.isHidden));
+        }
+        return fetcher<ImportReport>('/api/v1/admin/books/import', {
+          method: 'POST',
+          body: formData,
+        });
+      },
     },
     authors: {
       list: async (params?: {
