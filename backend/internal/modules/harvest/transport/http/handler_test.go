@@ -295,6 +295,88 @@ func TestGetHarvestJob_CompletedWithMalformedResult_OmitsResultNotError(t *testi
 	}
 }
 
+// TestGetHarvestJob_ActiveWithPartialResult_ResultSurfaced proves the claim
+// in docs/features/harvest-progress.md Acceptance Criteria that
+// toHarvestJobResponse needs no shape/gating change to surface a Result
+// written mid-task (State == active, Processed < Total) - it already
+// unconditionally maps Result whenever TaskInfo.Result decodes cleanly,
+// regardless of State.
+func TestGetHarvestJob_ActiveWithPartialResult_ResultSurfaced(t *testing.T) {
+	partial := harvestservice.HarvestResult{Processed: 37, Total: 200, Errors: []harvestservice.HarvestRecordError{}}
+	resultBytes, _ := json.Marshal(partial)
+	inspector := &fakeInspector{
+		getByID: map[string]*asynq.TaskInfo{
+			"job-active": {
+				ID:     "job-active",
+				Queue:  harvestservice.QueueName,
+				State:  asynq.TaskStateActive,
+				Result: resultBytes,
+			},
+		},
+	}
+	h := NewHandler(&fakeEnqueuer{}, inspector)
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-active", nil)
+	c.SetParamNames("id")
+	c.SetParamValues("job-active")
+
+	if err := h.GetHarvestJob(c); err != nil {
+		t.Fatalf("GetHarvestJob returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp harvestJobResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.State != "active" {
+		t.Fatalf("State = %q, want active", resp.State)
+	}
+	if resp.Result == nil {
+		t.Fatal("expected partial result to be surfaced for an active job")
+	}
+	if resp.Result.Processed != 37 || resp.Result.Total != 200 {
+		t.Fatalf("unexpected partial result: %+v", resp.Result)
+	}
+}
+
+// TestGetHarvestJob_ActiveWithNoResultYet_ResultOmitted covers the window
+// right after a task is dequeued but before its first reportProgress write
+// has landed - Result stays nil/omitted, exactly like the pending/retry case.
+func TestGetHarvestJob_ActiveWithNoResultYet_ResultOmitted(t *testing.T) {
+	inspector := &fakeInspector{
+		getByID: map[string]*asynq.TaskInfo{
+			"job-active-2": {
+				ID:    "job-active-2",
+				Queue: harvestservice.QueueName,
+				State: asynq.TaskStateActive,
+			},
+		},
+	}
+	h := NewHandler(&fakeEnqueuer{}, inspector)
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-active-2", nil)
+	c.SetParamNames("id")
+	c.SetParamValues("job-active-2")
+
+	if err := h.GetHarvestJob(c); err != nil {
+		t.Fatalf("GetHarvestJob returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp harvestJobResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if resp.Result != nil {
+		t.Fatalf("expected nil result before first progress write, got %+v", resp.Result)
+	}
+}
+
 func TestGetHarvestJob_NotFound_ReturnsNotFound(t *testing.T) {
 	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{})
 

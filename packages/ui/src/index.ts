@@ -4,6 +4,7 @@ export { Textarea } from './components/ui/textarea';
 export { Label } from './components/ui/label';
 export { Select } from './components/ui/select';
 export { Badge } from './components/ui/badge';
+export { Progress } from './components/ui/progress';
 export {
   Card,
   CardHeader,
