@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Drives the BookHaven docker-compose stack: ensures Docker Desktop is up,
-# starts services, applies migrations/seed on a fresh DB, and smoke-tests
-# each HTTP surface. Safe to re-run — every step is idempotent.
+# starts services, applies migrations + account-only seed (admin fixture +
+# test login) on a fresh DB, and smoke-tests each HTTP surface. Does NOT
+# seed the demo catalog (books/genres/authors) automatically — run
+# `cmd/seed` yourself (no flags) if you want that. Safe to re-run — every
+# step is idempotent.
 set -uo pipefail
 cd "$(dirname "$0")/../../.."   # repo root (this file lives in .claude/skills/run-bookhaven/)
 
@@ -74,13 +77,11 @@ books_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/api/v
 if [ "$books_code" != "200" ]; then
   echo "Books endpoint returned $books_code — applying migrations..."
   docker compose exec -T backend go run cmd/migrate/main.go up
+  echo "Seeding accounts only (admin fixture + test login; no demo books)..."
+  docker compose exec -T backend go run cmd/seed/main.go -accounts-only
 fi
-
-books_body=$(curl -s "http://localhost:8080/api/v1/books?limit=1")
-if echo "$books_body" | grep -q '"items":\[\]'; then
-  echo "DB has no books — seeding..."
-  docker compose exec -T backend go run cmd/seed/main.go
-fi
+# Demo catalog (books/genres/authors) is NOT seeded automatically — run
+# yourself if wanted: docker compose exec backend go run cmd/seed/main.go
 
 # --- 5. Wait for web/admin dev servers (first boot runs `pnpm install`, can take minutes) ---
 echo "Waiting for web (:3000) and admin (:3001) — first boot reinstalls deps, can take a few minutes..."
@@ -114,3 +115,5 @@ echo "  Web:   http://localhost:3000"
 echo "  Admin: http://localhost:3001"
 echo "  API:   http://localhost:8080  (Swagger: http://localhost:8080/swagger/index.html)"
 echo "  Test account: test@bookhaven.local / test1234"
+echo "  No demo catalog seeded automatically. To seed books/genres/authors:"
+echo "    docker compose exec backend go run cmd/seed/main.go"
