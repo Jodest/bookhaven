@@ -20,6 +20,7 @@ import (
 	usershttp "github.com/bookhaven/backend/internal/modules/users/transport/http"
 	"github.com/bookhaven/backend/internal/transport/http/middleware"
 	"github.com/labstack/echo/v4"
+	echomiddleware "github.com/labstack/echo/v4/middleware"
 )
 
 // RegisterRoutes registers all public API routes.
@@ -111,6 +112,8 @@ func RegisterAdminRoutes(
 	books := admin.Group("/books", adminRole)
 	books.GET("", adminHandler.ListBooks)
 	books.POST("", adminHandler.CreateBook, requireBearer)
+	books.GET("/lookup", adminHandler.LookupBook)
+	books.POST("/import", adminHandler.ImportBooks, requireBearer, echomiddleware.BodyLimit(adminhttp.ImportMaxRequestBody))
 	books.GET("/:id", adminHandler.GetBook)
 	books.PATCH("/:id", adminHandler.UpdateBook, requireBearer)
 

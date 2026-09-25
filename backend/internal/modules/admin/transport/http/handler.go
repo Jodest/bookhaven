@@ -3,14 +3,17 @@ package http
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminService "github.com/bookhaven/backend/internal/modules/admin/service"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
+	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -30,6 +33,8 @@ type Service interface {
 	UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	ListReviews(ctx context.Context, filter repository.ReviewFilter) ([]reviewsDomain.Review, int64, error)
 	ModerateReview(ctx context.Context, id uuid.UUID, isHidden bool) (*reviewsDomain.Review, error)
+	LookupBook(ctx context.Context, isbn, query, author string) (*bookdata.ExternalBookRecord, error)
+	ImportBooks(ctx context.Context, rows []adminService.ImportRowInput, defaultHidden bool) adminService.ImportReport
 }
 
 // Handler handles admin HTTP requests.
@@ -141,6 +146,38 @@ type createUpdateGenreRequest struct {
 
 type moderateReviewRequest struct {
 	IsHidden bool `json:"is_hidden"`
+}
+
+// lookupResponse is the normalized record returned by GET /admin/books/lookup,
+// matching docs/features/catalog-manual-import.md's field list.
+type lookupResponse struct {
+	Title         string   `json:"title"`
+	Authors       []string `json:"authors"`
+	Genres        []string `json:"genres"`
+	ISBN          *string  `json:"isbn,omitempty"`
+	Description   *string  `json:"description,omitempty"`
+	CoverURL      *string  `json:"cover_url,omitempty"`
+	PublishedYear *int     `json:"published_year,omitempty"`
+	PageCount     *int     `json:"page_count,omitempty"`
+	Language      string   `json:"language,omitempty"`
+	SourceName    string   `json:"source_name"`
+	SourceID      string   `json:"source_id"`
+}
+
+func toLookupResponse(rec bookdata.ExternalBookRecord) lookupResponse {
+	return lookupResponse{
+		Title:         rec.Title,
+		Authors:       rec.Authors,
+		Genres:        rec.Genres,
+		ISBN:          rec.ISBN,
+		Description:   rec.Description,
+		CoverURL:      rec.CoverURL,
+		PublishedYear: rec.PublishedYear,
+		PageCount:     rec.PageCount,
+		Language:      rec.Language,
+		SourceName:    rec.SourceName,
+		SourceID:      rec.SourceID,
+	}
 }
 
 type reviewResponse struct {
@@ -860,4 +897,100 @@ func (h *Handler) ModerateReview(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, toReviewResponse(*review))
+}
+
+// LookupBook godoc
+// @Summary Поиск книги по ISBN или названию во внешнем источнике (админ)
+// @Description Требуется роль admin. Синхронный, только для чтения вызов Open Library - не создаёт и не изменяет записи; сохранение выполняется отдельным POST /admin/books.
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param isbn query string false "ISBN"
+// @Param q query string false "Название книги"
+// @Param author query string false "Автор (уточняет поиск по названию)"
+// @Success 200 {object} lookupResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 502 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/books/lookup [get]
+func (h *Handler) LookupBook(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	record, err := h.service.LookupBook(ctx, c.QueryParam("isbn"), c.QueryParam("q"), c.QueryParam("author"))
+	if err != nil {
+		switch {
+		case errors.Is(err, adminService.ErrLookupQueryRequired):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, bookdata.ErrNotFound):
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "no matching book found"})
+		case errors.Is(err, bookdata.ErrRateLimited), errors.Is(err, bookdata.ErrSourceUnavailable), errors.Is(err, adminService.ErrLookupUnavailable):
+			return c.JSON(http.StatusBadGateway, map[string]string{"error": "lookup source is unavailable; retry later or enter the data manually"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to look up book"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, toLookupResponse(*record))
+}
+
+// ImportBooks godoc
+// @Summary Массовый импорт книг из CSV/JSON файла (админ)
+// @Description Требуется роль admin и Bearer-токен. multipart/form-data: file (обязательно, .csv/.json), format (опционально, csv|json — иначе определяется по расширению), is_hidden (опционально, true/false, применяется ко всей партии). Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов.
+// @Tags admin
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} adminService.ImportReport
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 413 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/books/import [post]
+func (h *Handler) ImportBooks(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "file is required"})
+	}
+
+	format := strings.ToLower(strings.TrimSpace(c.FormValue("format")))
+	if format == "" {
+		format = sniffImportFormat(fileHeader.Filename)
+	}
+	if format != "csv" && format != "json" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "unable to determine file format; upload a .csv/.json file or set the format field"})
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to read uploaded file"})
+	}
+	defer file.Close()
+
+	var rows []adminService.ImportRowInput
+	if format == "csv" {
+		rows, err = parseImportCSV(file)
+	} else {
+		rows, err = parseImportJSON(file)
+	}
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "unable to parse file: " + err.Error()})
+	}
+
+	if len(rows) > maxImportRows {
+		return c.JSON(http.StatusUnprocessableEntity, map[string]string{
+			"error": fmt.Sprintf("file has %d rows, which exceeds the %d row limit per import; use cmd/harvest or cmd/seed for larger loads", len(rows), maxImportRows),
+		})
+	}
+
+	defaultHidden := strings.EqualFold(strings.TrimSpace(c.FormValue("is_hidden")), "true")
+
+	report := h.service.ImportBooks(ctx, rows, defaultHidden)
+	return c.JSON(http.StatusOK, report)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminService "github.com/bookhaven/backend/internal/modules/admin/service"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
+	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -28,6 +29,13 @@ type fakeAdminService struct {
 	createBookErr  error
 	updateBookErr  error
 	lastBookFilter repository.BookFilter
+
+	lookupRecord *bookdata.ExternalBookRecord
+	lookupErr    error
+
+	importReport      *adminService.ImportReport
+	lastImportRows    []adminService.ImportRowInput
+	lastImportHidden  bool
 }
 
 func (f *fakeAdminService) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
@@ -147,6 +155,22 @@ func (f *fakeAdminService) ModerateReview(ctx context.Context, id uuid.UUID, isH
 		}
 	}
 	return nil, adminService.ErrReviewNotFound
+}
+
+func (f *fakeAdminService) LookupBook(ctx context.Context, isbn, query, author string) (*bookdata.ExternalBookRecord, error) {
+	if f.lookupErr != nil {
+		return nil, f.lookupErr
+	}
+	return f.lookupRecord, nil
+}
+
+func (f *fakeAdminService) ImportBooks(ctx context.Context, rows []adminService.ImportRowInput, defaultHidden bool) adminService.ImportReport {
+	f.lastImportRows = rows
+	f.lastImportHidden = defaultHidden
+	if f.importReport != nil {
+		return *f.importReport
+	}
+	return adminService.ImportReport{Processed: len(rows), Created: len(rows), Errors: []adminService.ImportRowError{}}
 }
 
 func setupHandler() (*Handler, *fakeAdminService) {
@@ -359,5 +383,73 @@ func TestModerateReview_NotFound(t *testing.T) {
 	}
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestLookupBook_Success(t *testing.T) {
+	h, svc := setupHandler()
+	svc.lookupRecord = &bookdata.ExternalBookRecord{Title: "War and Peace", SourceName: "openlibrary", SourceID: "OL123"}
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books/lookup?isbn=9780000000000", nil)
+	setAdminUser(c)
+
+	if err := h.LookupBook(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body lookupResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if body.Title != "War and Peace" {
+		t.Errorf("Title = %q", body.Title)
+	}
+}
+
+func TestLookupBook_ValidationError(t *testing.T) {
+	h, svc := setupHandler()
+	svc.lookupErr = adminService.ErrLookupQueryRequired
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books/lookup", nil)
+	setAdminUser(c)
+
+	if err := h.LookupBook(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestLookupBook_NotFound(t *testing.T) {
+	h, svc := setupHandler()
+	svc.lookupErr = bookdata.ErrNotFound
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books/lookup?isbn=0000000000", nil)
+	setAdminUser(c)
+
+	if err := h.LookupBook(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestLookupBook_SourceUnavailable(t *testing.T) {
+	h, svc := setupHandler()
+	svc.lookupErr = bookdata.ErrRateLimited
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books/lookup?isbn=0000000000", nil)
+	setAdminUser(c)
+
+	if err := h.LookupBook(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
 	}
 }

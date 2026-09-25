@@ -5,4 +5,6 @@ export const adminBooksApi = {
   get: api.admin.books.get,
   create: api.admin.books.create,
   update: api.admin.books.update,
+  lookup: api.admin.books.lookup,
+  import: api.admin.books.import,
 };
