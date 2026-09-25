@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
+	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
 )
@@ -94,6 +96,24 @@ func (f *fakeInspector) ListCompletedTasks(qname string, opts ...asynq.ListOptio
 	return f.completed, nil
 }
 
+// fakeSearcher is a hand-rolled AuthorSearcher fake (no mocking library, per
+// repo convention).
+type fakeSearcher struct {
+	candidates  []bookdata.AuthorCandidate
+	err         error
+	lastQuery   string
+	capturedCtx context.Context
+}
+
+func (f *fakeSearcher) SearchAuthors(ctx context.Context, query string) ([]bookdata.AuthorCandidate, error) {
+	f.lastQuery = query
+	f.capturedCtx = ctx
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.candidates, nil
+}
+
 func newTestContext(method, path string, body []byte) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	var req *http.Request
@@ -109,7 +129,7 @@ func newTestContext(method, path string, body []byte) (echo.Context, *httptest.R
 
 func TestTriggerHarvest_ValidAuthorQIDs_ReturnsCreated(t *testing.T) {
 	enqueuer := &fakeEnqueuer{}
-	h := NewHandler(enqueuer, &fakeInspector{})
+	h := NewHandler(enqueuer, &fakeInspector{}, &fakeSearcher{})
 
 	body, _ := json.Marshal(triggerHarvestRequest{AuthorQIDs: []string{"Q7200", "Q1183296"}, Limit: 100})
 	c, rec := newTestContext(http.MethodPost, "/admin/harvest", body)
@@ -141,7 +161,7 @@ func TestTriggerHarvest_ValidAuthorQIDs_ReturnsCreated(t *testing.T) {
 }
 
 func TestTriggerHarvest_EmptyAuthorQIDs_ReturnsBadRequest(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
 
 	body, _ := json.Marshal(triggerHarvestRequest{AuthorQIDs: []string{}})
 	c, rec := newTestContext(http.MethodPost, "/admin/harvest", body)
@@ -158,7 +178,7 @@ func TestTriggerHarvest_EmptyAuthorQIDs_ReturnsBadRequest(t *testing.T) {
 }
 
 func TestTriggerHarvest_MalformedQID_ReturnsBadRequest(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
 
 	body, _ := json.Marshal(triggerHarvestRequest{AuthorQIDs: []string{"not-a-qid"}})
 	c, rec := newTestContext(http.MethodPost, "/admin/harvest", body)
@@ -176,7 +196,7 @@ func TestTriggerHarvest_MalformedQID_ReturnsBadRequest(t *testing.T) {
 
 func TestTriggerHarvest_EnqueueError_ReturnsBadGateway(t *testing.T) {
 	enqueuer := &fakeEnqueuer{err: errors.New("redis unavailable")}
-	h := NewHandler(enqueuer, &fakeInspector{})
+	h := NewHandler(enqueuer, &fakeInspector{}, &fakeSearcher{})
 
 	body, _ := json.Marshal(triggerHarvestRequest{AuthorQIDs: []string{"Q7200"}})
 	c, rec := newTestContext(http.MethodPost, "/admin/harvest", body)
@@ -197,7 +217,7 @@ func TestListHarvestJobs_MergesAllStatesInDocumentedOrder(t *testing.T) {
 		completed: []*asynq.TaskInfo{{ID: "c1", State: asynq.TaskStateCompleted}},
 		archived:  []*asynq.TaskInfo{{ID: "ar1", State: asynq.TaskStateArchived}},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector)
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs", nil)
 	if err := h.ListHarvestJobs(c); err != nil {
@@ -238,7 +258,7 @@ func TestGetHarvestJob_Found_ReturnsMappedFields(t *testing.T) {
 			},
 		},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector)
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-1", nil)
 	c.SetParamNames("id")
@@ -273,7 +293,7 @@ func TestGetHarvestJob_CompletedWithMalformedResult_OmitsResultNotError(t *testi
 			},
 		},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector)
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-2", nil)
 	c.SetParamNames("id")
@@ -314,7 +334,7 @@ func TestGetHarvestJob_ActiveWithPartialResult_ResultSurfaced(t *testing.T) {
 			},
 		},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector)
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-active", nil)
 	c.SetParamNames("id")
@@ -355,7 +375,7 @@ func TestGetHarvestJob_ActiveWithNoResultYet_ResultOmitted(t *testing.T) {
 			},
 		},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector)
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-active-2", nil)
 	c.SetParamNames("id")
@@ -378,7 +398,7 @@ func TestGetHarvestJob_ActiveWithNoResultYet_ResultOmitted(t *testing.T) {
 }
 
 func TestGetHarvestJob_NotFound_ReturnsNotFound(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/missing", nil)
 	c.SetParamNames("id")
@@ -389,5 +409,126 @@ func TestGetHarvestJob_NotFound_ReturnsNotFound(t *testing.T) {
 	}
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestSearchAuthors_ValidQuery_ReturnsMappedItems(t *testing.T) {
+	searcher := &fakeSearcher{
+		candidates: []bookdata.AuthorCandidate{
+			{QID: "Q7200", Label: "Лев Толстой", Description: "русский писатель"},
+			{QID: "Q171976", Label: "Алексей Николаевич Толстой"},
+		},
+	}
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, searcher)
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=%D0%A2%D0%BE%D0%BB%D1%81%D1%82%D0%BE%D0%B9", nil)
+
+	if err := h.SearchAuthors(c); err != nil {
+		t.Fatalf("SearchAuthors returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if searcher.lastQuery != "Толстой" {
+		t.Fatalf("lastQuery = %q, want Толстой", searcher.lastQuery)
+	}
+
+	var resp listAuthorCandidatesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(resp.Items) != 2 {
+		t.Fatalf("len(items) = %d, want 2", len(resp.Items))
+	}
+	if resp.Items[0].QID != "Q7200" || resp.Items[0].Label != "Лев Толстой" || resp.Items[0].Description != "русский писатель" {
+		t.Fatalf("unexpected items[0]: %+v", resp.Items[0])
+	}
+}
+
+func TestSearchAuthors_ZeroResults_ReturnsEmptyItems(t *testing.T) {
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{candidates: []bookdata.AuthorCandidate{}})
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=xyzzy", nil)
+
+	if err := h.SearchAuthors(c); err != nil {
+		t.Fatalf("SearchAuthors returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp listAuthorCandidatesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(resp.Items) != 0 {
+		t.Fatalf("items = %v, want empty", resp.Items)
+	}
+}
+
+func TestSearchAuthors_MissingQuery_ReturnsBadRequest(t *testing.T) {
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search", nil)
+
+	if err := h.SearchAuthors(c); err != nil {
+		t.Fatalf("SearchAuthors returned error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestSearchAuthors_BlankQuery_ReturnsBadRequest(t *testing.T) {
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=%20%20", nil)
+
+	if err := h.SearchAuthors(c); err != nil {
+		t.Fatalf("SearchAuthors returned error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestSearchAuthors_InvalidQueryFromSearcher_ReturnsBadRequest(t *testing.T) {
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{err: bookdata.ErrInvalidQuery})
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=bad", nil)
+
+	if err := h.SearchAuthors(c); err != nil {
+		t.Fatalf("SearchAuthors returned error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestSearchAuthors_RateLimitedOrUnavailable_ReturnsBadGateway(t *testing.T) {
+	for _, err := range []error{bookdata.ErrRateLimited, bookdata.ErrSourceUnavailable} {
+		h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{err: err})
+
+		c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=Толстой", nil)
+
+		if callErr := h.SearchAuthors(c); callErr != nil {
+			t.Fatalf("SearchAuthors returned error: %v", callErr)
+		}
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("err=%v: status = %d, want %d", err, rec.Code, http.StatusBadGateway)
+		}
+	}
+}
+
+func TestSearchAuthors_UnmappedError_ReturnsInternalServerError(t *testing.T) {
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{err: errors.New("boom")})
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=Толстой", nil)
+
+	if err := h.SearchAuthors(c); err != nil {
+		t.Fatalf("SearchAuthors returned error: %v", err)
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
 }

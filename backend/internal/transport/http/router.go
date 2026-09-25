@@ -105,11 +105,12 @@ func RegisterAdminRoutes(
 	authMiddleware echo.MiddlewareFunc,
 	harvestEnqueuer harvesthttp.TaskEnqueuer,
 	harvestInspector harvesthttp.TaskInspector,
+	harvestAuthorSearcher harvesthttp.AuthorSearcher,
 ) {
 	admin := e.Group("/api/v1/admin", authMiddleware)
 
 	adminHandler := adminhttp.NewHandler(adminService)
-	harvestHandler := harvesthttp.NewHandler(harvestEnqueuer, harvestInspector)
+	harvestHandler := harvesthttp.NewHandler(harvestEnqueuer, harvestInspector, harvestAuthorSearcher)
 
 	adminRole := middleware.RequireRole(usersdomain.RoleAdmin)
 	adminOrModerator := middleware.RequireRole(usersdomain.RoleAdmin, usersdomain.RoleModerator)
@@ -144,4 +145,5 @@ func RegisterAdminRoutes(
 	harvest.POST("", harvestHandler.TriggerHarvest, requireBearer)
 	harvest.GET("/jobs", harvestHandler.ListHarvestJobs)
 	harvest.GET("/jobs/:id", harvestHandler.GetHarvestJob)
+	harvest.GET("/authors/search", harvestHandler.SearchAuthors)
 }

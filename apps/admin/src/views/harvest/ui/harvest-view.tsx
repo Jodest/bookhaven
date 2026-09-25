@@ -19,6 +19,9 @@ import {
   TableRow,
   Textarea,
 } from '@bookhaven/ui';
+import { AuthorNameSearch, SelectedAuthor } from './author-name-search';
+
+type AuthorInputMode = 'search' | 'manual';
 
 const JOBS_QUERY_KEY = ['admin', 'harvest', 'jobs'];
 
@@ -89,10 +92,34 @@ function JobResultCell({ job }: { job: AdminHarvestJob }) {
 }
 
 export function HarvestView() {
+  const [mode, setMode] = useState<AuthorInputMode>('search');
+  const [selectedAuthors, setSelectedAuthors] = useState<SelectedAuthor[]>([]);
   const [qidsText, setQidsText] = useState('');
   const [limitText, setLimitText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  // Switching modes discards the *other* mode's in-progress input, per
+  // docs/features/harvest-author-search.md Business Rules - the two modes
+  // are mutually exclusive per submit, never merged.
+  const handleModeChange = (nextMode: AuthorInputMode) => {
+    if (nextMode === mode) return;
+    if (nextMode === 'manual') {
+      setSelectedAuthors([]);
+    } else {
+      setQidsText('');
+    }
+    setMode(nextMode);
+    setError(null);
+  };
+
+  const handleAddAuthor = (author: SelectedAuthor) => {
+    setSelectedAuthors((prev) => (prev.some((a) => a.qid === author.qid) ? prev : [...prev, author]));
+  };
+
+  const handleRemoveAuthor = (qid: string) => {
+    setSelectedAuthors((prev) => prev.filter((a) => a.qid !== qid));
+  };
 
   const jobsQuery = useQuery({
     queryKey: JOBS_QUERY_KEY,
@@ -105,6 +132,7 @@ export function HarvestView() {
     onSuccess: () => {
       setError(null);
       setQidsText('');
+      setSelectedAuthors([]);
       setLimitText('');
       queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY });
     },
@@ -119,10 +147,23 @@ export function HarvestView() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const authorQids = parseAuthorQIDs(qidsText);
-    if (authorQids.length === 0) {
-      setError('Введите хотя бы один QID автора.');
-      return;
+
+    // The two modes are mutually exclusive per submit - author_qids comes
+    // from exactly one of selectedAuthors or the parsed QID textarea, never
+    // a merge of both.
+    let authorQids: string[];
+    if (mode === 'search') {
+      authorQids = selectedAuthors.map((a) => a.qid);
+      if (authorQids.length === 0) {
+        setError('Выберите хотя бы одного автора.');
+        return;
+      }
+    } else {
+      authorQids = parseAuthorQIDs(qidsText);
+      if (authorQids.length === 0) {
+        setError('Введите хотя бы один QID автора.');
+        return;
+      }
     }
     setError(null);
 
@@ -145,19 +186,46 @@ export function HarvestView() {
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-xl space-y-4 rounded-lg border p-6">
-        <div className="space-y-2">
-          <Label htmlFor="harvest-qids">QID авторов Wikidata</Label>
-          <Textarea
-            id="harvest-qids"
-            value={qidsText}
-            onChange={(e) => setQidsText(e.target.value)}
-            placeholder={'Q7200\nQ1183296'}
-            rows={5}
-          />
-          <p className="text-xs text-muted-foreground">
-            Один QID на строку или через запятую, например Q7200
-          </p>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant={mode === 'search' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => handleModeChange('search')}
+          >
+            Поиск по имени
+          </Button>
+          <Button
+            type="button"
+            variant={mode === 'manual' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => handleModeChange('manual')}
+          >
+            Ввести QID вручную
+          </Button>
         </div>
+
+        {mode === 'search' ? (
+          <AuthorNameSearch
+            selectedAuthors={selectedAuthors}
+            onAdd={handleAddAuthor}
+            onRemove={handleRemoveAuthor}
+          />
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor="harvest-qids">QID авторов Wikidata</Label>
+            <Textarea
+              id="harvest-qids"
+              value={qidsText}
+              onChange={(e) => setQidsText(e.target.value)}
+              placeholder={'Q7200\nQ1183296'}
+              rows={5}
+            />
+            <p className="text-xs text-muted-foreground">
+              Один QID на строку или через запятую, например Q7200
+            </p>
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="harvest-limit">Лимит (необязательно)</Label>
