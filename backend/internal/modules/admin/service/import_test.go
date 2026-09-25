@@ -1,0 +1,379 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/bookhaven/backend/internal/modules/admin/repository"
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
+	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+// fakeImportRepository is a dynamic in-memory repository.Repository used
+// only by TestImportBooks. Unlike fakeRepository (service_test.go), which
+// uses static canned booleans for slug/relationship existence checks
+// (convenient for single-call tests), this fake computes them from records
+// actually created during the test - required for scenarios like "two rows
+// with the same title in one batch", where the second row must only be
+// detected as a duplicate *because* the first row was actually created
+// earlier in the same ImportBooks call. Mirrors
+// harvest/service/handler_test.go's fakeAdminRepository, which needed the
+// same dynamic behavior for an analogous reason.
+type fakeImportRepository struct {
+	books   []catalogDomain.Book
+	authors []catalogDomain.Author
+	genres  []catalogDomain.Genre
+}
+
+var _ repository.Repository = (*fakeImportRepository)(nil)
+
+func (f *fakeImportRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
+	return int64(len(f.books)), 0, int64(len(f.authors)), int64(len(f.genres)), 0, 0, nil
+}
+
+func (f *fakeImportRepository) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
+	return f.books, int64(len(f.books)), nil
+}
+
+func (f *fakeImportRepository) GetBookByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Book, error) {
+	for i := range f.books {
+		if f.books[i].ID == id {
+			return &f.books[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) GetBookByExternalID(ctx context.Context, source, id string) (*catalogDomain.Book, error) {
+	for i := range f.books {
+		b := f.books[i]
+		if b.ExternalSource != nil && *b.ExternalSource == source && b.ExternalID != nil && *b.ExternalID == id {
+			return &f.books[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) CreateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error {
+	f.books = append(f.books, *book)
+	return nil
+}
+
+func (f *fakeImportRepository) UpdateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error {
+	for i := range f.books {
+		if f.books[i].ID == book.ID {
+			f.books[i] = *book
+			return nil
+		}
+	}
+	return errors.New("record not found")
+}
+
+func (f *fakeImportRepository) BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
+	for _, b := range f.books {
+		if b.Slug == slug && (excludeID == nil || b.ID != *excludeID) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeImportRepository) ListAuthors(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Author, int64, error) {
+	return f.authors, int64(len(f.authors)), nil
+}
+
+func (f *fakeImportRepository) GetAuthorByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error) {
+	for i := range f.authors {
+		if f.authors[i].ID == id {
+			return &f.authors[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) GetAuthorBySlug(ctx context.Context, slug string) (*catalogDomain.Author, error) {
+	for i := range f.authors {
+		if f.authors[i].Slug == slug {
+			return &f.authors[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) CreateAuthor(ctx context.Context, author *catalogDomain.Author) error {
+	f.authors = append(f.authors, *author)
+	return nil
+}
+
+func (f *fakeImportRepository) UpdateAuthor(ctx context.Context, author *catalogDomain.Author) error {
+	for i := range f.authors {
+		if f.authors[i].ID == author.ID {
+			f.authors[i] = *author
+			return nil
+		}
+	}
+	return errors.New("record not found")
+}
+
+func (f *fakeImportRepository) AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
+	for _, a := range f.authors {
+		if a.Slug == slug && (excludeID == nil || a.ID != *excludeID) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeImportRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
+	return f.genres, int64(len(f.genres)), nil
+}
+
+func (f *fakeImportRepository) GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error) {
+	for i := range f.genres {
+		if f.genres[i].ID == id {
+			return &f.genres[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) GetGenreBySlug(ctx context.Context, slug string) (*catalogDomain.Genre, error) {
+	for i := range f.genres {
+		if f.genres[i].Slug == slug {
+			return &f.genres[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error {
+	f.genres = append(f.genres, *genre)
+	return nil
+}
+
+func (f *fakeImportRepository) UpdateGenre(ctx context.Context, genre *catalogDomain.Genre) error {
+	for i := range f.genres {
+		if f.genres[i].ID == genre.ID {
+			f.genres[i] = *genre
+			return nil
+		}
+	}
+	return errors.New("record not found")
+}
+
+func (f *fakeImportRepository) GenreSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
+	for _, g := range f.genres {
+		if g.Slug == slug && (excludeID == nil || g.ID != *excludeID) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeImportRepository) ListReviews(ctx context.Context, filter repository.ReviewFilter) ([]reviewsDomain.Review, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeImportRepository) GetReviewByID(ctx context.Context, id uuid.UUID) (*reviewsDomain.Review, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) ModerateReview(ctx context.Context, id uuid.UUID, isHidden bool) (*reviewsDomain.Review, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) AuthorsExist(ctx context.Context, ids []uuid.UUID) (bool, error) {
+	for _, id := range ids {
+		found := false
+		for _, a := range f.authors {
+			if a.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (f *fakeImportRepository) GenresExist(ctx context.Context, ids []uuid.UUID) (bool, error) {
+	for _, id := range ids {
+		found := false
+		for _, g := range f.genres {
+			if g.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func newImportService() (*Service, *fakeImportRepository) {
+	repo := &fakeImportRepository{}
+	return NewService(repo), repo
+}
+
+func TestImportBooks(t *testing.T) {
+	t.Run("empty input returns a zero report", func(t *testing.T) {
+		svc, _ := newImportService()
+
+		report := svc.ImportBooks(context.Background(), nil, false)
+
+		if report.Processed != 0 || report.Created != 0 || report.SkippedExisting != 0 || len(report.Errors) != 0 {
+			t.Fatalf("expected zero report, got %+v", report)
+		}
+	})
+
+	t.Run("success: creates a book and resolves authors/genres by name", func(t *testing.T) {
+		svc, repo := newImportService()
+		rows := []ImportRowInput{
+			{Title: "War and Peace", Authors: []string{"Leo Tolstoy"}, Genres: []string{"Novel"}, Language: "ru"},
+		}
+
+		report := svc.ImportBooks(context.Background(), rows, false)
+
+		if report.Processed != 1 || report.Created != 1 || report.SkippedExisting != 0 || len(report.Errors) != 0 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if len(repo.books) != 1 || repo.books[0].Title != "War and Peace" {
+			t.Fatalf("expected book to be created, got %+v", repo.books)
+		}
+		if repo.books[0].ExternalSource != nil || repo.books[0].ExternalID != nil {
+			t.Fatalf("expected external_source/external_id to stay nil, got %v / %v", repo.books[0].ExternalSource, repo.books[0].ExternalID)
+		}
+		if len(repo.authors) != 1 || repo.authors[0].Name != "Leo Tolstoy" {
+			t.Fatalf("expected author to be autocreated, got %+v", repo.authors)
+		}
+		if len(repo.genres) != 1 || repo.genres[0].Name != "Novel" {
+			t.Fatalf("expected genre to be autocreated, got %+v", repo.genres)
+		}
+	})
+
+	t.Run("language defaults to ru when omitted", func(t *testing.T) {
+		svc, repo := newImportService()
+		rows := []ImportRowInput{{Title: "Book", Authors: []string{"Author"}}}
+
+		report := svc.ImportBooks(context.Background(), rows, false)
+
+		if report.Created != 1 {
+			t.Fatalf("expected 1 created, got %+v", report)
+		}
+		if repo.books[0].Language != "ru" {
+			t.Fatalf("expected default language ru, got %q", repo.books[0].Language)
+		}
+	})
+
+	t.Run("batch is_hidden flag is respected", func(t *testing.T) {
+		svc, repo := newImportService()
+		rows := []ImportRowInput{{Title: "Book", Authors: []string{"Author"}}}
+
+		report := svc.ImportBooks(context.Background(), rows, true)
+
+		if report.Created != 1 {
+			t.Fatalf("expected 1 created, got %+v", report)
+		}
+		if !repo.books[0].IsHidden {
+			t.Fatal("expected book to be hidden per the batch flag")
+		}
+	})
+
+	t.Run("zero resolvable authors is a row error (E-02)", func(t *testing.T) {
+		svc, repo := newImportService()
+		rows := []ImportRowInput{{Title: "Book", Authors: []string{"   "}}}
+
+		report := svc.ImportBooks(context.Background(), rows, false)
+
+		if report.Processed != 1 || report.Created != 0 || len(report.Errors) != 1 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if report.Errors[0].Row != 1 || report.Errors[0].Title != "Book" {
+			t.Fatalf("unexpected error entry: %+v", report.Errors[0])
+		}
+		if len(repo.books) != 0 {
+			t.Fatalf("expected no book created, got %+v", repo.books)
+		}
+	})
+
+	t.Run("missing title is a row error, reusing CreateBook validation", func(t *testing.T) {
+		svc, _ := newImportService()
+		rows := []ImportRowInput{{Title: "", Authors: []string{"Author"}}}
+
+		report := svc.ImportBooks(context.Background(), rows, false)
+
+		if report.Created != 0 || len(report.Errors) != 1 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+	})
+
+	t.Run("invalid ISBN is a row error, reusing CreateBook validation", func(t *testing.T) {
+		svc, _ := newImportService()
+		badISBN := "123"
+		rows := []ImportRowInput{{Title: "Book", Authors: []string{"Author"}, ISBN: &badISBN}}
+
+		report := svc.ImportBooks(context.Background(), rows, false)
+
+		if report.Created != 0 || len(report.Errors) != 1 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+	})
+
+	t.Run("duplicate slug is skipped_existing, not an error, and does not modify the existing book", func(t *testing.T) {
+		svc, repo := newImportService()
+		repo.books = append(repo.books, catalogDomain.Book{ID: uuid.New(), Title: "Existing", Slug: "book"})
+		rows := []ImportRowInput{{Title: "Book", Authors: []string{"Author"}}}
+
+		report := svc.ImportBooks(context.Background(), rows, false)
+
+		if report.SkippedExisting != 1 || report.Created != 0 || len(report.Errors) != 0 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if len(repo.books) != 1 || repo.books[0].Title != "Existing" {
+			t.Fatalf("expected the existing book to be untouched, got %+v", repo.books)
+		}
+	})
+
+	t.Run("two rows with the same title in one file: first created, second naturally skipped", func(t *testing.T) {
+		svc, repo := newImportService()
+		rows := []ImportRowInput{
+			{Title: "Book", Authors: []string{"Author"}},
+			{Title: "Book", Authors: []string{"Author"}},
+		}
+
+		report := svc.ImportBooks(context.Background(), rows, false)
+
+		if report.Processed != 2 || report.Created != 1 || report.SkippedExisting != 1 || len(report.Errors) != 0 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if len(repo.books) != 1 {
+			t.Fatalf("expected exactly 1 book created, got %d", len(repo.books))
+		}
+	})
+
+	t.Run("mixed batch: partial success alongside a skip and an error", func(t *testing.T) {
+		svc, repo := newImportService()
+		repo.books = append(repo.books, catalogDomain.Book{ID: uuid.New(), Title: "Existing", Slug: "existing-book"})
+		rows := []ImportRowInput{
+			{Title: "New Book", Authors: []string{"Author"}},
+			{Title: "Existing Book", Slug: "existing-book", Authors: []string{"Author"}},
+			{Title: "", Authors: []string{"Author"}},
+		}
+
+		report := svc.ImportBooks(context.Background(), rows, false)
+
+		if report.Processed != 3 || report.Created != 1 || report.SkippedExisting != 1 || len(report.Errors) != 1 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if report.Errors[0].Row != 3 {
+			t.Fatalf("expected the error to be reported on row 3, got %+v", report.Errors[0])
+		}
+	})
+}

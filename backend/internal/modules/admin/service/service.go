@@ -12,6 +12,7 @@ import (
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
+	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
@@ -39,11 +40,39 @@ var (
 // Service provides admin-only business logic.
 type Service struct {
 	repo repository.Repository
+	// lookupClient backs LookupBook (see lookup.go). Nil unless configured
+	// via WithLookupClient - LookupBook returns ErrLookupUnavailable in that
+	// case, which is the correct default for every call site that has no
+	// use for the lookup assistant (backend/cmd/worker, every existing
+	// admin/service test's NewService(repo) call).
+	lookupClient bookdata.Client
 }
 
-// NewService creates a new admin Service.
-func NewService(repo repository.Repository) *Service {
-	return &Service{repo: repo}
+// Option configures an optional Service dependency via the functional-
+// options pattern. This keeps NewService's required signature (repo) stable
+// for existing callers instead of growing positional parameters.
+type Option func(*Service)
+
+// WithLookupClient wires the bookdata.Client used by LookupBook (e.g.
+// bookdata.NewOpenLibraryClient(), as constructed in backend/cmd/api/main.go).
+// Callers that don't pass this option (backend/cmd/worker/main.go, every
+// existing admin/service test) get a Service whose LookupBook always
+// returns ErrLookupUnavailable - they have no use for the lookup assistant.
+func WithLookupClient(client bookdata.Client) Option {
+	return func(s *Service) {
+		s.lookupClient = client
+	}
+}
+
+// NewService creates a new admin Service. opts configures optional
+// dependencies (see Option) and defaults to none, matching every existing
+// call site's NewService(repo) signature.
+func NewService(repo repository.Repository, opts ...Option) *Service {
+	s := &Service{repo: repo}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // DashboardCounts returns overview counts for the admin dashboard.

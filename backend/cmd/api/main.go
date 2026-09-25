@@ -28,6 +28,7 @@ import (
 	shelvesservice "github.com/bookhaven/backend/internal/modules/shelves/service"
 	"github.com/bookhaven/backend/internal/modules/users/repository"
 	usersservice "github.com/bookhaven/backend/internal/modules/users/service"
+	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
 	"github.com/bookhaven/backend/internal/transport/http/middleware"
 	"github.com/labstack/echo/v4"
@@ -77,7 +78,11 @@ func main() {
 
 	// Services
 	catalogService := catalogservice.NewService(catalogRepo)
-	adminService := adminservice.NewService(adminRepo)
+	// bookdata.NewOpenLibraryClient() is constructed with no options, mirroring
+	// backend/cmd/worker/main.go's own zero-config construction (see
+	// docs/features/bookdata-clients.md for the accepted-risk placeholder
+	// User-Agent contact).
+	adminService := adminservice.NewService(adminRepo, adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()))
 	shelvesService := shelvesservice.NewService(shelvesRepo)
 	listsService := listsservice.NewService(listsRepo)
 	ratingsService := ratingsservice.NewService(ratingsRepo)
