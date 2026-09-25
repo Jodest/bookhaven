@@ -364,8 +364,13 @@ export interface AdminHarvestTriggerResponse {
 }
 
 // AdminHarvestJob mirrors backend harvestJobResponse (both GET /jobs and
-// GET /jobs/:id). result is only populated once state is "completed" and the
-// task's stored result decoded cleanly.
+// GET /jobs/:id). result decodes from the task's stored result whenever one
+// is present and decodes cleanly - this is no longer completed-only: an
+// "active" job can carry a partial result (processed < total) reported
+// incrementally while the job runs (see docs/features/harvest-progress.md).
+// For pending/retry jobs, result is typically absent (nothing has been
+// written yet, or - for retry - reflects the previous failed attempt, which
+// the admin UI intentionally does not surface as progress).
 export interface AdminHarvestJob {
   id: string;
   queue: string;
@@ -376,6 +381,7 @@ export interface AdminHarvestJob {
   last_error?: string;
   result?: {
     processed: number;
+    total: number;
     created: number;
     skipped_existing: number;
     errors: { index: number; title: string; message: string }[];
