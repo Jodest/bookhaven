@@ -347,6 +347,41 @@ export interface ImportReport {
   errors: ImportRowError[];
 }
 
+// AdminHarvestTriggerInput is the request body of POST /api/v1/admin/harvest.
+// author_qids are curated Wikidata author QIDs (e.g. "Q7200") - the backend
+// passes them straight into bookdata.BuildAuthorListQuery, which validates
+// format and dedupes; there is no free-text/raw-SPARQL mode in the admin UI.
+export interface AdminHarvestTriggerInput {
+  author_qids: string[];
+  limit?: number;
+}
+
+// AdminHarvestTriggerResponse is the 201 response of POST /api/v1/admin/harvest.
+export interface AdminHarvestTriggerResponse {
+  task_id: string;
+  queue: string;
+  state: string;
+}
+
+// AdminHarvestJob mirrors backend harvestJobResponse (both GET /jobs and
+// GET /jobs/:id). result is only populated once state is "completed" and the
+// task's stored result decoded cleanly.
+export interface AdminHarvestJob {
+  id: string;
+  queue: string;
+  state: string;
+  type: string;
+  max_retry: number;
+  retried: number;
+  last_error?: string;
+  result?: {
+    processed: number;
+    created: number;
+    skipped_existing: number;
+    errors: { index: number; title: string; message: string }[];
+  };
+}
+
 const API_URL =
   typeof window === 'undefined'
     ? process.env.API_URL || 'http://backend:8080'
@@ -1108,6 +1143,17 @@ export const api = {
           method: 'PATCH',
           body: JSON.stringify({ is_hidden: isHidden }),
         }),
+    },
+    harvest: {
+      trigger: (data: AdminHarvestTriggerInput) =>
+        fetcher<AdminHarvestTriggerResponse>('/api/v1/admin/harvest', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      jobs: {
+        list: () => fetcher<{ items: AdminHarvestJob[] }>('/api/v1/admin/harvest/jobs'),
+        get: (id: string) => fetcher<AdminHarvestJob>(`/api/v1/admin/harvest/jobs/${id}`),
+      },
     },
   },
 };
