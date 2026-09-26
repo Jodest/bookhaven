@@ -403,8 +403,8 @@ func TestBuildAuthorListQuery(t *testing.T) {
 			"VALUES ?author { wd:Q7200 wd:Q1183296 }",
 			"wdt:P31/wdt:P279* wd:Q7725634",
 			"?item wdt:P50 ?author",
-			`FILTER(LANG(?itemLabel) IN ("ru","en"))`,
-			`FILTER(LANG(?authorLabel) IN ("ru","en"))`,
+			`FILTER(LANG(?itemLabel) = "ru")`,
+			`FILTER(LANG(?authorLabel) = "ru")`,
 			"LIMIT 250",
 		} {
 			if !strings.Contains(query, want) {

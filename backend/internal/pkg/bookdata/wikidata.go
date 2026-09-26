@@ -137,16 +137,21 @@ func (c *WikidataClient) FindByTitleAuthor(ctx context.Context, title, author st
 }
 
 // buildTitleAuthorQuery constructs a SPARQL query that finds literary works
-// whose (ru or en) label contains title, optionally constrained to items
-// with a matching author label. Preference for `ru` labels follows the
-// business analysis' language guidance for the catalog's primary audience.
+// whose Russian (`ru`) label contains title, optionally constrained to
+// items with a matching Russian author label. Restricting to `ru` labels
+// (rather than falling back to `en`) is a deliberate "Russian-only catalog
+// content" decision (see docs/features/russian-only-content.md): any work,
+// author, or genre with no Russian-language Wikidata label is now skipped
+// entirely rather than harvested under an English label - an accepted
+// reduction in harvestable coverage in exchange for never harvesting
+// non-Russian catalog text in the first place.
 func buildTitleAuthorQuery(title, author string) string {
 	authorFilter := ""
 	if strings.TrimSpace(author) != "" {
 		authorFilter = fmt.Sprintf(`
     ?item wdt:P50 ?author .
     ?author rdfs:label ?authorLabel .
-    FILTER(LANG(?authorLabel) IN ("ru","en"))
+    FILTER(LANG(?authorLabel) = "ru")
     FILTER(CONTAINS(LCASE(?authorLabel), LCASE("%s")))`, escapeSPARQLString(author))
 	}
 
@@ -159,14 +164,14 @@ func buildTitleAuthorQuery(title, author string) string {
 WHERE {
   ?item wdt:P31/wdt:P279* wd:Q7725634 .
   ?item rdfs:label ?itemLabel .
-  FILTER(LANG(?itemLabel) IN ("ru","en"))
+  FILTER(LANG(?itemLabel) = "ru")
   FILTER(CONTAINS(LCASE(?itemLabel), LCASE("%s")))
   OPTIONAL {%s
   }
   OPTIONAL {
     ?item wdt:P136 ?genre .
     ?genre rdfs:label ?genreLabel .
-    FILTER(LANG(?genreLabel) IN ("ru","en"))
+    FILTER(LANG(?genreLabel) = "ru")
   }
   OPTIONAL { ?item wdt:P212 ?isbn13 . }
   OPTIONAL { ?item wdt:P577 ?pubDate . }
@@ -182,7 +187,10 @@ LIMIT 5`, escapeSPARQLString(title), authorFilter)
 
 // buildISBNQuery constructs a SPARQL query that finds the literary work
 // edition matching the given (already structurally-normalized) ISBN via
-// either P212 (ISBN-13) or P957 (ISBN-10).
+// either P212 (ISBN-13) or P957 (ISBN-10). Like buildTitleAuthorQuery, item/
+// author/genre labels are restricted to `ru` only (no `en` fallback) - see
+// that function's doc comment for the rationale and accepted coverage
+// tradeoff.
 func buildISBNQuery(isbn string) string {
 	escaped := escapeSPARQLString(isbn)
 	return fmt.Sprintf(`SELECT ?item ?itemLabel
@@ -194,16 +202,16 @@ func buildISBNQuery(isbn string) string {
 WHERE {
   { ?item wdt:P212 "%s" . } UNION { ?item wdt:P957 "%s" . }
   ?item rdfs:label ?itemLabel .
-  FILTER(LANG(?itemLabel) IN ("ru","en"))
+  FILTER(LANG(?itemLabel) = "ru")
   OPTIONAL {
     ?item wdt:P50 ?author .
     ?author rdfs:label ?authorLabel .
-    FILTER(LANG(?authorLabel) IN ("ru","en"))
+    FILTER(LANG(?authorLabel) = "ru")
   }
   OPTIONAL {
     ?item wdt:P136 ?genre .
     ?genre rdfs:label ?genreLabel .
-    FILTER(LANG(?genreLabel) IN ("ru","en"))
+    FILTER(LANG(?genreLabel) = "ru")
   }
   OPTIONAL { ?item wdt:P212 ?isbn13 . }
   OPTIONAL { ?item wdt:P577 ?pubDate . }
@@ -237,10 +245,12 @@ const (
 // docs/features/harvest-review-queue.md): it finds literary works (the same
 // wd:Q7725634 class filter used by buildTitleAuthorQuery/buildISBNQuery)
 // authored (wdt:P50) by any of the given Wikidata author QIDs, constrained
-// by a VALUES clause built from those QIDs, and reuses the same ru/en
-// label-preference idiom for both the work and the author. Output variables
-// (item, itemLabel, authors, genres, isbn, published, language) match what
-// parseSparqlBindings already expects.
+// by a VALUES clause built from those QIDs, and reuses the same `ru`-only
+// label-filter idiom for both the work and the author (see
+// buildTitleAuthorQuery's doc comment for the rationale and accepted
+// coverage tradeoff). Output variables (item, itemLabel, authors, genres,
+// isbn, published, language) match what parseSparqlBindings already
+// expects.
 //
 // authorQIDs must be bare QIDs (no "wd:" prefix - this function adds it),
 // case-sensitive, matching ^Q[0-9]+$. Entries are deduped. An empty list or
@@ -290,13 +300,13 @@ WHERE {
   ?item wdt:P31/wdt:P279* wd:Q7725634 .
   ?item wdt:P50 ?author .
   ?item rdfs:label ?itemLabel .
-  FILTER(LANG(?itemLabel) IN ("ru","en"))
+  FILTER(LANG(?itemLabel) = "ru")
   ?author rdfs:label ?authorLabel .
-  FILTER(LANG(?authorLabel) IN ("ru","en"))
+  FILTER(LANG(?authorLabel) = "ru")
   OPTIONAL {
     ?item wdt:P136 ?genre .
     ?genre rdfs:label ?genreLabel .
-    FILTER(LANG(?genreLabel) IN ("ru","en"))
+    FILTER(LANG(?genreLabel) = "ru")
   }
   OPTIONAL { ?item wdt:P212 ?isbn13 . }
   OPTIONAL { ?item wdt:P577 ?pubDate . }

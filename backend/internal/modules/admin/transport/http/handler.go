@@ -463,6 +463,8 @@ func (h *Handler) CreateBook(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, adminService.ErrInvalidTitle),
+			errors.Is(err, adminService.ErrTitleNotRussian),
+			errors.Is(err, adminService.ErrDescriptionNotRussian),
 			errors.Is(err, adminService.ErrInvalidLanguage),
 			errors.Is(err, adminService.ErrInvalidYear),
 			errors.Is(err, adminService.ErrInvalidPageCount),
@@ -529,6 +531,8 @@ func (h *Handler) UpdateBook(c echo.Context) error {
 		case errors.Is(err, adminService.ErrBookNotFound):
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "book not found"})
 		case errors.Is(err, adminService.ErrInvalidTitle),
+			errors.Is(err, adminService.ErrTitleNotRussian),
+			errors.Is(err, adminService.ErrDescriptionNotRussian),
 			errors.Is(err, adminService.ErrInvalidLanguage),
 			errors.Is(err, adminService.ErrInvalidYear),
 			errors.Is(err, adminService.ErrInvalidPageCount),

@@ -236,7 +236,7 @@ func TestImportBooks(t *testing.T) {
 	t.Run("success: creates a book and resolves authors/genres by name", func(t *testing.T) {
 		svc, repo := newImportService()
 		rows := []ImportRowInput{
-			{Title: "War and Peace", Authors: []string{"Leo Tolstoy"}, Genres: []string{"Novel"}, Language: "ru"},
+			{Title: "Война и мир", Authors: []string{"Leo Tolstoy"}, Genres: []string{"Novel"}, Language: "ru"},
 		}
 
 		report := svc.ImportBooks(context.Background(), rows, false)
@@ -244,7 +244,7 @@ func TestImportBooks(t *testing.T) {
 		if report.Processed != 1 || report.Created != 1 || report.SkippedExisting != 0 || len(report.Errors) != 0 {
 			t.Fatalf("unexpected report: %+v", report)
 		}
-		if len(repo.books) != 1 || repo.books[0].Title != "War and Peace" {
+		if len(repo.books) != 1 || repo.books[0].Title != "Война и мир" {
 			t.Fatalf("expected book to be created, got %+v", repo.books)
 		}
 		if repo.books[0].ExternalSource != nil || repo.books[0].ExternalID != nil {
@@ -260,7 +260,7 @@ func TestImportBooks(t *testing.T) {
 
 	t.Run("language defaults to ru when omitted", func(t *testing.T) {
 		svc, repo := newImportService()
-		rows := []ImportRowInput{{Title: "Book", Authors: []string{"Author"}}}
+		rows := []ImportRowInput{{Title: "Книга", Authors: []string{"Author"}}}
 
 		report := svc.ImportBooks(context.Background(), rows, false)
 
@@ -274,7 +274,7 @@ func TestImportBooks(t *testing.T) {
 
 	t.Run("batch is_hidden flag is respected", func(t *testing.T) {
 		svc, repo := newImportService()
-		rows := []ImportRowInput{{Title: "Book", Authors: []string{"Author"}}}
+		rows := []ImportRowInput{{Title: "Книга", Authors: []string{"Author"}}}
 
 		report := svc.ImportBooks(context.Background(), rows, true)
 
@@ -317,7 +317,7 @@ func TestImportBooks(t *testing.T) {
 	t.Run("invalid ISBN is a row error, reusing CreateBook validation", func(t *testing.T) {
 		svc, _ := newImportService()
 		badISBN := "123"
-		rows := []ImportRowInput{{Title: "Book", Authors: []string{"Author"}, ISBN: &badISBN}}
+		rows := []ImportRowInput{{Title: "Книга", Authors: []string{"Author"}, ISBN: &badISBN}}
 
 		report := svc.ImportBooks(context.Background(), rows, false)
 
@@ -329,7 +329,7 @@ func TestImportBooks(t *testing.T) {
 	t.Run("duplicate slug is skipped_existing, not an error, and does not modify the existing book", func(t *testing.T) {
 		svc, repo := newImportService()
 		repo.books = append(repo.books, catalogDomain.Book{ID: uuid.New(), Title: "Existing", Slug: "book"})
-		rows := []ImportRowInput{{Title: "Book", Authors: []string{"Author"}}}
+		rows := []ImportRowInput{{Title: "Книга", Slug: "book", Authors: []string{"Author"}}}
 
 		report := svc.ImportBooks(context.Background(), rows, false)
 
@@ -344,8 +344,8 @@ func TestImportBooks(t *testing.T) {
 	t.Run("two rows with the same title in one file: first created, second naturally skipped", func(t *testing.T) {
 		svc, repo := newImportService()
 		rows := []ImportRowInput{
-			{Title: "Book", Authors: []string{"Author"}},
-			{Title: "Book", Authors: []string{"Author"}},
+			{Title: "Книга", Authors: []string{"Author"}},
+			{Title: "Книга", Authors: []string{"Author"}},
 		}
 
 		report := svc.ImportBooks(context.Background(), rows, false)
@@ -362,8 +362,8 @@ func TestImportBooks(t *testing.T) {
 		svc, repo := newImportService()
 		repo.books = append(repo.books, catalogDomain.Book{ID: uuid.New(), Title: "Existing", Slug: "existing-book"})
 		rows := []ImportRowInput{
-			{Title: "New Book", Authors: []string{"Author"}},
-			{Title: "Existing Book", Slug: "existing-book", Authors: []string{"Author"}},
+			{Title: "Новая книга", Authors: []string{"Author"}},
+			{Title: "Существующая книга", Slug: "existing-book", Authors: []string{"Author"}},
 			{Title: "", Authors: []string{"Author"}},
 		}
 
@@ -374,6 +374,29 @@ func TestImportBooks(t *testing.T) {
 		}
 		if report.Errors[0].Row != 3 {
 			t.Fatalf("expected the error to be reported on row 3, got %+v", report.Errors[0])
+		}
+	})
+
+	t.Run("non-Russian title is a row error, reusing CreateBook validation, other rows still succeed", func(t *testing.T) {
+		svc, repo := newImportService()
+		rows := []ImportRowInput{
+			{Title: "Non-Russian Title", Authors: []string{"Author"}},
+			{Title: "Книга", Authors: []string{"Author"}},
+		}
+
+		report := svc.ImportBooks(context.Background(), rows, false)
+
+		if report.Processed != 2 || report.Created != 1 || len(report.Errors) != 1 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if report.Errors[0].Row != 1 || report.Errors[0].Title != "Non-Russian Title" {
+			t.Fatalf("unexpected error entry: %+v", report.Errors[0])
+		}
+		if report.Errors[0].Message != ErrTitleNotRussian.Error() {
+			t.Fatalf("unexpected error message: %q", report.Errors[0].Message)
+		}
+		if len(repo.books) != 1 || repo.books[0].Title != "Книга" {
+			t.Fatalf("expected exactly 1 book created, got %+v", repo.books)
 		}
 	})
 }
