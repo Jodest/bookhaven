@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { adminHarvestApi } from '@/entities/harvest';
@@ -91,13 +91,99 @@ function JobResultCell({ job }: { job: AdminHarvestJob }) {
   return <>{jobResultSummary(job)}</>;
 }
 
+// Fixed label for every skipped-record row: today there is exactly one skip
+// cause (idempotency on external_source/external_id), so the backend's
+// HarvestSkippedRecord carries no per-record message - see
+// docs/features/harvest-job-report.md Business Rules.
+const SKIPPED_RECORD_REASON = 'уже есть в каталоге (совпадение по внешнему источнику)';
+
+// JobReportRow renders the expanded per-record detail (errors + skipped
+// records) for a single job, immediately below its row in the jobs table.
+// Reuses the already-polled GET /jobs list response's result.errors/
+// result.skipped_records - no separate GET /jobs/:id fetch (see
+// docs/features/harvest-job-report.md Frontend decision).
+function JobReportRow({ job }: { job: AdminHarvestJob }) {
+  const errors = job.result?.errors ?? [];
+  const skippedRecords = job.result?.skipped_records ?? [];
+
+  return (
+    <TableRow>
+      <TableCell colSpan={4} className="space-y-4 bg-muted/30">
+        {errors.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">Ошибки</h3>
+            <div className="rounded-lg border bg-background">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>№</TableHead>
+                    <TableHead>Название</TableHead>
+                    <TableHead>Причина</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {errors.map((recordError) => (
+                    <TableRow key={`${recordError.index}-${recordError.message}`}>
+                      <TableCell>{recordError.index + 1}</TableCell>
+                      <TableCell>{recordError.title || '—'}</TableCell>
+                      <TableCell>{recordError.message}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+        {skippedRecords.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">Пропущено</h3>
+            <div className="rounded-lg border bg-background">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>№</TableHead>
+                    <TableHead>Название</TableHead>
+                    <TableHead>Причина</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {skippedRecords.map((skipped) => (
+                    <TableRow key={`${skipped.index}-${skipped.title}`}>
+                      <TableCell>{skipped.index + 1}</TableCell>
+                      <TableCell>{skipped.title || '—'}</TableCell>
+                      <TableCell>{SKIPPED_RECORD_REASON}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
 export function HarvestView() {
   const [mode, setMode] = useState<AuthorInputMode>('search');
   const [selectedAuthors, setSelectedAuthors] = useState<SelectedAuthor[]>([]);
   const [qidsText, setQidsText] = useState('');
   const [limitText, setLimitText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
+
+  const toggleJobExpanded = (id: string) => {
+    setExpandedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   // Switching modes discards the *other* mode's in-progress input, per
   // docs/features/harvest-author-search.md Business Rules - the two modes
@@ -271,26 +357,40 @@ export function HarvestView() {
                   </TableCell>
                 </TableRow>
               )}
-              {jobs.map((job) => (
-                <TableRow key={job.id}>
-                  <TableCell className="font-mono text-xs">{job.id.slice(0, 12)}</TableCell>
-                  <TableCell>
-                    <Badge variant={stateBadgeVariant(job.state)}>{job.state}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <JobResultCell job={job} />
-                  </TableCell>
-                  <TableCell>
-                    {job.state === 'completed' && job.result && job.result.created > 0 && (
-                      <Link href={'/books?visibility=pending_review' as any}>
-                        <Button variant="outline" size="sm">
-                          К очереди на проверку
-                        </Button>
-                      </Link>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {jobs.map((job) => {
+                const hasReport =
+                  !!job.result &&
+                  (job.result.errors.length > 0 || job.result.skipped_records.length > 0);
+                const isExpanded = expandedJobIds.has(job.id);
+                return (
+                  <Fragment key={job.id}>
+                    <TableRow>
+                      <TableCell className="font-mono text-xs">{job.id.slice(0, 12)}</TableCell>
+                      <TableCell>
+                        <Badge variant={stateBadgeVariant(job.state)}>{job.state}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <JobResultCell job={job} />
+                      </TableCell>
+                      <TableCell className="space-x-2">
+                        {job.state === 'completed' && job.result && job.result.created > 0 && (
+                          <Link href={'/books?visibility=pending_review' as any}>
+                            <Button variant="outline" size="sm">
+                              К очереди на проверку
+                            </Button>
+                          </Link>
+                        )}
+                        {hasReport && (
+                          <Button variant="outline" size="sm" onClick={() => toggleJobExpanded(job.id)}>
+                            {isExpanded ? 'Скрыть' : 'Подробнее'}
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && hasReport && <JobReportRow job={job} />}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

@@ -362,6 +362,82 @@ func TestGetHarvestJob_ActiveWithPartialResult_ResultSurfaced(t *testing.T) {
 	}
 }
 
+// TestGetHarvestJob_SkippedRecordsSurfacedForActiveAndCompleted proves
+// docs/features/harvest-job-report.md's claim that toHarvestJobResponse
+// needs no code change to carry the new HarvestResult.SkippedRecords field
+// through GET /jobs/:id, for both a still-running (active) job and a
+// finished (completed) one - the same unconditional Result mapping already
+// established by harvest-progress.md for Errors/Processed.
+func TestGetHarvestJob_SkippedRecordsSurfacedForActiveAndCompleted(t *testing.T) {
+	for _, state := range []asynq.TaskState{asynq.TaskStateActive, asynq.TaskStateCompleted} {
+		result := harvestservice.HarvestResult{
+			Processed: 10, Total: 10, Created: 7, Skipped: 3,
+			Errors: []harvestservice.HarvestRecordError{},
+			SkippedRecords: []harvestservice.HarvestSkippedRecord{
+				{Index: 1, Title: "Книга 2"},
+				{Index: 5, Title: "Книга 6"},
+				{Index: 8, Title: "Книга 9"},
+			},
+		}
+		resultBytes, _ := json.Marshal(result)
+		id := "job-" + state.String()
+		inspector := &fakeInspector{
+			getByID: map[string]*asynq.TaskInfo{
+				id: {ID: id, Queue: harvestservice.QueueName, State: state, Result: resultBytes},
+			},
+		}
+		h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
+
+		c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/"+id, nil)
+		c.SetParamNames("id")
+		c.SetParamValues(id)
+
+		if err := h.GetHarvestJob(c); err != nil {
+			t.Fatalf("state=%s: GetHarvestJob returned error: %v", state, err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("state=%s: status = %d, want %d, body=%s", state, rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var resp harvestJobResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("state=%s: unmarshal response: %v", state, err)
+		}
+		if resp.Result == nil {
+			t.Fatalf("state=%s: expected result to be populated", state)
+		}
+		if len(resp.Result.SkippedRecords) != 3 {
+			t.Fatalf("state=%s: SkippedRecords = %+v, want 3 entries", state, resp.Result.SkippedRecords)
+		}
+		if resp.Result.SkippedRecords[0] != (harvestservice.HarvestSkippedRecord{Index: 1, Title: "Книга 2"}) {
+			t.Errorf("state=%s: SkippedRecords[0] = %+v, want {1 Книга 2}", state, resp.Result.SkippedRecords[0])
+		}
+	}
+
+	// Also confirm the same field flows through GET /jobs (list), not just
+	// GET /jobs/:id.
+	result := harvestservice.HarvestResult{
+		SkippedRecords: []harvestservice.HarvestSkippedRecord{{Index: 0, Title: "Книга 1"}},
+	}
+	resultBytes, _ := json.Marshal(result)
+	inspector := &fakeInspector{
+		completed: []*asynq.TaskInfo{{ID: "c1", State: asynq.TaskStateCompleted, Result: resultBytes}},
+	}
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs", nil)
+	if err := h.ListHarvestJobs(c); err != nil {
+		t.Fatalf("ListHarvestJobs returned error: %v", err)
+	}
+	var listResp listHarvestJobsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("unmarshal list response: %v", err)
+	}
+	if len(listResp.Items) != 1 || listResp.Items[0].Result == nil || len(listResp.Items[0].Result.SkippedRecords) != 1 {
+		t.Fatalf("expected SkippedRecords to flow through GET /jobs, got %+v", listResp.Items)
+	}
+}
+
 // TestGetHarvestJob_ActiveWithNoResultYet_ResultOmitted covers the window
 // right after a task is dequeued but before its first reportProgress write
 // has landed - Result stays nil/omitted, exactly like the pending/retry case.
