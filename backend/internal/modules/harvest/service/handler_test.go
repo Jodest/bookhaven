@@ -556,6 +556,58 @@ func TestRunHarvest_NonRussianTitlePastSPARQLFilterIsAPerRecordError(t *testing.
 	}
 }
 
+func TestRunHarvest_SkippedRecordsMatchSkippedCount(t *testing.T) {
+	admin, repo := newTestAdmin()
+
+	// Q2 and Q4 already exist in the catalog, so processRecord skips them.
+	source := "wikidata"
+	existingQ2 := "Q2"
+	existingQ4 := "Q4"
+	repo.books = append(repo.books,
+		catalogDomain.Book{ID: uuid.New(), Title: "Книга 2 (уже в каталоге)", Slug: "kniga-2", ExternalSource: &source, ExternalID: &existingQ2},
+		catalogDomain.Book{ID: uuid.New(), Title: "Книга 4 (уже в каталоге)", Slug: "kniga-4", ExternalSource: &source, ExternalID: &existingQ4},
+	)
+
+	records := []bookdata.ExternalBookRecord{
+		{Title: "Книга 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
+		{Title: "Книга 2", Language: "ru", SourceName: "wikidata", SourceID: "Q2"},
+		{Title: "Плохой ISBN", Language: "ru", SourceName: "wikidata", SourceID: "Q3", ISBN: strPtr("not-a-valid-isbn")},
+		{Title: "Книга 4", Language: "ru", SourceName: "wikidata", SourceID: "Q4"},
+		{Title: "Книга 5", Language: "ru", SourceName: "wikidata", SourceID: "Q5"},
+	}
+
+	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
+
+	result, err := handler.runHarvest(context.Background(), HarvestPayload{SPARQLQuery: "SELECT * WHERE {}"}, nil)
+	if err != nil {
+		t.Fatalf("runHarvest returned unexpected top-level error: %v", err)
+	}
+
+	if result.Skipped != 2 {
+		t.Fatalf("Skipped = %d, want 2", result.Skipped)
+	}
+	if len(result.SkippedRecords) != result.Skipped {
+		t.Fatalf("len(SkippedRecords) = %d, want it to equal Skipped (%d)", len(result.SkippedRecords), result.Skipped)
+	}
+
+	wantSkipped := []HarvestSkippedRecord{
+		{Index: 1, Title: "Книга 2"},
+		{Index: 3, Title: "Книга 4"},
+	}
+	for i, want := range wantSkipped {
+		if result.SkippedRecords[i] != want {
+			t.Errorf("SkippedRecords[%d] = %+v, want %+v", i, result.SkippedRecords[i], want)
+		}
+	}
+
+	if len(result.Errors) != 1 || result.Errors[0].Index != 2 {
+		t.Fatalf("unexpected Errors: %+v", result.Errors)
+	}
+	if result.Created != 2 {
+		t.Errorf("Created = %d, want 2", result.Created)
+	}
+}
+
 // fakeProgressWriter implements progressWriter for tests, capturing every
 // Write call's decoded HarvestResult so tests can assert on the sequence of
 // progress reports. An optional err makes every Write call fail, to assert
@@ -611,6 +663,53 @@ func TestRunHarvest_ReportsProgressPerRecord(t *testing.T) {
 		if progress.writes[i+1].Total != 3 {
 			t.Errorf("progress.writes[%d].Total = %d, want 3", i+1, progress.writes[i+1].Total)
 		}
+	}
+}
+
+func TestRunHarvest_ReportsSkippedRecordsProgressPerRecord(t *testing.T) {
+	admin, repo := newTestAdmin()
+
+	source := "wikidata"
+	existingQ2 := "Q2"
+	repo.books = append(repo.books, catalogDomain.Book{ID: uuid.New(), Title: "Книга 2 (уже в каталоге)", Slug: "kniga-2", ExternalSource: &source, ExternalID: &existingQ2})
+
+	records := []bookdata.ExternalBookRecord{
+		{Title: "Книга 1", Language: "ru", SourceName: "wikidata", SourceID: "Q1"},
+		{Title: "Книга 2", Language: "ru", SourceName: "wikidata", SourceID: "Q2"},
+		{Title: "Книга 3", Language: "ru", SourceName: "wikidata", SourceID: "Q3"},
+	}
+	handler := NewHandler(&fakeWikidataQuerier{records: records}, nil, admin)
+
+	progress := &fakeProgressWriter{}
+	result, err := handler.runHarvest(context.Background(), HarvestPayload{SPARQLQuery: "SELECT * WHERE {}"}, progress)
+	if err != nil {
+		t.Fatalf("runHarvest returned unexpected error: %v", err)
+	}
+	if len(result.SkippedRecords) != 1 || result.SkippedRecords[0].Index != 1 {
+		t.Fatalf("unexpected final SkippedRecords: %+v", result.SkippedRecords)
+	}
+
+	// 4 writes for 3 records (initial + one per record, see
+	// TestRunHarvest_ReportsProgressPerRecord). SkippedRecords must appear
+	// empty before record 1 is processed, and grow to 1 entry from the
+	// write right after record 1 (index 1, Q2) onward - not just present in
+	// the final result.
+	if len(progress.writes) != 4 {
+		t.Fatalf("expected 4 progress writes, got %d: %+v", len(progress.writes), progress.writes)
+	}
+	if len(progress.writes[0].SkippedRecords) != 0 {
+		t.Fatalf("progress.writes[0].SkippedRecords = %+v, want empty before any record processed", progress.writes[0].SkippedRecords)
+	}
+	if len(progress.writes[1].SkippedRecords) != 0 {
+		t.Fatalf("progress.writes[1].SkippedRecords = %+v, want empty after record 0 (a create)", progress.writes[1].SkippedRecords)
+	}
+	for i, w := range progress.writes[2:] {
+		if len(w.SkippedRecords) != 1 || w.SkippedRecords[0].Index != 1 || w.SkippedRecords[0].Title != "Книга 2" {
+			t.Errorf("progress.writes[%d].SkippedRecords = %+v, want [{1 Книга 2}]", i+2, w.SkippedRecords)
+		}
+	}
+	if len(repo.books) != 3 {
+		t.Fatalf("expected 3 books total (1 pre-existing + 2 newly created), got %d", len(repo.books))
 	}
 }
 

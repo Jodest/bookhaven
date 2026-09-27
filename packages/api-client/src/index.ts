@@ -385,6 +385,12 @@ export interface AdminHarvestJob {
     created: number;
     skipped_existing: number;
     errors: { index: number; title: string; message: string }[];
+    // Per-record detail for skipped_existing (added by
+    // docs/features/harvest-job-report.md) - one entry per skipped record,
+    // no message field: today there is exactly one skip cause (idempotency
+    // on external_source/external_id), so the frontend renders a fixed
+    // label rather than a per-record backend-supplied reason.
+    skipped_records: { index: number; title: string }[];
   };
 }
 

@@ -74,11 +74,12 @@ type HarvestPayload struct {
 // task - so writing progress mid-task and reading it back via GetTaskInfo
 // while the task is still active is safe.
 type HarvestResult struct {
-	Processed int                  `json:"processed"`
-	Total     int                  `json:"total"`
-	Created   int                  `json:"created"`
-	Skipped   int                  `json:"skipped_existing"`
-	Errors    []HarvestRecordError `json:"errors"`
+	Processed      int                    `json:"processed"`
+	Total          int                    `json:"total"`
+	Created        int                    `json:"created"`
+	Skipped        int                    `json:"skipped_existing"`
+	Errors         []HarvestRecordError   `json:"errors"`
+	SkippedRecords []HarvestSkippedRecord `json:"skipped_records"`
 }
 
 // HarvestRecordError describes a single record's failure. It does not abort
@@ -88,6 +89,17 @@ type HarvestRecordError struct {
 	Index   int    `json:"index"`
 	Title   string `json:"title"`
 	Message string `json:"message"`
+}
+
+// HarvestSkippedRecord describes a single record the harvest run skipped
+// because a book with the same (external_source, external_id) already
+// exists in the catalog - today the only possible skip cause (see
+// processRecord's idempotency check). No Message field: unlike
+// HarvestRecordError, there is exactly one reason, so the frontend renders
+// a fixed label rather than this type carrying a per-record message.
+type HarvestSkippedRecord struct {
+	Index int    `json:"index"`
+	Title string `json:"title"`
 }
 
 // WikidataQuerier is the subset of bookdata.WikidataClient this handler
@@ -181,7 +193,7 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progre
 		return HarvestResult{}, err
 	}
 
-	result := HarvestResult{Total: len(records), Errors: []HarvestRecordError{}}
+	result := HarvestResult{Total: len(records), Errors: []HarvestRecordError{}, SkippedRecords: []HarvestSkippedRecord{}}
 	reportProgress(progress, result)
 
 	for i, rec := range records {
@@ -198,6 +210,10 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progre
 				result.Created++
 			case outcomeSkipped:
 				result.Skipped++
+				result.SkippedRecords = append(result.SkippedRecords, HarvestSkippedRecord{
+					Index: i,
+					Title: rec.Title,
+				})
 			}
 		}
 		result.Processed++
