@@ -19,22 +19,24 @@ import (
 )
 
 var (
-	ErrBookNotFound      = errors.New("book not found")
-	ErrAuthorNotFound    = errors.New("author not found")
-	ErrGenreNotFound     = errors.New("genre not found")
-	ErrReviewNotFound    = errors.New("review not found")
-	ErrInvalidTitle      = errors.New("title is required")
-	ErrInvalidAuthorName = errors.New("author name is required")
-	ErrInvalidGenreName  = errors.New("genre name is required")
-	ErrInvalidSlug       = errors.New("slug is not URL safe")
-	ErrDuplicateSlug     = errors.New("slug already exists")
-	ErrInvalidISBN       = errors.New("isbn is invalid")
-	ErrInvalidYear       = errors.New("published year is invalid")
-	ErrInvalidPageCount  = errors.New("page count is invalid")
-	ErrInvalidLanguage   = errors.New("language is invalid")
-	ErrInvalidDate       = errors.New("date is invalid")
-	ErrInvalidAuthorIDs  = errors.New("one or more author IDs are invalid")
-	ErrInvalidGenreIDs   = errors.New("one or more genre IDs are invalid")
+	ErrBookNotFound          = errors.New("book not found")
+	ErrAuthorNotFound        = errors.New("author not found")
+	ErrGenreNotFound         = errors.New("genre not found")
+	ErrReviewNotFound        = errors.New("review not found")
+	ErrInvalidTitle          = errors.New("title is required")
+	ErrTitleNotRussian       = errors.New("title must be in Russian")
+	ErrDescriptionNotRussian = errors.New("description must be in Russian")
+	ErrInvalidAuthorName     = errors.New("author name is required")
+	ErrInvalidGenreName      = errors.New("genre name is required")
+	ErrInvalidSlug           = errors.New("slug is not URL safe")
+	ErrDuplicateSlug         = errors.New("slug already exists")
+	ErrInvalidISBN           = errors.New("isbn is invalid")
+	ErrInvalidYear           = errors.New("published year is invalid")
+	ErrInvalidPageCount      = errors.New("page count is invalid")
+	ErrInvalidLanguage       = errors.New("language is invalid")
+	ErrInvalidDate           = errors.New("date is invalid")
+	ErrInvalidAuthorIDs      = errors.New("one or more author IDs are invalid")
+	ErrInvalidGenreIDs       = errors.New("one or more genre IDs are invalid")
 )
 
 // Service provides admin-only business logic.
@@ -314,6 +316,12 @@ var supportedLanguageCodes = map[string]struct{}{
 func validateBookInput(input BookInput) error {
 	if strings.TrimSpace(input.Title) == "" {
 		return ErrInvalidTitle
+	}
+	if !IsRussianText(strings.TrimSpace(input.Title)) {
+		return ErrTitleNotRussian
+	}
+	if desc := normalizeOptionalString(input.Description); desc != nil && !IsRussianText(*desc) {
+		return ErrDescriptionNotRussian
 	}
 	lang := strings.TrimSpace(input.Language)
 	if lang == "" {

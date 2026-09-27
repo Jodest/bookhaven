@@ -249,6 +249,19 @@ func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich 
 		return 0, fmt.Errorf("resolve genres: %w", err)
 	}
 
+	// Language is required by validateBookInput (ErrInvalidLanguage on
+	// empty), but Wikidata's P407 "language of work" property is sparsely
+	// populated, so enriched.Language is frequently empty. Default to "ru"
+	// in that case, mirroring import.go's defaultImportLanguage precedent -
+	// without this, most harvested records would fail validation for an
+	// unrelated reason. When Wikidata does supply a P407-derived language,
+	// it is preserved as-is (e.g. "en" for a Russian-labeled translation of
+	// an English-original work).
+	language := strings.TrimSpace(enriched.Language)
+	if language == "" {
+		language = "ru"
+	}
+
 	externalSource := wikidataSourceName
 	input := adminservice.BookInput{
 		Title:          enriched.Title,
@@ -257,7 +270,7 @@ func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich 
 		ISBN:           enriched.ISBN,
 		PublishedYear:  enriched.PublishedYear,
 		PageCount:      enriched.PageCount,
-		Language:       enriched.Language,
+		Language:       language,
 		AuthorIDs:      authorIDs,
 		GenreIDs:       genreIDs,
 		IsHidden:       true,
@@ -276,6 +289,8 @@ func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich 
 // Wikidata's own values are never overwritten. Enrichment lookup failures
 // (not found, rate limited, source unavailable) are not fatal to the
 // record: the book is still created using whatever Wikidata provided.
+// Description is additionally filtered to (heuristically) Russian text
+// before being copied - see the inline comment below for the rationale.
 func enrichRecord(ctx context.Context, rec *bookdata.ExternalBookRecord, enrich bookdata.Client) {
 	if rec.CoverURL != nil && rec.Description != nil && rec.PageCount != nil && rec.ISBN != nil {
 		return
@@ -303,7 +318,17 @@ func enrichRecord(ctx context.Context, rec *bookdata.ExternalBookRecord, enrich 
 	if rec.CoverURL == nil {
 		rec.CoverURL = enrichedRec.CoverURL
 	}
-	if rec.Description == nil {
+	// Only copy Open Library's Description if it is (heuristically) Russian
+	// text. This is a silent drop, not a hard rejection of the whole
+	// record: Open Library's excerpt has no language filtering of its own
+	// today, so a non-Russian excerpt is simply left out (rec.Description
+	// stays nil, since Wikidata's own SPARQL parsing never sets Description
+	// itself) rather than failing an otherwise-good, correctly-Russian-
+	// titled book over an optional enrichment field. This is an intentional
+	// asymmetry with Title, which is hard-rejected via validateBookInput
+	// (ErrTitleNotRussian) when it reaches CreateBook - see
+	// docs/features/russian-only-content.md Business Rules.
+	if rec.Description == nil && enrichedRec.Description != nil && adminservice.IsRussianText(*enrichedRec.Description) {
 		rec.Description = enrichedRec.Description
 	}
 	if rec.PageCount == nil {
