@@ -205,7 +205,7 @@ describe('HarvestView', () => {
           type: 'harvest:wikidata_query',
           max_retry: 3,
           retried: 0,
-          result: { processed: 5, created: 2, skipped_existing: 3, errors: [] },
+          result: { processed: 5, created: 2, skipped_existing: 3, errors: [], skipped_records: [] },
         },
         {
           id: 'job-2',
@@ -238,7 +238,7 @@ describe('HarvestView', () => {
           type: 'harvest:wikidata_query',
           max_retry: 3,
           retried: 0,
-          result: { processed: 37, total: 200, created: 0, skipped_existing: 0, errors: [] },
+          result: { processed: 37, total: 200, created: 0, skipped_existing: 0, errors: [], skipped_records: [] },
         },
       ],
     });
@@ -267,7 +267,7 @@ describe('HarvestView', () => {
           type: 'harvest:wikidata_query',
           max_retry: 3,
           retried: 0,
-          result: { processed: 0, total: 0, created: 0, skipped_existing: 0, errors: [] },
+          result: { processed: 0, total: 0, created: 0, skipped_existing: 0, errors: [], skipped_records: [] },
         },
       ],
     });
@@ -289,7 +289,7 @@ describe('HarvestView', () => {
           max_retry: 3,
           retried: 1,
           last_error: 'wikidata: source unavailable',
-          result: { processed: 12, total: 50, created: 0, skipped_existing: 0, errors: [] },
+          result: { processed: 12, total: 50, created: 0, skipped_existing: 0, errors: [], skipped_records: [] },
         },
       ],
     });
@@ -301,5 +301,115 @@ describe('HarvestView', () => {
     );
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     expect(screen.queryByText('12 / 50 (24%)')).not.toBeInTheDocument();
+  });
+
+  it('renders no "Подробнее" button for a job with empty errors and skipped_records', async () => {
+    listJobsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'job-clean',
+          queue: 'harvest',
+          state: 'completed',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          result: { processed: 5, total: 5, created: 5, skipped_existing: 0, errors: [], skipped_records: [] },
+        },
+      ],
+    });
+
+    renderView();
+
+    await waitFor(() => expect(screen.getByText('completed')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Подробнее' })).not.toBeInTheDocument();
+  });
+
+  it('expands a completed job to reveal errors/skipped tables, and collapses again', async () => {
+    listJobsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'job-report',
+          queue: 'harvest',
+          state: 'completed',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          result: {
+            processed: 5,
+            total: 5,
+            created: 2,
+            skipped_existing: 2,
+            errors: [{ index: 4, title: 'Плохая книга', message: 'invalid ISBN' }],
+            skipped_records: [
+              { index: 1, title: 'Уже в каталоге 1' },
+              { index: 3, title: 'Уже в каталоге 2' },
+            ],
+          },
+        },
+      ],
+    });
+
+    renderView();
+
+    await waitFor(() => expect(screen.getByText('completed')).toBeInTheDocument());
+
+    const detailsButton = screen.getByRole('button', { name: 'Подробнее' });
+    expect(screen.queryByText('Ошибки')).not.toBeInTheDocument();
+    expect(screen.queryByText('Пропущено')).not.toBeInTheDocument();
+
+    fireEvent.click(detailsButton);
+
+    expect(screen.getByText('Ошибки')).toBeInTheDocument();
+    expect(screen.getByText('Плохая книга')).toBeInTheDocument();
+    expect(screen.getByText('invalid ISBN')).toBeInTheDocument();
+
+    expect(screen.getByText('Пропущено')).toBeInTheDocument();
+    expect(screen.getByText('Уже в каталоге 1')).toBeInTheDocument();
+    expect(screen.getByText('Уже в каталоге 2')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('уже есть в каталоге (совпадение по внешнему источнику)').length
+    ).toBe(2);
+
+    expect(screen.getByRole('button', { name: 'Скрыть' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Скрыть' }));
+
+    expect(screen.queryByText('Ошибки')).not.toBeInTheDocument();
+    expect(screen.queryByText('Пропущено')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Подробнее' })).toBeInTheDocument();
+  });
+
+  it('renders a working "Подробнее" toggle for an active job with a partial result carrying errors/skips', async () => {
+    listJobsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'job-active-report',
+          queue: 'harvest',
+          state: 'active',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          result: {
+            processed: 10,
+            total: 100,
+            created: 8,
+            skipped_existing: 1,
+            errors: [{ index: 2, title: 'Ошибочная запись', message: 'resolve authors: boom' }],
+            skipped_records: [{ index: 5, title: 'Дубликат' }],
+          },
+        },
+      ],
+    });
+
+    renderView();
+
+    await waitFor(() => expect(screen.getByText('10 / 100 (10%)')).toBeInTheDocument());
+
+    const detailsButton = screen.getByRole('button', { name: 'Подробнее' });
+    fireEvent.click(detailsButton);
+
+    expect(screen.getByText('Ошибочная запись')).toBeInTheDocument();
+    expect(screen.getByText('resolve authors: boom')).toBeInTheDocument();
+    expect(screen.getByText('Дубликат')).toBeInTheDocument();
   });
 });
