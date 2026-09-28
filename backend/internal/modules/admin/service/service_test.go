@@ -389,6 +389,26 @@ func TestCreateBook_RussianTitleNilDescription_NoError(t *testing.T) {
 	}
 }
 
+func TestCreateBook_WikidataProducibleLanguageCodes_Succeed(t *testing.T) {
+	// Regression guard: every code bookdata.wikidataLanguageCodes (see
+	// backend/internal/pkg/bookdata/wikidata.go) can resolve a harvested
+	// book's original-language field to must be accepted here, or a
+	// correctly-identified original language fails validation with
+	// ErrInvalidLanguage during harvest ("create book: language is
+	// invalid"). ru/en/uk are covered by other tests; this covers the rest.
+	for _, lang := range []string{"fr", "de", "es", "pl", "it", "pt"} {
+		t.Run(lang, func(t *testing.T) {
+			svc, _ := newService()
+			ctx := context.Background()
+
+			_, err := svc.CreateBook(ctx, BookInput{Title: "Книга", Language: lang})
+			if err != nil {
+				t.Fatalf("unexpected error for language %q: %v", lang, err)
+			}
+		})
+	}
+}
+
 func TestCreateBook_EnglishWorkLanguageWithRussianText_Succeeds(t *testing.T) {
 	// Regression guard: Language records the work's original language (e.g.
 	// "en" for a foreign classic with Russian catalog metadata), which this

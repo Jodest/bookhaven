@@ -311,6 +311,19 @@ var supportedLanguageCodes = map[string]struct{}{
 	"tg": {},
 	"tk": {},
 	"ky": {},
+	// The following match every code bookdata.wikidataLanguageCodes can
+	// produce from Wikidata's P407 (language of work) property, beyond the
+	// ones already listed above (ru/en/uk). Without these, a harvested book
+	// whose original-language lookup resolves to one of these six
+	// languages fails validation with ErrInvalidLanguage even though the
+	// harvester correctly identified a real, known language - see
+	// backend/internal/pkg/bookdata/wikidata.go's wikidataLanguageCodes map.
+	"fr": {}, // French
+	"de": {}, // German
+	"es": {}, // Spanish
+	"pl": {}, // Polish
+	"it": {}, // Italian
+	"pt": {}, // Portuguese
 }
 
 func validateBookInput(input BookInput) error {
