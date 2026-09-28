@@ -165,10 +165,24 @@ type lookupResponse struct {
 }
 
 func toLookupResponse(rec bookdata.ExternalBookRecord) lookupResponse {
+	// Authors/Genres must never be nil in the response: the admin
+	// lookup-assistant frontend calls .length on both unconditionally, and
+	// a nil slice here serializes to JSON null, not [] - a boundary
+	// guarantee independent of whatever bookdata client produced rec (see
+	// bookdata's own mapOLSearchDoc fix for the root cause this guards
+	// against recurring).
+	authors := rec.Authors
+	if authors == nil {
+		authors = []string{}
+	}
+	genres := rec.Genres
+	if genres == nil {
+		genres = []string{}
+	}
 	return lookupResponse{
 		Title:         rec.Title,
-		Authors:       rec.Authors,
-		Genres:        rec.Genres,
+		Authors:       authors,
+		Genres:        genres,
 		ISBN:          rec.ISBN,
 		Description:   rec.Description,
 		CoverURL:      rec.CoverURL,

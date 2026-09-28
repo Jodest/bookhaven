@@ -499,6 +499,36 @@ func TestLookupBook_Success(t *testing.T) {
 	}
 }
 
+func TestLookupBook_NilAuthorsGenres_SerializeAsEmptyArraysNotNull(t *testing.T) {
+	// Regression test: bookdata.ExternalBookRecord.Authors/Genres are nil
+	// here (the underlying client left them unset, e.g. an Open Library
+	// search doc with no "author_name"/"subject" field) - the JSON
+	// response must still contain [] for both, not null, since the admin
+	// lookup-assistant frontend calls .length on both unconditionally
+	// (book-form.tsx crashed with "Cannot read properties of null
+	// (reading 'length')" in production before this fix).
+	h, svc := setupHandler()
+	svc.lookupRecord = &bookdata.ExternalBookRecord{Title: "Земля обетованная", SourceName: "openlibrary", SourceID: "OL1"}
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books/lookup?isbn=9780000000000", nil)
+	setAdminUser(c)
+
+	if err := h.LookupBook(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"authors":[]`) {
+		t.Errorf("expected \"authors\":[] in response body, got: %s", body)
+	}
+	if !strings.Contains(body, `"genres":[]`) {
+		t.Errorf("expected \"genres\":[] in response body, got: %s", body)
+	}
+}
+
 func TestLookupBook_ValidationError(t *testing.T) {
 	h, svc := setupHandler()
 	svc.lookupErr = adminService.ErrLookupQueryRequired

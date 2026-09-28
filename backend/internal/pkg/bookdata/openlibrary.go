@@ -352,10 +352,25 @@ func mapOLBookData(data olBookData, requestedISBN string) *ExternalBookRecord {
 
 // mapOLSearchDoc converts a Search API doc into an ExternalBookRecord.
 func mapOLSearchDoc(doc olSearchDoc) *ExternalBookRecord {
+	// doc.AuthorName/doc.Subject are nil, not [], when a search result
+	// simply lacks that field (common - many docs have no "subject" tag,
+	// some have no "author_name" either). Authors/Genres must stay non-nil
+	// so JSON marshaling produces [] rather than null - a null here has
+	// broken the admin lookup-assistant UI in production (a frontend render
+	// assumed .length is always callable on these fields, matching the
+	// same non-nil guarantee namesOf already gives the FindByISBN path).
+	authors := doc.AuthorName
+	if authors == nil {
+		authors = []string{}
+	}
+	genres := doc.Subject
+	if genres == nil {
+		genres = []string{}
+	}
 	record := &ExternalBookRecord{
 		Title:      doc.Title,
-		Authors:    doc.AuthorName,
-		Genres:     doc.Subject,
+		Authors:    authors,
+		Genres:     genres,
 		SourceName: "openlibrary",
 		SourceID:   lastPathSegment(doc.Key),
 	}

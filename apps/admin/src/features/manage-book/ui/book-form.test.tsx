@@ -121,6 +121,39 @@ describe('BookForm lookup assistant', () => {
     await waitFor(() => expect(lookupMock).toHaveBeenCalledWith({ isbn: '9780000000000' }));
   });
 
+  it('does not crash when the lookup response has null authors/genres', async () => {
+    // Regression test: production crashed with "Cannot read properties of
+    // null (reading 'length')" at this file's genres.length check when the
+    // backend's lookup response had authors/genres as null instead of []
+    // (a real bug in the Open Library search-doc mapping, now fixed
+    // server-side too - this guards the frontend independently in case a
+    // future source client reintroduces the same nil-slice mistake).
+    lookupMock.mockResolvedValue({
+      title: 'Земля обетованная',
+      authors: null,
+      genres: null,
+      source_name: 'openlibrary',
+      source_id: 'OL1',
+    });
+
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText('Название *'), {
+      target: { value: 'Земля обетованная' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Найти по ISBN/названию' }));
+
+    await waitFor(() => expect(lookupMock).toHaveBeenCalled());
+
+    // Renders without throwing; the "from search result" hints are simply
+    // absent since there's nothing to show.
+    await waitFor(() =>
+      expect((screen.getByLabelText('Название *') as HTMLInputElement).value).toBe(
+        'Земля обетованная'
+      )
+    );
+  });
+
   it('shows an inline message on a 404 miss and does not block manual entry', async () => {
     lookupMock.mockRejectedValue(new ApiError(404, 'Not Found', 'no matching book found'));
 
