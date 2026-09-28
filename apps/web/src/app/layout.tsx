@@ -1,14 +1,17 @@
 import type { Metadata } from 'next';
-import { Inter, Literata } from 'next/font/google';
+import localFont from 'next/font/local';
 import { Header } from '@/widgets/header';
 import { Footer } from '@/widgets/footer';
 import { Providers } from './providers';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin', 'cyrillic'] });
-const literata = Literata({
-  subsets: ['latin', 'cyrillic'],
-  weight: ['400', '500', '600', '700'],
+const inter = localFont({
+  src: '../fonts/inter/Inter-Variable.woff2',
+  weight: '100 900',
+});
+const literata = localFont({
+  src: '../fonts/literata/Literata-Variable.woff2',
+  weight: '400 700',
   variable: '--font-display',
 });
 
