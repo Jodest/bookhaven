@@ -175,6 +175,45 @@ func TestOpenLibraryFindByTitleAuthor_ParsesFixture(t *testing.T) {
 	}
 }
 
+func TestOpenLibraryFindByTitleAuthor_DocMissingAuthorAndSubject_ReturnsEmptySlicesNotNil(t *testing.T) {
+	// Regression test: a search result doc lacking "author_name"/"subject"
+	// (common - Open Library doesn't guarantee either field) must produce
+	// non-nil Authors/Genres. A nil slice here serializes to JSON null and
+	// crashed the admin lookup-assistant UI in production
+	// (book-form.tsx:254, "Cannot read properties of null (reading
+	// 'length')") since the frontend calls .length on both unconditionally.
+	fixture := `{
+  "numFound": 1,
+  "docs": [
+    {
+      "title": "Земля обетованная",
+      "key": "/works/OL1W"
+    }
+  ]
+}`
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusOK, fixture, nil), nil
+	})
+	client := newOpenLibraryTestClient(t, responder)
+
+	record, err := client.FindByTitleAuthor(context.Background(), "Земля обетованная", "")
+	if err != nil {
+		t.Fatalf("FindByTitleAuthor: %v", err)
+	}
+	if record.Authors == nil {
+		t.Error("Authors is nil, want non-nil empty slice")
+	}
+	if len(record.Authors) != 0 {
+		t.Errorf("Authors = %v, want empty", record.Authors)
+	}
+	if record.Genres == nil {
+		t.Error("Genres is nil, want non-nil empty slice")
+	}
+	if len(record.Genres) != 0 {
+		t.Errorf("Genres = %v, want empty", record.Genres)
+	}
+}
+
 func TestOpenLibraryFindByTitleAuthor_NoResults_ReturnsErrNotFound(t *testing.T) {
 	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return newTestResponse(http.StatusOK, `{"numFound":0,"docs":[]}`, nil), nil
