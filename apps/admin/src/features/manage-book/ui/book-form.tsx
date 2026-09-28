@@ -238,7 +238,7 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
             value={authorIds || []}
             onChange={(v) => setValue('author_ids', v)}
           />
-          {lookupResult && lookupResult.authors.length > 0 && (
+          {lookupResult && (lookupResult.authors?.length ?? 0) > 0 && (
             <p className="text-xs text-muted-foreground">
               Из результата поиска (выберите вручную): {lookupResult.authors.join(', ')}
             </p>
@@ -251,7 +251,7 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
             value={genreIds || []}
             onChange={(v) => setValue('genre_ids', v)}
           />
-          {lookupResult && lookupResult.genres.length > 0 && (
+          {lookupResult && (lookupResult.genres?.length ?? 0) > 0 && (
             <p className="text-xs text-muted-foreground">
               Из результата поиска (выберите вручную): {lookupResult.genres.join(', ')}
             </p>
