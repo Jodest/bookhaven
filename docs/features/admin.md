@@ -29,6 +29,7 @@ Provide a small, role-protected administration panel for maintaining the catalog
 - `RoleAdmin` is required for dashboard and catalog/author/genre management. `RoleAdmin` or `RoleModerator` may moderate reviews.
 - Admin operations must use the authenticated user from the existing access-token middleware; UI-only role checks are insufficient.
 - Book title, author name, and genre name are required and trimmed. Slugs must be URL-safe and unique; collisions return a conflict rather than silently replacing data.
+- Genre names are normalized on creation: the first letter is lowercased (Unicode-aware; only the first rune changes, e.g. "Роман" -> "роман"), so genres autocreated from harvest/import sources display consistently regardless of the source's original casing. This applies only to creation (manual admin creation, bulk import, and harvest autocreate all funnel through the same `CreateGenre` service method); existing genre names are not retroactively changed, and updating a genre's name does not re-apply this normalization.
 - A book may be hidden, but MVP does not hard-delete books, authors, genres, users, or reviews because of existing foreign-key and user-content relationships.
 - ISBN, if supplied, must be a valid ISBN-10 or ISBN-13 format after normalization. Published year and page count, if supplied, must be positive and within sensible bounds; language must be a supported non-empty code.
 - Relationships may reference only existing authors and genres. Duplicate relationship IDs are rejected or normalized before persistence.

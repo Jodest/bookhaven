@@ -253,8 +253,8 @@ func TestImportBooks(t *testing.T) {
 		if len(repo.authors) != 1 || repo.authors[0].Name != "Leo Tolstoy" {
 			t.Fatalf("expected author to be autocreated, got %+v", repo.authors)
 		}
-		if len(repo.genres) != 1 || repo.genres[0].Name != "Novel" {
-			t.Fatalf("expected genre to be autocreated, got %+v", repo.genres)
+		if len(repo.genres) != 1 || repo.genres[0].Name != "novel" {
+			t.Fatalf("expected genre to be autocreated with normalized casing, got %+v", repo.genres)
 		}
 	})
 
