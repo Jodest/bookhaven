@@ -82,6 +82,22 @@ func TestResolveOrCreateGenreIDsByNames(t *testing.T) {
 			t.Fatalf("expected exactly 1 new genre to be created, repo has %d genres", len(repo.genres))
 		}
 	})
+
+	t.Run("normalizes first-letter casing of newly created genres", func(t *testing.T) {
+		svc, repo := newService()
+		ctx := context.Background()
+
+		_, err := svc.ResolveOrCreateGenreIDsByNames(ctx, []string{"Роман"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(repo.genres) != 1 {
+			t.Fatalf("expected 1 genre to be created, got %d", len(repo.genres))
+		}
+		if repo.genres[0].Name != "роман" {
+			t.Fatalf("expected created genre name to be lowercased to роман, got %s", repo.genres[0].Name)
+		}
+	})
 }
 
 func TestFindBookByExternalID(t *testing.T) {

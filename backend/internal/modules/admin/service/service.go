@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
@@ -522,7 +523,7 @@ func (s *Service) CreateGenre(ctx context.Context, input GenreInput) (*catalogDo
 
 	genre := &catalogDomain.Genre{
 		ID:   uuid.New(),
-		Name: strings.TrimSpace(input.Name),
+		Name: lowercaseFirstRune(strings.TrimSpace(input.Name)),
 		Slug: slug,
 	}
 
@@ -664,6 +665,20 @@ func slugify(s string) string {
 	s = slugUnsafeChars.ReplaceAllString(s, "-")
 	s = multipleDashes.ReplaceAllString(s, "-")
 	return strings.Trim(s, "-")
+}
+
+// lowercaseFirstRune lowercases only the first rune of s, leaving the rest of
+// the string untouched. Used to normalize genre name casing on creation
+// (e.g. "Роман" -> "роман") without affecting any internal capitalization.
+func lowercaseFirstRune(s string) string {
+	if s == "" {
+		return s
+	}
+	r, size := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError && size <= 1 {
+		return s
+	}
+	return string(unicode.ToLower(r)) + s[size:]
 }
 
 func isURLSafeSlug(slug string) bool {

@@ -560,8 +560,50 @@ func TestCreateGenre_Valid(t *testing.T) {
 	if genre.Slug != "fantastika" {
 		t.Fatalf("expected slug fantastika, got %s", genre.Slug)
 	}
+	if genre.Name != "фантастика" {
+		t.Fatalf("expected name to be lowercased to фантастика, got %s", genre.Name)
+	}
 	if len(repo.genres) != 1 {
 		t.Fatalf("expected 1 genre, got %d", len(repo.genres))
+	}
+}
+
+func TestCreateGenre_NormalizesFirstLetterCasing(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"uppercase cyrillic first letter", "Роман", "роман"},
+		{"uppercase latin first letter", "Fantasy", "fantasy"},
+		{"internal capitalization preserved", "Научная Фантастика", "научная Фантастика"},
+		{"already lowercase is unaffected", "детектив", "детектив"},
+		{"leading/trailing whitespace trimmed before normalizing", "  Роман  ", "роман"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _ := newService()
+			ctx := context.Background()
+
+			genre, err := svc.CreateGenre(ctx, GenreInput{Name: tc.input})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if genre.Name != tc.expected {
+				t.Fatalf("expected name %q, got %q", tc.expected, genre.Name)
+			}
+		})
+	}
+}
+
+func TestCreateGenre_EmptyName(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	_, err := svc.CreateGenre(ctx, GenreInput{Name: "   "})
+	if !errors.Is(err, ErrInvalidGenreName) {
+		t.Fatalf("expected ErrInvalidGenreName, got %v", err)
 	}
 }
 
