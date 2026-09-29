@@ -158,7 +158,118 @@ func (c *OpenLibraryClient) FindByTitleAuthor(ctx context.Context, title, author
 		return nil, ErrNotFound
 	}
 
-	return mapOLSearchDoc(parsed.Docs[0]), nil
+	record := mapOLSearchDoc(parsed.Docs[0])
+
+	// Opt-in follow-up: the Search API response (olSearchDoc) has no
+	// description field at all, so most search-matched (non-ISBN) records
+	// would otherwise always have a nil Description. When enabled, and only
+	// when the doc's key structurally looks like an Open Library work key
+	// (not an edition or author key), fetch the work-level description as a
+	// best-effort follow-up. A failure here must never fail the overall
+	// lookup - the already-successfully-matched record is returned as-is.
+	if c.cfg.fetchWorkDescription && record.Description == nil && workKeyPattern.MatchString(record.SourceID) {
+		if desc, err := c.FetchWorkDescription(ctx, record.SourceID); err == nil && desc != nil {
+			record.Description = desc
+		}
+	}
+
+	return record, nil
+}
+
+// workKeyPattern matches an Open Library work key (e.g. "OL262461W"), as
+// distinct from an edition key ("OL123M") or an author key ("OL1A").
+var workKeyPattern = regexp.MustCompile(`^OL\d+W$`)
+
+// olWorkData mirrors the relevant subset of the Open Library Works API
+// (/works/{id}.json) response shape.
+type olWorkData struct {
+	Description json.RawMessage `json:"description"`
+}
+
+// olTypedText mirrors Open Library's object-shaped description
+// (`{"type": "/type/text", "value": "..."}`), one of the two shapes the
+// `description` field is documented to come back as.
+type olTypedText struct {
+	Value string `json:"value"`
+}
+
+// FetchWorkDescription looks up a single Open Library work's description via
+// the Works API (GET {baseURL}/works/{workKey}.json), sent through the same
+// doRequest plumbing (User-Agent, rate limiting, retry-with-backoff) as
+// every other method on this client. workKey is the bare key as already
+// produced by lastPathSegment(doc.Key) (e.g. "OL262461W"), not the full
+// "/works/..." path.
+//
+// Open Library inconsistently returns the `description` field as either a
+// plain JSON string or an object ({"type": "/type/text", "value": "..."});
+// both shapes are handled here.
+//
+// Returns (nil, nil) - not an error - when the work has no description field
+// or it is an empty string. Returns (nil, err) on a transport/parse/non-2xx
+// failure, with HTTP 404 mapped to ErrNotFound (mirroring FindByISBN's
+// existing convention), other 4xx mapped to ErrInvalidQuery, and 5xx/
+// transport errors surfaced via doRequest's own ErrSourceUnavailable/
+// ErrRateLimited.
+func (c *OpenLibraryClient) FetchWorkDescription(ctx context.Context, workKey string) (*string, error) {
+	workKey = strings.TrimSpace(workKey)
+	if workKey == "" {
+		return nil, ErrInvalidQuery
+	}
+
+	u, err := url.Parse(c.cfg.baseURL + "/works/" + url.PathEscape(workKey) + ".json")
+	if err != nil {
+		return nil, fmt.Errorf("bookdata: invalid open library base URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("bookdata: build open library request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.cfg.doRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("%w: open library returned status %d", ErrInvalidQuery, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("bookdata: read open library response: %w", err)
+	}
+
+	var parsed olWorkData
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("bookdata: parse open library work response: %w", err)
+	}
+
+	if len(parsed.Description) == 0 {
+		return nil, nil
+	}
+
+	// Shape 1: a plain JSON string.
+	var text string
+	if err := json.Unmarshal(parsed.Description, &text); err == nil {
+		if text == "" {
+			return nil, nil
+		}
+		return &text, nil
+	}
+
+	// Shape 2: {"type": "/type/text", "value": "..."}.
+	var typed olTypedText
+	if err := json.Unmarshal(parsed.Description, &typed); err == nil && typed.Value != "" {
+		return &typed.Value, nil
+	}
+
+	return nil, nil
 }
 
 // CoverIDType identifies which kind of key is used to look up an Open

@@ -369,6 +369,52 @@ func TestProcessRecord_EnrichmentOnlyFillsEmptyFields(t *testing.T) {
 	}
 }
 
+func TestProcessRecord_TitleAuthorEnrichmentDescriptionFlowsThroughRussianFilter(t *testing.T) {
+	// Regression check for docs/features/openlibrary-works-description.md:
+	// a Description returned via the FindByTitleAuthor path (the search-
+	// match/no-ISBN case, now the majority path once FetchWorkDescription is
+	// wired into that client) must flow through the existing Russian-filter
+	// logic exactly like a FindByISBN-sourced Description already does. No
+	// need to fake the two-step Open Library Works API call here - that's
+	// fully covered at the bookdata package level.
+	admin, repo := newTestAdmin()
+	ctx := context.Background()
+
+	rec := bookdata.ExternalBookRecord{
+		Title:      "Война и мир",
+		Language:   "ru",
+		SourceName: "wikidata",
+		SourceID:   "Q170583",
+		// No ISBN: Wikidata predates ISBN for this classic, forcing the
+		// FindByTitleAuthor (search) enrichment path instead of FindByISBN.
+	}
+
+	enrich := &fakeEnrichClient{
+		byTitleAuthor: map[string]*bookdata.ExternalBookRecord{
+			"Война и мир": {
+				Title:       "Война и мир",
+				Description: strPtr("Роман-эпопея о жизни русского общества в эпоху войн против Наполеона"),
+				SourceName:  "openlibrary",
+				SourceID:    "OL262461W",
+			},
+		},
+	}
+
+	outcome, err := processRecord(ctx, rec, enrich, admin)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome != outcomeCreated {
+		t.Fatalf("expected outcomeCreated, got %v", outcome)
+	}
+
+	book := repo.books[0]
+	wantDescription := "Роман-эпопея о жизни русского общества в эпоху войн против Наполеона"
+	if book.Description == nil || *book.Description != wantDescription {
+		t.Errorf("Description = %v, want Open Library's (Russian) FindByTitleAuthor-sourced value %q", book.Description, wantDescription)
+	}
+}
+
 func TestProcessRecord_NonRussianEnrichmentDescriptionIsDropped(t *testing.T) {
 	admin, repo := newTestAdmin()
 	ctx := context.Background()
