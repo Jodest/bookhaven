@@ -238,6 +238,183 @@ func TestOpenLibraryFindByTitleAuthor_EmptyTitle_ReturnsErrInvalidQuery(t *testi
 	}
 }
 
+const openLibraryWorkFixturePlainString = `{
+  "key": "/works/OL262461W",
+  "title": "War and Peace",
+  "description": "A sweeping novel about Russian society during the Napoleonic era."
+}`
+
+const openLibraryWorkFixtureTypedText = `{
+  "key": "/works/OL262461W",
+  "title": "War and Peace",
+  "description": {"type": "/type/text", "value": "A sweeping novel about Russian society during the Napoleonic era."}
+}`
+
+const openLibraryWorkFixtureNoDescription = `{
+  "key": "/works/OL262461W",
+  "title": "War and Peace"
+}`
+
+func TestFetchWorkDescription_PlainStringShape(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/works/OL262461W.json") {
+			t.Errorf("unexpected request path: %s", req.URL.Path)
+		}
+		return newTestResponse(http.StatusOK, openLibraryWorkFixturePlainString, nil), nil
+	})
+	client := newOpenLibraryTestClient(t, responder)
+
+	desc, err := client.FetchWorkDescription(context.Background(), "OL262461W")
+	if err != nil {
+		t.Fatalf("FetchWorkDescription: %v", err)
+	}
+	if desc == nil || !strings.Contains(*desc, "Napoleonic") {
+		t.Errorf("Description = %v", desc)
+	}
+}
+
+func TestFetchWorkDescription_TypedTextShape(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusOK, openLibraryWorkFixtureTypedText, nil), nil
+	})
+	client := newOpenLibraryTestClient(t, responder)
+
+	desc, err := client.FetchWorkDescription(context.Background(), "OL262461W")
+	if err != nil {
+		t.Fatalf("FetchWorkDescription: %v", err)
+	}
+	if desc == nil || !strings.Contains(*desc, "Napoleonic") {
+		t.Errorf("Description = %v", desc)
+	}
+}
+
+func TestFetchWorkDescription_NoDescriptionField_ReturnsNilNil(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusOK, openLibraryWorkFixtureNoDescription, nil), nil
+	})
+	client := newOpenLibraryTestClient(t, responder)
+
+	desc, err := client.FetchWorkDescription(context.Background(), "OL262461W")
+	if err != nil {
+		t.Fatalf("FetchWorkDescription: %v", err)
+	}
+	if desc != nil {
+		t.Errorf("Description = %v, want nil", desc)
+	}
+}
+
+func TestFetchWorkDescription_NotFound_ReturnsErrNotFound(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusNotFound, `{"error": "notfound"}`, nil), nil
+	})
+	client := newOpenLibraryTestClient(t, responder)
+
+	desc, err := client.FetchWorkDescription(context.Background(), "OL0W")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if desc != nil {
+		t.Errorf("Description = %v, want nil on error", desc)
+	}
+}
+
+func TestFetchWorkDescription_MalformedJSON_ReturnsError(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusOK, `not json`, nil), nil
+	})
+	client := newOpenLibraryTestClient(t, responder)
+
+	desc, err := client.FetchWorkDescription(context.Background(), "OL262461W")
+	if err == nil {
+		t.Fatal("expected an error for malformed JSON, got nil")
+	}
+	if desc != nil {
+		t.Errorf("Description = %v, want nil on error", desc)
+	}
+}
+
+func TestOpenLibraryFindByTitleAuthor_WorkDescriptionLookupEnabled_FetchesAndPopulatesDescription(t *testing.T) {
+	var requestPaths []string
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requestPaths = append(requestPaths, req.URL.Path)
+		if strings.Contains(req.URL.Path, "/works/") {
+			return newTestResponse(http.StatusOK, openLibraryWorkFixturePlainString, nil), nil
+		}
+		return newTestResponse(http.StatusOK, openLibrarySearchFixture, nil), nil
+	})
+	client := NewOpenLibraryClient(
+		WithHTTPClient(&http.Client{Transport: responder}),
+		withLimiter(&fakeLimiter{}),
+		withSleep(func(d time.Duration) {}),
+		WithMaxRetries(0),
+		WithWorkDescriptionLookup(),
+	)
+
+	record, err := client.FindByTitleAuthor(context.Background(), "War and Peace", "Tolstoy")
+	if err != nil {
+		t.Fatalf("FindByTitleAuthor: %v", err)
+	}
+	if len(requestPaths) != 2 {
+		t.Fatalf("requestPaths = %v, want exactly 2 requests (search + works)", requestPaths)
+	}
+	if !strings.Contains(requestPaths[1], "/works/OL262461W.json") {
+		t.Errorf("second request path = %q, want /works/OL262461W.json", requestPaths[1])
+	}
+	if record.Description == nil || !strings.Contains(*record.Description, "Napoleonic") {
+		t.Errorf("Description = %v", record.Description)
+	}
+}
+
+func TestOpenLibraryFindByTitleAuthor_WorkDescriptionLookupDisabled_MakesOnlyOneRequest(t *testing.T) {
+	requestCount := 0
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requestCount++
+		return newTestResponse(http.StatusOK, openLibrarySearchFixture, nil), nil
+	})
+	// Mirrors the admin lookup-assistant client (backend/cmd/api/main.go):
+	// no WithWorkDescriptionLookup() option, so this must make exactly one
+	// outbound Open Library call, per catalog-manual-import.md.
+	client := newOpenLibraryTestClient(t, responder)
+
+	record, err := client.FindByTitleAuthor(context.Background(), "War and Peace", "Tolstoy")
+	if err != nil {
+		t.Fatalf("FindByTitleAuthor: %v", err)
+	}
+	if requestCount != 1 {
+		t.Fatalf("requestCount = %d, want 1 (no follow-up call by default)", requestCount)
+	}
+	if record.Description != nil {
+		t.Errorf("Description = %v, want nil (no follow-up call by default)", record.Description)
+	}
+}
+
+func TestOpenLibraryFindByTitleAuthor_WorkDescriptionLookupFails_StillReturnsBaseRecord(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if strings.Contains(req.URL.Path, "/works/") {
+			return newTestResponse(http.StatusInternalServerError, `internal error`, nil), nil
+		}
+		return newTestResponse(http.StatusOK, openLibrarySearchFixture, nil), nil
+	})
+	client := NewOpenLibraryClient(
+		WithHTTPClient(&http.Client{Transport: responder}),
+		withLimiter(&fakeLimiter{}),
+		withSleep(func(d time.Duration) {}),
+		WithMaxRetries(0),
+		WithWorkDescriptionLookup(),
+	)
+
+	record, err := client.FindByTitleAuthor(context.Background(), "War and Peace", "Tolstoy")
+	if err != nil {
+		t.Fatalf("FindByTitleAuthor: %v, want success even though the works follow-up call fails", err)
+	}
+	if record.Title != "War and Peace" {
+		t.Errorf("Title = %q, want base record still populated", record.Title)
+	}
+	if record.Description != nil {
+		t.Errorf("Description = %v, want nil after a failed follow-up call", record.Description)
+	}
+}
+
 func TestCoverURL_ProducesExpectedURL(t *testing.T) {
 	got := CoverURL("9780140447934", CoverIDTypeISBN, CoverSizeLarge)
 	want := "https://covers.openlibrary.org/b/isbn/9780140447934-L.jpg"

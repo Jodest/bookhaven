@@ -48,6 +48,9 @@ type config struct {
 	retryBaseDelay time.Duration
 	retryMaxDelay  time.Duration
 	sleep          func(time.Duration)
+	// fetchWorkDescription enables OpenLibraryClient.FindByTitleAuthor's
+	// opt-in Works API follow-up call. See WithWorkDescriptionLookup.
+	fetchWorkDescription bool
 }
 
 // Option configures a WikidataClient or OpenLibraryClient at construction
@@ -96,6 +99,32 @@ func WithRateLimit(requestsPerSecond float64, burst int) Option {
 // initial request (default: 3).
 func WithMaxRetries(n int) Option {
 	return func(cfg *config) { cfg.maxRetries = n }
+}
+
+// WithWorkDescriptionLookup opts an OpenLibraryClient instance into an extra
+// follow-up call in FindByTitleAuthor: when a search match has no
+// Description and its key looks like an Open Library work key (matches
+// ^OL\d+W$), the client calls FetchWorkDescription(ctx, SourceID) and, on
+// success, populates record.Description from it. Default: off.
+//
+// This is deliberately opt-in per client instance (not a per-call
+// parameter) so each call site controls the tradeoff independently: harvest
+// enrichment (backend/cmd/worker/main.go) opts in, since search-matched
+// (non-ISBN) harvested books would otherwise almost always have a nil
+// Description. The admin lookup-assistant endpoint (backend/cmd/api/main.go)
+// deliberately does NOT opt in, since its contract promises exactly one
+// outbound Open Library call per synchronous, human-blocking request (see
+// docs/features/catalog-manual-import.md).
+//
+// Tradeoff: enabling this roughly doubles Open Library round-trips (and
+// therefore wall-clock time) for the common no-ISBN, search-matched harvest
+// case, since it shares the same client instance's ~1 req/sec throttle as
+// every other call and a follow-up request only fires after the search
+// request completes. This is an accepted tradeoff (harvest throughput for
+// enrichment completeness), not a bug — see
+// docs/features/openlibrary-works-description.md Risks.
+func WithWorkDescriptionLookup() Option {
+	return func(cfg *config) { cfg.fetchWorkDescription = true }
 }
 
 // withLimiter substitutes a fake limiter. Unexported: only used by this
