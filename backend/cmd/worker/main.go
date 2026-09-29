@@ -45,7 +45,11 @@ func main() {
 	adminService := adminservice.NewService(adminRepo)
 
 	wikidataClient := bookdata.NewWikidataClient()
-	openLibraryClient := bookdata.NewOpenLibraryClient()
+	// WithWorkDescriptionLookup is opted in here (harvest enrichment) only -
+	// backend/cmd/api/main.go's admin lookup-assistant client deliberately
+	// does not, to preserve its "exactly one outbound Open Library call per
+	// request" contract. See docs/features/openlibrary-works-description.md.
+	openLibraryClient := bookdata.NewOpenLibraryClient(bookdata.WithWorkDescriptionLookup())
 
 	harvestHandler := harvestservice.NewHandler(wikidataClient, openLibraryClient, adminService)
 
