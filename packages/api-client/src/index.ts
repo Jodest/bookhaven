@@ -134,6 +134,30 @@ export interface ToggleLikeResponse {
   liked: boolean;
 }
 
+// Notification mirrors the backend's notificationResponse shape as-is
+// (snake_case, nested actor/review kept close to wire shape) - same
+// no-over-normalization choice as Review.user above. `review_like` is the
+// only `type` today; `review` is present whenever `type` is review-related.
+export interface Notification {
+  id: string;
+  type: 'review_like';
+  actor: { id: string; name: string | null; avatar_url: string | null };
+  review?: { id: string; book_id: string; book_slug: string; book_title: string };
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface NotificationsListResponse {
+  items: Notification[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface UnreadCountResponse {
+  count: number;
+}
+
 export interface Shelf {
   id: string;
   userId: string;
@@ -964,6 +988,25 @@ export const api = {
       });
       return normalizeReadingChallenge(raw);
     },
+  },
+  notifications: {
+    list: (params?: { page?: number; limit?: number }) => {
+      const queryParams = new URLSearchParams();
+      if (params?.page !== undefined) queryParams.set('page', String(params.page));
+      if (params?.limit !== undefined) queryParams.set('limit', String(params.limit));
+      return fetcher<NotificationsListResponse>(
+        `/api/v1/notifications?${queryParams.toString()}`
+      );
+    },
+    unreadCount: () => fetcher<UnreadCountResponse>('/api/v1/notifications/unread-count'),
+    markRead: (id: string) =>
+      fetcher<{ status: string }>(`/api/v1/notifications/${id}/read`, {
+        method: 'PATCH',
+      }),
+    markAllRead: () =>
+      fetcher<{ status: string }>('/api/v1/notifications/read-all', {
+        method: 'POST',
+      }),
   },
   lists: {
     list: async (params?: { book_id?: string }) => {

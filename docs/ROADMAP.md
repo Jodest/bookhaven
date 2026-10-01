@@ -21,6 +21,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Web Visual Redesign (see [docs/features/web-visual-redesign.md](features/web-visual-redesign.md))
 - [x] Catalog data import — async Wikidata/Open Library harvest pipeline, admin trigger UI, progress bar, author name search, full per-job report, Russian-only content enforcement, Open Library work-description enrichment (see [docs/features/async-harvest-queue.md](features/async-harvest-queue.md), [admin-harvest-trigger.md](features/admin-harvest-trigger.md), [harvest-progress.md](features/harvest-progress.md), [harvest-author-search.md](features/harvest-author-search.md), [harvest-job-report.md](features/harvest-job-report.md), [russian-only-content.md](features/russian-only-content.md), [openlibrary-works-description.md](features/openlibrary-works-description.md), [catalog-manual-import.md](features/catalog-manual-import.md))
 - [x] Self-hosted fonts — removed the CI build's dependency on live Google Fonts access (see [docs/features/self-hosted-fonts.md](features/self-hosted-fonts.md))
+- [x] Notifications for review-like activity — in-app bell + unread badge telling a review's author when someone else likes it (see [docs/features/review-like-notifications.md](features/review-like-notifications.md))
 
 ## Post-MVP
 
@@ -36,7 +37,6 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [ ] Personal reading statistics dashboard — The StoryGraph's signature pace/genre/mood analytics have no equivalent beyond BookHaven's single annual reading-challenge count [competitive] (proposed 2026-09-30, #97)
 - [ ] Half-star (finer-grained) ratings — Goodreads and The StoryGraph both support half-star ratings; BookHaven's schema restricts ratings to whole integers 1-5 [competitive] (proposed 2026-09-30, #98)
 - [ ] Report/flag inappropriate reviews — reviews already have an admin moderation queue, but no user-facing way to flag content for moderator attention, unlike Goodreads/LiveLib [competitive] (proposed 2026-09-30, #99)
-- [ ] Notifications for review-like activity — reviews already track like counts, but BookHaven has no notification system at all to tell an author their review was liked, unlike Goodreads [competitive] (proposed 2026-09-30, #100)
 - [ ] Personal data export (shelves, ratings, reviews) — Goodreads and The StoryGraph both offer a built-in library export; BookHaven has no data-portability path for a user's own reading data [competitive] (proposed 2026-09-30, #101)
 - [ ] Book series / multi-volume grouping in the catalog — the books schema has no series or edition concept at all, unlike Goodreads/LiveLib which group editions under a work and show series membership/order [code] (proposed 2026-09-30, #102)
 - [ ] Audit trail for admin actions — admins can hide/edit books and hide/restore reviews, but no log records who performed which administrative action and when [code] (proposed 2026-09-30, #103)

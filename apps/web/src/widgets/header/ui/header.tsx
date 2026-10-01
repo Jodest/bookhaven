@@ -4,11 +4,21 @@ import { useAuthStore } from '@/entities/session';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { HeaderLoginLink } from './header-login-link';
 import { HeaderSearch } from './header-search';
 
-export function Header() {
+interface HeaderProps {
+  // The notification bell lives in its own `widgets/notifications` slice -
+  // FSD's layering rules (see apps/web/.eslintrc.json boundaries/element-types)
+  // disallow one widget importing another, so the app-root composition
+  // (app/layout.tsx) injects it here rather than Header importing it
+  // directly. Still renders exactly where the feature contract calls for:
+  // next to the profile link, only for authenticated users.
+  notificationSlot?: ReactNode;
+}
+
+export function Header({ notificationSlot }: HeaderProps) {
   const { user, isAuthenticated, isLoading, logout } = useAuthStore();
   const router = useRouter();
 
@@ -55,6 +65,7 @@ export function Header() {
             <>
               {isAuthenticated && user ? (
                 <>
+                  {notificationSlot}
                   <Button variant="ghost" asChild>
                     <Link href="/profile">{user.name || user.email}</Link>
                   </Button>

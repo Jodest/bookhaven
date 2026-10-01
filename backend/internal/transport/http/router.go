@@ -8,6 +8,8 @@ import (
 	harvesthttp "github.com/bookhaven/backend/internal/modules/harvest/transport/http"
 	listsservice "github.com/bookhaven/backend/internal/modules/lists/service"
 	listshttp "github.com/bookhaven/backend/internal/modules/lists/transport/http"
+	notificationsservice "github.com/bookhaven/backend/internal/modules/notifications/service"
+	notificationshttp "github.com/bookhaven/backend/internal/modules/notifications/transport/http"
 	ratingsservice "github.com/bookhaven/backend/internal/modules/ratings/service"
 	ratingshttp "github.com/bookhaven/backend/internal/modules/ratings/transport/http"
 	readingchallengesservice "github.com/bookhaven/backend/internal/modules/reading_challenges/service"
@@ -34,6 +36,7 @@ func RegisterRoutes(
 	reviewsService *reviewsservice.Service,
 	usersService *usersservice.Service,
 	readingChallengesService *readingchallengesservice.Service,
+	notificationsService *notificationsservice.Service,
 	authMiddleware echo.MiddlewareFunc,
 	optionalAuth echo.MiddlewareFunc,
 ) {
@@ -91,6 +94,13 @@ func RegisterRoutes(
 	readingChallenges.GET("", readingChallengesHandler.ListChallenges)
 	readingChallenges.GET("/:year", readingChallengesHandler.GetChallenge)
 	readingChallenges.PUT("/:year", readingChallengesHandler.UpsertGoal)
+
+	notificationsHandler := notificationshttp.NewHandler(notificationsService)
+	notifications := api.Group("/notifications", authMiddleware)
+	notifications.GET("", notificationsHandler.ListNotifications)
+	notifications.GET("/unread-count", notificationsHandler.UnreadCount)
+	notifications.PATCH("/:id/read", notificationsHandler.MarkRead)
+	notifications.POST("/read-all", notificationsHandler.MarkAllRead)
 }
 
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
