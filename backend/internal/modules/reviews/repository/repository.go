@@ -26,8 +26,12 @@ type Repository interface {
 	Update(ctx context.Context, review *reviewsDomain.Review) error
 	// Delete removes a review and recalculates aggregates.
 	Delete(ctx context.Context, reviewID uuid.UUID) error
-	// ToggleLike toggles a like for a review and returns the new state and likes count.
-	ToggleLike(ctx context.Context, reviewID, userID uuid.UUID) (liked bool, likesCount int, err error)
+	// ToggleLike toggles a like for a review and returns the new state and
+	// likes count. revieweeID is the review author's user ID (the caller
+	// already has it from a prior GetByID call) - when a new like is created
+	// (liked == true) and revieweeID != userID, a review_like notification
+	// for the author is upserted in the same transaction.
+	ToggleLike(ctx context.Context, reviewID, userID, revieweeID uuid.UUID) (liked bool, likesCount int, err error)
 	// BookExists checks whether a book exists and is not hidden.
 	BookExists(ctx context.Context, bookID uuid.UUID) (bool, error)
 }
@@ -192,8 +196,11 @@ func (r *GormRepository) Delete(ctx context.Context, reviewID uuid.UUID) error {
 	})
 }
 
-// ToggleLike toggles a like on a review.
-func (r *GormRepository) ToggleLike(ctx context.Context, reviewID, userID uuid.UUID) (bool, int, error) {
+// ToggleLike toggles a like on a review. When a new like is created for
+// someone else's review, a review_like notification for the review's author
+// is upserted in the same transaction (see upsertNotificationInTx) - this
+// keeps the notification write atomic with the like it describes.
+func (r *GormRepository) ToggleLike(ctx context.Context, reviewID, userID, revieweeID uuid.UUID) (bool, int, error) {
 	var liked bool
 	var likesCount int
 
@@ -218,6 +225,14 @@ func (r *GormRepository) ToggleLike(ctx context.Context, reviewID, userID uuid.U
 				return err
 			}
 			liked = true
+
+			// No self-notify: a user liking their own review never creates
+			// a notification.
+			if revieweeID != userID {
+				if err := r.upsertNotificationInTx(tx, revieweeID, userID, reviewID); err != nil {
+					return err
+				}
+			}
 		}
 
 		var agg struct {
@@ -259,6 +274,24 @@ func (r *GormRepository) upsertRatingInTx(tx *gorm.DB, bookID, userID uuid.UUID,
 			value = EXCLUDED.value,
 			updated_at = NOW()
 	`, bookID, userID, value).Error
+}
+
+// upsertNotificationInTx upserts a review_like notification for the review's
+// author. The notifications table's UNIQUE (actor_id, review_id, type)
+// constraint makes this idempotent: a repeated like/unlike/like cycle by the
+// same actor on the same review reuses (refreshes to unread with a fresh
+// timestamp) the existing row instead of creating a duplicate. This module
+// deliberately writes to the notifications table via raw SQL rather than
+// importing the notifications package, mirroring this function's siblings
+// (upsertRatingInTx/recalcInTx) that already write directly to ratings/books.
+func (r *GormRepository) upsertNotificationInTx(tx *gorm.DB, recipientID, actorID, reviewID uuid.UUID) error {
+	return tx.Exec(`
+		INSERT INTO notifications (id, user_id, actor_id, type, review_id, is_read, created_at)
+		VALUES (gen_random_uuid(), ?, ?, 'review_like', ?, false, NOW())
+		ON CONFLICT (actor_id, review_id, type) DO UPDATE SET
+			is_read = false,
+			created_at = NOW()
+	`, recipientID, actorID, reviewID).Error
 }
 
 func (r *GormRepository) recalcInTx(tx *gorm.DB, bookID uuid.UUID) error {
