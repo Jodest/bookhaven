@@ -40,6 +40,11 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [ ] Personal data export (shelves, ratings, reviews) — Goodreads and The StoryGraph both offer a built-in library export; BookHaven has no data-portability path for a user's own reading data [competitive] (proposed 2026-09-30, #101)
 - [ ] Book series / multi-volume grouping in the catalog — the books schema has no series or edition concept at all, unlike Goodreads/LiveLib which group editions under a work and show series membership/order [code] (proposed 2026-09-30, #102)
 - [ ] Audit trail for admin actions — admins can hide/edit books and hide/restore reviews, but no log records who performed which administrative action and when [code] (proposed 2026-09-30, #103)
+- [ ] Quick shelf-status actions on catalog/search book cards — user-book-shelves business analysis (OQ-004) deferred shelf buttons on listing cards pending a batch per-book shelf-status lookup, still unresolved [business-analysis] (proposed 2026-10-02, #111)
+- [ ] Personalized book recommendations based on shelf/rating history — BookHaven collects the shelves/ratings data Goodreads-style recommendation engines use, but has no recommendation surface built on it [competitive] (proposed 2026-10-02, #112)
+- [ ] Save and share favorite quotes from books — Goodreads' Quotes feature has no BookHaven equivalent; reviews are the only way to attach text to a book today [competitive] (proposed 2026-10-02, #113)
+- [ ] Bulk publish action for pending-review harvested books — the harvest-review-queue contract explicitly deferred a bulk "publish all" action, so admins publish harvested books one row at a time [code] (proposed 2026-10-02, #114)
+- [ ] Book clubs / group reading discussions — Goodreads' topic/book-centered group discussions have no BookHaven equivalent, distinct from the already-proposed 1:1 follow/friends feed (#96) [competitive] (proposed 2026-10-02, #115)
 
 ## Technical Debt
 
