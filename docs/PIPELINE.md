@@ -14,6 +14,10 @@ How feature work moves from request to production in this repo, and what to set 
 | `.claude/agents/developer.md` | Implementation (backend/frontend/migrations/tests). |
 | `.claude/agents/review-qa.md` | Code review, acceptance/security/QA pass on the diff. |
 | `.claude/agents/devops.md` | Infra-as-code only (Dockerfiles, compose, Caddy, CI/CD workflows). Never touches the real server or a real cloud API. |
+| `.claude/commands/backlog-groom.md` | `/backlog-groom` — headless-safe: researches new backlog candidates, files each as a `proposal`-labeled GitHub issue, notifies you. Never plans or implements. |
+| `.claude/agents/backlog-researcher.md` | Surveys tech debt, prior business analyses, and competitors for backlog candidates; opens the `proposal` issues. |
+| `.claude/commands/backlog-next.md` | `/backlog-next` — interactive only: ranks open `proposal` issues, asks you to pick one, hands the pick to `/feature.md`. |
+| `.claude/agents/backlog-prioritizer.md` | Ranks open `proposal` issues with a one-line rationale each. Read-only — never decides for you. |
 
 ## Branches
 
@@ -105,6 +109,15 @@ status-done-id:         <status-done-id>
 
 - *"PR #12 in dev merged, continue"* → opens the PR from the same branch into `main`.
 - *"main PR #14 approved and merged"* → closes sub-issues/epic, marks the board Done, confirms the real deploy will run automatically.
+
+## Backlog loop (who decides what to work on)
+
+Two extra commands sit in front of `/feature`, splitting "what could we do" from "what do we do next" so a human always makes the actual prioritization call:
+
+1. **`/backlog-groom`** (safe to run unattended, e.g. from an external scheduler) — `backlog-researcher` surveys tech debt / open business-analysis questions / competitor gaps, files up to 5 new candidates as `proposal`-labeled GitHub issues, logs them in `docs/ROADMAP.md`'s `## Proposed (awaiting prioritization)` section, and sends a push notification. It never plans or implements anything.
+2. **`/backlog-next`** (interactive — never run headless, it asks a question mid-run) — `backlog-prioritizer` ranks the open `proposal` issues, you're asked which one(s) to do next (multi-select allowed). Pick one and it's handed straight to `feature.md`. Pick several and state an order, and it's saved as `## Up Next (queued order)` in `docs/ROADMAP.md`; only the first is handed to `feature.md` — items are always worked **one at a time, strictly sequentially**, never as parallel branches. Running `/backlog-next` again picks up the next queued item directly, no re-ranking. The original `proposal` issue is closed and linked to the new epic once planning starts.
+
+**Real weekly automation for step 1 needs an external scheduler**, not this session's `CronCreate` tool — `CronCreate` jobs are session-only, die when this CLI session ends, and auto-expire after 7 days regardless, so they can't stand in for "runs every week forever." Use the OS's own scheduler (e.g. Windows Task Scheduler) to run `claude -p "/backlog-groom"` headlessly on a weekly cron, and make sure the `gh`/`git` commands it needs are pre-approved (see your permission settings) so the unattended run doesn't hang waiting for a click nobody will make.
 
 ## What's deliberately not automated
 
