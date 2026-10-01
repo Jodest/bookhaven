@@ -18,6 +18,8 @@ import (
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	listsrepository "github.com/bookhaven/backend/internal/modules/lists/repository"
 	listsservice "github.com/bookhaven/backend/internal/modules/lists/service"
+	notificationsrepository "github.com/bookhaven/backend/internal/modules/notifications/repository"
+	notificationsservice "github.com/bookhaven/backend/internal/modules/notifications/service"
 	ratingsrepository "github.com/bookhaven/backend/internal/modules/ratings/repository"
 	ratingsservice "github.com/bookhaven/backend/internal/modules/ratings/service"
 	readingchallengesrepository "github.com/bookhaven/backend/internal/modules/reading_challenges/repository"
@@ -76,6 +78,7 @@ func main() {
 	ratingsRepo := ratingsrepository.NewGormRepository(db)
 	reviewsRepo := reviewsrepository.NewGormRepository(db)
 	readingChallengesRepo := readingchallengesrepository.NewGormRepository(db)
+	notificationsRepo := notificationsrepository.NewGormRepository(db)
 
 	// Services
 	catalogService := catalogservice.NewService(catalogRepo)
@@ -95,6 +98,7 @@ func main() {
 	ratingsService := ratingsservice.NewService(ratingsRepo)
 	reviewsService := reviewsservice.NewService(reviewsRepo)
 	readingChallengesService := readingchallengesservice.NewService(readingChallengesRepo)
+	notificationsService := notificationsservice.NewService(notificationsRepo)
 
 	// asynq.Client/asynq.Inspector for the admin harvest-trigger endpoints
 	// (see docs/features/admin-harvest-trigger.md), constructed the same way
@@ -142,7 +146,7 @@ func main() {
 	optionalAuth := middleware.OptionalAuth(authService, usersRepo)
 
 	// Public + protected routes
-	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, authMiddleware, optionalAuth)
+	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, authMiddleware, optionalAuth)
 
 	// Admin routes
 	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, harvestClient, harvestInspector, wikidataClient)

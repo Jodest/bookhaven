@@ -209,7 +209,7 @@ func (s *Service) ToggleLike(ctx context.Context, userID, reviewID uuid.UUID) (l
 		return 0, false, ErrReviewNotFound
 	}
 
-	liked, likesCount, err = s.repo.ToggleLike(ctx, reviewID, userID)
+	liked, likesCount, err = s.repo.ToggleLike(ctx, reviewID, userID, review.UserID)
 	if err != nil {
 		return 0, false, fmt.Errorf("toggle like: %w", err)
 	}

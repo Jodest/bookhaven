@@ -23,19 +23,30 @@ type reviewUserKey struct {
 	userID   uuid.UUID
 }
 
+// fakeNotification mirrors the one notification row a (actor, review) pair
+// can ever have, per the notifications table's UNIQUE (actor_id, review_id,
+// type) upsert constraint (see reviews/repository.GormRepository.ToggleLike
+// and its upsertNotificationInTx).
+type fakeNotification struct {
+	IsRead    bool
+	CreatedAt time.Time
+}
+
 type fakeRepository struct {
-	reviews map[uuid.UUID]*reviewsDomain.Review
-	ratings map[bookUserKey]*ratingsDomain.Rating
-	likes   map[reviewUserKey]bool
-	books   map[uuid.UUID]*catalogDomain.Book
+	reviews       map[uuid.UUID]*reviewsDomain.Review
+	ratings       map[bookUserKey]*ratingsDomain.Rating
+	likes         map[reviewUserKey]bool
+	books         map[uuid.UUID]*catalogDomain.Book
+	notifications map[reviewUserKey]*fakeNotification
 }
 
 func newFakeRepository() *fakeRepository {
 	return &fakeRepository{
-		reviews: make(map[uuid.UUID]*reviewsDomain.Review),
-		ratings: make(map[bookUserKey]*ratingsDomain.Rating),
-		likes:   make(map[reviewUserKey]bool),
-		books:   make(map[uuid.UUID]*catalogDomain.Book),
+		reviews:       make(map[uuid.UUID]*reviewsDomain.Review),
+		ratings:       make(map[bookUserKey]*ratingsDomain.Rating),
+		likes:         make(map[reviewUserKey]bool),
+		books:         make(map[uuid.UUID]*catalogDomain.Book),
+		notifications: make(map[reviewUserKey]*fakeNotification),
 	}
 }
 
@@ -171,7 +182,7 @@ func (f *fakeRepository) Delete(ctx context.Context, reviewID uuid.UUID) error {
 	return nil
 }
 
-func (f *fakeRepository) ToggleLike(ctx context.Context, reviewID, userID uuid.UUID) (bool, int, error) {
+func (f *fakeRepository) ToggleLike(ctx context.Context, reviewID, userID, revieweeID uuid.UUID) (bool, int, error) {
 	key := reviewUserKey{reviewID: reviewID, userID: userID}
 	liked := false
 	if _, ok := f.likes[key]; ok {
@@ -180,6 +191,15 @@ func (f *fakeRepository) ToggleLike(ctx context.Context, reviewID, userID uuid.U
 	} else {
 		f.likes[key] = true
 		liked = true
+
+		if revieweeID != userID {
+			if n, ok := f.notifications[key]; ok {
+				n.IsRead = false
+				n.CreatedAt = time.Now()
+			} else {
+				f.notifications[key] = &fakeNotification{IsRead: false, CreatedAt: time.Now()}
+			}
+		}
 	}
 
 	count := 0
@@ -482,5 +502,114 @@ func TestListReviews_MyReview(t *testing.T) {
 	}
 	if result.MyReview.ID != myReview.ID {
 		t.Fatalf("expected my_review id %s, got %s", myReview.ID, result.MyReview.ID)
+	}
+}
+
+func TestToggleLike_CreatesNotificationForOtherUsersReview(t *testing.T) {
+	ctx := context.Background()
+	authorID := uuid.New()
+	actorID := uuid.New()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+
+	review, err := svc.CreateReview(ctx, authorID, bookID, 5, "Great")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, liked, err := svc.ToggleLike(ctx, actorID, review.ID); err != nil || !liked {
+		t.Fatalf("unexpected result: liked=%v err=%v", liked, err)
+	}
+
+	key := reviewUserKey{reviewID: review.ID, userID: actorID}
+	notification, ok := repo.notifications[key]
+	if !ok {
+		t.Fatal("expected a notification to be created for the review's author")
+	}
+	if notification.IsRead {
+		t.Fatal("expected a freshly created notification to be unread")
+	}
+}
+
+func TestToggleLike_SelfLikeDoesNotCreateNotification(t *testing.T) {
+	ctx := context.Background()
+	authorID := uuid.New()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+
+	review, err := svc.CreateReview(ctx, authorID, bookID, 5, "Great")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, _, err := svc.ToggleLike(ctx, authorID, review.ID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(repo.notifications) != 0 {
+		t.Fatalf("expected no notification for a self-like, got %d", len(repo.notifications))
+	}
+}
+
+func TestToggleLike_UnlikeDoesNotDeleteExistingNotification(t *testing.T) {
+	ctx := context.Background()
+	authorID := uuid.New()
+	actorID := uuid.New()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+
+	review, err := svc.CreateReview(ctx, authorID, bookID, 5, "Great")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, _, err := svc.ToggleLike(ctx, actorID, review.ID); err != nil { // like
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, liked, err := svc.ToggleLike(ctx, actorID, review.ID); err != nil || liked { // unlike
+		t.Fatalf("unexpected result: liked=%v err=%v", liked, err)
+	}
+
+	key := reviewUserKey{reviewID: review.ID, userID: actorID}
+	if _, ok := repo.notifications[key]; !ok {
+		t.Fatal("expected the notification to remain after unliking")
+	}
+}
+
+func TestToggleLike_RepeatedCycleReusesNotificationRow(t *testing.T) {
+	ctx := context.Background()
+	authorID := uuid.New()
+	actorID := uuid.New()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+
+	review, err := svc.CreateReview(ctx, authorID, bookID, 5, "Great")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, _, err := svc.ToggleLike(ctx, actorID, review.ID); err != nil { // like
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	key := reviewUserKey{reviewID: review.ID, userID: actorID}
+	repo.notifications[key].IsRead = true // simulate the recipient having read it
+
+	if _, _, err := svc.ToggleLike(ctx, actorID, review.ID); err != nil { // unlike
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, _, err := svc.ToggleLike(ctx, actorID, review.ID); err != nil { // like again
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(repo.notifications) != 1 {
+		t.Fatalf("expected the existing notification row to be reused, not duplicated; got %d rows", len(repo.notifications))
+	}
+	if repo.notifications[key].IsRead {
+		t.Fatal("expected the reused notification to be refreshed back to unread")
 	}
 }
