@@ -645,6 +645,26 @@ type RawGenre = Genre & {
   created_at: string;
 };
 
+// Author-detail's nested `books` come back from the backend as the lighter
+// `bookListItemResponse` shape (see catalog handler's `toBookListItemResponse`)
+// — it omits description/isbn/page_count/language/reviews_count/timestamps
+// that the full book-list/book-detail responses include.
+type RawAuthorBookListItem = {
+  id: string;
+  title: string;
+  slug: string;
+  cover_url: string | null;
+  published_year: number | null;
+  rating: number;
+  ratings_count: number;
+  authors: RawAuthor[];
+  genres: RawGenre[];
+};
+
+type RawAuthorDetail = Omit<RawAuthor, 'books'> & {
+  books: RawAuthorBookListItem[];
+};
+
 type RawList = List & {
   user_id: string;
   is_public: boolean;
@@ -690,6 +710,38 @@ function normalizeBook(raw: RawBook): Book {
     genres: raw.genres.map(normalizeGenre),
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+  };
+}
+
+// The author-detail response's nested books don't carry the fields full
+// Book objects have (see RawAuthorBookListItem above); fill those in with
+// neutral defaults since BookCard (the only consumer) never reads them.
+function normalizeAuthorBookListItem(raw: RawAuthorBookListItem): Book {
+  return {
+    id: raw.id,
+    title: raw.title,
+    slug: raw.slug,
+    description: null,
+    coverUrl: raw.cover_url,
+    isbn: null,
+    publishedYear: raw.published_year,
+    pageCount: null,
+    language: '',
+    rating: raw.rating,
+    ratingsCount: raw.ratings_count,
+    reviewsCount: 0,
+    authors: raw.authors.map(normalizeAuthor),
+    genres: raw.genres.map(normalizeGenre),
+    createdAt: '',
+    updatedAt: '',
+  };
+}
+
+function normalizeAuthorDetail(raw: RawAuthorDetail): Author {
+  const { books, ...authorFields } = raw;
+  return {
+    ...normalizeAuthor(authorFields),
+    books: books.map(normalizeAuthorBookListItem),
   };
 }
 
@@ -835,7 +887,10 @@ export const api = {
         `/api/v1/authors?${new URLSearchParams(queryParams)}`
       );
     },
-    get: (slug: string) => fetcher<Author>(`/api/v1/authors/${slug}`),
+    get: async (slug: string) => {
+      const raw = await fetcher<RawAuthorDetail>(`/api/v1/authors/${slug}`);
+      return normalizeAuthorDetail(raw);
+    },
   },
   genres: {
     list: () => fetcher<{ items: Genre[]; total: number }>('/api/v1/genres'),
