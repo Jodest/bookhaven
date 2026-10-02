@@ -31,10 +31,6 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [ ] RGB/RNB (Russian State/National Library) as an additional catalog data source — investigated, currently blocked: the known Z39.50 endpoint is on a private IP, and the public catalog has no documented API; revisit if RGB responds to direct outreach (see [docs/ai/features/catalog-data-import/business-analysis.md](ai/features/catalog-data-import/business-analysis.md))
 - [ ] AI-generated book descriptions as a last-resort fallback when harvest sources have none — discussed, not yet scoped into a feature contract
 
-## Up Next (queued order)
-
-1. #95 Public shelf/reading-status visibility on user profiles
-
 ## Proposed (awaiting prioritization)
 
 - [ ] Custom user-created shelves — user-book-shelves business analysis (OQ-001) deferred custom shelves to a future increment needing a schema migration and an exclusivity decision, still unresolved [business-analysis] (proposed 2026-09-30, #94)
