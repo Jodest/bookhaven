@@ -292,6 +292,15 @@ export interface AdminGenre {
   slug: string;
 }
 
+// AdminAuthorMergeResult is the response of
+// POST /api/v1/admin/authors/:id/merge. author is the canonical author
+// (fields unchanged by the merge); books_reassigned is how many books
+// were moved from the duplicate to the canonical author.
+export interface AdminAuthorMergeResult {
+  author: AdminAuthor;
+  books_reassigned: number;
+}
+
 export interface AdminReview {
   id: string;
   book_id: string;
@@ -1286,6 +1295,11 @@ export const api = {
         fetcher<AdminAuthor>(`/api/v1/admin/authors/${id}`, {
           method: 'PATCH',
           body: JSON.stringify(data),
+        }),
+      merge: (duplicateId: string, canonicalId: string) =>
+        fetcher<AdminAuthorMergeResult>(`/api/v1/admin/authors/${duplicateId}/merge`, {
+          method: 'POST',
+          body: JSON.stringify({ canonical_id: canonicalId }),
         }),
     },
     genres: {

@@ -40,6 +40,11 @@ type fakeAdminService struct {
 	bulkPublishReport     *adminService.BulkPublishReport
 	bulkPublishErr        error
 	lastBulkPublishSearch string
+
+	mergeAuthorsErr           error
+	mergeAuthorsBooksReturned int64
+	lastMergeDuplicateID      uuid.UUID
+	lastMergeCanonicalID      uuid.UUID
 }
 
 func (f *fakeAdminService) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
@@ -186,6 +191,20 @@ func (f *fakeAdminService) BulkPublishBooks(ctx context.Context, search string) 
 		return *f.bulkPublishReport, nil
 	}
 	return adminService.BulkPublishReport{Errors: []adminService.BulkPublishRowError{}}, nil
+}
+
+func (f *fakeAdminService) MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (*catalogDomain.Author, int64, error) {
+	f.lastMergeDuplicateID = duplicateID
+	f.lastMergeCanonicalID = canonicalID
+	if f.mergeAuthorsErr != nil {
+		return nil, 0, f.mergeAuthorsErr
+	}
+	for i := range f.authors {
+		if f.authors[i].ID == canonicalID {
+			return &f.authors[i], f.mergeAuthorsBooksReturned, nil
+		}
+	}
+	return nil, 0, adminService.ErrAuthorNotFound
 }
 
 func setupHandler() (*Handler, *fakeAdminService) {
@@ -619,6 +638,98 @@ func TestLookupBook_NotFound(t *testing.T) {
 	}
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestMergeAuthors_Success(t *testing.T) {
+	h, svc := setupHandler()
+	duplicateID := uuid.New()
+	canonicalID := uuid.New()
+	svc.authors = []catalogDomain.Author{{ID: canonicalID, Name: "Лев Толстой", Slug: "tolstoy"}}
+	svc.mergeAuthorsBooksReturned = 3
+
+	c, rec := newContext(http.MethodPost, "/api/v1/admin/authors/"+duplicateID.String()+"/merge", []byte(`{"canonical_id":"`+canonicalID.String()+`"}`))
+	c.SetPath("/api/v1/admin/authors/:id/merge")
+	c.SetParamNames("id")
+	c.SetParamValues(duplicateID.String())
+	setAdminUser(c)
+
+	if err := h.MergeAuthors(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if svc.lastMergeDuplicateID != duplicateID || svc.lastMergeCanonicalID != canonicalID {
+		t.Fatalf("expected duplicate/canonical IDs to be passed through, got dup=%v canonical=%v", svc.lastMergeDuplicateID, svc.lastMergeCanonicalID)
+	}
+
+	var body mergeAuthorsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if body.BooksReassigned != 3 {
+		t.Fatalf("expected books_reassigned=3, got %d", body.BooksReassigned)
+	}
+	if body.Author.ID != canonicalID.String() || body.Author.Name != "Лев Толстой" {
+		t.Fatalf("unexpected canonical author in response: %+v", body.Author)
+	}
+}
+
+func TestMergeAuthors_SelfMerge_BadRequest(t *testing.T) {
+	h, svc := setupHandler()
+	svc.mergeAuthorsErr = adminService.ErrCannotMergeIntoSelf
+	id := uuid.New()
+
+	c, rec := newContext(http.MethodPost, "/api/v1/admin/authors/"+id.String()+"/merge", []byte(`{"canonical_id":"`+id.String()+`"}`))
+	c.SetPath("/api/v1/admin/authors/:id/merge")
+	c.SetParamNames("id")
+	c.SetParamValues(id.String())
+	setAdminUser(c)
+
+	if err := h.MergeAuthors(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestMergeAuthors_NotFound(t *testing.T) {
+	h, svc := setupHandler()
+	svc.mergeAuthorsErr = adminService.ErrAuthorNotFound
+	duplicateID := uuid.New()
+	canonicalID := uuid.New()
+
+	c, rec := newContext(http.MethodPost, "/api/v1/admin/authors/"+duplicateID.String()+"/merge", []byte(`{"canonical_id":"`+canonicalID.String()+`"}`))
+	c.SetPath("/api/v1/admin/authors/:id/merge")
+	c.SetParamNames("id")
+	c.SetParamValues(duplicateID.String())
+	setAdminUser(c)
+
+	if err := h.MergeAuthors(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestMergeAuthors_InvalidCanonicalID_BadRequest(t *testing.T) {
+	h, _ := setupHandler()
+	duplicateID := uuid.New()
+
+	c, rec := newContext(http.MethodPost, "/api/v1/admin/authors/"+duplicateID.String()+"/merge", []byte(`{"canonical_id":"not-a-uuid"}`))
+	c.SetPath("/api/v1/admin/authors/:id/merge")
+	c.SetParamNames("id")
+	c.SetParamValues(duplicateID.String())
+	setAdminUser(c)
+
+	if err := h.MergeAuthors(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 
