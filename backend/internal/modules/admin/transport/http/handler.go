@@ -380,6 +380,9 @@ func (h *Handler) Dashboard(c echo.Context) error {
 // @Security BearerAuth
 // @Param search query string false "Поиск"
 // @Param visibility query string false "Фильтр видимости (all/visible/hidden/pending_review)"
+// @Param genre_id query string false "Фильтр по жанру (UUID)"
+// @Param author_id query string false "Фильтр по автору (UUID)"
+// @Param source query string false "Фильтр по источнику (manual/harvested)"
 // @Param page query int false "Номер страницы"
 // @Param limit query int false "Размер страницы, максимум 100"
 // @Success 200 {object} listBooksResponse
@@ -394,8 +397,21 @@ func (h *Handler) ListBooks(c echo.Context) error {
 	filter := repository.BookFilter{
 		Search:     c.QueryParam("search"),
 		Visibility: c.QueryParam("visibility"),
+		Source:     c.QueryParam("source"),
 		Limit:      limit,
 		Offset:     (page - 1) * limit,
+	}
+
+	if genreID := c.QueryParam("genre_id"); genreID != "" {
+		if id, err := uuid.Parse(genreID); err == nil {
+			filter.GenreID = &id
+		}
+	}
+
+	if authorID := c.QueryParam("author_id"); authorID != "" {
+		if id, err := uuid.Parse(authorID); err == nil {
+			filter.AuthorID = &id
+		}
 	}
 
 	books, total, err := h.service.ListBooks(ctx, filter)

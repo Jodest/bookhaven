@@ -1207,12 +1207,18 @@ export const api = {
         limit?: number;
         search?: string;
         visibility?: 'visible' | 'hidden' | 'pending_review' | '';
+        genreId?: string;
+        authorId?: string;
+        source?: 'manual' | 'harvested' | '';
       }) => {
         const queryParams: Record<string, string> = {};
         if (params?.page !== undefined) queryParams.page = String(params.page);
         if (params?.limit !== undefined) queryParams.limit = String(params.limit);
         if (params?.search) queryParams.search = params.search;
         if (params?.visibility) queryParams.visibility = params.visibility;
+        if (params?.genreId) queryParams.genre_id = params.genreId;
+        if (params?.authorId) queryParams.author_id = params.authorId;
+        if (params?.source) queryParams.source = params.source;
         return fetcher<PaginatedResponse<AdminBook>>(
           `/api/v1/admin/books?${new URLSearchParams(queryParams)}`
         );

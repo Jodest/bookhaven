@@ -16,12 +16,26 @@ vi.mock('next/navigation', () => ({
 const listMock = vi.fn();
 const updateMock = vi.fn();
 const bulkPublishMock = vi.fn();
+const genresListMock = vi.fn();
+const authorsListMock = vi.fn();
 
 vi.mock('@/entities/book', () => ({
   adminBooksApi: {
     list: (...args: unknown[]) => listMock(...args),
     update: (...args: unknown[]) => updateMock(...args),
     bulkPublish: (...args: unknown[]) => bulkPublishMock(...args),
+  },
+}));
+
+vi.mock('@/entities/genre', () => ({
+  adminGenresApi: {
+    list: (...args: unknown[]) => genresListMock(...args),
+  },
+}));
+
+vi.mock('@/entities/author', () => ({
+  adminAuthorsApi: {
+    list: (...args: unknown[]) => authorsListMock(...args),
   },
 }));
 
@@ -67,9 +81,33 @@ describe('BooksListView', () => {
     listMock.mockReset();
     updateMock.mockReset();
     bulkPublishMock.mockReset();
+    genresListMock.mockReset();
+    authorsListMock.mockReset();
     listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
     updateMock.mockResolvedValue(makeBook());
     bulkPublishMock.mockResolvedValue({ processed: 0, published: 0, errors: [] });
+    genresListMock.mockResolvedValue({
+      items: [{ id: 'g1', name: 'Фантастика', slug: 'fantastika' }],
+      total: 1,
+      page: 1,
+      limit: 100,
+    });
+    authorsListMock.mockResolvedValue({
+      items: [
+        {
+          id: 'a1',
+          name: 'Автор',
+          slug: 'avtor',
+          biography: null,
+          photo_url: null,
+          birth_date: null,
+          death_date: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 100,
+    });
   });
 
   afterEach(() => {
@@ -82,10 +120,11 @@ describe('BooksListView', () => {
 
     await waitFor(() => expect(listMock).toHaveBeenCalled());
 
-    const select = screen.getByDisplayValue('Все') as HTMLSelectElement;
-    expect(
-      screen.getByRole('option', { name: 'Импортировано (на проверке)' })
-    ).toBeInTheDocument();
+    const option = screen.getByRole('option', {
+      name: 'Импортировано (на проверке)',
+    });
+    expect(option).toBeInTheDocument();
+    const select = option.closest('select') as HTMLSelectElement;
 
     fireEvent.change(select, { target: { value: 'pending_review' } });
 
@@ -114,7 +153,7 @@ describe('BooksListView', () => {
     renderView();
 
     await waitFor(() => expect(screen.getByText('Импортированная книга')).toBeInTheDocument());
-    expect(screen.getByText('Импортировано')).toBeInTheDocument();
+    expect(screen.getByText('Импортировано', { selector: 'span' })).toBeInTheDocument();
   });
 
   it('publishes a hidden imported book after confirmation, reusing full-replace update with is_hidden: false', async () => {
@@ -164,6 +203,81 @@ describe('BooksListView', () => {
     fireEvent.click(publishButton);
 
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  describe('genre/author/source filters', () => {
+    it('selecting a genre updates the URL with genre_id and resets page to 1', async () => {
+      searchParamsValue = new URLSearchParams('page=2');
+      renderView();
+
+      const option = await screen.findByRole('option', { name: 'Фантастика' });
+      const select = option.closest('select') as HTMLSelectElement;
+      fireEvent.change(select, { target: { value: 'g1' } });
+
+      await waitFor(() =>
+        expect(pushMock).toHaveBeenCalledWith(
+          expect.stringContaining('genre_id=g1')
+        )
+      );
+      expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('page=1'));
+    });
+
+    it('selecting an author updates the URL with author_id and resets page to 1', async () => {
+      searchParamsValue = new URLSearchParams('page=2');
+      renderView();
+
+      const option = await screen.findByRole('option', { name: 'Автор' });
+      const select = option.closest('select') as HTMLSelectElement;
+      fireEvent.change(select, { target: { value: 'a1' } });
+
+      await waitFor(() =>
+        expect(pushMock).toHaveBeenCalledWith(
+          expect.stringContaining('author_id=a1')
+        )
+      );
+      expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('page=1'));
+    });
+
+    it('selecting a source updates the URL and passes it through to adminBooksApi.list', async () => {
+      renderView();
+
+      const option = await screen.findByRole('option', { name: 'Добавлено вручную' });
+      const sourceSelect = option.closest('select') as HTMLSelectElement;
+      fireEvent.change(sourceSelect, { target: { value: 'harvested' } });
+
+      await waitFor(() =>
+        expect(pushMock).toHaveBeenCalledWith(
+          expect.stringContaining('source=harvested')
+        )
+      );
+    });
+
+    it('passes genre_id/author_id/source from the URL through to adminBooksApi.list', async () => {
+      searchParamsValue = new URLSearchParams('genre_id=g1&author_id=a1&source=manual');
+      renderView();
+
+      await waitFor(() =>
+        expect(listMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            genreId: 'g1',
+            authorId: 'a1',
+            source: 'manual',
+          })
+        )
+      );
+    });
+
+    it('clearing a filter removes the corresponding query param', async () => {
+      searchParamsValue = new URLSearchParams('genre_id=g1');
+      renderView();
+
+      const select = await screen.findByDisplayValue('Фантастика');
+      fireEvent.change(select, { target: { value: '' } });
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalled());
+      const lastCall = pushMock.mock.calls[pushMock.mock.calls.length - 1][0] as string;
+      expect(lastCall).not.toContain('genre_id');
+    });
   });
 
   describe('bulk publish', () => {
