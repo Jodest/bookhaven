@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminBooksApi } from '@/entities/book';
-import { AdminBook, ApiError } from '@bookhaven/api-client';
+import { AdminBook, ApiError, BulkPublishReport } from '@bookhaven/api-client';
 import {
   Button,
   Input,
@@ -83,6 +83,43 @@ export function BooksListView() {
     publishMutation.mutate(book);
   };
 
+  const bulkPublishMutation = useMutation({
+    mutationFn: (params: { search?: string }) => adminBooksApi.bulkPublish(params),
+    onSuccess: (report: BulkPublishReport) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'books'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
+      const summary = `Опубликовано ${report.published} из ${report.processed}.`;
+      if (report.errors.length > 0) {
+        const sample = report.errors
+          .slice(0, 3)
+          .map((e) => `«${e.title}»: ${e.message}`)
+          .join('; ');
+        setFeedback({
+          type: 'error',
+          message: `${summary} Ошибок: ${report.errors.length} (${sample}).`,
+        });
+      } else {
+        setFeedback({ type: 'success', message: summary });
+      }
+    },
+    onError: (error) => {
+      const message =
+        error instanceof ApiError
+          ? error.message || 'Не удалось опубликовать книги.'
+          : 'Не удалось опубликовать книги.';
+      setFeedback({ type: 'error', message });
+    },
+  });
+
+  const handleBulkPublish = () => {
+    setFeedback(null);
+    const total = data?.total ?? 0;
+    if (!confirm(`Опубликовать все книги на проверке (${total})?`)) {
+      return;
+    }
+    bulkPublishMutation.mutate({ search: search || undefined });
+  };
+
   const updateParams = (updates: Record<string, string | undefined>) => {
     const params = new URLSearchParams(searchParams.toString());
     Object.entries(updates).forEach(([key, value]) => {
@@ -141,6 +178,15 @@ export function BooksListView() {
           onChange={(e) => updateParams({ visibility: e.target.value, page: '1' })}
           className="w-full md:w-48"
         />
+        {visibility === 'pending_review' && (data?.total ?? 0) > 0 && (
+          <Button
+            variant="outline"
+            onClick={handleBulkPublish}
+            disabled={bulkPublishMutation.isPending}
+          >
+            Опубликовать все ({data?.total})
+          </Button>
+        )}
       </div>
 
       {feedback && (

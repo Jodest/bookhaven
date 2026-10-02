@@ -15,11 +15,13 @@ vi.mock('next/navigation', () => ({
 
 const listMock = vi.fn();
 const updateMock = vi.fn();
+const bulkPublishMock = vi.fn();
 
 vi.mock('@/entities/book', () => ({
   adminBooksApi: {
     list: (...args: unknown[]) => listMock(...args),
     update: (...args: unknown[]) => updateMock(...args),
+    bulkPublish: (...args: unknown[]) => bulkPublishMock(...args),
   },
 }));
 
@@ -64,8 +66,10 @@ describe('BooksListView', () => {
     pushMock.mockReset();
     listMock.mockReset();
     updateMock.mockReset();
+    bulkPublishMock.mockReset();
     listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
     updateMock.mockResolvedValue(makeBook());
+    bulkPublishMock.mockResolvedValue({ processed: 0, published: 0, errors: [] });
   });
 
   afterEach(() => {
@@ -160,5 +164,127 @@ describe('BooksListView', () => {
     fireEvent.click(publishButton);
 
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  describe('bulk publish', () => {
+    it('does not render the "Опубликовать все" button when the pending_review filter is not active, even with a nonzero total', async () => {
+      listMock.mockResolvedValue({
+        items: [makeBook()],
+        total: 5,
+        page: 1,
+        limit: 20,
+      });
+
+      renderView();
+
+      await waitFor(() => expect(listMock).toHaveBeenCalled());
+      expect(
+        screen.queryByRole('button', { name: /Опубликовать все/ })
+      ).not.toBeInTheDocument();
+    });
+
+    it('does not render the button when pending_review is active but the total is zero', async () => {
+      searchParamsValue = new URLSearchParams('visibility=pending_review');
+      listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+      renderView();
+
+      await waitFor(() => expect(listMock).toHaveBeenCalled());
+      expect(
+        screen.queryByRole('button', { name: /Опубликовать все/ })
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders "Опубликовать все (N)" with the already-fetched total when pending_review is active and total > 0', async () => {
+      searchParamsValue = new URLSearchParams('visibility=pending_review');
+      listMock.mockResolvedValue({
+        items: [
+          makeBook({ id: 'p1', is_hidden: true, external_source: 'wikidata' }),
+        ],
+        total: 7,
+        page: 1,
+        limit: 20,
+      });
+
+      renderView();
+
+      expect(
+        await screen.findByRole('button', { name: 'Опубликовать все (7)' })
+      ).toBeInTheDocument();
+    });
+
+    it('confirms, then calls bulkPublish with the current search value, then shows a success summary', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      searchParamsValue = new URLSearchParams('visibility=pending_review&search=Толстой');
+      listMock.mockResolvedValue({
+        items: [
+          makeBook({ id: 'p1', is_hidden: true, external_source: 'wikidata' }),
+        ],
+        total: 3,
+        page: 1,
+        limit: 20,
+      });
+      bulkPublishMock.mockResolvedValue({ processed: 3, published: 3, errors: [] });
+
+      renderView();
+
+      const button = await screen.findByRole('button', { name: 'Опубликовать все (3)' });
+      fireEvent.click(button);
+
+      expect(confirmSpy).toHaveBeenCalled();
+      await waitFor(() =>
+        expect(bulkPublishMock).toHaveBeenCalledWith({ search: 'Толстой' })
+      );
+      await waitFor(() =>
+        expect(screen.getByText('Опубликовано 3 из 3.')).toBeInTheDocument()
+      );
+    });
+
+    it('does not call bulkPublish when the confirmation is cancelled', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
+      searchParamsValue = new URLSearchParams('visibility=pending_review');
+      listMock.mockResolvedValue({
+        items: [
+          makeBook({ id: 'p1', is_hidden: true, external_source: 'wikidata' }),
+        ],
+        total: 2,
+        page: 1,
+        limit: 20,
+      });
+
+      renderView();
+
+      const button = await screen.findByRole('button', { name: 'Опубликовать все (2)' });
+      fireEvent.click(button);
+
+      expect(bulkPublishMock).not.toHaveBeenCalled();
+    });
+
+    it('shows an error summary with a sample of row errors when the report contains failures', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      searchParamsValue = new URLSearchParams('visibility=pending_review');
+      listMock.mockResolvedValue({
+        items: [
+          makeBook({ id: 'p1', is_hidden: true, external_source: 'wikidata' }),
+        ],
+        total: 2,
+        page: 1,
+        limit: 20,
+      });
+      bulkPublishMock.mockResolvedValue({
+        processed: 2,
+        published: 1,
+        errors: [{ book_id: 'p2', title: 'Плохая книга', message: 'slug already exists' }],
+      });
+
+      renderView();
+
+      const button = await screen.findByRole('button', { name: 'Опубликовать все (2)' });
+      fireEvent.click(button);
+
+      await waitFor(() =>
+        expect(screen.getByText(/Опубликовано 1 из 2\. Ошибок: 1/)).toBeInTheDocument()
+      );
+    });
   });
 });

@@ -142,8 +142,19 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]ca
 	if limit <= 0 {
 		limit = 20
 	}
-	if limit > 100 {
-		limit = 100
+	// maxBookListLimit bounds Limit from above. It is higher than the
+	// admin books list page's own page-size cap (parsePagination caps
+	// requested limits at 100 before building BookFilter) so it never
+	// affects normal paginated requests; it exists so
+	// admin/service.BulkPublishBooks can fetch up to bulkPublishCap+1
+	// (501) pending-review rows in one ListBooks call
+	// (docs/features/harvest-bulk-publish.md) without rows beyond 100
+	// being silently dropped from the per-row publish loop while total
+	// (computed above, unaffected by Limit) still reports the full match
+	// count.
+	const maxBookListLimit = 1000
+	if limit > maxBookListLimit {
+		limit = maxBookListLimit
 	}
 	offset := filter.Offset
 	if offset < 0 {
@@ -425,7 +436,7 @@ func (r *GormRepository) ListReviews(ctx context.Context, filter ReviewFilter) (
 	var rows []struct {
 		ID            uuid.UUID
 		BookID        uuid.UUID
-		BookTitle     string  `gorm:"column:book_title"`
+		BookTitle     string `gorm:"column:book_title"`
 		UserID        uuid.UUID
 		Rating        int
 		Content       string
