@@ -18,6 +18,7 @@ import {
 import { Search } from 'lucide-react';
 import { Pagination } from '@/shared/ui';
 import { AuthorForm } from '@/features/manage-author';
+import { MergeAuthorDialog } from '@/features/merge-author';
 
 export function AuthorsView() {
   const router = useRouter();
@@ -29,6 +30,8 @@ export function AuthorsView() {
   const [editing, setEditing] = useState<AdminAuthor | null>(null);
   const [formData, setFormData] = useState<AdminAuthorInput>({ name: '' });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [mergingDuplicate, setMergingDuplicate] = useState<AdminAuthor | null>(null);
+  const [mergeSuccessMessage, setMergeSuccessMessage] = useState<string | null>(null);
 
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
   const limit = 20;
@@ -109,6 +112,19 @@ export function AuthorsView() {
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">Авторы</h1>
 
+      {mergeSuccessMessage && (
+        <div className="flex items-center justify-between rounded-md bg-green-100 p-3 text-sm text-green-900">
+          {mergeSuccessMessage}
+          <button
+            type="button"
+            onClick={() => setMergeSuccessMessage(null)}
+            className="ml-4 underline"
+          >
+            Скрыть
+          </button>
+        </div>
+      )}
+
       <AuthorForm
         formData={formData}
         onFieldChange={(patch) => setFormData((prev) => ({ ...prev, ...patch }))}
@@ -168,6 +184,16 @@ export function AuthorsView() {
                       <Button variant="ghost" size="sm" onClick={() => startEdit(author)}>
                         Редактировать
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setMergeSuccessMessage(null);
+                          setMergingDuplicate(author);
+                        }}
+                      >
+                        Слить
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -180,6 +206,19 @@ export function AuthorsView() {
             onPageChange={(p) => updateParams({ page: String(p) })}
           />
         </>
+      )}
+
+      {mergingDuplicate && (
+        <MergeAuthorDialog
+          duplicate={mergingDuplicate}
+          onClose={() => setMergingDuplicate(null)}
+          onMerged={(booksReassigned) => {
+            setMergingDuplicate(null);
+            setMergeSuccessMessage(
+              `Автор «${mergingDuplicate.name}» слит с каноническим автором. Перенесено книг: ${booksReassigned}.`
+            );
+          }}
+        />
       )}
     </div>
   );

@@ -35,6 +35,16 @@ type Repository interface {
 	CreateAuthor(ctx context.Context, author *catalogDomain.Author) error
 	UpdateAuthor(ctx context.Context, author *catalogDomain.Author) error
 	AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
+	// MergeAuthors reassigns every book_authors row referencing duplicateID
+	// to canonicalID - except rows for a book already linked to
+	// canonicalID, which are dropped instead of reassigned, so no
+	// book_authors row ever violates the (book_id, author_id) composite
+	// primary key - then deletes the duplicate author row itself.
+	// booksReassigned counts only the reassigned rows, not the dropped
+	// duplicates. Callers (Service.MergeAuthors) must have already verified
+	// both authors exist and are distinct; MergeAuthors itself does not
+	// check either.
+	MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (booksReassigned int64, err error)
 
 	// Genres.
 	ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error)
@@ -348,6 +358,45 @@ func (r *GormRepository) AuthorSlugExists(ctx context.Context, slug string, excl
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// MergeAuthors implements Repository.MergeAuthors as a single transaction,
+// matching replaceBookAuthors' existing raw-SQL-inside-tx.Transaction
+// style:
+//  1. Reassign book_authors rows the canonical author doesn't already
+//     have, from duplicateID to canonicalID.
+//  2. Delete any remaining book_authors rows still referencing
+//     duplicateID (books already linked to both authors before the merge
+//     - now a redundant duplicate-author row).
+//  3. Delete the duplicate author row.
+//
+// Step 3's ON DELETE CASCADE on book_authors.author_id is not relied upon
+// for correctness - step 2 already leaves nothing to cascade - so the
+// explicit order never depends on cascade timing.
+func (r *GormRepository) MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (int64, error) {
+	var booksReassigned int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Exec(`
+			UPDATE book_authors
+			SET author_id = ?
+			WHERE author_id = ?
+			AND book_id NOT IN (SELECT book_id FROM book_authors WHERE author_id = ?)
+		`, canonicalID, duplicateID, canonicalID)
+		if result.Error != nil {
+			return result.Error
+		}
+		booksReassigned = result.RowsAffected
+
+		if err := tx.Exec("DELETE FROM book_authors WHERE author_id = ?", duplicateID).Error; err != nil {
+			return err
+		}
+
+		return tx.Exec("DELETE FROM authors WHERE id = ?", duplicateID).Error
+	})
+	if err != nil {
+		return 0, err
+	}
+	return booksReassigned, nil
 }
 
 func (r *GormRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {

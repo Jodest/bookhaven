@@ -142,6 +142,7 @@ func RegisterAdminRoutes(
 	authors.GET("", adminHandler.ListAuthors)
 	authors.POST("", adminHandler.CreateAuthor, requireBearer)
 	authors.PATCH("/:id", adminHandler.UpdateAuthor, requireBearer)
+	authors.POST("/:id/merge", adminHandler.MergeAuthors, requireBearer)
 
 	genres := admin.Group("/genres", adminRole)
 	genres.GET("", adminHandler.ListGenres)
