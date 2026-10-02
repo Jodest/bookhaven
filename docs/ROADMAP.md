@@ -29,10 +29,15 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [ ] RGB/RNB (Russian State/National Library) as an additional catalog data source — investigated, currently blocked: the known Z39.50 endpoint is on a private IP, and the public catalog has no documented API; revisit if RGB responds to direct outreach (see [docs/ai/features/catalog-data-import/business-analysis.md](ai/features/catalog-data-import/business-analysis.md))
 - [ ] AI-generated book descriptions as a last-resort fallback when harvest sources have none — discussed, not yet scoped into a feature contract
 
+## Up Next (queued order)
+
+1. #138 Фильтры в админке для списка книг
+2. #117 Admin tool to detect and merge duplicate authors
+3. #95 Public shelf/reading-status visibility on user profiles
+
 ## Proposed (awaiting prioritization)
 
 - [ ] Custom user-created shelves — user-book-shelves business analysis (OQ-001) deferred custom shelves to a future increment needing a schema migration and an exclusivity decision, still unresolved [business-analysis] (proposed 2026-09-30, #94)
-- [ ] Public shelf/reading-status visibility on user profiles — user-book-shelves business analysis (OQ-003) deferred this to the now-completed profiles phase, but public profiles still show only lists/reviews, not reading-status shelves [business-analysis] (proposed 2026-09-30, #95)
 - [ ] Follow/friends system with social activity feed — Goodreads' core retention loop of following readers and seeing their activity has no equivalent in BookHaven today [competitive] (proposed 2026-09-30, #96)
 - [ ] Personal reading statistics dashboard — The StoryGraph's signature pace/genre/mood analytics have no equivalent beyond BookHaven's single annual reading-challenge count [competitive] (proposed 2026-09-30, #97)
 - [ ] Half-star (finer-grained) ratings — Goodreads and The StoryGraph both support half-star ratings; BookHaven's schema restricts ratings to whole integers 1-5 [competitive] (proposed 2026-09-30, #98)
@@ -45,7 +50,6 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [ ] Save and share favorite quotes from books — Goodreads' Quotes feature has no BookHaven equivalent; reviews are the only way to attach text to a book today [competitive] (proposed 2026-10-02, #113)
 - [ ] Bulk publish action for pending-review harvested books — the harvest-review-queue contract explicitly deferred a bulk "publish all" action, so admins publish harvested books one row at a time [code] (proposed 2026-10-02, #114)
 - [ ] Book clubs / group reading discussions — Goodreads' topic/book-centered group discussions have no BookHaven equivalent, distinct from the already-proposed 1:1 follow/friends feed (#96) [competitive] (proposed 2026-10-02, #115)
-- [ ] Admin tool to detect and merge duplicate authors — catalog-data-import business analysis (R-002) flags that harvest auto-creates authors by exact-name match, risking spelling-variant duplicates, with no consolidation tool beyond manual edits [business-analysis] (proposed 2026-10-02, #117)
 - [ ] Reading progress tracking (page/percent updates) for in-progress books — shelves only capture coarse reading status; Goodreads/The StoryGraph let readers log incremental progress on a currently-reading book [competitive] (proposed 2026-10-02, #118)
 - [ ] Comments/replies on reviews — reviews only support likes today; Goodreads/LiveLib let readers reply in a comment thread under a review [competitive] (proposed 2026-10-02, #119)
 - [ ] Import reading library from Goodreads/StoryGraph CSV — StoryGraph/BookWyrm/Fable all offer Goodreads CSV import for onboarding; BookHaven has no equivalent path for data entering the system (distinct from the proposed own-data export, #101) [competitive] (proposed 2026-10-02, #120)
