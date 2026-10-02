@@ -249,6 +249,54 @@ func TestListBooks_PendingReviewVisibilityFilter(t *testing.T) {
 	}
 }
 
+func TestListBooks_GenreAuthorSourceFilters(t *testing.T) {
+	h, svc := setupHandler()
+	svc.books = []catalogDomain.Book{{ID: uuid.New(), Title: "Book", Language: "ru"}}
+
+	genreID := uuid.New()
+	authorID := uuid.New()
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books?genre_id="+genreID.String()+"&author_id="+authorID.String()+"&source=harvested", nil)
+	setAdminUser(c)
+
+	if err := h.ListBooks(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if svc.lastBookFilter.GenreID == nil || *svc.lastBookFilter.GenreID != genreID {
+		t.Fatalf("expected genre_id filter %q, got %v", genreID, svc.lastBookFilter.GenreID)
+	}
+	if svc.lastBookFilter.AuthorID == nil || *svc.lastBookFilter.AuthorID != authorID {
+		t.Fatalf("expected author_id filter %q, got %v", authorID, svc.lastBookFilter.AuthorID)
+	}
+	if svc.lastBookFilter.Source != "harvested" {
+		t.Fatalf("expected source filter %q, got %q", "harvested", svc.lastBookFilter.Source)
+	}
+}
+
+func TestListBooks_InvalidGenreAndAuthorID_Ignored(t *testing.T) {
+	h, svc := setupHandler()
+	svc.books = []catalogDomain.Book{{ID: uuid.New(), Title: "Book", Language: "ru"}}
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books?genre_id=bad-id&author_id=bad-id", nil)
+	setAdminUser(c)
+
+	if err := h.ListBooks(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if svc.lastBookFilter.GenreID != nil {
+		t.Fatalf("expected invalid genre_id to be ignored, got %v", svc.lastBookFilter.GenreID)
+	}
+	if svc.lastBookFilter.AuthorID != nil {
+		t.Fatalf("expected invalid author_id to be ignored, got %v", svc.lastBookFilter.AuthorID)
+	}
+}
+
 func TestListBooks_Admin(t *testing.T) {
 	h, svc := setupHandler()
 	source := "wikidata"

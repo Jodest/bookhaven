@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminBooksApi } from '@/entities/book';
+import { adminAuthorsApi } from '@/entities/author';
+import { adminGenresApi } from '@/entities/genre';
 import { AdminBook, ApiError, BulkPublishReport } from '@bookhaven/api-client';
 import {
   Button,
@@ -34,18 +36,50 @@ export function BooksListView() {
   } | null>(null);
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
   const visibility = searchParams.get('visibility') || '';
+  const genreId = searchParams.get('genre_id') || '';
+  const authorId = searchParams.get('author_id') || '';
+  const source = searchParams.get('source') || '';
   const limit = 20;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'books', { search, visibility, page }],
+    queryKey: ['admin', 'books', { search, visibility, genreId, authorId, source, page }],
     queryFn: () =>
       adminBooksApi.list({
         search: search || undefined,
         visibility: visibility as 'visible' | 'hidden' | 'pending_review' | '',
+        genreId: genreId || undefined,
+        authorId: authorId || undefined,
+        source: source as 'manual' | 'harvested' | '',
         page,
         limit,
       }),
   });
+
+  const { data: genresData } = useQuery({
+    queryKey: ['admin', 'genres', 'all'],
+    queryFn: () => adminGenresApi.list({ limit: 100 }),
+  });
+
+  const { data: authorsData } = useQuery({
+    queryKey: ['admin', 'authors', 'all'],
+    queryFn: () => adminAuthorsApi.list({ limit: 100 }),
+  });
+
+  const genreOptions = [
+    { value: '', label: 'Все жанры' },
+    ...(genresData?.items.map((g) => ({ value: g.id, label: g.name })) || []),
+  ];
+
+  const authorOptions = [
+    { value: '', label: 'Все авторы' },
+    ...(authorsData?.items.map((a) => ({ value: a.id, label: a.name })) || []),
+  ];
+
+  const sourceOptions = [
+    { value: '', label: 'Все' },
+    { value: 'manual', label: 'Добавлено вручную' },
+    { value: 'harvested', label: 'Импортировано' },
+  ];
 
   const publishMutation = useMutation({
     mutationFn: (book: AdminBook) =>
@@ -176,6 +210,24 @@ export function BooksListView() {
           ]}
           value={visibility}
           onChange={(e) => updateParams({ visibility: e.target.value, page: '1' })}
+          className="w-full md:w-48"
+        />
+        <Select
+          options={genreOptions}
+          value={genreId}
+          onChange={(e) => updateParams({ genre_id: e.target.value, page: '1' })}
+          className="w-full md:w-48"
+        />
+        <Select
+          options={authorOptions}
+          value={authorId}
+          onChange={(e) => updateParams({ author_id: e.target.value, page: '1' })}
+          className="w-full md:w-48"
+        />
+        <Select
+          options={sourceOptions}
+          value={source}
+          onChange={(e) => updateParams({ source: e.target.value, page: '1' })}
           className="w-full md:w-48"
         />
         {visibility === 'pending_review' && (data?.total ?? 0) > 0 && (

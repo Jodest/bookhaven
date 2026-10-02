@@ -64,8 +64,15 @@ type BookFilter struct {
 	// "pending_review" (hidden AND harvested: is_hidden = true AND
 	// external_source IS NOT NULL - a narrower, additive filter value).
 	Visibility string
-	Limit      int
-	Offset     int
+	GenreID    *uuid.UUID
+	AuthorID   *uuid.UUID
+	// Source is one of "" (all), "manual" (external_source IS NULL), or
+	// "harvested" (external_source IS NOT NULL) - a coarse manual/harvested
+	// split, independent of and ANDed with Visibility (see
+	// docs/features/admin-book-list-filters.md).
+	Source string
+	Limit  int
+	Offset int
 }
 
 // ReviewFilter defines filtering options for review moderation.
@@ -132,6 +139,21 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]ca
 		query = query.Where("is_hidden = ?", true)
 	case "pending_review":
 		query = query.Where("is_hidden = ? AND external_source IS NOT NULL", true)
+	}
+
+	if filter.GenreID != nil {
+		query = query.Joins("JOIN book_genres ON book_genres.book_id = books.id").
+			Where("book_genres.genre_id = ?", filter.GenreID)
+	}
+	if filter.AuthorID != nil {
+		query = query.Joins("JOIN book_authors ON book_authors.book_id = books.id").
+			Where("book_authors.author_id = ?", filter.AuthorID)
+	}
+	switch filter.Source {
+	case "manual":
+		query = query.Where("external_source IS NULL")
+	case "harvested":
+		query = query.Where("external_source IS NOT NULL")
 	}
 
 	if err := query.Count(&total).Error; err != nil {
