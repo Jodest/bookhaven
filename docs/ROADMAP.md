@@ -24,6 +24,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Notifications for review-like activity — in-app bell + unread badge telling a review's author when someone else likes it (see [docs/features/review-like-notifications.md](features/review-like-notifications.md))
 - [x] Admin book list filters — genre, author, and manual/harvested source filters on the admin books list, combinable with the existing search/visibility filters (see [docs/features/admin-book-list-filters.md](features/admin-book-list-filters.md))
 - [x] Duplicate author merge — admin action to consolidate a duplicate author record into a canonical one, reassigning its books and removing the duplicate (merge-only scope; no automated duplicate-detection UI, see [docs/features/duplicate-author-merge.md](features/duplicate-author-merge.md))
+- [x] Public shelf/reading-status visibility on user profiles — a visitor can see another user's shelves (default and custom) with visible-book-only counts on the public profile and browse a shelf's books read-only, resolving OQ-003 (no privacy toggle) (see [docs/features/public-shelf-visibility.md](features/public-shelf-visibility.md), #95)
 
 ## Post-MVP
 
@@ -33,7 +34,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-1. #95 Public shelf/reading-status visibility on user profiles
+(none queued)
 
 ## Proposed (awaiting prioritization)
 

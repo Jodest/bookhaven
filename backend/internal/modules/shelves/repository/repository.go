@@ -21,6 +21,7 @@ var (
 type Repository interface {
 	EnsureDefaultShelves(ctx context.Context, userID uuid.UUID) error
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]domain.Shelf, error)
+	ListByUserVisible(ctx context.Context, userID uuid.UUID) ([]domain.Shelf, error)
 	GetByID(ctx context.Context, shelfID uuid.UUID) (*domain.Shelf, error)
 	GetByUserAndType(ctx context.Context, userID uuid.UUID, shelfType domain.ShelfType) (*domain.Shelf, error)
 	Create(ctx context.Context, shelf *domain.Shelf) error
@@ -77,6 +78,52 @@ func (r *GormRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]do
 		SELECT s.*, COUNT(si.book_id) AS books_count
 		FROM shelves s
 		LEFT JOIN shelf_items si ON si.shelf_id = s.id
+		WHERE s.user_id = ?
+		GROUP BY s.id
+		ORDER BY
+			CASE s.type
+				WHEN 'want_to_read' THEN 1
+				WHEN 'reading' THEN 2
+				WHEN 'read' THEN 3
+				ELSE 4
+			END,
+			s.created_at ASC
+	`
+
+	if err := r.db.WithContext(ctx).Raw(sql, userID).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	shelves := make([]domain.Shelf, 0, len(rows))
+	for _, row := range rows {
+		shelves = append(shelves, domain.Shelf{
+			ID:         row.ID,
+			UserID:     row.UserID,
+			Name:       row.Name,
+			Type:       row.Type,
+			CreatedAt:  row.CreatedAt,
+			UpdatedAt:  row.UpdatedAt,
+			BooksCount: row.BooksCount,
+		})
+	}
+
+	return shelves, nil
+}
+
+// ListByUserVisible returns all shelves for a user with their book counts
+// computed over visible (is_hidden = false) books only. Used for the public
+// profile listing, where hidden books must not count towards a shelf's size
+// or its inclusion. Unlike ListByUser (which counts all shelf_items rows
+// regardless of visibility - a pre-existing gap for the owner-facing count,
+// out of scope to fix here), this method is visible-books-aware from the start.
+func (r *GormRepository) ListByUserVisible(ctx context.Context, userID uuid.UUID) ([]domain.Shelf, error) {
+	var rows []shelfListRow
+
+	sql := `
+		SELECT s.*, COUNT(b.id) AS books_count
+		FROM shelves s
+		LEFT JOIN shelf_items si ON si.shelf_id = s.id
+		LEFT JOIN books b ON b.id = si.book_id AND b.is_hidden = false
 		WHERE s.user_id = ?
 		GROUP BY s.id
 		ORDER BY

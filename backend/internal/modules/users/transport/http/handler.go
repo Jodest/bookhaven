@@ -8,6 +8,7 @@ import (
 	"time"
 
 	listsDomain "github.com/bookhaven/backend/internal/modules/lists/domain"
+	shelvesDomain "github.com/bookhaven/backend/internal/modules/shelves/domain"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	usersService "github.com/bookhaven/backend/internal/modules/users/service"
 	"github.com/google/uuid"
@@ -42,6 +43,7 @@ func (p presentString) Value() *string { return p.value }
 type Handler struct {
 	userService  UserService
 	listsService ListService
+	shelfService ShelfService
 }
 
 // UserService provides user profile operations.
@@ -55,11 +57,17 @@ type ListService interface {
 	ListPublicByUser(ctx context.Context, userID uuid.UUID) ([]listsDomain.List, error)
 }
 
+// ShelfService provides public shelf operations for profile activity.
+type ShelfService interface {
+	ListPublicByUser(ctx context.Context, userID uuid.UUID) ([]shelvesDomain.Shelf, error)
+}
+
 // NewHandler creates a new users Handler.
-func NewHandler(userService UserService, listsService ListService) *Handler {
+func NewHandler(userService UserService, listsService ListService, shelfService ShelfService) *Handler {
 	return &Handler{
 		userService:  userService,
 		listsService: listsService,
+		shelfService: shelfService,
 	}
 }
 
@@ -70,22 +78,22 @@ type updateProfileRequest struct {
 }
 
 type ownerUserResponse struct {
-	ID          string     `json:"id"`
-	Email       string     `json:"email"`
-	Name        *string    `json:"name"`
-	AvatarURL   *string    `json:"avatar_url"`
-	Role        string     `json:"role"`
-	ProfileType string     `json:"profile_type"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID          string    `json:"id"`
+	Email       string    `json:"email"`
+	Name        *string   `json:"name"`
+	AvatarURL   *string   `json:"avatar_url"`
+	Role        string    `json:"role"`
+	ProfileType string    `json:"profile_type"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type publicUserResponse struct {
-	ID          string     `json:"id"`
-	Name        *string    `json:"name"`
-	AvatarURL   *string    `json:"avatar_url"`
-	ProfileType string     `json:"profile_type"`
-	JoinedAt    time.Time  `json:"joined_at"`
+	ID          string    `json:"id"`
+	Name        *string   `json:"name"`
+	AvatarURL   *string   `json:"avatar_url"`
+	ProfileType string    `json:"profile_type"`
+	JoinedAt    time.Time `json:"joined_at"`
 }
 
 type publicListActivityResponse struct {
@@ -98,9 +106,18 @@ type publicListActivityResponse struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type publicShelfActivityResponse struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Type       string    `json:"type"`
+	BooksCount int64     `json:"books_count"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type publicProfileResponse struct {
-	User  publicUserResponse           `json:"user"`
-	Lists []publicListActivityResponse `json:"lists"`
+	User    publicUserResponse            `json:"user"`
+	Lists   []publicListActivityResponse  `json:"lists"`
+	Shelves []publicShelfActivityResponse `json:"shelves"`
 }
 
 func toOwnerUserResponse(u *usersDomain.User) ownerUserResponse {
@@ -176,6 +193,22 @@ func (h *Handler) GetUser(c echo.Context) error {
 		})
 	}
 
+	shelves, err := h.shelfService.ListPublicByUser(ctx, id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get public activity"})
+	}
+
+	shelfActivity := make([]publicShelfActivityResponse, 0, len(shelves))
+	for _, sh := range shelves {
+		shelfActivity = append(shelfActivity, publicShelfActivityResponse{
+			ID:         sh.ID.String(),
+			Name:       sh.Name,
+			Type:       string(sh.Type),
+			BooksCount: sh.BooksCount,
+			CreatedAt:  sh.CreatedAt,
+		})
+	}
+
 	return c.JSON(http.StatusOK, publicProfileResponse{
 		User: publicUserResponse{
 			ID:          user.ID.String(),
@@ -184,7 +217,8 @@ func (h *Handler) GetUser(c echo.Context) error {
 			ProfileType: string(user.ProfileType),
 			JoinedAt:    user.CreatedAt,
 		},
-		Lists: activity,
+		Lists:   activity,
+		Shelves: shelfActivity,
 	})
 }
 
