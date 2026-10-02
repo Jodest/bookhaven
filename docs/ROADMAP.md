@@ -23,6 +23,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Self-hosted fonts — removed the CI build's dependency on live Google Fonts access (see [docs/features/self-hosted-fonts.md](features/self-hosted-fonts.md))
 - [x] Notifications for review-like activity — in-app bell + unread badge telling a review's author when someone else likes it (see [docs/features/review-like-notifications.md](features/review-like-notifications.md))
 - [x] Admin book list filters — genre, author, and manual/harvested source filters on the admin books list, combinable with the existing search/visibility filters (see [docs/features/admin-book-list-filters.md](features/admin-book-list-filters.md))
+- [x] Duplicate author merge — admin action to consolidate a duplicate author record into a canonical one, reassigning its books and removing the duplicate (merge-only scope; no automated duplicate-detection UI, see [docs/features/duplicate-author-merge.md](features/duplicate-author-merge.md))
 
 ## Post-MVP
 
@@ -32,9 +33,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-1. #138 Фильтры в админке для списка книг
-2. #117 Admin tool to detect and merge duplicate authors
-3. #95 Public shelf/reading-status visibility on user profiles
+1. #95 Public shelf/reading-status visibility on user profiles
 
 ## Proposed (awaiting prioritization)
 

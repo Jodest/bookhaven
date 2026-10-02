@@ -1,0 +1,345 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/bookhaven/backend/internal/modules/admin/repository"
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
+	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+// fakeMergeAuthorsRepository is a dynamic in-memory repository.Repository
+// used only by TestMergeAuthors. Unlike the other fakes in this package
+// (whose MergeAuthors is a stub just satisfying the interface), this one
+// re-implements GormRepository.MergeAuthors' three-step reassign/dedupe/
+// delete semantics over an in-memory books[i].Authors slice (modeling
+// book_authors rows per book), so the dedupe-on-overlap business rule
+// (docs/features/duplicate-author-merge.md) can actually be exercised.
+type fakeMergeAuthorsRepository struct {
+	books   []catalogDomain.Book
+	authors []catalogDomain.Author
+}
+
+var _ repository.Repository = (*fakeMergeAuthorsRepository)(nil)
+
+func (f *fakeMergeAuthorsRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
+	return int64(len(f.books)), 0, int64(len(f.authors)), 0, 0, 0, nil
+}
+
+func (f *fakeMergeAuthorsRepository) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
+	return f.books, int64(len(f.books)), nil
+}
+
+func (f *fakeMergeAuthorsRepository) GetBookByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Book, error) {
+	for i := range f.books {
+		if f.books[i].ID == id {
+			return &f.books[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) GetBookByExternalID(ctx context.Context, source, id string) (*catalogDomain.Book, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) CreateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error {
+	f.books = append(f.books, *book)
+	return nil
+}
+
+func (f *fakeMergeAuthorsRepository) UpdateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error {
+	return nil
+}
+
+func (f *fakeMergeAuthorsRepository) BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeMergeAuthorsRepository) ListAuthors(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Author, int64, error) {
+	return f.authors, int64(len(f.authors)), nil
+}
+
+func (f *fakeMergeAuthorsRepository) GetAuthorByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error) {
+	for i := range f.authors {
+		if f.authors[i].ID == id {
+			return &f.authors[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) GetAuthorBySlug(ctx context.Context, slug string) (*catalogDomain.Author, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) CreateAuthor(ctx context.Context, author *catalogDomain.Author) error {
+	f.authors = append(f.authors, *author)
+	return nil
+}
+
+func (f *fakeMergeAuthorsRepository) UpdateAuthor(ctx context.Context, author *catalogDomain.Author) error {
+	for i := range f.authors {
+		if f.authors[i].ID == author.ID {
+			f.authors[i] = *author
+			return nil
+		}
+	}
+	return errors.New("record not found")
+}
+
+func (f *fakeMergeAuthorsRepository) AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
+	return false, nil
+}
+
+// MergeAuthors mirrors GormRepository.MergeAuthors' three steps over the
+// in-memory books[i].Authors slice:
+//  1. for each book linked to duplicateID but not canonicalID, swap the
+//     duplicate author entry for the canonical one (reassign);
+//  2. for each book linked to both, drop the duplicate entry instead
+//     (dedupe-on-overlap);
+//  3. remove the duplicate author record itself.
+func (f *fakeMergeAuthorsRepository) MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (int64, error) {
+	var canonicalAuthor *catalogDomain.Author
+	for i := range f.authors {
+		if f.authors[i].ID == canonicalID {
+			canonicalAuthor = &f.authors[i]
+			break
+		}
+	}
+
+	var reassigned int64
+	for i := range f.books {
+		authors := f.books[i].Authors
+		hasDup, hasCanonical := false, false
+		for _, a := range authors {
+			if a.ID == duplicateID {
+				hasDup = true
+			}
+			if a.ID == canonicalID {
+				hasCanonical = true
+			}
+		}
+		if !hasDup {
+			continue
+		}
+
+		next := make([]catalogDomain.Author, 0, len(authors))
+		for _, a := range authors {
+			if a.ID == duplicateID {
+				if hasCanonical {
+					// Step 2: book already linked to both - drop the
+					// duplicate row instead of reassigning it.
+					continue
+				}
+				// Step 1: reassign to canonical.
+				if canonicalAuthor != nil {
+					a = *canonicalAuthor
+				} else {
+					a.ID = canonicalID
+				}
+				reassigned++
+			}
+			next = append(next, a)
+		}
+		f.books[i].Authors = next
+	}
+
+	// Step 3: delete the duplicate author row.
+	for i := range f.authors {
+		if f.authors[i].ID == duplicateID {
+			f.authors = append(f.authors[:i], f.authors[i+1:]...)
+			break
+		}
+	}
+
+	return reassigned, nil
+}
+
+func (f *fakeMergeAuthorsRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeMergeAuthorsRepository) GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) GetGenreBySlug(ctx context.Context, slug string) (*catalogDomain.Genre, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error {
+	return nil
+}
+
+func (f *fakeMergeAuthorsRepository) UpdateGenre(ctx context.Context, genre *catalogDomain.Genre) error {
+	return nil
+}
+
+func (f *fakeMergeAuthorsRepository) GenreSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeMergeAuthorsRepository) ListReviews(ctx context.Context, filter repository.ReviewFilter) ([]reviewsDomain.Review, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeMergeAuthorsRepository) GetReviewByID(ctx context.Context, id uuid.UUID) (*reviewsDomain.Review, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) ModerateReview(ctx context.Context, id uuid.UUID, isHidden bool) (*reviewsDomain.Review, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) AuthorsExist(ctx context.Context, ids []uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeMergeAuthorsRepository) GenresExist(ctx context.Context, ids []uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func newMergeAuthorsService() (*Service, *fakeMergeAuthorsRepository) {
+	repo := &fakeMergeAuthorsRepository{}
+	return NewService(repo), repo
+}
+
+func TestMergeAuthors(t *testing.T) {
+	t.Run("simple reassignment with no overlapping books", func(t *testing.T) {
+		svc, repo := newMergeAuthorsService()
+		duplicate := catalogDomain.Author{ID: uuid.New(), Name: "Л. Н. Толстой", Slug: "l-n-tolstoy"}
+		canonical := catalogDomain.Author{ID: uuid.New(), Name: "Лев Толстой", Slug: "tolstoy"}
+		repo.authors = []catalogDomain.Author{duplicate, canonical}
+		book1 := catalogDomain.Book{ID: uuid.New(), Title: "Война и мир", Authors: []catalogDomain.Author{duplicate}}
+		book2 := catalogDomain.Book{ID: uuid.New(), Title: "Анна Каренина", Authors: []catalogDomain.Author{duplicate}}
+		repo.books = []catalogDomain.Book{book1, book2}
+
+		result, booksReassigned, err := svc.MergeAuthors(context.Background(), duplicate.ID, canonical.ID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if booksReassigned != 2 {
+			t.Fatalf("expected 2 books reassigned, got %d", booksReassigned)
+		}
+		if result.ID != canonical.ID {
+			t.Fatalf("expected canonical author returned, got %+v", result)
+		}
+		for _, b := range repo.books {
+			if len(b.Authors) != 1 || b.Authors[0].ID != canonical.ID {
+				t.Fatalf("expected book %q to be linked only to canonical, got %+v", b.Title, b.Authors)
+			}
+		}
+	})
+
+	t.Run("overlap dedupe: a book linked to both ends up linked exactly once to canonical", func(t *testing.T) {
+		svc, repo := newMergeAuthorsService()
+		duplicate := catalogDomain.Author{ID: uuid.New(), Name: "Дубликат", Slug: "dup"}
+		canonical := catalogDomain.Author{ID: uuid.New(), Name: "Канонический", Slug: "canon"}
+		repo.authors = []catalogDomain.Author{duplicate, canonical}
+		overlapping := catalogDomain.Book{ID: uuid.New(), Title: "В соавторстве", Authors: []catalogDomain.Author{duplicate, canonical}}
+		soloOnDuplicate := catalogDomain.Book{ID: uuid.New(), Title: "Только дубликат", Authors: []catalogDomain.Author{duplicate}}
+		repo.books = []catalogDomain.Book{overlapping, soloOnDuplicate}
+
+		_, booksReassigned, err := svc.MergeAuthors(context.Background(), duplicate.ID, canonical.ID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// Only soloOnDuplicate counts as reassigned; overlapping's
+		// duplicate row is dropped, not reassigned.
+		if booksReassigned != 1 {
+			t.Fatalf("expected 1 book reassigned (the non-overlapping one), got %d", booksReassigned)
+		}
+
+		for _, b := range repo.books {
+			canonicalCount := 0
+			for _, a := range b.Authors {
+				if a.ID == duplicate.ID {
+					t.Fatalf("book %q still references the duplicate author after merge", b.Title)
+				}
+				if a.ID == canonical.ID {
+					canonicalCount++
+				}
+			}
+			if canonicalCount != 1 {
+				t.Fatalf("expected book %q to be linked exactly once to canonical, got %d links", b.Title, canonicalCount)
+			}
+		}
+	})
+
+	t.Run("merging into self is rejected with no changes", func(t *testing.T) {
+		svc, repo := newMergeAuthorsService()
+		author := catalogDomain.Author{ID: uuid.New(), Name: "Автор", Slug: "author"}
+		repo.authors = []catalogDomain.Author{author}
+
+		_, _, err := svc.MergeAuthors(context.Background(), author.ID, author.ID)
+		if !errors.Is(err, ErrCannotMergeIntoSelf) {
+			t.Fatalf("expected ErrCannotMergeIntoSelf, got %v", err)
+		}
+		if len(repo.authors) != 1 {
+			t.Fatalf("expected no changes, got %+v", repo.authors)
+		}
+	})
+
+	t.Run("missing duplicate author returns ErrAuthorNotFound, no changes", func(t *testing.T) {
+		svc, repo := newMergeAuthorsService()
+		canonical := catalogDomain.Author{ID: uuid.New(), Name: "Канонический", Slug: "canon"}
+		repo.authors = []catalogDomain.Author{canonical}
+
+		_, _, err := svc.MergeAuthors(context.Background(), uuid.New(), canonical.ID)
+		if !errors.Is(err, ErrAuthorNotFound) {
+			t.Fatalf("expected ErrAuthorNotFound, got %v", err)
+		}
+		if len(repo.authors) != 1 {
+			t.Fatalf("expected no changes, got %+v", repo.authors)
+		}
+	})
+
+	t.Run("missing canonical author returns ErrAuthorNotFound, no changes", func(t *testing.T) {
+		svc, repo := newMergeAuthorsService()
+		duplicate := catalogDomain.Author{ID: uuid.New(), Name: "Дубликат", Slug: "dup"}
+		repo.authors = []catalogDomain.Author{duplicate}
+
+		_, _, err := svc.MergeAuthors(context.Background(), duplicate.ID, uuid.New())
+		if !errors.Is(err, ErrAuthorNotFound) {
+			t.Fatalf("expected ErrAuthorNotFound, got %v", err)
+		}
+		if len(repo.authors) != 1 {
+			t.Fatalf("expected no changes, got %+v", repo.authors)
+		}
+	})
+
+	t.Run("duplicate author row is gone after merge", func(t *testing.T) {
+		svc, repo := newMergeAuthorsService()
+		duplicate := catalogDomain.Author{ID: uuid.New(), Name: "Дубликат", Slug: "dup"}
+		canonical := catalogDomain.Author{ID: uuid.New(), Name: "Канонический", Slug: "canon"}
+		repo.authors = []catalogDomain.Author{duplicate, canonical}
+
+		if _, _, err := svc.MergeAuthors(context.Background(), duplicate.ID, canonical.ID); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(repo.authors) != 1 || repo.authors[0].ID != canonical.ID {
+			t.Fatalf("expected only the canonical author to remain, got %+v", repo.authors)
+		}
+	})
+
+	t.Run("canonical author's own fields are unchanged by the merge", func(t *testing.T) {
+		svc, repo := newMergeAuthorsService()
+		duplicate := catalogDomain.Author{ID: uuid.New(), Name: "Дубликат", Slug: "dup"}
+		bio := "Оригинальная биография"
+		canonical := catalogDomain.Author{ID: uuid.New(), Name: "Канонический", Slug: "canon", Biography: &bio}
+		repo.authors = []catalogDomain.Author{duplicate, canonical}
+
+		result, _, err := svc.MergeAuthors(context.Background(), duplicate.ID, canonical.ID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.Name != "Канонический" || result.Slug != "canon" || result.Biography == nil || *result.Biography != bio {
+			t.Fatalf("expected canonical author's fields unchanged, got %+v", result)
+		}
+	})
+}

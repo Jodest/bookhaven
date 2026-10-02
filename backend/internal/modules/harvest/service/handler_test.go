@@ -124,6 +124,18 @@ func (f *fakeAdminRepository) AuthorSlugExists(ctx context.Context, slug string,
 	return false, nil
 }
 
+// MergeAuthors is a minimal fake satisfying adminrepository.Repository;
+// no existing test in this file exercises it.
+func (f *fakeAdminRepository) MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (int64, error) {
+	for i := range f.authors {
+		if f.authors[i].ID == duplicateID {
+			f.authors = append(f.authors[:i], f.authors[i+1:]...)
+			break
+		}
+	}
+	return 0, nil
+}
+
 func (f *fakeAdminRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
 	return f.genres, int64(len(f.genres)), nil
 }

@@ -28,6 +28,7 @@ type Service interface {
 	ListAuthors(ctx context.Context, search string, page, limit int) ([]catalogDomain.Author, int64, error)
 	CreateAuthor(ctx context.Context, input adminService.AuthorInput) (*catalogDomain.Author, error)
 	UpdateAuthor(ctx context.Context, id uuid.UUID, input adminService.AuthorInput) (*catalogDomain.Author, error)
+	MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (*catalogDomain.Author, int64, error)
 	ListGenres(ctx context.Context, search string, page, limit int) ([]catalogDomain.Genre, int64, error)
 	CreateGenre(ctx context.Context, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error)
@@ -138,6 +139,22 @@ type createUpdateAuthorRequest struct {
 	PhotoURL  *string `json:"photo_url,omitempty"`
 	BirthDate *string `json:"birth_date,omitempty"`
 	DeathDate *string `json:"death_date,omitempty"`
+}
+
+// mergeAuthorsRequest is the body of POST /admin/authors/:id/merge.
+// CanonicalID is the author that survives the merge; the path's :id is
+// the duplicate/source author that is deleted.
+type mergeAuthorsRequest struct {
+	CanonicalID string `json:"canonical_id"`
+}
+
+// mergeAuthorsResponse is returned on a successful merge: the canonical
+// author (fields unchanged by the merge) plus how many books were
+// reassigned, so the admin UI can show a "N books reassigned" message
+// without a second request.
+type mergeAuthorsResponse struct {
+	Author          authorResponse `json:"author"`
+	BooksReassigned int64          `json:"books_reassigned"`
 }
 
 type createUpdateGenreRequest struct {
@@ -730,6 +747,58 @@ func (h *Handler) UpdateAuthor(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, toAuthorResponse(*author))
+}
+
+// MergeAuthors godoc
+// @Summary Слить дубликат автора в канонического (админ)
+// @Description Требуется роль admin и Bearer-токен. :id — автор-дубликат, который будет удалён; canonical_id в теле запроса — автор, который останется (его собственные поля не изменяются). Необратимо.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID автора-дубликата (будет удалён)"
+// @Param body body mergeAuthorsRequest true "ID канонического автора"
+// @Success 200 {object} mergeAuthorsResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/authors/{id}/merge [post]
+func (h *Handler) MergeAuthors(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	duplicateID, err := parseID(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid author id"})
+	}
+
+	var req mergeAuthorsRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	canonicalID, err := uuid.Parse(req.CanonicalID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid canonical_id"})
+	}
+
+	author, booksReassigned, err := h.service.MergeAuthors(ctx, duplicateID, canonicalID)
+	if err != nil {
+		switch {
+		case errors.Is(err, adminService.ErrCannotMergeIntoSelf):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, adminService.ErrAuthorNotFound):
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "author not found"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to merge authors"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, mergeAuthorsResponse{
+		Author:          toAuthorResponse(*author),
+		BooksReassigned: booksReassigned,
+	})
 }
 
 // ListGenres godoc
