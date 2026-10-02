@@ -714,6 +714,34 @@ function normalizePublicList(raw: RawPublicList): PublicList {
   };
 }
 
+// Backend returns snake_case for shelves; normalize to the camelCase Shelf
+// type. The list endpoint's items (shelfListItemResponse) omit user_id and
+// updated_at - they're not needed there - so those fields are optional on
+// the raw shape and defaulted when normalizing.
+type RawShelf = {
+  id: string;
+  user_id?: string;
+  name: string;
+  type: Shelf['type'];
+  books_count: number;
+  has_book?: boolean;
+  created_at: string;
+  updated_at?: string;
+};
+
+function normalizeShelf(raw: RawShelf): Shelf {
+  return {
+    id: raw.id,
+    userId: raw.user_id ?? '',
+    name: raw.name,
+    type: raw.type,
+    booksCount: raw.books_count,
+    hasBook: raw.has_book,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at ?? raw.created_at,
+  };
+}
+
 export interface LoginInput {
   email: string;
   password: string;
@@ -917,17 +945,21 @@ export const api = {
     },
   },
   shelves: {
-    list: (params?: { book_id?: string }) => {
+    list: async (params?: { book_id?: string }) => {
       const queryParams: Record<string, string> = {};
       if (params?.book_id) {
         queryParams.book_id = params.book_id;
       }
       const query = new URLSearchParams(queryParams).toString();
-      return fetcher<{ items: Shelf[]; total: number }>(
+      const raw = await fetcher<{ items: RawShelf[]; total: number }>(
         `/api/v1/shelves${query ? `?${query}` : ''}`
       );
+      return {
+        ...raw,
+        items: raw.items.map(normalizeShelf),
+      };
     },
-    get: (
+    get: async (
       id: string,
       params?: { page?: number; limit?: number }
     ) => {
@@ -935,24 +967,33 @@ export const api = {
       if (params?.page !== undefined) queryParams.page = String(params.page);
       if (params?.limit !== undefined) queryParams.limit = String(params.limit);
       const query = new URLSearchParams(queryParams).toString();
-      return fetcher<{
-        shelf: Shelf;
-        items: Book[];
+      const raw = await fetcher<{
+        shelf: RawShelf;
+        items: RawBook[];
         total: number;
         page: number;
         limit: number;
       }>(`/api/v1/shelves/${id}${query ? `?${query}` : ''}`);
+      return {
+        ...raw,
+        shelf: normalizeShelf(raw.shelf),
+        items: raw.items.map(normalizeBook),
+      };
     },
-    create: (data: { name: string }) =>
-      fetcher<Shelf>('/api/v1/shelves', {
+    create: async (data: { name: string }) => {
+      const raw = await fetcher<RawShelf>('/api/v1/shelves', {
         method: 'POST',
         body: JSON.stringify(data),
-      }),
-    rename: (id: string, data: { name: string }) =>
-      fetcher<Shelf>(`/api/v1/shelves/${id}`, {
+      });
+      return normalizeShelf(raw);
+    },
+    rename: async (id: string, data: { name: string }) => {
+      const raw = await fetcher<RawShelf>(`/api/v1/shelves/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
-      }),
+      });
+      return normalizeShelf(raw);
+    },
     remove: (id: string) =>
       fetcher<{ status: string }>(`/api/v1/shelves/${id}`, {
         method: 'DELETE',
