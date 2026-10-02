@@ -371,6 +371,23 @@ export interface ImportReport {
   errors: ImportRowError[];
 }
 
+// BulkPublishRowError describes one book that failed to publish during a
+// POST /api/v1/admin/books/bulk-publish batch.
+export interface BulkPublishRowError {
+  book_id: string;
+  title: string;
+  message: string;
+}
+
+// BulkPublishReport is the response of POST /api/v1/admin/books/bulk-publish,
+// returned with HTTP 200 regardless of per-row outcomes (the batch-too-large
+// guard is the only case that responds with a non-200 status instead).
+export interface BulkPublishReport {
+  processed: number;
+  published: number;
+  errors: BulkPublishRowError[];
+}
+
 // AdminHarvestTriggerInput is the request body of POST /api/v1/admin/harvest.
 // author_qids are curated Wikidata author QIDs (e.g. "Q7200") - the backend
 // passes them straight into bookdata.BuildAuthorListQuery, which validates
@@ -645,6 +662,26 @@ type RawGenre = Genre & {
   created_at: string;
 };
 
+// Author-detail's nested `books` come back from the backend as the lighter
+// `bookListItemResponse` shape (see catalog handler's `toBookListItemResponse`)
+// — it omits description/isbn/page_count/language/reviews_count/timestamps
+// that the full book-list/book-detail responses include.
+type RawAuthorBookListItem = {
+  id: string;
+  title: string;
+  slug: string;
+  cover_url: string | null;
+  published_year: number | null;
+  rating: number;
+  ratings_count: number;
+  authors: RawAuthor[];
+  genres: RawGenre[];
+};
+
+type RawAuthorDetail = Omit<RawAuthor, 'books'> & {
+  books: RawAuthorBookListItem[];
+};
+
 type RawList = List & {
   user_id: string;
   is_public: boolean;
@@ -693,6 +730,38 @@ function normalizeBook(raw: RawBook): Book {
   };
 }
 
+// The author-detail response's nested books don't carry the fields full
+// Book objects have (see RawAuthorBookListItem above); fill those in with
+// neutral defaults since BookCard (the only consumer) never reads them.
+function normalizeAuthorBookListItem(raw: RawAuthorBookListItem): Book {
+  return {
+    id: raw.id,
+    title: raw.title,
+    slug: raw.slug,
+    description: null,
+    coverUrl: raw.cover_url,
+    isbn: null,
+    publishedYear: raw.published_year,
+    pageCount: null,
+    language: '',
+    rating: raw.rating,
+    ratingsCount: raw.ratings_count,
+    reviewsCount: 0,
+    authors: raw.authors.map(normalizeAuthor),
+    genres: raw.genres.map(normalizeGenre),
+    createdAt: '',
+    updatedAt: '',
+  };
+}
+
+function normalizeAuthorDetail(raw: RawAuthorDetail): Author {
+  const { books, ...authorFields } = raw;
+  return {
+    ...normalizeAuthor(authorFields),
+    books: books.map(normalizeAuthorBookListItem),
+  };
+}
+
 function normalizeList(raw: RawList): List {
   return {
     ...raw,
@@ -709,6 +778,34 @@ function normalizePublicList(raw: RawPublicList): PublicList {
     ...raw,
     isPublic: raw.is_public,
     booksCount: raw.books_count,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at ?? raw.created_at,
+  };
+}
+
+// Backend returns snake_case for shelves; normalize to the camelCase Shelf
+// type. The list endpoint's items (shelfListItemResponse) omit user_id and
+// updated_at - they're not needed there - so those fields are optional on
+// the raw shape and defaulted when normalizing.
+type RawShelf = {
+  id: string;
+  user_id?: string;
+  name: string;
+  type: Shelf['type'];
+  books_count: number;
+  has_book?: boolean;
+  created_at: string;
+  updated_at?: string;
+};
+
+function normalizeShelf(raw: RawShelf): Shelf {
+  return {
+    id: raw.id,
+    userId: raw.user_id ?? '',
+    name: raw.name,
+    type: raw.type,
+    booksCount: raw.books_count,
+    hasBook: raw.has_book,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at ?? raw.created_at,
   };
@@ -807,7 +904,10 @@ export const api = {
         `/api/v1/authors?${new URLSearchParams(queryParams)}`
       );
     },
-    get: (slug: string) => fetcher<Author>(`/api/v1/authors/${slug}`),
+    get: async (slug: string) => {
+      const raw = await fetcher<RawAuthorDetail>(`/api/v1/authors/${slug}`);
+      return normalizeAuthorDetail(raw);
+    },
   },
   genres: {
     list: () => fetcher<{ items: Genre[]; total: number }>('/api/v1/genres'),
@@ -917,17 +1017,21 @@ export const api = {
     },
   },
   shelves: {
-    list: (params?: { book_id?: string }) => {
+    list: async (params?: { book_id?: string }) => {
       const queryParams: Record<string, string> = {};
       if (params?.book_id) {
         queryParams.book_id = params.book_id;
       }
       const query = new URLSearchParams(queryParams).toString();
-      return fetcher<{ items: Shelf[]; total: number }>(
+      const raw = await fetcher<{ items: RawShelf[]; total: number }>(
         `/api/v1/shelves${query ? `?${query}` : ''}`
       );
+      return {
+        ...raw,
+        items: raw.items.map(normalizeShelf),
+      };
     },
-    get: (
+    get: async (
       id: string,
       params?: { page?: number; limit?: number }
     ) => {
@@ -935,24 +1039,33 @@ export const api = {
       if (params?.page !== undefined) queryParams.page = String(params.page);
       if (params?.limit !== undefined) queryParams.limit = String(params.limit);
       const query = new URLSearchParams(queryParams).toString();
-      return fetcher<{
-        shelf: Shelf;
-        items: Book[];
+      const raw = await fetcher<{
+        shelf: RawShelf;
+        items: RawBook[];
         total: number;
         page: number;
         limit: number;
       }>(`/api/v1/shelves/${id}${query ? `?${query}` : ''}`);
+      return {
+        ...raw,
+        shelf: normalizeShelf(raw.shelf),
+        items: raw.items.map(normalizeBook),
+      };
     },
-    create: (data: { name: string }) =>
-      fetcher<Shelf>('/api/v1/shelves', {
+    create: async (data: { name: string }) => {
+      const raw = await fetcher<RawShelf>('/api/v1/shelves', {
         method: 'POST',
         body: JSON.stringify(data),
-      }),
-    rename: (id: string, data: { name: string }) =>
-      fetcher<Shelf>(`/api/v1/shelves/${id}`, {
+      });
+      return normalizeShelf(raw);
+    },
+    rename: async (id: string, data: { name: string }) => {
+      const raw = await fetcher<RawShelf>(`/api/v1/shelves/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
-      }),
+      });
+      return normalizeShelf(raw);
+    },
     remove: (id: string) =>
       fetcher<{ status: string }>(`/api/v1/shelves/${id}`, {
         method: 'DELETE',
@@ -1138,6 +1251,11 @@ export const api = {
           body: formData,
         });
       },
+      bulkPublish: (params?: { search?: string }) =>
+        fetcher<BulkPublishReport>('/api/v1/admin/books/bulk-publish', {
+          method: 'POST',
+          body: JSON.stringify({ search: params?.search }),
+        }),
     },
     authors: {
       list: async (params?: {

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminService "github.com/bookhaven/backend/internal/modules/admin/service"
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/google/uuid"
@@ -35,6 +35,7 @@ type Service interface {
 	ModerateReview(ctx context.Context, id uuid.UUID, isHidden bool) (*reviewsDomain.Review, error)
 	LookupBook(ctx context.Context, isbn, query, author string) (*bookdata.ExternalBookRecord, error)
 	ImportBooks(ctx context.Context, rows []adminService.ImportRowInput, defaultHidden bool) adminService.ImportReport
+	BulkPublishBooks(ctx context.Context, search string) (adminService.BulkPublishReport, error)
 }
 
 // Handler handles admin HTTP requests.
@@ -146,6 +147,16 @@ type createUpdateGenreRequest struct {
 
 type moderateReviewRequest struct {
 	IsHidden bool `json:"is_hidden"`
+}
+
+// bulkPublishBooksRequest is the optional body of
+// POST /admin/books/bulk-publish. Search mirrors the existing search query
+// param already accepted by GET /admin/books; an absent/empty value means
+// "all pending-review books". There is deliberately no visibility/filter
+// field here - the handler/service always and only target the
+// pending_review predicate server-side, regardless of request body content.
+type bulkPublishBooksRequest struct {
+	Search string `json:"search,omitempty"`
 }
 
 // lookupResponse is the normalized record returned by GET /admin/books/lookup,
@@ -1010,5 +1021,38 @@ func (h *Handler) ImportBooks(c echo.Context) error {
 	defaultHidden := strings.EqualFold(strings.TrimSpace(c.FormValue("is_hidden")), "true")
 
 	report := h.service.ImportBooks(ctx, rows, defaultHidden)
+	return c.JSON(http.StatusOK, report)
+}
+
+// BulkPublishBooks godoc
+// @Summary Опубликовать все книги на проверке (админ)
+// @Description Требуется роль admin и Bearer-токен. Публикует (is_hidden=false) каждую книгу, подходящую под предикат pending_review (is_hidden=true AND external_source IS NOT NULL), опционально уточнённый тем же search, что и GET /admin/books. Поле visibility в теле запроса игнорируется — предикат всегда фиксирован на сервере. Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов (кроме 422 при превышении лимита партии).
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body bulkPublishBooksRequest false "Опциональный поиск"
+// @Success 200 {object} adminService.BulkPublishReport
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/books/bulk-publish [post]
+func (h *Handler) BulkPublishBooks(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req bulkPublishBooksRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	report, err := h.service.BulkPublishBooks(ctx, req.Search)
+	if err != nil {
+		if errors.Is(err, adminService.ErrBulkPublishTooLarge) {
+			return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to bulk-publish books"})
+	}
+
 	return c.JSON(http.StatusOK, report)
 }

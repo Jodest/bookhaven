@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminService "github.com/bookhaven/backend/internal/modules/admin/service"
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
-	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
+	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -33,9 +33,13 @@ type fakeAdminService struct {
 	lookupRecord *bookdata.ExternalBookRecord
 	lookupErr    error
 
-	importReport      *adminService.ImportReport
-	lastImportRows    []adminService.ImportRowInput
-	lastImportHidden  bool
+	importReport     *adminService.ImportReport
+	lastImportRows   []adminService.ImportRowInput
+	lastImportHidden bool
+
+	bulkPublishReport     *adminService.BulkPublishReport
+	bulkPublishErr        error
+	lastBulkPublishSearch string
 }
 
 func (f *fakeAdminService) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
@@ -171,6 +175,17 @@ func (f *fakeAdminService) ImportBooks(ctx context.Context, rows []adminService.
 		return *f.importReport
 	}
 	return adminService.ImportReport{Processed: len(rows), Created: len(rows), Errors: []adminService.ImportRowError{}}
+}
+
+func (f *fakeAdminService) BulkPublishBooks(ctx context.Context, search string) (adminService.BulkPublishReport, error) {
+	f.lastBulkPublishSearch = search
+	if f.bulkPublishErr != nil {
+		return adminService.BulkPublishReport{}, f.bulkPublishErr
+	}
+	if f.bulkPublishReport != nil {
+		return *f.bulkPublishReport, nil
+	}
+	return adminService.BulkPublishReport{Errors: []adminService.BulkPublishRowError{}}, nil
 }
 
 func setupHandler() (*Handler, *fakeAdminService) {
