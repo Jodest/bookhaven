@@ -371,6 +371,23 @@ export interface ImportReport {
   errors: ImportRowError[];
 }
 
+// BulkPublishRowError describes one book that failed to publish during a
+// POST /api/v1/admin/books/bulk-publish batch.
+export interface BulkPublishRowError {
+  book_id: string;
+  title: string;
+  message: string;
+}
+
+// BulkPublishReport is the response of POST /api/v1/admin/books/bulk-publish,
+// returned with HTTP 200 regardless of per-row outcomes (the batch-too-large
+// guard is the only case that responds with a non-200 status instead).
+export interface BulkPublishReport {
+  processed: number;
+  published: number;
+  errors: BulkPublishRowError[];
+}
+
 // AdminHarvestTriggerInput is the request body of POST /api/v1/admin/harvest.
 // author_qids are curated Wikidata author QIDs (e.g. "Q7200") - the backend
 // passes them straight into bookdata.BuildAuthorListQuery, which validates
@@ -1138,6 +1155,11 @@ export const api = {
           body: formData,
         });
       },
+      bulkPublish: (params?: { search?: string }) =>
+        fetcher<BulkPublishReport>('/api/v1/admin/books/bulk-publish', {
+          method: 'POST',
+          body: JSON.stringify({ search: params?.search }),
+        }),
     },
     authors: {
       list: async (params?: {
