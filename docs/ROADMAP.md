@@ -32,9 +32,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-1. #138 Фильтры в админке для списка книг
-2. #117 Admin tool to detect and merge duplicate authors
-3. #95 Public shelf/reading-status visibility on user profiles
+1. #95 Public shelf/reading-status visibility on user profiles
 
 ## Proposed (awaiting prioritization)
 
