@@ -27,7 +27,7 @@ shell-admin: ## Open shell in admin container
 migrate: ## Run database migrations
 	docker compose exec backend go run cmd/migrate/main.go up
 
-migrate-down: ## Rollback database migrations
+migrate-down: ## Rollback ONE migration step (for N steps / full rollback see cmd/migrate usage: down N, down-all)
 	docker compose exec backend go run cmd/migrate/main.go down
 
 seed: ## Seed the database with dev/demo test data (refuses to run if APP_ENV=production; pass FORCE=1 to override)

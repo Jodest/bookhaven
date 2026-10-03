@@ -91,7 +91,9 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-If the rollback also needs a schema rollback, run the down migration explicitly first — `docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/migrate backend down` rolls back **one** migration step; check `backend/migrations` before running it, and prefer forward-fixing over rolling back a schema in a database with real user data whenever possible.
+If the rollback also needs a schema rollback, run the down migration explicitly first — `docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/migrate backend down` rolls back **one** migration step (`down N` rolls back N steps, N must be a positive integer); check `backend/migrations` before running it, and prefer forward-fixing over rolling back a schema in a database with real user data whenever possible. The command prints the resulting schema version.
+
+A full rollback (every migration, i.e. dropping the whole schema) is only available as `down-all --yes-drop-everything`; without that exact flag it refuses, and with `APP_ENV=production` it additionally requires `--force`. Never use it on a database with real data — restore from a backup instead (see below). (Before #186, plain `down` rolled back everything; it is now one step.)
 
 ## Backups
 

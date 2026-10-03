@@ -70,8 +70,18 @@ func main() {
 		}
 		fmt.Println("seed data applied successfully")
 	}
-	fmt.Println("test account: test@bookhaven.local / test1234")
+	fmt.Printf("admin account: %s / %s\n", seedAdminEmail, seedAdminPassword)
+	fmt.Printf("test account: %s / %s\n", seedTestEmail, seedTestPassword)
 }
+
+// Fixed dev/demo credentials (never used in a real deployment: the seed
+// refuses to run against APP_ENV=production without -force).
+const (
+	seedAdminEmail    = "admin@bookhaven.local"
+	seedAdminPassword = "admin1234"
+	seedTestEmail     = "test@bookhaven.local"
+	seedTestPassword  = "test1234"
+)
 
 // shouldRefuseToRun reports whether cmd/seed must abort given the loaded
 // environment name and whether -force was passed. Mirrors the production
@@ -89,10 +99,16 @@ func seedAccounts(db *gorm.DB) error {
 	verifiedAt := time.Now()
 
 	// Create admin user
+	adminHash, err := bcrypt.GenerateFromPassword([]byte(seedAdminPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash admin password: %w", err)
+	}
+	adminHashStr := string(adminHash)
 	adminID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	admin := usersDomain.User{
 		ID:              adminID,
-		Email:           "admin@bookhaven.local",
+		Email:           seedAdminEmail,
+		PasswordHash:    &adminHashStr,
 		Name:            ptr("Admin"),
 		Role:            usersDomain.RoleAdmin,
 		ProfileType:     usersDomain.ProfileTypeReader,
@@ -101,17 +117,25 @@ func seedAccounts(db *gorm.DB) error {
 	if err := db.FirstOrCreate(&admin, usersDomain.User{Email: admin.Email}).Error; err != nil {
 		return fmt.Errorf("create admin: %w", err)
 	}
+	// Older seed versions created the admin without a password, which made
+	// the admin app unusable. Backfill it only when still NULL so a password
+	// someone has since set is never overwritten.
+	if err := db.Exec(
+		"UPDATE users SET password_hash = ? WHERE email = ? AND password_hash IS NULL",
+		adminHashStr, seedAdminEmail,
+	).Error; err != nil {
+		return fmt.Errorf("set admin password: %w", err)
+	}
 
 	// Create test user
-	testPassword := "test1234"
-	testHash, err := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.DefaultCost)
+	testHash, err := bcrypt.GenerateFromPassword([]byte(seedTestPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("hash test password: %w", err)
 	}
 	testHashStr := string(testHash)
 	testUser := usersDomain.User{
 		ID:              uuid.MustParse("22222222-2222-2222-2222-222222222222"),
-		Email:           "test@bookhaven.local",
+		Email:           seedTestEmail,
 		PasswordHash:    &testHashStr,
 		Name:            ptr("Тестовый пользователь"),
 		Role:            usersDomain.RoleUser,

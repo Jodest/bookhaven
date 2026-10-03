@@ -1,3 +1,27 @@
+# Shared by the `web` and `admin` dev services. Both bind-mount the whole
+# repo and run a workspace-wide `pnpm install`, so EVERY workspace
+# node_modules dir must be shadowed by a container-only anonymous volume —
+# otherwise the container writes Linux symlinks into the host's node_modules
+# and breaks native (Windows) tooling. Keep this list in sync with
+# pnpm-workspace.yaml. Both apps' .next dirs are isolated as well.
+x-node-dev-volumes: &node-dev-volumes
+  - .:/app
+  - /app/node_modules
+  - /app/apps/web/node_modules
+  - /app/apps/web/.next
+  - /app/apps/admin/node_modules
+  - /app/apps/admin/.next
+  - /app/packages/ui/node_modules
+  - /app/packages/config/node_modules
+  - /app/packages/api-client/node_modules
+
+x-node-dev-environment: &node-dev-environment
+  NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8080}
+  API_URL: http://backend:8080
+  # Docker Desktop does not forward file-change events across the Windows/macOS
+  # bind mount; make the Next 14 dev server (watchpack) poll instead.
+  WATCHPACK_POLLING: "true"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -77,7 +101,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
-    command: ["go", "run", "./cmd/worker"]
+    # Hot reload via air (own config/binary so it doesn't clash with the api's ./tmp/main).
+    command: ["air", "-c", ".air.worker.toml"]
 
   # Local SMTP catcher: every email the worker sends shows up in the web UI
   # at http://localhost:8025 (nothing is delivered to real inboxes).
@@ -94,18 +119,10 @@ services:
       dockerfile: infrastructure/docker/Dockerfile.node
       target: dev
     container_name: bookhaven-web
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8080}
-      API_URL: http://backend:8080
+    environment: *node-dev-environment
     ports:
       - "${WEB_PORT:-3000}:3000"
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/apps/web/.next
-      - /app/apps/web/node_modules
-      - /app/packages/ui/node_modules
-      - /app/packages/api-client/node_modules
+    volumes: *node-dev-volumes
     depends_on:
       - backend
     command: ["sh", "-c", "pnpm install --config.confirmModulesPurge=false && pnpm --filter web run dev"]
@@ -116,18 +133,10 @@ services:
       dockerfile: infrastructure/docker/Dockerfile.node
       target: dev
     container_name: bookhaven-admin
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8080}
-      API_URL: http://backend:8080
+    environment: *node-dev-environment
     ports:
       - "${ADMIN_PORT:-3001}:3000"
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/apps/admin/.next
-      - /app/apps/admin/node_modules
-      - /app/packages/ui/node_modules
-      - /app/packages/api-client/node_modules
+    volumes: *node-dev-volumes
     depends_on:
       - backend
     command: ["sh", "-c", "pnpm install --config.confirmModulesPurge=false && pnpm --filter admin run dev"]
