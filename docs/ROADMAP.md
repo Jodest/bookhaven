@@ -80,6 +80,11 @@ Email notifications (#121, in Proposed) also depend on #157.
 - [ ] Missing reverse indexes on `book_authors(author_id)`, `book_genres(genre_id)` and `lists(user_id)` — author pages, genre filters, author merge and per-user list lookups filter on unindexed columns [code] (proposed 2026-10-03, #198)
 - [ ] Per-page SEO metadata, Open Graph tags, sitemap and robots.txt for public pages — only the root layout has static metadata; book/author/profile pages have no `generateMetadata` and no sitemap/robots exists [code] (proposed 2026-10-03, #199)
 - [ ] Custom error and not-found boundaries in web and admin — neither app defines `error.tsx`/`global-error.tsx`/`not-found.tsx`, so failures and unknown slugs show bare Next.js defaults [code] (proposed 2026-10-03, #200)
+- [ ] API request logging lacks latency, request ID, user ID and error details — the Echo request logger records only method/uri/status, so slow or failing requests cannot be traced or correlated [code] (proposed 2026-10-03, #201)
+- [ ] Frontend tests for core user-facing features — web `rate-book`, `write-review`, `shelve-book`, `add-to-list`, `manage-reading-challenge`, `update-profile` and admin `manage-author`, `manage-genre`, `moderate-review` have no tests [code] (proposed 2026-10-03, #202)
+- [ ] Keyboard and screen-reader support for dialogs and popovers — merge-author dialog has no Escape/focus trap/focus return, notification bell popover has no Escape/aria-expanded, and no jsx-a11y/axe checks exist [code] (proposed 2026-10-03, #203)
+- [ ] Explicit start/finish reading dates and re-read tracking — the reading challenge uses shelf `added_at` as a completion-date proxy; Goodreads/The StoryGraph let users set dates read and log re-reads [code] (proposed 2026-10-03, #204)
+- [ ] Community mood and pace tags on books — The StoryGraph's mood/pace tagging and filtering has no BookHaven equivalent beyond genres (distinct from content warnings, #122) [competitive] (proposed 2026-10-03, #205)
 
 ## Technical Debt
 
