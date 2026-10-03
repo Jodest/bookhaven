@@ -105,18 +105,20 @@ func setupTestAuthService(t *testing.T) (*Service, *fakeUsersRepository) {
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		Issuer:          "bookhaven-test",
 	}
-	return NewService(cfg, db, users, nil, nil, nil), users
+	return NewService(cfg, db, users, nil, ResendLimiters{}, nil), users
 }
 
 func createTestUser(t *testing.T, users *fakeUsersRepository) *usersDomain.User {
 	t.Helper()
 	name := "Test User"
+	verifiedAt := time.Now()
 	user := &usersDomain.User{
-		ID:          uuid.New(),
-		Email:       "test@example.com",
-		Name:        &name,
-		Role:        usersDomain.RoleUser,
-		ProfileType: usersDomain.ProfileTypeReader,
+		ID:              uuid.New(),
+		Email:           "test@example.com",
+		Name:            &name,
+		Role:            usersDomain.RoleUser,
+		ProfileType:     usersDomain.ProfileTypeReader,
+		EmailVerifiedAt: &verifiedAt,
 	}
 	if err := users.Create(context.Background(), user); err != nil {
 		t.Fatalf("create test user: %v", err)

@@ -503,12 +503,21 @@ export type VerificationErrorCode =
   | 'invalid_token'
   | 'token_expired'
   | 'token_used'
-  | 'already_verified'
+  | 'invalid_email'
   | 'rate_limited'
   | 'email_send_failed';
 
 export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
+}
+
+// `code` sent when the email of the account is not verified: 403 from
+// POST /auth/login (correct password), 401 from POST /auth/refresh and from
+// every authenticated endpoint (stale session of an unverified user).
+export const EMAIL_NOT_VERIFIED_CODE = 'email_not_verified';
+
+export function isEmailNotVerifiedError(error: unknown): boolean {
+  return isApiError(error) && error.code === EMAIL_NOT_VERIFIED_CODE;
 }
 
 export interface RefreshedTokens {
@@ -520,14 +529,15 @@ export interface RefreshedTokens {
 // Paths that must never trigger an auto-refresh-and-retry: a 401 from these
 // means "bad credentials" / "refresh itself is dead" / "already logging out",
 // not "access token expired" — retrying would be wasteful or recursive.
-// verify-email is public (the token is the credential), so a refresh there
-// is pointless; resend-verification is authenticated and is NOT excluded.
+// verify-email and resend-verification are public (no session involved), so
+// a refresh there is pointless.
 const AUTH_REFRESH_EXCLUDED_PATHS = [
   '/api/v1/auth/login',
   '/api/v1/auth/register',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
   '/api/v1/auth/verify-email',
+  '/api/v1/auth/resend-verification',
 ];
 
 // Mirrors backend/cmd/api/main.go's `AccessTokenTTL` (currently 15 minutes).
@@ -902,6 +912,18 @@ type RawAuthResponse = {
   expires_in: number;
 };
 
+// POST /auth/register: the account is created but no session is issued -
+// the user must verify the email and then log in.
+export interface RegisterResponse {
+  email: string;
+  verificationRequired: true;
+}
+
+type RawRegisterResponse = {
+  email: string;
+  verification_required: true;
+};
+
 function normalizeAuthResponse(raw: RawAuthResponse): AuthResponse {
   return {
     user: normalizeUser(raw.user),
@@ -1034,12 +1056,13 @@ export const api = {
       });
       return normalizeAuthResponse(raw);
     },
-    register: async (data: RegisterInput) => {
-      const raw = await fetcher<RawAuthResponse>('/api/v1/auth/register', {
+    // No tokens/cookies: the user logs in after verifying the email.
+    register: async (data: RegisterInput): Promise<RegisterResponse> => {
+      const raw = await fetcher<RawRegisterResponse>('/api/v1/auth/register', {
         method: 'POST',
         body: JSON.stringify(data),
       });
-      return normalizeAuthResponse(raw);
+      return { email: raw.email, verificationRequired: raw.verification_required };
     },
     logout: () =>
       fetcher<{ status: string }>('/api/v1/auth/logout', {
@@ -1053,11 +1076,14 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ token }),
       }),
-    // Authenticated. Errors carry ApiError.code ('already_verified' |
-    // 'rate_limited' (+ retryAfterSeconds) | 'email_send_failed').
-    resendVerification: () =>
+    // Public. Always 'sent' for a well-formed email (also unknown or already
+    // verified ones - the response does not reveal registered addresses).
+    // Errors carry ApiError.code ('invalid_email' | 'rate_limited'
+    // (+ retryAfterSeconds) | 'email_send_failed').
+    resendVerification: (email: string) =>
       fetcher<{ status: 'sent' }>('/api/v1/auth/resend-verification', {
         method: 'POST',
+        body: JSON.stringify({ email }),
       }),
   },
   users: {

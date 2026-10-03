@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSafeRedirectPath } from './safe-redirect';
+import { isSafeRedirectPath, loginHrefWithRedirect } from './safe-redirect';
 
 describe('isSafeRedirectPath', () => {
   it.each(['/books/some-slug', '/profile', '/shelves?tab=custom'])(
@@ -34,4 +34,14 @@ describe('isSafeRedirectPath', () => {
       expect(isSafeRedirectPath(value)).toBe(false);
     }
   );
+});
+
+describe('loginHrefWithRedirect', () => {
+  it('keeps a safe redirect', () => {
+    expect(loginHrefWithRedirect('/books/abc')).toBe('/login?redirect=%2Fbooks%2Fabc');
+  });
+
+  it.each(['//evil.com', '', null, undefined])('drops unsafe redirect %j', (value) => {
+    expect(loginHrefWithRedirect(value)).toBe('/login');
+  });
 });

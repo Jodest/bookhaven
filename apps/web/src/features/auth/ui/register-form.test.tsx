@@ -48,30 +48,32 @@ describe('RegisterForm', () => {
     vi.clearAllMocks();
   });
 
-  it('redirects to the safe `redirect` param on success', async () => {
+  it('navigates to /login keeping the safe `redirect` param on success', async () => {
     searchParamsValue = new URLSearchParams({ redirect: '/books/abc' });
     render(<RegisterForm />);
 
     await fillAndSubmit();
 
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/books/abc'));
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith('/login?redirect=%2Fbooks%2Fabc')
+    );
   });
 
-  it('falls back to /profile when there is no redirect param', async () => {
+  it('navigates to /login when there is no redirect param', async () => {
     render(<RegisterForm />);
 
     await fillAndSubmit();
 
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/profile'));
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/login'));
   });
 
-  it('falls back to /profile when the redirect param is unsafe', async () => {
+  it('drops an unsafe redirect param', async () => {
     searchParamsValue = new URLSearchParams({ redirect: '//evil.com' });
     render(<RegisterForm />);
 
     await fillAndSubmit();
 
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/profile'));
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/login'));
   });
 
   it('calls onRegistered with the email instead of navigating when provided', async () => {

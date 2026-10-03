@@ -72,6 +72,17 @@ func toUserResponse(u *domain.User) userResponse {
 	}
 }
 
+// registerResponse is the 201 body of Register: no tokens, the user must
+// verify the email and then log in.
+type registerResponse struct {
+	Email                string `json:"email" example:"anna@example.com"`
+	VerificationRequired bool   `json:"verification_required" example:"true"`
+}
+
+type resendVerificationRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
 type verifyEmailRequest struct {
 	Token string `json:"token"`
 }
@@ -95,24 +106,25 @@ type rateLimitedResponse struct {
 	RetryAfterSeconds int    `json:"retry_after_seconds" example:"42"`
 }
 
-// Machine-readable error codes of the email verification endpoints.
+// Machine-readable error codes of the auth and email verification endpoints.
 const (
-	codeInvalidToken    = "invalid_token"
-	codeTokenExpired    = "token_expired"
-	codeTokenUsed       = "token_used"
-	codeAlreadyVerified = "already_verified"
-	codeRateLimited     = "rate_limited"
-	codeEmailSendFailed = "email_send_failed"
+	codeInvalidToken     = "invalid_token"
+	codeTokenExpired     = "token_expired"
+	codeTokenUsed        = "token_used"
+	codeRateLimited      = "rate_limited"
+	codeEmailSendFailed  = "email_send_failed"
+	codeEmailNotVerified = "email_not_verified"
+	codeInvalidEmail     = "invalid_email"
 )
 
 // Register godoc
 // @Summary Регистрация пользователя
-// @Description Создаёт пользователя и сразу выполняет вход, устанавливая auth-cookies
+// @Description Создаёт пользователя и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.
 // @Tags auth
 // @Accept json
 // @Produce json
 // @Param body body registerRequest true "Данные регистрации"
-// @Success 201 {object} authResponse
+// @Success 201 {object} registerResponse
 // @Failure 400 {object} map[string]string
 // @Failure 409 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -134,24 +146,16 @@ func (h *Handler) Register(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to register"})
 	}
 
-	// Auto-login after registration
-	_, tokens, err := h.service.Login(c.Request().Context(), req.Email, req.Password)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create session"})
-	}
-
-	setAuthCookies(c, tokens)
-
-	return c.JSON(http.StatusCreated, authResponse{
-		User:         toUserResponse(user),
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		ExpiresIn:    tokens.ExpiresIn,
+	// No auto-login: unverified users cannot authenticate.
+	return c.JSON(http.StatusCreated, registerResponse{
+		Email:                user.Email,
+		VerificationRequired: true,
 	})
 }
 
 // Login godoc
 // @Summary Вход пользователя
+// @Description Сначала проверяется пароль, затем подтверждение email. Если пароль верный, но email не подтверждён, возвращается 403 с кодом email_not_verified, токены не создаются и cookies не устанавливаются.
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -159,6 +163,7 @@ func (h *Handler) Register(c echo.Context) error {
 // @Success 200 {object} authResponse
 // @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
+// @Failure 403 {object} errorResponse "code: email_not_verified"
 // @Failure 500 {object} map[string]string
 // @Router /auth/login [post]
 func (h *Handler) Login(c echo.Context) error {
@@ -175,6 +180,9 @@ func (h *Handler) Login(c echo.Context) error {
 		if errors.Is(err, service.ErrInvalidCredentials) {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		}
+		if errors.Is(err, service.ErrEmailNotVerified) {
+			return c.JSON(http.StatusForbidden, errorResponse{Error: "email not verified", Code: codeEmailNotVerified})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to login"})
 	}
 
@@ -190,14 +198,14 @@ func (h *Handler) Login(c echo.Context) error {
 
 // Refresh godoc
 // @Summary Обновить пару токенов
-// @Description Принимает refresh-токен в теле запроса или в cookie refresh_token
+// @Description Принимает refresh-токен в теле запроса или в cookie refresh_token. Если email пользователя не подтверждён, все его refresh-токены отзываются, auth-cookies очищаются и возвращается 401 с кодом email_not_verified.
 // @Tags auth
 // @Accept json
 // @Produce json
 // @Param body body refreshRequest false "Refresh-токен (опционально, можно передать через cookie)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
-// @Failure 401 {object} map[string]string
+// @Failure 401 {object} errorResponse "code: email_not_verified (без кода - недействительный токен)"
 // @Router /auth/refresh [post]
 func (h *Handler) Refresh(c echo.Context) error {
 	var req refreshRequest
@@ -219,6 +227,10 @@ func (h *Handler) Refresh(c echo.Context) error {
 	}
 
 	tokens, err := h.service.RefreshTokens(c.Request().Context(), refreshToken)
+	if errors.Is(err, service.ErrEmailNotVerified) {
+		clearAuthCookies(c)
+		return c.JSON(http.StatusUnauthorized, errorResponse{Error: "email not verified", Code: codeEmailNotVerified})
+	}
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid or expired refresh token"})
 	}
@@ -312,33 +324,29 @@ func (h *Handler) VerifyEmail(c echo.Context) error {
 
 // ResendVerification godoc
 // @Summary Повторно отправить письмо подтверждения email
-// @Description Удаляет неиспользованные ссылки подтверждения текущего пользователя и отправляет новую. Ограничение: 1 раз в минуту и 5 раз в сутки. Коды ошибок: already_verified, rate_limited, email_send_failed.
+// @Description Публичный эндпоинт. Если адрес принадлежит неподтверждённому аккаунту, удаляет его неиспользованные ссылки подтверждения и отправляет новую. Ответ 202 одинаков для любого корректного адреса (неизвестного, уже подтверждённого и т.д.), чтобы не раскрывать, какие адреса зарегистрированы. Ограничения: 20 запросов в час с одного IP; для одного адреса 1 раз в минуту и 5 раз в сутки. Коды ошибок: invalid_email, rate_limited, email_send_failed.
 // @Tags auth
+// @Accept json
 // @Produce json
-// @Security BearerAuth
+// @Param body body resendVerificationRequest true "Email аккаунта"
 // @Success 202 {object} statusResponse "status: sent"
-// @Failure 401 {object} map[string]string
-// @Failure 409 {object} errorResponse
+// @Failure 400 {object} errorResponse
 // @Failure 429 {object} rateLimitedResponse
 // @Header 429 {integer} Retry-After "Секунд до следующей попытки"
 // @Failure 500 {object} errorResponse
 // @Router /auth/resend-verification [post]
 func (h *Handler) ResendVerification(c echo.Context) error {
-	userIDStr, ok := c.Get("user_id").(string)
-	if !ok || userIDStr == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	var req resendVerificationRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid email", Code: codeInvalidEmail})
 	}
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid user"})
+	if err := c.Validate(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid email", Code: codeInvalidEmail})
 	}
 
-	err = h.service.ResendVerification(c.Request().Context(), userID)
+	err := h.service.ResendVerification(c.Request().Context(), req.Email, c.RealIP())
 	if err == nil {
 		return c.JSON(http.StatusAccepted, statusResponse{Status: "sent"})
-	}
-	if errors.Is(err, service.ErrAlreadyVerified) {
-		return c.JSON(http.StatusConflict, errorResponse{Error: "email already verified", Code: codeAlreadyVerified})
 	}
 	var rateErr *service.RateLimitError
 	if errors.As(err, &rateErr) {

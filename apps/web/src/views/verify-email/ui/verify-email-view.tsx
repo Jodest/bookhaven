@@ -1,7 +1,6 @@
 'use client';
 
-import { useAuthStore } from '@/entities/session';
-import { ResendVerificationButton } from '@/features/resend-verification';
+import { ResendVerificationForm } from '@/features/resend-verification';
 import { useVerifyEmail, type VerifyState } from '@/features/verify-email';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
@@ -40,56 +39,13 @@ const COPY: Record<VerifyState, { title: string; body?: string }> = {
 };
 
 function SuccessActions() {
-  const { isAuthenticated, isLoading } = useAuthStore();
-  if (isLoading) return null;
-  if (isAuthenticated) {
-    return (
-      <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-        <Button asChild>
-          <Link href="/profile">Перейти в профиль</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/books">К каталогу</Link>
-        </Button>
-      </div>
-    );
-  }
   return (
-    <div className="flex justify-center">
+    <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
       <Button asChild>
         <Link href="/login">Войти</Link>
       </Button>
-    </div>
-  );
-}
-
-function ResendBlock() {
-  const { user, isAuthenticated, isLoading } = useAuthStore();
-  if (isLoading) return null;
-
-  if (isAuthenticated && user) {
-    if (!user.emailVerified) {
-      return (
-        <div className="flex justify-center">
-          <ResendVerificationButton className="justify-center" />
-        </div>
-      );
-    }
-    return (
-      <div className="space-y-3 text-center">
-        <p className="text-sm text-muted-foreground">Ваш email уже подтверждён.</p>
-        <Button asChild>
-          <Link href="/profile">Перейти в профиль</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3 text-center">
-      <p className="text-sm text-muted-foreground">Войдите, чтобы получить новое письмо.</p>
-      <Button asChild>
-        <Link href="/login">Войти</Link>
+      <Button asChild variant="outline">
+        <Link href="/books">К каталогу</Link>
       </Button>
     </div>
   );
@@ -114,7 +70,7 @@ export function VerifyEmailView() {
         {(state === 'token_expired' ||
           state === 'invalid_token' ||
           state === 'token_used' ||
-          state === 'missing_token') && <ResendBlock />}
+          state === 'missing_token') && <ResendVerificationForm />}
 
         {state === 'error' && (
           <div className="flex justify-center">

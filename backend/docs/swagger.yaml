@@ -413,6 +413,22 @@ definitions:
     - name
     - password
     type: object
+  internal_modules_auth_transport_http.registerResponse:
+    properties:
+      email:
+        example: anna@example.com
+        type: string
+      verification_required:
+        example: true
+        type: boolean
+    type: object
+  internal_modules_auth_transport_http.resendVerificationRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
   internal_modules_auth_transport_http.statusResponse:
     properties:
       status:
@@ -2353,6 +2369,9 @@ paths:
     post:
       consumes:
       - application/json
+      description: Сначала проверяется пароль, затем подтверждение email. Если пароль
+        верный, но email не подтверждён, возвращается 403 с кодом email_not_verified,
+        токены не создаются и cookies не устанавливаются.
       parameters:
       - description: Учётные данные
         in: body
@@ -2379,6 +2398,10 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "403":
+          description: 'code: email_not_verified'
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -2440,7 +2463,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Принимает refresh-токен в теле запроса или в cookie refresh_token
+      description: Принимает refresh-токен в теле запроса или в cookie refresh_token.
+        Если email пользователя не подтверждён, все его refresh-токены отзываются,
+        auth-cookies очищаются и возвращается 401 с кодом email_not_verified.
       parameters:
       - description: Refresh-токен (опционально, можно передать через cookie)
         in: body
@@ -2462,11 +2487,9 @@ paths:
               type: string
             type: object
         "401":
-          description: Unauthorized
+          description: 'code: email_not_verified (без кода - недействительный токен)'
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
       summary: Обновить пару токенов
       tags:
       - auth
@@ -2474,7 +2497,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Создаёт пользователя и сразу выполняет вход, устанавливая auth-cookies
+      description: 'Создаёт пользователя и отправляет письмо со ссылкой подтверждения
+        email. Вход не выполняется и cookies не устанавливаются: войти можно только
+        после подтверждения email.'
       parameters:
       - description: Данные регистрации
         in: body
@@ -2488,7 +2513,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/internal_modules_auth_transport_http.authResponse'
+            $ref: '#/definitions/internal_modules_auth_transport_http.registerResponse'
         "400":
           description: Bad Request
           schema:
@@ -2512,9 +2537,21 @@ paths:
       - auth
   /auth/resend-verification:
     post:
-      description: 'Удаляет неиспользованные ссылки подтверждения текущего пользователя
-        и отправляет новую. Ограничение: 1 раз в минуту и 5 раз в сутки. Коды ошибок:
-        already_verified, rate_limited, email_send_failed.'
+      consumes:
+      - application/json
+      description: 'Публичный эндпоинт. Если адрес принадлежит неподтверждённому аккаунту,
+        удаляет его неиспользованные ссылки подтверждения и отправляет новую. Ответ
+        202 одинаков для любого корректного адреса (неизвестного, уже подтверждённого
+        и т.д.), чтобы не раскрывать, какие адреса зарегистрированы. Ограничения:
+        20 запросов в час с одного IP; для одного адреса 1 раз в минуту и 5 раз в
+        сутки. Коды ошибок: invalid_email, rate_limited, email_send_failed.'
+      parameters:
+      - description: Email аккаунта
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_auth_transport_http.resendVerificationRequest'
       produces:
       - application/json
       responses:
@@ -2522,14 +2559,8 @@ paths:
           description: 'status: sent'
           schema:
             $ref: '#/definitions/internal_modules_auth_transport_http.statusResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "409":
-          description: Conflict
+        "400":
+          description: Bad Request
           schema:
             $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
         "429":
@@ -2544,8 +2575,6 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
-      security:
-      - BearerAuth: []
       summary: Повторно отправить письмо подтверждения email
       tags:
       - auth
