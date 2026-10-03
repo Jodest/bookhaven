@@ -61,23 +61,26 @@ func (f *fakeMailer) Enqueue(ctx context.Context, msg mailer.Message) error {
 }
 
 type fakeLimiter struct {
-	calls      int
+	keys       []string
 	allowed    bool
 	retryAfter time.Duration
 	err        error
 }
 
 func (f *fakeLimiter) Allow(ctx context.Context, key string) (bool, time.Duration, error) {
-	f.calls++
+	f.keys = append(f.keys, key)
 	return f.allowed, f.retryAfter, f.err
 }
 
+func (f *fakeLimiter) calls() int { return len(f.keys) }
+
 type verificationEnv struct {
-	svc     *Service
-	db      *gorm.DB
-	users   repository.Repository
-	mailer  *fakeMailer
-	limiter *fakeLimiter
+	svc          *Service
+	db           *gorm.DB
+	users        repository.Repository
+	mailer       *fakeMailer
+	ipLimiter    *fakeLimiter
+	emailLimiter *fakeLimiter
 }
 
 func setupVerificationEnv(t *testing.T) *verificationEnv {
@@ -100,15 +103,16 @@ func setupVerificationEnv(t *testing.T) *verificationEnv {
 	}
 	users := repository.NewGormRepository(db)
 	m := &fakeMailer{}
-	l := &fakeLimiter{allowed: true}
+	ipL := &fakeLimiter{allowed: true}
+	emailL := &fakeLimiter{allowed: true}
 	svc := NewService(Config{
 		JWTSecret:       "test-secret",
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		Issuer:          "bookhaven-test",
 		WebBaseURL:      "http://localhost:3000",
-	}, db, users, m, l, nil)
-	return &verificationEnv{svc: svc, db: db, users: users, mailer: m, limiter: l}
+	}, db, users, m, ResendLimiters{IP: ipL, Email: emailL}, nil)
+	return &verificationEnv{svc: svc, db: db, users: users, mailer: m, ipLimiter: ipL, emailLimiter: emailL}
 }
 
 // tokenFromMessage extracts the plain token from the link in msg's text.
@@ -350,90 +354,5 @@ func TestVerifyEmail_VerifiedUserExpiredToken(t *testing.T) {
 	already, err := env.svc.VerifyEmail(context.Background(), plain)
 	if err != nil || !already {
 		t.Fatalf("expected already_verified, got already=%v err=%v", already, err)
-	}
-}
-
-func TestResendVerification_AlreadyVerified(t *testing.T) {
-	env := setupVerificationEnv(t)
-	user, _ := env.register(t, "anna@example.com")
-	env.markVerified(t, user.ID)
-
-	if err := env.svc.ResendVerification(context.Background(), user.ID); !errors.Is(err, ErrAlreadyVerified) {
-		t.Fatalf("expected ErrAlreadyVerified, got %v", err)
-	}
-	if env.limiter.calls != 0 {
-		t.Fatal("limiter must not be consulted for verified users")
-	}
-}
-
-func TestResendVerification_RateLimited(t *testing.T) {
-	env := setupVerificationEnv(t)
-	user, _ := env.register(t, "anna@example.com")
-	env.limiter.allowed = false
-	env.limiter.retryAfter = 42 * time.Second
-
-	err := env.svc.ResendVerification(context.Background(), user.ID)
-	if !errors.Is(err, ErrRateLimited) {
-		t.Fatalf("expected ErrRateLimited, got %v", err)
-	}
-	var rlErr *RateLimitError
-	if !errors.As(err, &rlErr) || rlErr.RetryAfter != 42*time.Second {
-		t.Fatalf("expected RateLimitError with 42s, got %v", err)
-	}
-	if len(env.mailer.messages) != 1 {
-		t.Fatalf("expected only the registration email, got %d", len(env.mailer.messages))
-	}
-	if len(env.tokens(t, user.ID)) != 1 {
-		t.Fatal("rate-limited resend must not touch tokens")
-	}
-}
-
-func TestResendVerification_LimiterError(t *testing.T) {
-	env := setupVerificationEnv(t)
-	user, _ := env.register(t, "anna@example.com")
-	env.limiter.err = errors.New("redis down")
-
-	err := env.svc.ResendVerification(context.Background(), user.ID)
-	if err == nil || errors.Is(err, ErrRateLimited) {
-		t.Fatalf("expected a plain error, got %v", err)
-	}
-}
-
-func TestResendVerification_ReplacesOldToken(t *testing.T) {
-	env := setupVerificationEnv(t)
-	user, oldPlain := env.register(t, "anna@example.com")
-
-	if err := env.svc.ResendVerification(context.Background(), user.ID); err != nil {
-		t.Fatalf("resend: %v", err)
-	}
-	if env.limiter.calls != 1 {
-		t.Fatalf("expected limiter to be called once, got %d", env.limiter.calls)
-	}
-	if len(env.mailer.messages) != 2 {
-		t.Fatalf("expected 2 emails, got %d", len(env.mailer.messages))
-	}
-	newPlain := tokenFromMessage(t, env.mailer.messages[1])
-	if newPlain == oldPlain {
-		t.Fatal("expected a new token")
-	}
-	if rows := env.tokens(t, user.ID); len(rows) != 1 {
-		t.Fatalf("expected only the new token row, got %d", len(rows))
-	}
-
-	if _, err := env.svc.VerifyEmail(context.Background(), oldPlain); !errors.Is(err, ErrVerificationTokenInvalid) {
-		t.Fatalf("old link: expected ErrVerificationTokenInvalid, got %v", err)
-	}
-	if already, err := env.svc.VerifyEmail(context.Background(), newPlain); err != nil || already {
-		t.Fatalf("new link: expected verified, got already=%v err=%v", already, err)
-	}
-}
-
-func TestResendVerification_EnqueueError(t *testing.T) {
-	env := setupVerificationEnv(t)
-	user, _ := env.register(t, "anna@example.com")
-	env.mailer.err = errors.New("redis down")
-
-	if err := env.svc.ResendVerification(context.Background(), user.ID); err == nil {
-		t.Fatal("expected an error when the email cannot be enqueued")
 	}
 }

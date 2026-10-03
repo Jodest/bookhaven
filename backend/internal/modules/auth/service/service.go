@@ -33,8 +33,11 @@ var (
 	ErrVerificationTokenInvalid = errors.New("invalid verification token")
 	ErrVerificationTokenExpired = errors.New("verification token expired")
 	ErrVerificationTokenUsed    = errors.New("verification token already used")
-	ErrAlreadyVerified          = errors.New("email already verified")
 	ErrRateLimited              = errors.New("too many requests")
+
+	// ErrEmailNotVerified is returned by Login (after a successful password
+	// check) and RefreshTokens when the user's email is not verified.
+	ErrEmailNotVerified = errors.New("email not verified")
 )
 
 // RateLimitError is returned when an action is rate limited; it matches
@@ -57,9 +60,16 @@ type Mailer interface {
 	Enqueue(ctx context.Context, msg mailer.Message) error
 }
 
-// ResendLimiter rate-limits verification email resends per key (user id).
+// ResendLimiter rate-limits verification email resends per key.
 type ResendLimiter interface {
 	Allow(ctx context.Context, key string) (allowed bool, retryAfter time.Duration, err error)
+}
+
+// ResendLimiters are the two limiters of the public resend endpoint: IP is
+// keyed by the client IP, Email by the sha256 of the normalised address.
+type ResendLimiters struct {
+	IP    ResendLimiter
+	Email ResendLimiter
 }
 
 // defaultVerificationTokenTTL is used when Config.VerificationTokenTTL is 0.
@@ -85,16 +95,16 @@ type Config struct {
 
 // Service provides authentication logic.
 type Service struct {
-	config  Config
-	db      *gorm.DB
-	users   repository.Repository
-	mailer  Mailer
-	limiter ResendLimiter
-	logger  *zap.Logger
+	config   Config
+	db       *gorm.DB
+	users    repository.Repository
+	mailer   Mailer
+	limiters ResendLimiters
+	logger   *zap.Logger
 }
 
 // NewService creates a new auth Service. logger may be nil (no logging).
-func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mailer, limiter ResendLimiter, logger *zap.Logger) *Service {
+func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mailer, limiters ResendLimiters, logger *zap.Logger) *Service {
 	if cfg.VerificationTokenTTL <= 0 {
 		cfg.VerificationTokenTTL = defaultVerificationTokenTTL
 	}
@@ -102,12 +112,12 @@ func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mai
 		logger = zap.NewNop()
 	}
 	return &Service{
-		config:  cfg,
-		db:      db,
-		users:   users,
-		mailer:  mailer,
-		limiter: limiter,
-		logger:  logger,
+		config:   cfg,
+		db:       db,
+		users:    users,
+		mailer:   mailer,
+		limiters: limiters,
+		logger:   logger,
 	}
 }
 
@@ -155,7 +165,10 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 	return user, nil
 }
 
-// Login authenticates a user and returns token pair.
+// Login authenticates a user and returns token pair. The password is
+// checked before the verification status, so only someone who knows the
+// password learns that the account is unverified (ErrEmailNotVerified, no
+// tokens created).
 func (s *Service) Login(ctx context.Context, email, password string) (*usersDomain.User, *domain.TokenPair, error) {
 	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
@@ -171,6 +184,10 @@ func (s *Service) Login(ctx context.Context, email, password string) (*usersDoma
 
 	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(password)); err != nil {
 		return nil, nil, ErrInvalidCredentials
+	}
+
+	if user.EmailVerifiedAt == nil {
+		return user, nil, ErrEmailNotVerified
 	}
 
 	tokens, err := s.createTokenPair(ctx, user.ID)
@@ -265,7 +282,9 @@ func (s *Service) ValidateAccessToken(tokenString string) (uuid.UUID, error) {
 	return userID, nil
 }
 
-// RefreshTokens validates a refresh token and issues a new token pair.
+// RefreshTokens validates a refresh token and issues a new token pair. If
+// the token's user is not verified, all of the user's refresh tokens are
+// revoked and ErrEmailNotVerified is returned.
 func (s *Service) RefreshTokens(ctx context.Context, refreshTokenPlain string) (*domain.TokenPair, error) {
 	refreshTokenHash := hashToken(refreshTokenPlain)
 
@@ -277,6 +296,20 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshTokenPlain string) (
 			return nil, ErrTokenInvalid
 		}
 		return nil, fmt.Errorf("find refresh token: %w", err)
+	}
+
+	user, err := s.users.GetByID(ctx, token.UserID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTokenInvalid
+		}
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	if user.EmailVerifiedAt == nil {
+		if err := s.Logout(ctx, user.ID); err != nil {
+			return nil, fmt.Errorf("revoke refresh tokens: %w", err)
+		}
+		return nil, ErrEmailNotVerified
 	}
 
 	// Revoke old token
@@ -375,28 +408,44 @@ func (s *Service) VerifyEmail(ctx context.Context, plain string) (alreadyVerifie
 	return false, nil
 }
 
-// ResendVerification invalidates the user's unused verification tokens and
-// emails a new link. Errors: ErrAlreadyVerified, *RateLimitError
-// (ErrRateLimited); any other error means the email was not enqueued.
-func (s *Service) ResendVerification(ctx context.Context, userID uuid.UUID) error {
-	user, err := s.users.GetByID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("get user: %w", err)
-	}
-	// Checked before the limiter so it never consumes quota.
-	if user.EmailVerifiedAt != nil {
-		return ErrAlreadyVerified
+// ResendVerification emails a new verification link to email if it belongs
+// to an unverified account with a password, invalidating the account's
+// unused tokens. It is enumeration-safe: rate limits (per ip, then per
+// normalised email) are applied before the user lookup, and every outcome
+// after the lookup - unknown email, already verified, no password, or a
+// failure to issue the email (logged) - returns nil. Errors: *RateLimitError
+// (ErrRateLimited), or a limiter error.
+func (s *Service) ResendVerification(ctx context.Context, email, ip string) error {
+	if s.limiters.IP == nil || s.limiters.Email == nil {
+		return errors.New("resend limiters not configured")
 	}
 
-	if s.limiter == nil {
-		return errors.New("resend limiter not configured")
-	}
-	allowed, retryAfter, err := s.limiter.Allow(ctx, user.ID.String())
+	allowed, retryAfter, err := s.limiters.IP.Allow(ctx, ip)
 	if err != nil {
-		return fmt.Errorf("rate limiter: %w", err)
+		return fmt.Errorf("ip rate limiter: %w", err)
 	}
 	if !allowed {
 		return &RateLimitError{RetryAfter: retryAfter}
+	}
+
+	allowed, retryAfter, err = s.limiters.Email.Allow(ctx, resendEmailKey(email))
+	if err != nil {
+		return fmt.Errorf("email rate limiter: %w", err)
+	}
+	if !allowed {
+		return &RateLimitError{RetryAfter: retryAfter}
+	}
+
+	// The lookup uses the email as given, same as Login/Register.
+	user, err := s.users.GetByEmail(ctx, email)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			s.logger.Error("resend verification: failed to look up user", zap.Error(err))
+		}
+		return nil
+	}
+	if user.EmailVerifiedAt != nil || user.PasswordHash == nil {
+		return nil
 	}
 
 	// Old links stop working; used rows are kept so a repeated click on an
@@ -404,10 +453,27 @@ func (s *Service) ResendVerification(ctx context.Context, userID uuid.UUID) erro
 	if err := s.db.WithContext(ctx).
 		Where("user_id = ? AND used_at IS NULL", user.ID).
 		Delete(&domain.EmailVerificationToken{}).Error; err != nil {
-		return fmt.Errorf("delete unused verification tokens: %w", err)
+		s.logger.Error("resend verification: failed to delete unused tokens",
+			zap.String("user_id", user.ID.String()),
+			zap.Error(err),
+		)
+		return nil
 	}
 
-	return s.issueVerification(ctx, user)
+	if err := s.issueVerification(ctx, user); err != nil {
+		s.logger.Error("resend verification: failed to issue email verification",
+			zap.String("user_id", user.ID.String()),
+			zap.Error(err),
+		)
+	}
+	return nil
+}
+
+// resendEmailKey is the per-email rate-limit key: the hex sha256 of the
+// trimmed, lowercased address, so no plain addresses are stored in Redis
+// and differently-cased spellings share one quota.
+func resendEmailKey(email string) string {
+	return hashToken(strings.ToLower(strings.TrimSpace(email)))
 }
 
 // issueVerification creates a verification token for user and enqueues the

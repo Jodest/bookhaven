@@ -8,12 +8,15 @@ import { useResendVerification } from '../model/use-resend-verification';
 type ButtonProps = ComponentProps<typeof Button>;
 
 interface ResendVerificationButtonProps {
+  // Address to send the verification link to (public endpoint, no session).
+  email: string;
   variant?: ButtonProps['variant'];
   size?: ButtonProps['size'];
   className?: string;
 }
 
 export function ResendVerificationButton({
+  email,
   variant = 'outline',
   size,
   className,
@@ -29,7 +32,7 @@ export function ResendVerificationButton({
         variant={variant}
         size={size}
         disabled={disabled}
-        onClick={() => void resend()}
+        onClick={() => void resend(email)}
       >
         {state.kind === 'sending' ? 'Отправляем…' : 'Отправить письмо ещё раз'}
       </Button>

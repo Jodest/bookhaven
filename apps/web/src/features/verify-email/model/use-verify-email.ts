@@ -1,6 +1,5 @@
 'use client';
 
-import { useAuthStore } from '@/entities/session';
 import { api } from '@bookhaven/api-client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { verifyErrorToState, verifyResultToState, type VerifyState } from './verify-state';
@@ -25,13 +24,9 @@ export function useVerifyEmail(token: string | null): {
     api.auth
       .verifyEmail(value)
       .then((res) => {
-        const next = verifyResultToState(res);
-        setState(next);
-        if (next === 'verified' || next === 'already_verified') {
-          // The token may belong to another account; always re-read /auth/me
-          // instead of optimistically setting emailVerified.
-          void useAuthStore.getState().fetchUser();
-        }
+        // No session to refresh: unverified users cannot be logged in, and
+        // verification does not log anyone in.
+        setState(verifyResultToState(res));
       })
       .catch((err: unknown) => {
         setState(verifyErrorToState(err));

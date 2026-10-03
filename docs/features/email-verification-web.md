@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **Changed by #160** ([email-verification-login-gate.md](email-verification-login-gate.md)): the site-wide unverified banner and all logged-in branches of `/verify-email` were removed (unverified users cannot hold a session); register no longer logs in, login shows a not-verified panel with resend, and resend takes an email. The sections below describe the #159 state.
+
 GitHub issue: #159 (epic #162). Depends on #158 ([email-verification-backend.md](email-verification-backend.md), merged into `dev`, not yet `main`). Branch `feat/email-verification-web` is cut from `dev`; #158 and #159 are merged to `main` together (otherwise the emailed link leads to a 404).
 
 ## Goal

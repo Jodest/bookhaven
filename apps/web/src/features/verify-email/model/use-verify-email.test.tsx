@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useVerifyEmail } from './use-verify-email';
 
 const verifyEmailMock = vi.fn();
-const fetchUserMock = vi.fn();
 
 vi.mock('@bookhaven/api-client', async () => {
   const actual = await vi.importActual<typeof import('@bookhaven/api-client')>(
@@ -16,10 +15,6 @@ vi.mock('@bookhaven/api-client', async () => {
     api: { auth: { verifyEmail: (token: string) => verifyEmailMock(token) } },
   };
 });
-
-vi.mock('@/entities/session', () => ({
-  useAuthStore: { getState: () => ({ fetchUser: fetchUserMock }) },
-}));
 
 let retryRef: (() => void) | null = null;
 
@@ -40,8 +35,6 @@ function renderStrict(token: string | null) {
 describe('useVerifyEmail', () => {
   beforeEach(() => {
     verifyEmailMock.mockReset();
-    fetchUserMock.mockReset();
-    fetchUserMock.mockResolvedValue(undefined);
     retryRef = null;
   });
 
@@ -57,17 +50,15 @@ describe('useVerifyEmail', () => {
     expect(screen.getByTestId('state')).not.toHaveTextContent('already_verified');
     expect(verifyEmailMock).toHaveBeenCalledTimes(1);
     expect(verifyEmailMock).toHaveBeenCalledWith('tok-1');
-    expect(fetchUserMock).toHaveBeenCalledTimes(1);
   });
 
-  it('calls fetchUser after already_verified', async () => {
+  it('ends in already_verified', async () => {
     verifyEmailMock.mockResolvedValue({ status: 'already_verified' });
     renderStrict('tok-2');
 
     await waitFor(() =>
       expect(screen.getByTestId('state')).toHaveTextContent('already_verified')
     );
-    expect(fetchUserMock).toHaveBeenCalledTimes(1);
   });
 
   it('does not call the API without a token', () => {
@@ -83,7 +74,6 @@ describe('useVerifyEmail', () => {
     renderStrict('tok-3');
 
     await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('error'));
-    expect(fetchUserMock).not.toHaveBeenCalled();
 
     act(() => retryRef?.());
 

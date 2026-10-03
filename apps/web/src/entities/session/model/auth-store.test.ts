@@ -14,29 +14,37 @@ type RefreshTokens = { accessToken: string; refreshToken: string; expiresIn: num
 // (hoisted as `undefined`) before this line's own (re-)declaration would run.
 var onTokenRefreshListener: ((tokens: RefreshTokens) => void) | null;
 
-vi.mock('@bookhaven/api-client', () => ({
-  api: {
-    auth: {
-      me: (...args: unknown[]) => meMock(...args),
-      login: (...args: unknown[]) => loginMock(...args),
-      register: (...args: unknown[]) => registerMock(...args),
-      logout: (...args: unknown[]) => logoutMock(...args),
-      refresh: (...args: unknown[]) => refreshMock(...args),
+vi.mock('@bookhaven/api-client', async () => {
+  const actual = await vi.importActual<typeof import('@bookhaven/api-client')>(
+    '@bookhaven/api-client'
+  );
+  return {
+    ApiError: actual.ApiError,
+    isEmailNotVerifiedError: actual.isEmailNotVerifiedError,
+    api: {
+      auth: {
+        me: (...args: unknown[]) => meMock(...args),
+        login: (...args: unknown[]) => loginMock(...args),
+        register: (...args: unknown[]) => registerMock(...args),
+        logout: (...args: unknown[]) => logoutMock(...args),
+        refresh: (...args: unknown[]) => refreshMock(...args),
+      },
     },
-  },
-  onTokenRefresh: (listener: (tokens: RefreshTokens) => void) => {
-    onTokenRefreshListener = listener;
-    return () => {
-      onTokenRefreshListener = null;
-    };
-  },
-  scheduleTokenRefresh: (expiresIn: number, onDue: () => void) => {
-    scheduleTokenRefreshMock(expiresIn, onDue);
-    return cancelMock;
-  },
-  FALLBACK_ACCESS_TOKEN_TTL_SECONDS: 900,
-}));
+    onTokenRefresh: (listener: (tokens: RefreshTokens) => void) => {
+      onTokenRefreshListener = listener;
+      return () => {
+        onTokenRefreshListener = null;
+      };
+    },
+    scheduleTokenRefresh: (expiresIn: number, onDue: () => void) => {
+      scheduleTokenRefreshMock(expiresIn, onDue);
+      return cancelMock;
+    },
+    FALLBACK_ACCESS_TOKEN_TTL_SECONDS: 900,
+  };
+});
 
+import { ApiError } from '@bookhaven/api-client';
 import { useAuthStore } from './auth-store';
 
 describe('auth-store proactive refresh', () => {
@@ -67,17 +75,49 @@ describe('auth-store proactive refresh', () => {
     expect(scheduleTokenRefreshMock).toHaveBeenCalledWith(900, expect.any(Function));
   });
 
-  it('schedules a refresh timer on successful register using the real expires_in', async () => {
-    registerMock.mockResolvedValue({
-      user: { id: '1', email: 'user@example.com' },
-      accessToken: 'access',
-      refreshToken: 'refresh',
-      expiresIn: 1234,
-    });
+  it('register does not create a session', async () => {
+    useAuthStore.setState({ user: null, isAuthenticated: false, error: null });
+    registerMock.mockResolvedValue({ email: 'user@example.com', verificationRequired: true });
 
-    await useAuthStore.getState().register('user@example.com', 'password123', 'User');
+    const result = await useAuthStore
+      .getState()
+      .register('user@example.com', 'password123', 'User');
 
-    expect(scheduleTokenRefreshMock).toHaveBeenCalledWith(1234, expect.any(Function));
+    expect(result).toEqual({ email: 'user@example.com' });
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(scheduleTokenRefreshMock).not.toHaveBeenCalled();
+  });
+
+  it('login with email_not_verified rethrows without setting error', async () => {
+    useAuthStore.setState({ user: null, isAuthenticated: false, error: null });
+    const err = new ApiError(
+      403,
+      'Forbidden',
+      'email not verified',
+      '/api/v1/auth/login',
+      'email_not_verified'
+    );
+    loginMock.mockRejectedValue(err);
+
+    await expect(
+      useAuthStore.getState().login('user@example.com', 'password123')
+    ).rejects.toBe(err);
+
+    expect(useAuthStore.getState().error).toBeNull();
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(scheduleTokenRefreshMock).not.toHaveBeenCalled();
+  });
+
+  it('login with other errors sets error', async () => {
+    useAuthStore.setState({ error: null });
+    loginMock.mockRejectedValue(
+      new ApiError(401, 'Unauthorized', 'invalid credentials', '/api/v1/auth/login')
+    );
+
+    await expect(useAuthStore.getState().login('user@example.com', 'bad')).rejects.toBeTruthy();
+
+    expect(useAuthStore.getState().error).toBe('invalid credentials');
   });
 
   it('schedules a fallback refresh timer when fetchUser finds an existing session', async () => {

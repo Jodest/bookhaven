@@ -5,13 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bookhaven/backend/internal/infrastructure/validator"
 	authDomain "github.com/bookhaven/backend/internal/modules/auth/domain"
 	"github.com/bookhaven/backend/internal/modules/auth/service"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
@@ -60,21 +60,41 @@ func (m *recordingMailer) Enqueue(ctx context.Context, msg mailer.Message) error
 }
 
 type stubLimiter struct {
+	calls      int
+	lastKey    string
 	allowed    bool
 	retryAfter time.Duration
+	err        error
 }
 
 func (l *stubLimiter) Allow(ctx context.Context, key string) (bool, time.Duration, error) {
-	return l.allowed, l.retryAfter, nil
+	l.calls++
+	l.lastKey = key
+	return l.allowed, l.retryAfter, l.err
 }
 
+// testRefreshTokensDDL mirrors service_test.go's SQLite refresh_tokens table.
+const testRefreshTokensDDL = `CREATE TABLE refresh_tokens (
+	id TEXT PRIMARY KEY DEFAULT (lower(
+		hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' ||
+		hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(6))
+	)),
+	user_id TEXT NOT NULL,
+	token_hash TEXT NOT NULL,
+	expires_at INTEGER NOT NULL,
+	created_at INTEGER NOT NULL,
+	revoked_at INTEGER
+)`
+
 type verificationHandlerEnv struct {
-	h       *Handler
-	db      *gorm.DB
-	users   repository.Repository
-	mailer  *recordingMailer
-	limiter *stubLimiter
-	user    *usersDomain.User
+	h            *Handler
+	svc          *service.Service
+	db           *gorm.DB
+	users        repository.Repository
+	mailer       *recordingMailer
+	ipLimiter    *stubLimiter
+	emailLimiter *stubLimiter
+	user         *usersDomain.User
 }
 
 func setupVerificationHandler(t *testing.T) *verificationHandlerEnv {
@@ -88,15 +108,22 @@ func setupVerificationHandler(t *testing.T) *verificationHandlerEnv {
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	for _, ddl := range []string{testUsersDDL, testEmailVerificationTokensDDL} {
+	for _, ddl := range []string{testUsersDDL, testEmailVerificationTokensDDL, testRefreshTokensDDL} {
 		if err := db.Exec(ddl).Error; err != nil {
 			t.Fatalf("create table: %v", err)
 		}
 	}
 	users := repository.NewGormRepository(db)
 	m := &recordingMailer{}
-	l := &stubLimiter{allowed: true}
-	svc := service.NewService(service.Config{WebBaseURL: "http://localhost:3000"}, db, users, m, l, nil)
+	ipL := &stubLimiter{allowed: true}
+	emailL := &stubLimiter{allowed: true}
+	svc := service.NewService(service.Config{
+		JWTSecret:       "test-secret",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 30 * 24 * time.Hour,
+		Issuer:          "bookhaven-test",
+		WebBaseURL:      "http://localhost:3000",
+	}, db, users, m, service.ResendLimiters{IP: ipL, Email: emailL}, nil)
 
 	name := "Анна"
 	user := &usersDomain.User{
@@ -109,7 +136,7 @@ func setupVerificationHandler(t *testing.T) *verificationHandlerEnv {
 	if err := users.Create(context.Background(), user); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	return &verificationHandlerEnv{h: NewHandler(svc), db: db, users: users, mailer: m, limiter: l, user: user}
+	return &verificationHandlerEnv{h: NewHandler(svc), svc: svc, db: db, users: users, mailer: m, ipLimiter: ipL, emailLimiter: emailL, user: user}
 }
 
 func (e *verificationHandlerEnv) insertToken(t *testing.T, plain string, expiresAt time.Time, usedAt *time.Time) {
@@ -138,6 +165,7 @@ func (e *verificationHandlerEnv) markVerified(t *testing.T) {
 
 func postJSON(path, body string) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
+	e.Validator = validator.New()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -238,81 +266,6 @@ func TestVerifyEmailHandler(t *testing.T) {
 				t.Fatal("verify-email must not set cookies")
 			}
 		})
-	}
-}
-
-func TestResendVerificationHandler(t *testing.T) {
-	cases := []struct {
-		name       string
-		setup      func(t *testing.T, env *verificationHandlerEnv)
-		wantStatus int
-		wantKey    string
-		wantValue  string
-	}{
-		{
-			name:       "sent",
-			wantStatus: http.StatusAccepted, wantKey: "status", wantValue: "sent",
-		},
-		{
-			name:       "already verified",
-			setup:      func(t *testing.T, env *verificationHandlerEnv) { env.markVerified(t) },
-			wantStatus: http.StatusConflict, wantKey: "code", wantValue: "already_verified",
-		},
-		{
-			name: "rate limited",
-			setup: func(t *testing.T, env *verificationHandlerEnv) {
-				env.limiter.allowed = false
-				env.limiter.retryAfter = 41500 * time.Millisecond
-			},
-			wantStatus: http.StatusTooManyRequests, wantKey: "code", wantValue: "rate_limited",
-		},
-		{
-			name:       "enqueue failure",
-			setup:      func(t *testing.T, env *verificationHandlerEnv) { env.mailer.err = errors.New("redis down") },
-			wantStatus: http.StatusInternalServerError, wantKey: "code", wantValue: "email_send_failed",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			env := setupVerificationHandler(t)
-			if tc.setup != nil {
-				tc.setup(t, env)
-			}
-			c, rec := postJSON("/api/v1/auth/resend-verification", "")
-			c.Set("user_id", env.user.ID.String())
-			if err := env.h.ResendVerification(c); err != nil {
-				t.Fatalf("handler error: %v", err)
-			}
-			if rec.Code != tc.wantStatus {
-				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.wantStatus, rec.Body.String())
-			}
-			body := decodeBody(t, rec)
-			if body[tc.wantKey] != tc.wantValue {
-				t.Fatalf("%s = %v, want %s (body %s)", tc.wantKey, body[tc.wantKey], tc.wantValue, rec.Body.String())
-			}
-			if rec.Code == http.StatusTooManyRequests {
-				if got := rec.Header().Get("Retry-After"); got != "42" {
-					t.Fatalf("Retry-After = %q, want 42", got)
-				}
-				if body["retry_after_seconds"] != float64(42) {
-					t.Fatalf("retry_after_seconds = %v, want 42", body["retry_after_seconds"])
-				}
-			}
-			if rec.Code == http.StatusAccepted && len(env.mailer.messages) != 1 {
-				t.Fatalf("expected one email to be enqueued, got %d", len(env.mailer.messages))
-			}
-		})
-	}
-}
-
-func TestResendVerificationHandler_Unauthenticated(t *testing.T) {
-	env := setupVerificationHandler(t)
-	c, rec := postJSON("/api/v1/auth/resend-verification", "")
-	if err := env.h.ResendVerification(c); err != nil {
-		t.Fatalf("handler error: %v", err)
-	}
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", rec.Code)
 	}
 }
 

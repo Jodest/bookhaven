@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuthStore } from '@/entities/session';
-import { isSafeRedirectPath } from '@/shared/lib/safe-redirect';
+import { loginHrefWithRedirect } from '@/shared/lib/safe-redirect';
 import { Button } from '@bookhaven/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
@@ -20,6 +20,7 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 interface RegisterFormProps {
   // When provided, called with the registered email instead of navigating
   // away (the register view shows a "check your email" panel in place).
+  // Without it the form navigates to /login: registration issues no session.
   onRegistered?: (email: string) => void;
 }
 
@@ -44,8 +45,7 @@ export function RegisterForm({ onRegistered }: RegisterFormProps = {}) {
         onRegistered(data.email);
         return;
       }
-      const redirect = searchParams.get('redirect');
-      router.push((isSafeRedirectPath(redirect) ? redirect : '/profile') as any);
+      router.push(loginHrefWithRedirect(searchParams.get('redirect')) as any);
     } catch {
       // ошибка уже в store
     }

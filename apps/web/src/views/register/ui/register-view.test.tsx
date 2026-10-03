@@ -4,6 +4,7 @@ import { RegisterView } from './register-view';
 
 const pushMock = vi.fn();
 const registerMock = vi.fn();
+const resendVerificationMock = vi.fn();
 let searchParamsValue = new URLSearchParams();
 
 vi.mock('next/navigation', () => ({
@@ -18,15 +19,14 @@ vi.mock('@bookhaven/api-client', async () => {
   return {
     ApiError: actual.ApiError,
     isApiError: actual.isApiError,
-    api: { auth: { resendVerification: vi.fn() } },
+    api: {
+      auth: { resendVerification: (email: string) => resendVerificationMock(email) },
+    },
   };
 });
 
 vi.mock('@/entities/session', () => ({
-  useAuthStore: Object.assign(
-    () => ({ register: registerMock, error: null, clearError: vi.fn() }),
-    { getState: () => ({ fetchUser: vi.fn() }) }
-  ),
+  useAuthStore: () => ({ register: registerMock, error: null, clearError: vi.fn() }),
 }));
 
 async function register() {
@@ -41,7 +41,9 @@ describe('RegisterView', () => {
   beforeEach(() => {
     searchParamsValue = new URLSearchParams();
     registerMock.mockReset();
-    registerMock.mockResolvedValue(undefined);
+    registerMock.mockResolvedValue({ email: 'user@example.com' });
+    resendVerificationMock.mockReset();
+    resendVerificationMock.mockResolvedValue({ status: 'sent' });
     pushMock.mockReset();
   });
 
@@ -49,7 +51,7 @@ describe('RegisterView', () => {
     vi.clearAllMocks();
   });
 
-  it('switches to the check-email panel with a safe continue link', async () => {
+  it('switches to the check-email panel with a login link keeping a safe redirect', async () => {
     searchParamsValue = new URLSearchParams({ redirect: '/books/abc' });
     render(<RegisterView />);
 
@@ -57,20 +59,33 @@ describe('RegisterView', () => {
 
     expect(await screen.findByText('Проверьте почту')).toBeInTheDocument();
     expect(screen.getByText('user@example.com')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Отправить письмо ещё раз' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Продолжить' })).toHaveAttribute('href', '/books/abc');
+    expect(screen.getByText(/Войти можно после подтверждения/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Войти' })).toHaveAttribute(
+      'href',
+      '/login?redirect=%2Fbooks%2Fabc'
+    );
+    expect(screen.queryByRole('link', { name: 'Продолжить' })).toBeNull();
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it('continue link falls back to /profile for an unsafe redirect', async () => {
+  it('login link drops an unsafe redirect', async () => {
     searchParamsValue = new URLSearchParams({ redirect: '//evil.com' });
     render(<RegisterView />);
 
     await register();
 
-    expect(await screen.findByRole('link', { name: 'Продолжить' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Войти' })).toHaveAttribute(
       'href',
-      '/profile'
+      '/login'
     );
+  });
+
+  it('resend uses the registered email', async () => {
+    render(<RegisterView />);
+
+    await register();
+    fireEvent.click(await screen.findByRole('button', { name: 'Отправить письмо ещё раз' }));
+
+    await waitFor(() => expect(resendVerificationMock).toHaveBeenCalledWith('user@example.com'));
   });
 });

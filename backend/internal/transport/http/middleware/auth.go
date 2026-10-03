@@ -10,7 +10,12 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// Auth creates an authentication middleware.
+// codeEmailNotVerified mirrors the auth transport's code (not imported to
+// keep middleware independent of the auth handler package).
+const codeEmailNotVerified = "email_not_verified"
+
+// Auth creates an authentication middleware. Users whose email is not
+// verified are not authenticated (401 email_not_verified).
 func Auth(authService *service.Service, usersRepo repository.Repository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -28,6 +33,9 @@ func Auth(authService *service.Service, usersRepo repository.Repository) echo.Mi
 			if err != nil {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user not found"})
 			}
+			if user.EmailVerifiedAt == nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "email not verified", "code": codeEmailNotVerified})
+			}
 
 			c.Set("user_id", userID.String())
 			c.Set("user", user)
@@ -37,6 +45,7 @@ func Auth(authService *service.Service, usersRepo repository.Repository) echo.Mi
 }
 
 // OptionalAuth creates middleware that sets user if token is present, but doesn't require it.
+// Users whose email is not verified are treated as anonymous.
 func OptionalAuth(authService *service.Service, usersRepo repository.Repository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -51,7 +60,7 @@ func OptionalAuth(authService *service.Service, usersRepo repository.Repository)
 			}
 
 			user, err := usersRepo.GetByID(c.Request().Context(), userID)
-			if err == nil {
+			if err == nil && user.EmailVerifiedAt != nil {
 				c.Set("user_id", userID.String())
 				c.Set("user", user)
 			}

@@ -1,6 +1,7 @@
 import {
   api,
   FALLBACK_ACCESS_TOKEN_TTL_SECONDS,
+  isEmailNotVerifiedError,
   onTokenRefresh,
   scheduleTokenRefresh,
   User,
@@ -14,7 +15,9 @@ interface AuthState {
   error: string | null;
   fetchUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
+  // Creates the account; no session is issued (the email must be verified
+  // before logging in). Resolves with the registered email.
+  register: (email: string, password: string, name: string) => Promise<{ email: string }>;
   logout: () => Promise<void>;
   setUser: (user: User) => void;
   clearError: () => void;
@@ -62,8 +65,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user: response.user, isAuthenticated: true, isLoading: false });
       scheduleRefresh(response.expiresIn);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Ошибка входа';
-      set({ error: message });
+      // email_not_verified is shown by the login view's own panel.
+      if (!isEmailNotVerifiedError(error)) {
+        const message = error instanceof Error ? error.message : 'Ошибка входа';
+        set({ error: message });
+      }
       throw error;
     }
   },
@@ -72,8 +78,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ error: null });
     try {
       const response = await api.auth.register({ email, password, name });
-      set({ user: response.user, isAuthenticated: true, isLoading: false });
-      scheduleRefresh(response.expiresIn);
+      return { email: response.email };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Ошибка регистрации';
       set({ error: message });

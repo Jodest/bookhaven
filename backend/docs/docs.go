@@ -1712,6 +1712,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
+                "description": "Сначала проверяется пароль, затем подтверждение email. Если пароль верный, но email не подтверждён, возвращается 403 с кодом email_not_verified, токены не создаются и cookies не устанавливаются.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1756,6 +1757,12 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    },
+                    "403": {
+                        "description": "code: email_not_verified",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
                         }
                     },
                     "500": {
@@ -1850,7 +1857,7 @@ const docTemplate = `{
         },
         "/auth/refresh": {
             "post": {
-                "description": "Принимает refresh-токен в теле запроса или в cookie refresh_token",
+                "description": "Принимает refresh-токен в теле запроса или в cookie refresh_token. Если email пользователя не подтверждён, все его refresh-токены отзываются, auth-cookies очищаются и возвращается 401 с кодом email_not_verified.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1889,12 +1896,9 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "code: email_not_verified (без кода - недействительный токен)",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
                         }
                     }
                 }
@@ -1902,7 +1906,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
-                "description": "Создаёт пользователя и сразу выполняет вход, устанавливая auth-cookies",
+                "description": "Создаёт пользователя и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1928,7 +1932,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_auth_transport_http.authResponse"
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.registerResponse"
                         }
                     },
                     "400": {
@@ -1963,12 +1967,10 @@ const docTemplate = `{
         },
         "/auth/resend-verification": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
+                "description": "Публичный эндпоинт. Если адрес принадлежит неподтверждённому аккаунту, удаляет его неиспользованные ссылки подтверждения и отправляет новую. Ответ 202 одинаков для любого корректного адреса (неизвестного, уже подтверждённого и т.д.), чтобы не раскрывать, какие адреса зарегистрированы. Ограничения: 20 запросов в час с одного IP; для одного адреса 1 раз в минуту и 5 раз в сутки. Коды ошибок: invalid_email, rate_limited, email_send_failed.",
+                "consumes": [
+                    "application/json"
                 ],
-                "description": "Удаляет неиспользованные ссылки подтверждения текущего пользователя и отправляет новую. Ограничение: 1 раз в минуту и 5 раз в сутки. Коды ошибок: already_verified, rate_limited, email_send_failed.",
                 "produces": [
                     "application/json"
                 ],
@@ -1976,6 +1978,17 @@ const docTemplate = `{
                     "auth"
                 ],
                 "summary": "Повторно отправить письмо подтверждения email",
+                "parameters": [
+                    {
+                        "description": "Email аккаунта",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.resendVerificationRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "202": {
                         "description": "status: sent",
@@ -1983,17 +1996,8 @@ const docTemplate = `{
                             "$ref": "#/definitions/internal_modules_auth_transport_http.statusResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
                         }
@@ -5404,6 +5408,30 @@ const docTemplate = `{
                 "password": {
                     "type": "string",
                     "minLength": 8
+                }
+            }
+        },
+        "internal_modules_auth_transport_http.registerResponse": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "anna@example.com"
+                },
+                "verification_required": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_modules_auth_transport_http.resendVerificationRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
                 }
             }
         },
