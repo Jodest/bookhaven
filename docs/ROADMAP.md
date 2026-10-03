@@ -34,7 +34,15 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-(none queued)
+Email verification at registration chain (epic #162):
+
+1. [ ] Mailer infrastructure — SMTP sender, async `email:send` queue in the worker, Mailpit for local dev (see [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md), #157) — implemented, pending merge
+2. [ ] Email verification backend (#158)
+3. [ ] Email verification frontend (#159)
+4. [ ] Restrictions for unverified users (#160)
+5. [ ] Password reset by email (#161)
+
+Email notifications (#121, in Proposed) also depend on #157.
 
 ## Proposed (awaiting prioritization)
 
