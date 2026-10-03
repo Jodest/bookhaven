@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// `/verify-email` must stay public (in neither list): the emailed link has to
-// work logged in and logged out, in any browser.
+// `/verify-email`, `/forgot-password` and `/reset-password` must stay public
+// (in neither list) and must not redirect logged-in users: the emailed links
+// have to work logged in and logged out, in any browser, and the forgot form
+// is harmless for a logged-in user.
 const protectedRoutes = ['/profile', '/shelves'];
 const authRoutes = ['/login', '/register'];
 

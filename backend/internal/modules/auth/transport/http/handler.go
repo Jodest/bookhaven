@@ -87,6 +87,16 @@ type verifyEmailRequest struct {
 	Token string `json:"token"`
 }
 
+type forgotPasswordRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+// resetPasswordRequest: the password rule is identical to registerRequest.
+type resetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
 // statusResponse is the success body of the email verification endpoints.
 type statusResponse struct {
 	Status string `json:"status" example:"verified"`
@@ -115,6 +125,7 @@ const (
 	codeEmailSendFailed  = "email_send_failed"
 	codeEmailNotVerified = "email_not_verified"
 	codeInvalidEmail     = "invalid_email"
+	codeInvalidPassword  = "invalid_password"
 )
 
 // Register godoc
@@ -350,19 +361,96 @@ func (h *Handler) ResendVerification(c echo.Context) error {
 	}
 	var rateErr *service.RateLimitError
 	if errors.As(err, &rateErr) {
-		seconds := int(math.Ceil(rateErr.RetryAfter.Seconds()))
-		if seconds < 1 {
-			seconds = 1
-		}
-		c.Response().Header().Set("Retry-After", strconv.Itoa(seconds))
-		return c.JSON(http.StatusTooManyRequests, rateLimitedResponse{
-			Error:             "too many requests",
-			Code:              codeRateLimited,
-			RetryAfterSeconds: seconds,
-		})
+		return writeRateLimited(c, rateErr)
 	}
 	c.Logger().Error(err)
 	return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to send verification email", Code: codeEmailSendFailed})
+}
+
+// ForgotPassword godoc
+// @Summary Запросить сброс пароля
+// @Description Публичный эндпоинт. Если адрес принадлежит аккаунту с паролем (подтверждённому или нет), удаляет его неиспользованные ссылки сброса и отправляет письмо с новой ссылкой (действует 1 час, одноразовая). Ответ 202 одинаков для любого корректного адреса (неизвестного, без пароля и т.д.), чтобы не раскрывать, какие адреса зарегистрированы. Ограничения: 20 запросов в час с одного IP; для одного адреса 1 раз в минуту и 5 раз в сутки. Коды ошибок: invalid_email, rate_limited, email_send_failed.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body forgotPasswordRequest true "Email аккаунта"
+// @Success 202 {object} statusResponse "status: sent"
+// @Failure 400 {object} errorResponse
+// @Failure 429 {object} rateLimitedResponse
+// @Header 429 {integer} Retry-After "Секунд до следующей попытки"
+// @Failure 500 {object} errorResponse
+// @Router /auth/forgot-password [post]
+func (h *Handler) ForgotPassword(c echo.Context) error {
+	var req forgotPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid email", Code: codeInvalidEmail})
+	}
+	if err := c.Validate(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid email", Code: codeInvalidEmail})
+	}
+
+	err := h.service.ForgotPassword(c.Request().Context(), req.Email, c.RealIP())
+	if err == nil {
+		return c.JSON(http.StatusAccepted, statusResponse{Status: "sent"})
+	}
+	var rateErr *service.RateLimitError
+	if errors.As(err, &rateErr) {
+		return writeRateLimited(c, rateErr)
+	}
+	c.Logger().Error(err)
+	return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to send password reset email", Code: codeEmailSendFailed})
+}
+
+// ResetPassword godoc
+// @Summary Сбросить пароль
+// @Description Публичный эндпоинт. Устанавливает новый пароль по одноразовому токену из письма. Пароль проверяется до токена (минимум 8 символов), поэтому отклонённый пароль не расходует ссылку. При успехе: токен помечается использованным, email считается подтверждённым, все refresh-токены пользователя отзываются, auth-cookies очищаются. Вход не выполняется. Коды ошибок: invalid_password, invalid_token, token_used, token_expired.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body resetPasswordRequest true "Токен из ссылки в письме и новый пароль"
+// @Success 200 {object} statusResponse "status: password_reset"
+// @Failure 400 {object} errorResponse
+// @Failure 500 {object} map[string]string
+// @Router /auth/reset-password [post]
+func (h *Handler) ResetPassword(c echo.Context) error {
+	var req resetPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid token", Code: codeInvalidToken})
+	}
+	if err := c.Validate(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error(), Code: codeInvalidPassword})
+	}
+
+	err := h.service.ResetPassword(c.Request().Context(), req.Token, req.Password)
+	switch {
+	case err == nil:
+		clearAuthCookies(c)
+		return c.JSON(http.StatusOK, statusResponse{Status: "password_reset"})
+	case errors.Is(err, service.ErrResetTokenInvalid):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid token", Code: codeInvalidToken})
+	case errors.Is(err, service.ErrResetTokenExpired):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "token expired", Code: codeTokenExpired})
+	case errors.Is(err, service.ErrResetTokenUsed):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "token already used", Code: codeTokenUsed})
+	default:
+		c.Logger().Error(err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to reset password"})
+	}
+}
+
+// writeRateLimited writes the 429 response (Retry-After header and body,
+// at least 1 second) for a rate-limited request.
+func writeRateLimited(c echo.Context, rateErr *service.RateLimitError) error {
+	seconds := int(math.Ceil(rateErr.RetryAfter.Seconds()))
+	if seconds < 1 {
+		seconds = 1
+	}
+	c.Response().Header().Set("Retry-After", strconv.Itoa(seconds))
+	return c.JSON(http.StatusTooManyRequests, rateLimitedResponse{
+		Error:             "too many requests",
+		Code:              codeRateLimited,
+		RetryAfterSeconds: seconds,
+	})
 }
 
 func setAuthCookies(c echo.Context, tokens *authDomain.TokenPair) {

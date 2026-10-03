@@ -32,6 +32,12 @@ type VerifyEmailData struct {
 	TTLHours  int
 }
 
+// ResetPasswordData is the template data for the "reset_password" email.
+type ResetPasswordData struct {
+	Name     string
+	ResetURL string
+}
+
 type emailTemplate struct {
 	text *texttemplate.Template
 	html *htmltemplate.Template // nil when the email has no HTML part

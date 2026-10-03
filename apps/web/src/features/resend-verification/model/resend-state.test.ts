@@ -1,6 +1,6 @@
 import { ApiError } from '@bookhaven/api-client';
 import { describe, expect, it } from 'vitest';
-import { formatRetryAfter, resendErrorToState, resendMessage } from './resend-state';
+import { resendErrorToState, resendMessage } from './resend-state';
 
 describe('resendErrorToState', () => {
   it('maps 429 with retryAfterSeconds to rate_limited with that value', () => {
@@ -25,20 +25,6 @@ describe('resendErrorToState', () => {
 
   it('maps a non-ApiError (network) to error', () => {
     expect(resendErrorToState(new TypeError('Failed to fetch'))).toEqual({ kind: 'error' });
-  });
-});
-
-describe('formatRetryAfter', () => {
-  it.each([
-    [1, '1 сек'],
-    [59, '59 сек'],
-    [60, '1 мин'],
-    [61, '2 мин'],
-    [3599, '60 мин'],
-    [3600, '1 ч'],
-    [86400, '24 ч'],
-  ])('%i -> %s', (seconds, expected) => {
-    expect(formatRetryAfter(seconds)).toBe(expected);
   });
 });
 

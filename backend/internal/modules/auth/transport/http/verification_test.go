@@ -94,8 +94,21 @@ type verificationHandlerEnv struct {
 	mailer       *recordingMailer
 	ipLimiter    *stubLimiter
 	emailLimiter *stubLimiter
-	user         *usersDomain.User
+	// resetIPLimiter / resetEmailLimiter limit forgot-password.
+	resetIPLimiter    *stubLimiter
+	resetEmailLimiter *stubLimiter
+	user              *usersDomain.User
 }
+
+const testPasswordResetTokensDDL = `CREATE TABLE password_reset_tokens (
+	id TEXT PRIMARY KEY,
+	user_id TEXT NOT NULL,
+	email TEXT NOT NULL,
+	token_hash TEXT NOT NULL UNIQUE,
+	expires_at DATETIME NOT NULL,
+	used_at DATETIME,
+	created_at DATETIME NOT NULL
+)`
 
 func setupVerificationHandler(t *testing.T) *verificationHandlerEnv {
 	t.Helper()
@@ -108,7 +121,7 @@ func setupVerificationHandler(t *testing.T) *verificationHandlerEnv {
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	for _, ddl := range []string{testUsersDDL, testEmailVerificationTokensDDL, testRefreshTokensDDL} {
+	for _, ddl := range []string{testUsersDDL, testEmailVerificationTokensDDL, testRefreshTokensDDL, testPasswordResetTokensDDL} {
 		if err := db.Exec(ddl).Error; err != nil {
 			t.Fatalf("create table: %v", err)
 		}
@@ -117,13 +130,15 @@ func setupVerificationHandler(t *testing.T) *verificationHandlerEnv {
 	m := &recordingMailer{}
 	ipL := &stubLimiter{allowed: true}
 	emailL := &stubLimiter{allowed: true}
+	resetIPL := &stubLimiter{allowed: true}
+	resetEmailL := &stubLimiter{allowed: true}
 	svc := service.NewService(service.Config{
 		JWTSecret:       "test-secret",
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		Issuer:          "bookhaven-test",
 		WebBaseURL:      "http://localhost:3000",
-	}, db, users, m, service.ResendLimiters{IP: ipL, Email: emailL}, nil)
+	}, db, users, m, service.ResendLimiters{IP: ipL, Email: emailL}, service.ResendLimiters{IP: resetIPL, Email: resetEmailL}, nil)
 
 	name := "Анна"
 	user := &usersDomain.User{
@@ -136,7 +151,12 @@ func setupVerificationHandler(t *testing.T) *verificationHandlerEnv {
 	if err := users.Create(context.Background(), user); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	return &verificationHandlerEnv{h: NewHandler(svc), svc: svc, db: db, users: users, mailer: m, ipLimiter: ipL, emailLimiter: emailL, user: user}
+	return &verificationHandlerEnv{
+		h: NewHandler(svc), svc: svc, db: db, users: users, mailer: m,
+		ipLimiter: ipL, emailLimiter: emailL,
+		resetIPLimiter: resetIPL, resetEmailLimiter: resetEmailL,
+		user: user,
+	}
 }
 
 func (e *verificationHandlerEnv) insertToken(t *testing.T, plain string, expiresAt time.Time, usedAt *time.Time) {

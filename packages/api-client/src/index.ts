@@ -507,6 +507,17 @@ export type VerificationErrorCode =
   | 'rate_limited'
   | 'email_send_failed';
 
+// Machine-readable `code` values of the password reset endpoints
+// (POST /auth/forgot-password, POST /auth/reset-password).
+export type PasswordResetErrorCode =
+  | 'invalid_token'
+  | 'token_expired'
+  | 'token_used'
+  | 'invalid_password'
+  | 'invalid_email'
+  | 'rate_limited'
+  | 'email_send_failed';
+
 export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
@@ -529,8 +540,8 @@ export interface RefreshedTokens {
 // Paths that must never trigger an auto-refresh-and-retry: a 401 from these
 // means "bad credentials" / "refresh itself is dead" / "already logging out",
 // not "access token expired" — retrying would be wasteful or recursive.
-// verify-email and resend-verification are public (no session involved), so
-// a refresh there is pointless.
+// verify-email, resend-verification, forgot-password and reset-password are
+// public (no session involved), so a refresh there is pointless.
 const AUTH_REFRESH_EXCLUDED_PATHS = [
   '/api/v1/auth/login',
   '/api/v1/auth/register',
@@ -538,6 +549,8 @@ const AUTH_REFRESH_EXCLUDED_PATHS = [
   '/api/v1/auth/logout',
   '/api/v1/auth/verify-email',
   '/api/v1/auth/resend-verification',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
 ];
 
 // Mirrors backend/cmd/api/main.go's `AccessTokenTTL` (currently 15 minutes).
@@ -1084,6 +1097,24 @@ export const api = {
       fetcher<{ status: 'sent' }>('/api/v1/auth/resend-verification', {
         method: 'POST',
         body: JSON.stringify({ email }),
+      }),
+    // Public. Always 'sent' for a well-formed email (also unknown ones - the
+    // response does not reveal registered addresses). Errors carry
+    // ApiError.code (PasswordResetErrorCode: 'invalid_email' | 'rate_limited'
+    // (+ retryAfterSeconds) | 'email_send_failed').
+    forgotPassword: (email: string) =>
+      fetcher<{ status: 'sent' }>('/api/v1/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+    // Public. Sets a new password with the emailed token; revokes all
+    // sessions and clears auth cookies, does not log in. Errors carry
+    // ApiError.code (PasswordResetErrorCode: 'invalid_password' |
+    // 'invalid_token' | 'token_expired' | 'token_used').
+    resetPassword: (token: string, password: string) =>
+      fetcher<{ status: 'password_reset' }>('/api/v1/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ token, password }),
       }),
   },
   users: {
