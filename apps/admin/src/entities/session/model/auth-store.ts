@@ -1,6 +1,7 @@
 import {
   api,
   FALLBACK_ACCESS_TOKEN_TTL_SECONDS,
+  isEmailNotVerifiedError,
   onTokenRefresh,
   scheduleTokenRefresh,
   setAccessToken,
@@ -122,7 +123,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
       scheduleRefresh(response.expiresIn);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Ошибка входа';
+      const message = isEmailNotVerifiedError(error)
+        ? 'Email не подтверждён. Подтвердите его по ссылке из письма.'
+        : error instanceof Error
+          ? error.message
+          : 'Ошибка входа';
       set({ error: message });
       throw error;
     }

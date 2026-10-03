@@ -24,3 +24,13 @@ export function isSafeRedirectPath(
 
   return true;
 }
+
+/**
+ * `/login`, carrying `redirect` along only when it is a safe path (e.g. after
+ * registration, so the user lands where they started once they log in).
+ */
+export function loginHrefWithRedirect(redirect: string | null | undefined): string {
+  return isSafeRedirectPath(redirect)
+    ? `/login?${new URLSearchParams({ redirect }).toString()}`
+    : '/login';
+}

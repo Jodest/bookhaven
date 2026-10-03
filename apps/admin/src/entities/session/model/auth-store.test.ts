@@ -25,6 +25,8 @@ vi.mock('@bookhaven/api-client', () => ({
     },
   },
   setAccessToken: (...args: unknown[]) => setAccessTokenMock(...args),
+  isEmailNotVerifiedError: (error: unknown) =>
+    (error as { code?: string } | null)?.code === 'email_not_verified',
   onTokenRefresh: (listener: (tokens: RefreshTokens) => void) => {
     onTokenRefreshListener = listener;
     return () => {
@@ -161,5 +163,32 @@ describe('auth-store', () => {
       expect(logoutMock).toHaveBeenCalledTimes(1);
       expect(useAuthStore.getState().isSigningOut).toBe(false);
     });
+  });
+});
+
+describe('auth-store login errors', () => {
+  beforeEach(() => {
+    loginMock.mockReset();
+    useAuthStore.setState({ error: null });
+  });
+
+  it('shows a readable message for an unverified email (403 email_not_verified)', async () => {
+    const err = Object.assign(new Error('email not verified'), { code: 'email_not_verified' });
+    loginMock.mockRejectedValue(err);
+
+    await expect(useAuthStore.getState().login('a@example.com', 'password123')).rejects.toBe(err);
+
+    expect(useAuthStore.getState().error).toBe(
+      'Email не подтверждён. Подтвердите его по ссылке из письма.'
+    );
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+  });
+
+  it('keeps the error message for other failures', async () => {
+    loginMock.mockRejectedValue(new Error('invalid credentials'));
+
+    await expect(useAuthStore.getState().login('a@example.com', 'bad')).rejects.toBeTruthy();
+
+    expect(useAuthStore.getState().error).toBe('invalid credentials');
   });
 });

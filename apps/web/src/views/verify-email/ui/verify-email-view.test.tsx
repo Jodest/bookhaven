@@ -1,17 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VerifyEmailView } from './verify-email-view';
 
 const verifyEmailMock = vi.fn();
-const fetchUserMock = vi.fn();
+const resendVerificationMock = vi.fn();
 let searchParamsValue = new URLSearchParams();
-
-type AuthSnapshot = {
-  user: { id: string; email: string; emailVerified: boolean } | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-};
-let authState: AuthSnapshot = { user: null, isAuthenticated: false, isLoading: false };
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsValue,
@@ -27,17 +20,11 @@ vi.mock('@bookhaven/api-client', async () => {
     api: {
       auth: {
         verifyEmail: (token: string) => verifyEmailMock(token),
-        resendVerification: vi.fn(),
+        resendVerification: (email: string) => resendVerificationMock(email),
       },
     },
   };
 });
-
-vi.mock('@/entities/session', () => ({
-  useAuthStore: Object.assign(() => authState, {
-    getState: () => ({ fetchUser: fetchUserMock }),
-  }),
-}));
 
 async function expiredTokenError() {
   const { ApiError } = await vi.importActual<typeof import('@bookhaven/api-client')>(
@@ -47,61 +34,67 @@ async function expiredTokenError() {
 }
 
 const RESEND = { name: 'Отправить письмо ещё раз' };
+const SENT =
+  'Если этот адрес зарегистрирован и не подтверждён, мы отправили на него новое письмо.';
 
 describe('VerifyEmailView', () => {
   beforeEach(async () => {
     searchParamsValue = new URLSearchParams({ token: 'abc' });
     verifyEmailMock.mockReset();
     verifyEmailMock.mockRejectedValue(await expiredTokenError());
-    fetchUserMock.mockReset();
+    resendVerificationMock.mockReset();
+    resendVerificationMock.mockResolvedValue({ status: 'sent' });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('token_expired + logged-in unverified user -> resend button', async () => {
-    authState = {
-      user: { id: 'u1', email: 'a@example.com', emailVerified: false },
-      isAuthenticated: true,
-      isLoading: false,
-    };
+  it('verified -> login and catalog links', async () => {
+    verifyEmailMock.mockResolvedValue({ status: 'verified' });
     render(<VerifyEmailView />);
 
-    expect(await screen.findByText('Срок действия ссылки истёк')).toBeInTheDocument();
-    expect(screen.getByRole('button', RESEND)).toBeInTheDocument();
+    expect(await screen.findByText('Email подтверждён')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Войти' })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: 'К каталогу' })).toHaveAttribute('href', '/books');
     expect(verifyEmailMock).toHaveBeenCalledWith('abc');
   });
 
-  it('token_expired + logged out -> login link', async () => {
-    authState = { user: null, isAuthenticated: false, isLoading: false };
+  it('already_verified -> login link', async () => {
+    verifyEmailMock.mockResolvedValue({ status: 'already_verified' });
     render(<VerifyEmailView />);
 
-    expect(await screen.findByText('Срок действия ссылки истёк')).toBeInTheDocument();
-    expect(screen.getByText('Войдите, чтобы получить новое письмо.')).toBeInTheDocument();
+    expect(await screen.findByText('Email уже подтверждён')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Войти' })).toHaveAttribute('href', '/login');
-    expect(screen.queryByRole('button', RESEND)).toBeNull();
   });
 
-  it('token_expired + logged-in verified user -> no resend button', async () => {
-    authState = {
-      user: { id: 'u1', email: 'a@example.com', emailVerified: true },
-      isAuthenticated: true,
-      isLoading: false,
-    };
+  it('token_expired -> email form that resends to the typed address', async () => {
     render(<VerifyEmailView />);
 
     expect(await screen.findByText('Срок действия ссылки истёк')).toBeInTheDocument();
-    expect(screen.getByText('Ваш email уже подтверждён.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', RESEND)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.com' } });
+    fireEvent.click(screen.getByRole('button', RESEND));
+
+    await waitFor(() => expect(resendVerificationMock).toHaveBeenCalledWith('a@example.com'));
+    expect(await screen.findByText(SENT)).toBeInTheDocument();
   });
 
-  it('blank token -> no API call and missing-token copy', () => {
+  it('resend form rejects an empty email without calling the API', async () => {
+    render(<VerifyEmailView />);
+
+    expect(await screen.findByText('Срок действия ссылки истёк')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', RESEND));
+
+    expect(await screen.findByText('Введите корректный email')).toBeInTheDocument();
+    expect(resendVerificationMock).not.toHaveBeenCalled();
+  });
+
+  it('blank token -> no API call, missing-token copy and resend form', () => {
     searchParamsValue = new URLSearchParams({ token: '   ' });
-    authState = { user: null, isAuthenticated: false, isLoading: false };
     render(<VerifyEmailView />);
 
     expect(screen.getByText('Ссылка неполная')).toBeInTheDocument();
+    expect(screen.getByRole('button', RESEND)).toBeInTheDocument();
     expect(verifyEmailMock).not.toHaveBeenCalled();
   });
 });

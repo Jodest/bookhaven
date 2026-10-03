@@ -13,9 +13,9 @@ describe('resendErrorToState', () => {
     expect(resendErrorToState(err)).toEqual({ kind: 'rate_limited', retryAfterSeconds: 60 });
   });
 
-  it('maps 409 already_verified', () => {
-    const err = new ApiError(409, 'Conflict', 'x', '/p', 'already_verified');
-    expect(resendErrorToState(err)).toEqual({ kind: 'already_verified' });
+  it('maps 400 invalid_email to error', () => {
+    const err = new ApiError(400, 'Bad Request', 'x', '/p', 'invalid_email');
+    expect(resendErrorToState(err)).toEqual({ kind: 'error' });
   });
 
   it('maps 500 email_send_failed to error', () => {
@@ -46,6 +46,12 @@ describe('resendMessage', () => {
   it('renders the rate-limit message with formatted wait', () => {
     expect(resendMessage({ kind: 'rate_limited', retryAfterSeconds: 90 })).toBe(
       'Слишком много запросов. Попробуйте снова через 2 мин.'
+    );
+  });
+
+  it('renders the enumeration-safe sent message', () => {
+    expect(resendMessage({ kind: 'sent' })).toBe(
+      'Если этот адрес зарегистрирован и не подтверждён, мы отправили на него новое письмо.'
     );
   });
 

@@ -26,6 +26,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Duplicate author merge — admin action to consolidate a duplicate author record into a canonical one, reassigning its books and removing the duplicate (merge-only scope; no automated duplicate-detection UI, see [docs/features/duplicate-author-merge.md](features/duplicate-author-merge.md))
 - [x] Public shelf/reading-status visibility on user profiles — a visitor can see another user's shelves (default and custom) with visible-book-only counts on the public profile and browse a shelf's books read-only, resolving OQ-003 (no privacy toggle) (see [docs/features/public-shelf-visibility.md](features/public-shelf-visibility.md), #95)
 - [x] Mailer infrastructure — SMTP sender, async `email:send` queue in the worker, Mailpit for local dev (see [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md), #157)
+- [x] Email verification at registration — verification email with one-time link, verify/resend endpoints with rate limiting (see [docs/features/email-verification-backend.md](features/email-verification-backend.md), #158), `/verify-email` page, check-email panel and site-wide unverified banner (see [docs/features/email-verification-web.md](features/email-verification-web.md), #159); merged to `main` together
 
 ## Post-MVP
 
@@ -37,10 +38,8 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 Email verification at registration chain (epic #162):
 
-1. [x] Email verification backend (see [docs/features/email-verification-backend.md](features/email-verification-backend.md), #158, epic #167) — implemented, merged into `dev`; waiting for #159 to be merged to `main` together (otherwise the emailed link leads to a 404)
-2. [ ] Email verification frontend (see [docs/features/email-verification-web.md](features/email-verification-web.md), #159, epic #172) — in progress
-3. [ ] Restrictions for unverified users (#160)
-4. [ ] Password reset by email (#161)
+1. [ ] Login only after email verification — unverified users cannot authenticate and use the site as guests (see [docs/features/email-verification-login-gate.md](features/email-verification-login-gate.md), #160, epic #176) — implemented on `feat/unverified-user-restrictions`, awaiting review/merge
+2. [ ] Password reset by email (#161)
 
 Email notifications (#121, in Proposed) also depend on #157.
 

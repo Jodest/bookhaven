@@ -1,15 +1,14 @@
 'use client';
 
 import { ResendVerificationButton } from '@/features/resend-verification';
-import { isSafeRedirectPath } from '@/shared/lib/safe-redirect';
+import { loginHrefWithRedirect } from '@/shared/lib/safe-redirect';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
 export function CheckEmailPanel({ email }: { email: string }) {
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect');
-  const continueHref = isSafeRedirectPath(redirect) ? redirect : '/profile';
+  const loginHref = loginHrefWithRedirect(searchParams.get('redirect'));
 
   return (
     <div className="space-y-6">
@@ -18,7 +17,7 @@ export function CheckEmailPanel({ email }: { email: string }) {
         <p className="mt-2 text-sm text-muted-foreground">
           Мы отправили письмо со ссылкой для подтверждения на{' '}
           <strong className="font-semibold text-foreground">{email}</strong>. Ссылка
-          действительна 24 часа.
+          действительна 24 часа. Войти можно после подтверждения.
         </p>
       </div>
 
@@ -26,17 +25,12 @@ export function CheckEmailPanel({ email }: { email: string }) {
         <p className="text-sm text-muted-foreground">
           Не пришло письмо? Проверьте папку «Спам» или отправьте его ещё раз.
         </p>
-        <ResendVerificationButton variant="outline" className="justify-center" />
+        <ResendVerificationButton email={email} variant="outline" className="justify-center" />
       </div>
 
-      <div className="space-y-2">
-        <Button asChild className="w-full">
-          <Link href={continueHref as any}>Продолжить</Link>
-        </Button>
-        <p className="text-center text-xs text-muted-foreground">
-          Подтвердить email можно позже — ссылка из письма будет работать 24 часа.
-        </p>
-      </div>
+      <Button asChild className="w-full">
+        <Link href={loginHref as any}>Войти</Link>
+      </Button>
     </div>
   );
 }

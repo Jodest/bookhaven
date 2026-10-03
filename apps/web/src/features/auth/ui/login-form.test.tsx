@@ -1,3 +1,4 @@
+import { ApiError } from '@bookhaven/api-client';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginForm } from './login-form';
@@ -69,5 +70,51 @@ describe('LoginForm', () => {
     await fillAndSubmit();
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/profile'));
+  });
+
+  describe('email not verified (403)', () => {
+    const notVerified = () =>
+      new ApiError(
+        403,
+        'Forbidden',
+        'email not verified',
+        '/api/v1/auth/login',
+        'email_not_verified'
+      );
+
+    it('calls onEmailNotVerified with the typed email and does not navigate', async () => {
+      loginMock.mockRejectedValue(notVerified());
+      const onEmailNotVerified = vi.fn();
+      render(<LoginForm onEmailNotVerified={onEmailNotVerified} />);
+
+      await fillAndSubmit();
+
+      await waitFor(() => expect(onEmailNotVerified).toHaveBeenCalledWith('user@example.com'));
+      expect(pushMock).not.toHaveBeenCalled();
+      expect(screen.queryByText('Email не подтверждён. Проверьте почту.')).toBeNull();
+    });
+
+    it('shows an inline hint when no callback is given', async () => {
+      loginMock.mockRejectedValue(notVerified());
+      render(<LoginForm />);
+
+      await fillAndSubmit();
+
+      expect(
+        await screen.findByText('Email не подтверждён. Проверьте почту.')
+      ).toBeInTheDocument();
+      expect(pushMock).not.toHaveBeenCalled();
+    });
+
+    it('does not call onEmailNotVerified for other errors', async () => {
+      loginMock.mockRejectedValue(new ApiError(401, 'Unauthorized', 'invalid credentials'));
+      const onEmailNotVerified = vi.fn();
+      render(<LoginForm onEmailNotVerified={onEmailNotVerified} />);
+
+      await fillAndSubmit();
+
+      await waitFor(() => expect(loginMock).toHaveBeenCalled());
+      expect(onEmailNotVerified).not.toHaveBeenCalled();
+    });
   });
 });

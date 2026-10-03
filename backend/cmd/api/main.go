@@ -118,8 +118,17 @@ func main() {
 	// docs/features/email-verification-backend.md).
 	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
 	defer redisClient.Close()
-	verifyResendLimiter := ratelimit.NewRedisLimiter(redisClient, ratelimit.Options{
-		Prefix:      "rl:verify-resend",
+	// Public resend-verification limits (see
+	// docs/features/email-verification-login-gate.md): per client IP, then
+	// per sha256 of the normalised email.
+	verifyResendIPLimiter := ratelimit.NewRedisLimiter(redisClient, ratelimit.Options{
+		Prefix:      "rl:verify-resend-ip",
+		MinInterval: 0,
+		WindowLimit: 20,
+		Window:      time.Hour,
+	})
+	verifyResendEmailLimiter := ratelimit.NewRedisLimiter(redisClient, ratelimit.Options{
+		Prefix:      "rl:verify-resend-email",
 		MinInterval: time.Minute,
 		WindowLimit: 5,
 		Window:      24 * time.Hour,
@@ -132,12 +141,23 @@ func main() {
 		Issuer:               "bookhaven",
 		WebBaseURL:           cfg.WebBaseURL,
 		VerificationTokenTTL: 24 * time.Hour,
-	}, db, usersRepo, mailQueue, verifyResendLimiter, logger)
+	}, db, usersRepo, mailQueue, authservice.ResendLimiters{
+		IP:    verifyResendIPLimiter,
+		Email: verifyResendEmailLimiter,
+	}, logger)
 
 	// Validator
 	e := echo.New()
 	e.HideBanner = true
 	e.Validator = validator.New()
+	// c.RealIP() = client IP from X-Forwarded-For, honouring only trusted
+	// proxy hops (default trust: loopback, link-local, private networks).
+	// In prod Caddy reaches the api over the private Docker network and does
+	// not trust client-supplied X-Forwarded-For, so the header carries the
+	// real client IP; direct callers cannot spoof it. Used by the per-IP
+	// resend-verification rate limit - see docs/DEPLOYMENT.md before putting
+	// another proxy in front.
+	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 
 	e.Use(echomiddleware.Recover())
 	e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
@@ -179,7 +199,7 @@ func main() {
 	api.GET("/auth/me", authHandler.Me, authMiddleware)
 	api.POST("/auth/logout", authHandler.Logout, authMiddleware)
 	api.POST("/auth/verify-email", authHandler.VerifyEmail)
-	api.POST("/auth/resend-verification", authHandler.ResendVerification, authMiddleware)
+	api.POST("/auth/resend-verification", authHandler.ResendVerification)
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{

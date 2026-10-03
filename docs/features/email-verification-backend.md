@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **Changed by #160** ([email-verification-login-gate.md](email-verification-login-gate.md)): `POST /auth/register` no longer logs the user in (201 `{email, verification_required}`, no cookies), login/refresh/auth middleware reject unverified users (`email_not_verified`), and `POST /auth/resend-verification` became public (body `{email}`, always 202, per-IP + per-email limits; no 409). The sections below describe the #158 state.
+
 GitHub issue: #158 (epic #162). Depends on #157 ([mailer-infrastructure.md](mailer-infrastructure.md), merged). Must be merged to `main` together with #159 (frontend `/verify-email` page), otherwise the link in the email leads nowhere. This is the first consumer of `internal/pkg/mailer`: it does the `cmd/api` wiring and adds the first template.
 
 ## Goal

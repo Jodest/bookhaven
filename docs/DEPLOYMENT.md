@@ -108,7 +108,7 @@ For real durability, uncomment the `rclone` line in the script and configure an 
 
 Transactional email (verification, password reset, later notifications) is sent asynchronously: the api enqueues an `email:send` task on the `email` asynq queue and the **worker** delivers it over SMTP (see `backend/internal/pkg/mailer` and [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md)). Only the `worker` container receives the SMTP variables; the `backend` (api) container never talks to SMTP.
 
-> **Configure real SMTP (and SPF/DKIM/DMARC) on the worker *before* email verification (#158/#159) goes live.** Registration sends a verification link by email; with `SMTP_HOST` empty the worker only logs emails, so new users never receive their link (and, once #160 restricts unverified users, would be locked out of those features).
+> **Configure real SMTP (and SPF/DKIM/DMARC) on the worker *before* go-live.** Registration sends a verification link by email, and since #160 ([email-verification-login-gate.md](features/email-verification-login-gate.md)) users with an unverified email **cannot log in at all** (register issues no session; login answers 403 `email_not_verified`). With `SMTP_HOST` empty the worker only logs emails, so every new user would be locked out. Before opening registration, register a test account against production and confirm the link arrives (and passes SPF/DKIM/DMARC, see below); watch the worker logs for send errors.
 
 ### Environment variables (backend / api)
 
@@ -116,7 +116,9 @@ Transactional email (verification, password reset, later notifications) is sent 
 |---|---|
 | `WEB_BASE_URL` | Public origin of the web app, used to build absolute links in emails (e.g. `https://<WEB_DOMAIN>/verify-email?token=...`). Set in `docker-compose.prod.yml` as `https://${WEB_DOMAIN}` — no separate `.env` key. Must be an absolute `http(s)` URL; `config.Load` refuses to start in production when it is not set explicitly (the worker gets the same value for that reason). Dev default: `http://localhost:3000`. |
 
-The api also uses Redis directly (not only via asynq): rate limiting of "resend verification email" (`rl:verify-resend:*` keys, 1/minute and 5/day per user). It reuses the existing `REDIS_URL`; no extra configuration.
+The api also uses Redis directly (not only via asynq): rate limiting of the public "resend verification email" endpoint — `rl:verify-resend-ip:*` (20/hour per client IP) and `rl:verify-resend-email:*` (1/minute and 5/day per address; the key is the sha256 of the lowercased email, no plain addresses in Redis). It reuses the existing `REDIS_URL`; no extra configuration.
+
+**Client IP behind Caddy.** The per-IP limit uses the client IP from `X-Forwarded-For` (`e.IPExtractor = echo.ExtractIPFromXFFHeader()` in `backend/cmd/api/main.go`). Echo only honours hops from trusted proxies (default: loopback, link-local and private networks): Caddy reaches the api over the private Docker network and, by default, does not trust a client-supplied `X-Forwarded-For`, so the header carries the real client IP and cannot be spoofed by calling the api directly. Do not put another proxy/CDN in front of Caddy (or expose the api port publicly) without revisiting the `IPExtractor` trust settings — otherwise either all requests share one IP (the 20/hour limit hits everyone) or the header becomes spoofable.
 
 ### Environment variables (worker)
 

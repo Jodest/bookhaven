@@ -5,7 +5,6 @@ export type ResendState =
   | { kind: 'sending' }
   | { kind: 'sent' }
   | { kind: 'rate_limited'; retryAfterSeconds: number }
-  | { kind: 'already_verified' }
   | { kind: 'error' };
 
 // Used when a 429 arrives without `retry_after_seconds` in the body, and as
@@ -26,10 +25,6 @@ export function resendErrorToState(err: unknown): ResendState {
     };
   }
 
-  if (err.status === 409 || err.code === 'already_verified') {
-    return { kind: 'already_verified' };
-  }
-
   return { kind: 'error' };
 }
 
@@ -44,13 +39,12 @@ export function formatRetryAfter(seconds: number): string {
 export function resendMessage(state: ResendState): string | null {
   switch (state.kind) {
     case 'sent':
-      return 'Письмо отправлено. Проверьте почту.';
+      // The public endpoint does not reveal whether the address exists.
+      return 'Если этот адрес зарегистрирован и не подтверждён, мы отправили на него новое письмо.';
     case 'rate_limited':
       return `Слишком много запросов. Попробуйте снова через ${formatRetryAfter(
         state.retryAfterSeconds
       )}.`;
-    case 'already_verified':
-      return 'Email уже подтверждён.';
     case 'error':
       return 'Не удалось отправить письмо. Попробуйте позже.';
     default:

@@ -2,10 +2,12 @@
 
 import { useAuthStore } from '@/entities/session';
 import { isSafeRedirectPath } from '@/shared/lib/safe-redirect';
+import { isEmailNotVerifiedError } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -16,10 +18,21 @@ const loginSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 
-export function LoginForm() {
+interface LoginFormProps {
+  // Called with the typed email when the password is correct but the email
+  // is not verified (403 email_not_verified); the login view shows its own
+  // panel with a resend button. Without it the form shows a short hint.
+  onEmailNotVerified?: (email: string) => void;
+  // Called at the start of every submit so the view can drop a panel left
+  // over from a previous attempt.
+  onSubmitStart?: () => void;
+}
+
+export function LoginForm({ onEmailNotVerified, onSubmitStart }: LoginFormProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login, error, clearError } = useAuthStore();
+  const [notVerifiedHint, setNotVerifiedHint] = useState(false);
 
   const {
     register,
@@ -31,12 +44,21 @@ export function LoginForm() {
 
   const onSubmit = async (data: LoginFormData) => {
     clearError();
+    setNotVerifiedHint(false);
+    onSubmitStart?.();
     try {
       await login(data.email, data.password);
       const redirect = searchParams.get('redirect');
       router.push((isSafeRedirectPath(redirect) ? redirect : '/profile') as any);
-    } catch {
-      // ошибка уже в store
+    } catch (err) {
+      if (isEmailNotVerifiedError(err)) {
+        if (onEmailNotVerified) {
+          onEmailNotVerified(data.email);
+        } else {
+          setNotVerifiedHint(true);
+        }
+      }
+      // остальные ошибки уже в store
     }
   };
 
@@ -77,6 +99,12 @@ export function LoginForm() {
       {error && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
           {error}
+        </div>
+      )}
+
+      {notVerifiedHint && (
+        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          Email не подтверждён. Проверьте почту.
         </div>
       )}
 

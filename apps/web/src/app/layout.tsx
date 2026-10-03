@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import { Header } from '@/widgets/header';
 import { Footer } from '@/widgets/footer';
-import { EmailVerificationBanner } from '@/widgets/email-verification-banner';
 import { NotificationBell } from '@/widgets/notifications';
 import { Providers } from './providers';
 import './globals.css';
@@ -32,7 +31,6 @@ export default function RootLayout({
       <body className={`${inter.className} ${literata.variable} flex min-h-screen flex-col`}>
         <Providers>
           <Header notificationSlot={<NotificationBell />} />
-          <EmailVerificationBanner />
           <div className="flex-1">{children}</div>
           <Footer />
         </Providers>
