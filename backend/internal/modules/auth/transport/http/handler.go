@@ -2,7 +2,9 @@ package http
 
 import (
 	"errors"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	authDomain "github.com/bookhaven/backend/internal/modules/auth/domain"
@@ -45,28 +47,63 @@ type authResponse struct {
 }
 
 type userResponse struct {
-	ID          string     `json:"id"`
-	Email       string     `json:"email"`
-	Name        *string    `json:"name"`
-	AvatarURL   *string    `json:"avatar_url"`
-	Role        string     `json:"role"`
-	ProfileType string     `json:"profile_type"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID            string    `json:"id"`
+	Email         string    `json:"email"`
+	Name          *string   `json:"name"`
+	AvatarURL     *string   `json:"avatar_url"`
+	Role          string    `json:"role"`
+	ProfileType   string    `json:"profile_type"`
+	EmailVerified bool      `json:"email_verified"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 func toUserResponse(u *domain.User) userResponse {
 	return userResponse{
-		ID:          u.ID.String(),
-		Email:       u.Email,
-		Name:        u.Name,
-		AvatarURL:   u.AvatarURL,
-		Role:        string(u.Role),
-		ProfileType: string(u.ProfileType),
-		CreatedAt:   u.CreatedAt,
-		UpdatedAt:   u.UpdatedAt,
+		ID:            u.ID.String(),
+		Email:         u.Email,
+		Name:          u.Name,
+		AvatarURL:     u.AvatarURL,
+		Role:          string(u.Role),
+		ProfileType:   string(u.ProfileType),
+		EmailVerified: u.EmailVerifiedAt != nil,
+		CreatedAt:     u.CreatedAt,
+		UpdatedAt:     u.UpdatedAt,
 	}
 }
+
+type verifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+// statusResponse is the success body of the email verification endpoints.
+type statusResponse struct {
+	Status string `json:"status" example:"verified"`
+}
+
+// errorResponse is an error body with a machine-readable code.
+type errorResponse struct {
+	Error string `json:"error" example:"invalid token"`
+	Code  string `json:"code" example:"invalid_token"`
+}
+
+// rateLimitedResponse is the 429 body; retry_after_seconds duplicates the
+// Retry-After header, which is not readable cross-origin.
+type rateLimitedResponse struct {
+	Error             string `json:"error" example:"too many requests"`
+	Code              string `json:"code" example:"rate_limited"`
+	RetryAfterSeconds int    `json:"retry_after_seconds" example:"42"`
+}
+
+// Machine-readable error codes of the email verification endpoints.
+const (
+	codeInvalidToken    = "invalid_token"
+	codeTokenExpired    = "token_expired"
+	codeTokenUsed       = "token_used"
+	codeAlreadyVerified = "already_verified"
+	codeRateLimited     = "rate_limited"
+	codeEmailSendFailed = "email_send_failed"
+)
 
 // Register godoc
 // @Summary Регистрация пользователя
@@ -238,6 +275,88 @@ func (h *Handler) Me(c echo.Context) error {
 	return c.JSON(http.StatusOK, toUserResponse(user))
 }
 
+// VerifyEmail godoc
+// @Summary Подтвердить email
+// @Description Подтверждает адрес электронной почты по одноразовому токену из письма. Не требует авторизации и не меняет cookies. Коды ошибок: invalid_token, token_expired, token_used.
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param body body verifyEmailRequest true "Токен из ссылки в письме"
+// @Success 200 {object} statusResponse "status: verified или already_verified"
+// @Failure 400 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /auth/verify-email [post]
+func (h *Handler) VerifyEmail(c echo.Context) error {
+	var req verifyEmailRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid token", Code: codeInvalidToken})
+	}
+
+	alreadyVerified, err := h.service.VerifyEmail(c.Request().Context(), req.Token)
+	switch {
+	case err == nil && alreadyVerified:
+		return c.JSON(http.StatusOK, statusResponse{Status: "already_verified"})
+	case err == nil:
+		return c.JSON(http.StatusOK, statusResponse{Status: "verified"})
+	case errors.Is(err, service.ErrVerificationTokenInvalid):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid token", Code: codeInvalidToken})
+	case errors.Is(err, service.ErrVerificationTokenExpired):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "token expired", Code: codeTokenExpired})
+	case errors.Is(err, service.ErrVerificationTokenUsed):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "token already used", Code: codeTokenUsed})
+	default:
+		c.Logger().Error(err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to verify email"})
+	}
+}
+
+// ResendVerification godoc
+// @Summary Повторно отправить письмо подтверждения email
+// @Description Удаляет неиспользованные ссылки подтверждения текущего пользователя и отправляет новую. Ограничение: 1 раз в минуту и 5 раз в сутки. Коды ошибок: already_verified, rate_limited, email_send_failed.
+// @Tags auth
+// @Produce json
+// @Security BearerAuth
+// @Success 202 {object} statusResponse "status: sent"
+// @Failure 401 {object} map[string]string
+// @Failure 409 {object} errorResponse
+// @Failure 429 {object} rateLimitedResponse
+// @Header 429 {integer} Retry-After "Секунд до следующей попытки"
+// @Failure 500 {object} errorResponse
+// @Router /auth/resend-verification [post]
+func (h *Handler) ResendVerification(c echo.Context) error {
+	userIDStr, ok := c.Get("user_id").(string)
+	if !ok || userIDStr == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid user"})
+	}
+
+	err = h.service.ResendVerification(c.Request().Context(), userID)
+	if err == nil {
+		return c.JSON(http.StatusAccepted, statusResponse{Status: "sent"})
+	}
+	if errors.Is(err, service.ErrAlreadyVerified) {
+		return c.JSON(http.StatusConflict, errorResponse{Error: "email already verified", Code: codeAlreadyVerified})
+	}
+	var rateErr *service.RateLimitError
+	if errors.As(err, &rateErr) {
+		seconds := int(math.Ceil(rateErr.RetryAfter.Seconds()))
+		if seconds < 1 {
+			seconds = 1
+		}
+		c.Response().Header().Set("Retry-After", strconv.Itoa(seconds))
+		return c.JSON(http.StatusTooManyRequests, rateLimitedResponse{
+			Error:             "too many requests",
+			Code:              codeRateLimited,
+			RetryAfterSeconds: seconds,
+		})
+	}
+	c.Logger().Error(err)
+	return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to send verification email", Code: codeEmailSendFailed})
+}
+
 func setAuthCookies(c echo.Context, tokens *authDomain.TokenPair) {
 	if tokens == nil {
 		return
@@ -270,7 +389,7 @@ func setAuthCookies(c echo.Context, tokens *authDomain.TokenPair) {
 	c.SetCookie(&http.Cookie{
 		Name:     "has_session",
 		Value:    "1",
-		HttpOnly: true, // no legitimate reason for client JS to read/write it
+		HttpOnly: true,  // no legitimate reason for client JS to read/write it
 		Secure:   false, // matches existing cookies; set true in production with HTTPS
 		SameSite: http.SameSiteStrictMode,
 		Path:     "/",
@@ -301,5 +420,3 @@ func clearAuthCookies(c echo.Context) {
 		MaxAge:   -1,
 	})
 }
-
-

@@ -108,6 +108,16 @@ For real durability, uncomment the `rclone` line in the script and configure an 
 
 Transactional email (verification, password reset, later notifications) is sent asynchronously: the api enqueues an `email:send` task on the `email` asynq queue and the **worker** delivers it over SMTP (see `backend/internal/pkg/mailer` and [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md)). Only the `worker` container receives the SMTP variables; the `backend` (api) container never talks to SMTP.
 
+> **Configure real SMTP (and SPF/DKIM/DMARC) on the worker *before* email verification (#158/#159) goes live.** Registration sends a verification link by email; with `SMTP_HOST` empty the worker only logs emails, so new users never receive their link (and, once #160 restricts unverified users, would be locked out of those features).
+
+### Environment variables (backend / api)
+
+| Variable | Meaning |
+|---|---|
+| `WEB_BASE_URL` | Public origin of the web app, used to build absolute links in emails (e.g. `https://<WEB_DOMAIN>/verify-email?token=...`). Set in `docker-compose.prod.yml` as `https://${WEB_DOMAIN}` — no separate `.env` key. Must be an absolute `http(s)` URL; `config.Load` refuses to start in production when it is not set explicitly (the worker gets the same value for that reason). Dev default: `http://localhost:3000`. |
+
+The api also uses Redis directly (not only via asynq): rate limiting of "resend verification email" (`rl:verify-resend:*` keys, 1/minute and 5/day per user). It reuses the existing `REDIS_URL`; no extra configuration.
+
 ### Environment variables (worker)
 
 | Variable | Meaning |
@@ -117,7 +127,7 @@ Transactional email (verification, password reset, later notifications) is sent 
 | `SMTP_USER` / `SMTP_PASSWORD` | Credentials (PLAIN auth). Credentials are only ever sent over an encrypted connection. `SMTP_PASSWORD` is a secret: never log or paste it outside the server's `.env`. |
 | `MAIL_FROM` | Sender, e.g. `BookHaven <noreply@bookhaven.example.com>`. Must be a valid address, and must be set explicitly in production (the worker refuses to start otherwise when `SMTP_HOST` is set) and must be on the domain that carries the SPF/DKIM/DMARC records below. |
 
-Failed sends are retried by asynq (up to 8 retries with backoff, roughly a few hours of provider outage); permanent rejections (SMTP 5xx) are not retried. Failed/archived tasks can be inspected with asynqmon / `asynq.Inspector` against the production Redis.
+Failed sends are retried by asynq (up to 8 retries with backoff, roughly a few hours of provider outage); permanent rejections (SMTP 5xx) are not retried, and neither is the misconfiguration "credentials set but the connection to a non-local server is unencrypted (port is not 465 and the server offers no STARTTLS)". Failed/archived tasks can be inspected with asynqmon / `asynq.Inspector` against the production Redis.
 
 ### Choosing a provider
 
@@ -133,7 +143,7 @@ Without these, mail lands in spam or is rejected. All records go on the domain u
 
 ### Verifying
 
-Send a real email to a Gmail and a Yandex inbox — either through the first real flow (e.g. registration verification once it exists) or by enqueuing a test email from a machine that can reach the production Redis (the dev-only `go run ./cmd/mailtest -to you@example.com` CLI is not shipped in the production image). In the received message open "Show original" / "Message properties" and check for `spf=pass`, `dkim=pass` and `dmarc=pass`. Watch `docker compose -f docker-compose.prod.yml logs -f worker` for send errors.
+Send a real email to a Gmail and a Yandex inbox — either through the first real flow (registration: the verification email) or by enqueuing a test email from a machine that can reach the production Redis (the dev-only `go run ./cmd/mailtest -to you@example.com` CLI is not shipped in the production image). In the received message open "Show original" / "Message properties" and check for `spf=pass`, `dkim=pass` and `dmarc=pass`. Watch `docker compose -f docker-compose.prod.yml logs -f worker` for send errors.
 
 ## Monitoring
 

@@ -5,6 +5,7 @@ export interface User {
   avatarUrl: string | null;
   role: 'user' | 'contributor' | 'moderator' | 'admin';
   profileType: 'reader' | 'librarian' | 'bookseller' | 'other';
+  emailVerified: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +49,7 @@ type RawUser = {
   avatar_url: string | null;
   role: 'user' | 'contributor' | 'moderator' | 'admin';
   profile_type: 'reader' | 'librarian' | 'bookseller' | 'other';
+  email_verified: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -60,6 +62,7 @@ function normalizeUser(raw: RawUser): User {
     avatarUrl: raw.avatar_url,
     role: raw.role,
     profileType: raw.profile_type,
+    emailVerified: raw.email_verified,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
   };
@@ -481,12 +484,28 @@ export class ApiError extends Error {
     public status: number,
     public statusText: string,
     message?: string,
-    public path: string = ''
+    public path: string = '',
+    // Machine-readable error code from the response body (`code`), e.g.
+    // a VerificationErrorCode. Not every endpoint sends one.
+    public code?: string,
+    // From the body's `retry_after_seconds` (429 responses). The
+    // Retry-After header itself is not readable cross-origin.
+    public retryAfterSeconds?: number
   ) {
     super(message || `API error: ${status} ${statusText}`);
     this.name = 'ApiError';
   }
 }
+
+// Machine-readable `code` values of the email verification endpoints
+// (POST /auth/verify-email, POST /auth/resend-verification).
+export type VerificationErrorCode =
+  | 'invalid_token'
+  | 'token_expired'
+  | 'token_used'
+  | 'already_verified'
+  | 'rate_limited'
+  | 'email_send_failed';
 
 export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
@@ -501,11 +520,14 @@ export interface RefreshedTokens {
 // Paths that must never trigger an auto-refresh-and-retry: a 401 from these
 // means "bad credentials" / "refresh itself is dead" / "already logging out",
 // not "access token expired" — retrying would be wasteful or recursive.
+// verify-email is public (the token is the credential), so a refresh there
+// is pointless; resend-verification is authenticated and is NOT excluded.
 const AUTH_REFRESH_EXCLUDED_PATHS = [
   '/api/v1/auth/login',
   '/api/v1/auth/register',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
+  '/api/v1/auth/verify-email',
 ];
 
 // Mirrors backend/cmd/api/main.go's `AccessTokenTTL` (currently 15 minutes).
@@ -631,15 +653,23 @@ async function fetcher<T>(path: string, options?: RequestInit, isRetry = false):
     }
 
     let message: string | undefined;
+    let code: string | undefined;
+    let retryAfterSeconds: number | undefined;
     try {
       const body = await response.json();
       if (body && typeof body.error === 'string') {
         message = body.error;
       }
+      if (body && typeof body.code === 'string') {
+        code = body.code;
+      }
+      if (body && typeof body.retry_after_seconds === 'number') {
+        retryAfterSeconds = body.retry_after_seconds;
+      }
     } catch {
       // ignore
     }
-    throw new ApiError(response.status, response.statusText, message, path);
+    throw new ApiError(response.status, response.statusText, message, path, code, retryAfterSeconds);
   }
 
   return response.json() as Promise<T>;
@@ -1016,6 +1046,19 @@ export const api = {
         method: 'POST',
       }),
     refresh: (): Promise<RefreshedTokens> => performRefresh(),
+    // Public: works logged out. Errors carry ApiError.code
+    // ('invalid_token' | 'token_expired' | 'token_used').
+    verifyEmail: (token: string) =>
+      fetcher<{ status: 'verified' | 'already_verified' }>('/api/v1/auth/verify-email', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      }),
+    // Authenticated. Errors carry ApiError.code ('already_verified' |
+    // 'rate_limited' (+ retryAfterSeconds) | 'email_send_failed').
+    resendVerification: () =>
+      fetcher<{ status: 'sent' }>('/api/v1/auth/resend-verification', {
+        method: 'POST',
+      }),
   },
   users: {
     getPublic: async (id: string) => {

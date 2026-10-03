@@ -6,7 +6,7 @@ import "testing"
 // (or a stray .env) cannot leak into a test case.
 func setSMTPEnv(t *testing.T, env map[string]string) {
 	t.Helper()
-	for _, k := range []string{"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "MAIL_FROM", "APP_ENV", "JWT_SECRET"} {
+	for _, k := range []string{"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "MAIL_FROM", "APP_ENV", "JWT_SECRET", "WEB_BASE_URL"} {
 		t.Setenv(k, "")
 	}
 	for k, v := range env {
@@ -86,5 +86,59 @@ func TestLoad_NonNumericSMTPPort(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error for non-numeric SMTP_PORT")
+	}
+}
+
+func TestLoad_WebBaseURLDefault(t *testing.T) {
+	setSMTPEnv(t, nil)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.WebBaseURL != "http://localhost:3000" {
+		t.Errorf("WebBaseURL = %q, want http://localhost:3000", cfg.WebBaseURL)
+	}
+}
+
+func TestLoad_WebBaseURLTrailingSlashTrimmed(t *testing.T) {
+	setSMTPEnv(t, map[string]string{"WEB_BASE_URL": "https://bookhaven.example.com/"})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.WebBaseURL != "https://bookhaven.example.com" {
+		t.Errorf("WebBaseURL = %q, want https://bookhaven.example.com", cfg.WebBaseURL)
+	}
+}
+
+func TestLoad_WebBaseURLInvalid(t *testing.T) {
+	for _, value := range []string{"bookhaven.example.com", "ftp://bookhaven.example.com", "https://", "/verify"} {
+		t.Run(value, func(t *testing.T) {
+			setSMTPEnv(t, map[string]string{"WEB_BASE_URL": value})
+			if _, err := Load(); err == nil {
+				t.Fatalf("expected error for WEB_BASE_URL=%q", value)
+			}
+		})
+	}
+}
+
+func TestLoad_ProductionRequiresExplicitWebBaseURL(t *testing.T) {
+	setSMTPEnv(t, map[string]string{
+		"APP_ENV":    "production",
+		"JWT_SECRET": "a-real-secret",
+	})
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for missing WEB_BASE_URL in production")
+	}
+
+	t.Setenv("WEB_BASE_URL", "https://bookhaven.example.com")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.WebBaseURL != "https://bookhaven.example.com" {
+		t.Errorf("WebBaseURL = %q", cfg.WebBaseURL)
 	}
 }

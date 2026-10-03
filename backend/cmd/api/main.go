@@ -31,11 +31,14 @@ import (
 	"github.com/bookhaven/backend/internal/modules/users/repository"
 	usersservice "github.com/bookhaven/backend/internal/modules/users/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
+	"github.com/bookhaven/backend/internal/pkg/mailer"
+	"github.com/bookhaven/backend/internal/pkg/ratelimit"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
 	"github.com/bookhaven/backend/internal/transport/http/middleware"
 	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -100,20 +103,36 @@ func main() {
 	readingChallengesService := readingchallengesservice.NewService(readingChallengesRepo)
 	notificationsService := notificationsservice.NewService(notificationsRepo)
 
-	// asynq.Client/asynq.Inspector for the admin harvest-trigger endpoints
-	// (see docs/features/admin-harvest-trigger.md), constructed the same way
-	// cmd/harvest already constructs its own client.
-	harvestClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
-	defer harvestClient.Close()
+	// Shared asynq.Client for every task the api enqueues: admin
+	// harvest-trigger jobs (see docs/features/admin-harvest-trigger.md) and
+	// transactional emails (internal/pkg/mailer). The Inspector serves the
+	// admin harvest status endpoints.
+	taskClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
+	defer taskClient.Close()
 	harvestInspector := asynq.NewInspector(asynq.RedisClientOpt{Addr: cfg.RedisURL})
 	defer harvestInspector.Close()
 
+	mailQueue := mailer.NewQueue(taskClient)
+
+	// Plain Redis client for rate limiting (see
+	// docs/features/email-verification-backend.md).
+	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+	defer redisClient.Close()
+	verifyResendLimiter := ratelimit.NewRedisLimiter(redisClient, ratelimit.Options{
+		Prefix:      "rl:verify-resend",
+		MinInterval: time.Minute,
+		WindowLimit: 5,
+		Window:      24 * time.Hour,
+	})
+
 	authService := authservice.NewService(authservice.Config{
-		JWTSecret:       cfg.JWTSecret,
-		AccessTokenTTL:  15 * time.Minute,
-		RefreshTokenTTL: 30 * 24 * time.Hour,
-		Issuer:          "bookhaven",
-	}, db, usersRepo)
+		JWTSecret:            cfg.JWTSecret,
+		AccessTokenTTL:       15 * time.Minute,
+		RefreshTokenTTL:      30 * 24 * time.Hour,
+		Issuer:               "bookhaven",
+		WebBaseURL:           cfg.WebBaseURL,
+		VerificationTokenTTL: 24 * time.Hour,
+	}, db, usersRepo, mailQueue, verifyResendLimiter, logger)
 
 	// Validator
 	e := echo.New()
@@ -149,7 +168,7 @@ func main() {
 	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, authMiddleware, optionalAuth)
 
 	// Admin routes
-	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, harvestClient, harvestInspector, wikidataClient)
+	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, taskClient, harvestInspector, wikidataClient)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)
@@ -159,6 +178,8 @@ func main() {
 	api.POST("/auth/refresh", authHandler.Refresh)
 	api.GET("/auth/me", authHandler.Me, authMiddleware)
 	api.POST("/auth/logout", authHandler.Logout, authMiddleware)
+	api.POST("/auth/verify-email", authHandler.VerifyEmail)
+	api.POST("/auth/resend-verification", authHandler.ResendVerification, authMiddleware)
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{

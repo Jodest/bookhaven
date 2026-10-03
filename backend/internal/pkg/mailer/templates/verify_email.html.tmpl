@@ -1,0 +1,7 @@
+{{define "content"}}<p>{{if .Name}}Здравствуйте, {{.Name}}!{{else}}Здравствуйте!{{end}}</p>
+<p>Спасибо за регистрацию в BookHaven. Чтобы подтвердить адрес электронной почты, нажмите на кнопку ниже.</p>
+<p style="padding:16px 0;"><a href="{{.VerifyURL}}" style="display:inline-block;background-color:#1c1917;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:bold;">Подтвердить email</a></p>
+<p>Если кнопка не работает, скопируйте ссылку в адресную строку браузера:<br><a href="{{.VerifyURL}}" style="color:#57534e;word-break:break-all;">{{.VerifyURL}}</a></p>
+<p>Ссылка действительна {{.TTLHours}} часа.</p>
+<p style="color:#78716c;font-size:13px;">Если вы не регистрировались в BookHaven, просто проигнорируйте это письмо.</p>
+{{end}}

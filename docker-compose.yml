@@ -40,6 +40,8 @@ services:
       APP_PORT: ${BACKEND_PORT:-8080}
       DATABASE_URL: postgres://${POSTGRES_USER:-bookhaven}:${POSTGRES_PASSWORD:-bookhaven}@postgres:5432/${POSTGRES_DB:-bookhaven}?sslmode=disable
       REDIS_URL: redis:6379
+      # Public web origin used for links in emails (e.g. /verify-email).
+      WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     volumes:

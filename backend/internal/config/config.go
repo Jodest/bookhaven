@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/mail"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -29,10 +30,17 @@ type Config struct {
 	SMTPUser     string
 	SMTPPassword string
 	MailFrom     string
+
+	// WebBaseURL is the public origin of the web app (no trailing slash),
+	// used to build absolute links in emails (e.g. /verify-email).
+	WebBaseURL string
 }
 
 // defaultMailFrom is used when MAIL_FROM is unset (dev / Mailpit).
 const defaultMailFrom = "BookHaven <noreply@bookhaven.local>"
+
+// defaultWebBaseURL is used when WEB_BASE_URL is unset (dev).
+const defaultWebBaseURL = "http://localhost:3000"
 
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
@@ -51,6 +59,7 @@ func Load() (*Config, error) {
 		SMTPUser:       getEnv("SMTP_USER", ""),
 		SMTPPassword:   getEnv("SMTP_PASSWORD", ""),
 		MailFrom:       getEnv("MAIL_FROM", defaultMailFrom),
+		WebBaseURL:     strings.TrimRight(strings.TrimSpace(getEnv("WEB_BASE_URL", defaultWebBaseURL)), "/"),
 	}
 
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
@@ -68,6 +77,15 @@ func Load() (*Config, error) {
 		if _, err := mail.ParseAddress(cfg.MailFrom); err != nil {
 			return nil, fmt.Errorf("MAIL_FROM must be a valid email address when SMTP_HOST is set: %w", err)
 		}
+	}
+
+	// Links in emails must point at the real public web origin in
+	// production, never at the localhost dev default.
+	if cfg.Env == "production" && strings.TrimSpace(os.Getenv("WEB_BASE_URL")) == "" {
+		return nil, fmt.Errorf("WEB_BASE_URL must be set in production")
+	}
+	if u, err := url.Parse(cfg.WebBaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, fmt.Errorf("WEB_BASE_URL must be an absolute http(s) URL with a host")
 	}
 
 	if cfg.Env == "production" && cfg.JWTSecret == "change-me-in-production" {
