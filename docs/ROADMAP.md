@@ -75,6 +75,11 @@ Email notifications (#121, in Proposed) also depend on #157.
 - [ ] Change password for logged-in users — only the emailed forgot/reset flow exists; the password-reset contract left authenticated change-password out of scope [code] (proposed 2026-10-03, #193)
 - [ ] Change account email with re-verification — no email change path exists; the email-verification contract left it out of scope while binding tokens to the email to future-proof for it [code] (proposed 2026-10-03, #194)
 - [ ] Self-service account deletion — Goodreads and The StoryGraph let users delete their account and data from settings; BookHaven has no deletion path [competitive] (proposed 2026-10-03, #195)
+- [ ] No brute-force protection on login — `/auth/login` has no per-IP/per-account rate limit or lockout, unlike resend-verification and forgot-password which already use the in-repo ratelimit package [code] (proposed 2026-10-03, #196)
+- [ ] HTTP security headers (CSP, HSTS, X-Frame-Options, nosniff) on web, admin and API — none are set in the Caddyfile, either next.config.js, or the Echo middleware stack [code] (proposed 2026-10-03, #197)
+- [ ] Missing reverse indexes on `book_authors(author_id)`, `book_genres(genre_id)` and `lists(user_id)` — author pages, genre filters, author merge and per-user list lookups filter on unindexed columns [code] (proposed 2026-10-03, #198)
+- [ ] Per-page SEO metadata, Open Graph tags, sitemap and robots.txt for public pages — only the root layout has static metadata; book/author/profile pages have no `generateMetadata` and no sitemap/robots exists [code] (proposed 2026-10-03, #199)
+- [ ] Custom error and not-found boundaries in web and admin — neither app defines `error.tsx`/`global-error.tsx`/`not-found.tsx`, so failures and unknown slugs show bare Next.js defaults [code] (proposed 2026-10-03, #200)
 
 ## Technical Debt
 
