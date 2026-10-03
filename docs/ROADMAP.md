@@ -85,6 +85,11 @@ Email notifications (#121, in Proposed) also depend on #157.
 - [ ] Keyboard and screen-reader support for dialogs and popovers — merge-author dialog has no Escape/focus trap/focus return, notification bell popover has no Escape/aria-expanded, and no jsx-a11y/axe checks exist [code] (proposed 2026-10-03, #203)
 - [ ] Explicit start/finish reading dates and re-read tracking — the reading challenge uses shelf `added_at` as a completion-date proxy; Goodreads/The StoryGraph let users set dates read and log re-reads [code] (proposed 2026-10-03, #204)
 - [ ] Community mood and pace tags on books — The StoryGraph's mood/pace tagging and filtering has no BookHaven equivalent beyond genres (distinct from content warnings, #122) [competitive] (proposed 2026-10-03, #205)
+- [ ] Spoiler marking and hiding in reviews — readers can discuss plot twists without spoiling the book for others; Goodreads/LiveLib collapse spoiler-marked reviews, BookHaven reviews have no spoiler concept [competitive] (proposed 2026-10-03, #207)
+- [ ] Browse and vote on public community lists — readers can discover themed lists and vote the best books up (Goodreads Listopia); public lists are reachable today only via a direct share URL, with no browse page or votes [competitive] (proposed 2026-10-03, #208)
+- [ ] Follow an author and get notified about their new books — readers learn when a favorite author's new book lands in the catalog; Goodreads offers author following, BookHaven has none (distinct from following users, #96) [competitive] (proposed 2026-10-03, #209)
+- [ ] Rating distribution and review sorting on the book page — readers see a 1-5 star breakdown and can sort reviews by likes/rating; today the page shows only the average and count, and reviews are newest-first only [code] (proposed 2026-10-03, #210)
+- [ ] Themed reading challenges with prompts — readers can pick prompt- or genre-based challenges and tick them off from their shelves (StoryGraph custom challenges, LiveLib community challenges); the current challenge is a single annual book count [competitive] (proposed 2026-10-03, #211)
 
 ## Technical Debt
 
