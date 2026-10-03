@@ -3,8 +3,10 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/bookhaven/backend/internal/modules/catalog/domain"
@@ -25,6 +27,11 @@ type fakeRepository struct {
 	lastFilter       repository.BookFilter
 	lastAuthorSearch string
 	lastAuthorLimit  int
+
+	candidates       []repository.SimilarCandidate
+	similarSourceErr error
+	candidatesErr    error
+	candidateCalls   int
 }
 
 func newFakeRepository() *fakeRepository {
@@ -68,6 +75,53 @@ func (f *fakeRepository) ListAuthors(ctx context.Context, search string, limit i
 
 func (f *fakeRepository) ListLanguages(ctx context.Context) ([]string, error) {
 	return f.languages, nil
+}
+
+func (f *fakeRepository) GetSimilarSource(ctx context.Context, bookID uuid.UUID) (*repository.SimilarSource, error) {
+	if f.similarSourceErr != nil {
+		return nil, f.similarSourceErr
+	}
+	for _, b := range f.books {
+		if b.ID != bookID || b.IsHidden {
+			continue
+		}
+		src := &repository.SimilarSource{}
+		for _, a := range b.Authors {
+			src.AuthorIDs = append(src.AuthorIDs, a.ID)
+		}
+		for _, g := range b.Genres {
+			src.GenreIDs = append(src.GenreIDs, g.ID)
+		}
+		return src, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeRepository) ListSimilarCandidates(ctx context.Context, bookID uuid.UUID, src repository.SimilarSource, authorPool, genrePool int) ([]repository.SimilarCandidate, error) {
+	f.candidateCalls++
+	if f.candidatesErr != nil {
+		return nil, f.candidatesErr
+	}
+	if len(src.AuthorIDs) == 0 && len(src.GenreIDs) == 0 {
+		return nil, nil
+	}
+	return f.candidates, nil
+}
+
+func (f *fakeRepository) GetBooksByIDs(ctx context.Context, ids []uuid.UUID) ([]domain.Book, error) {
+	want := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	var result []domain.Book
+	// Iterate in reverse to make sure callers do not rely on result order.
+	for i := len(f.books) - 1; i >= 0; i-- {
+		b := f.books[i]
+		if want[b.ID] && !b.IsHidden {
+			result = append(result, b)
+		}
+	}
+	return result, nil
 }
 
 func setupHandler() (*Handler, *fakeRepository) {
@@ -393,5 +447,155 @@ func TestListLanguages_CodeMapping(t *testing.T) {
 	}
 	if names["fr"] != "fr" {
 		t.Fatalf("expected unmapped code to pass through as its own name, got %q", names["fr"])
+	}
+}
+
+// seedSimilarBooks adds a visible source book (one genre, one author) and n
+// visible genre-only candidates, returning the source.
+func seedSimilarBooks(repo *fakeRepository, n int) domain.Book {
+	genre := domain.Genre{ID: uuid.New(), Name: "Фэнтези", Slug: "fantasy"}
+	author := domain.Author{ID: uuid.New(), Name: "Author", Slug: "author"}
+	cover := "https://example.com/cover.jpg"
+	year := 1999
+	src := domain.Book{ID: uuid.New(), Slug: "source", Title: "Source", Genres: []domain.Genre{genre}, Authors: []domain.Author{author}}
+	repo.books = append(repo.books, src)
+	for i := 0; i < n; i++ {
+		b := domain.Book{
+			ID: uuid.New(), Slug: fmt.Sprintf("book-%d", i), Title: fmt.Sprintf("Book %d", i),
+			CoverURL: &cover, PublishedYear: &year, Rating: 4.2, RatingsCount: 1000 - i,
+			Genres: []domain.Genre{genre},
+		}
+		repo.books = append(repo.books, b)
+		repo.candidates = append(repo.candidates, repository.SimilarCandidate{
+			BookID: b.ID, SharedGenres: 1, GenreCount: 1, Rating: b.Rating, RatingsCount: b.RatingsCount,
+		})
+	}
+	return src
+}
+
+func callSimilar(t *testing.T, h *Handler, id, query string) *httptest.ResponseRecorder {
+	t.Helper()
+	c, rec := newContext(http.MethodGet, "/api/v1/books/"+id+"/similar"+query)
+	c.SetParamNames("id")
+	c.SetParamValues(id)
+	if err := h.ListSimilarBooks(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return rec
+}
+
+func TestListSimilarBooks_InvalidUUID(t *testing.T) {
+	h, _ := setupHandler()
+	rec := callSimilar(t, h, "not-a-uuid", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "invalid book id") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestListSimilarBooks_UnknownBook404(t *testing.T) {
+	h, _ := setupHandler()
+	rec := callSimilar(t, h, uuid.New().String(), "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "book not found") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestListSimilarBooks_HiddenBook404(t *testing.T) {
+	h, repo := setupHandler()
+	src := seedSimilarBooks(repo, 2)
+	repo.books[0].IsHidden = true
+	rec := callSimilar(t, h, src.ID.String(), "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestListSimilarBooks_ResponseShape(t *testing.T) {
+	h, repo := setupHandler()
+	src := seedSimilarBooks(repo, 2)
+	rec := callSimilar(t, h, src.ID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var raw map[string][]map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	items, ok := raw["items"]
+	if !ok || len(items) != 2 {
+		t.Fatalf("expected 2 items, got %v", raw)
+	}
+	for _, key := range []string{"id", "title", "slug", "cover_url", "published_year", "rating", "ratings_count", "authors", "genres"} {
+		if _, ok := items[0][key]; !ok {
+			t.Fatalf("expected key %q in item, got %v", key, items[0])
+		}
+	}
+	if items[0]["slug"] != "book-0" {
+		t.Fatalf("expected ranked first item book-0, got %v", items[0]["slug"])
+	}
+	if len(raw) != 1 {
+		t.Fatalf("expected only the items field, got %v", raw)
+	}
+}
+
+func TestListSimilarBooks_EmptyIsArrayNotNull(t *testing.T) {
+	h, repo := setupHandler()
+	src := domain.Book{ID: uuid.New(), Slug: "lonely"}
+	repo.books = []domain.Book{src}
+	rec := callSimilar(t, h, src.ID.String(), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if body := strings.TrimSpace(rec.Body.String()); body != `{"items":[]}` {
+		t.Fatalf("expected {\"items\":[]}, got %s", body)
+	}
+}
+
+func TestListSimilarBooks_LimitDefaultAndClamp(t *testing.T) {
+	cases := []struct {
+		query string
+		want  int
+	}{
+		{"", 8},
+		{"?limit=abc", 8},
+		{"?limit=0", 8},
+		{"?limit=-1", 8},
+		{"?limit=3", 3},
+		{"?limit=20", 20},
+		{"?limit=50", 20},
+	}
+	for _, tc := range cases {
+		h, repo := setupHandler()
+		src := seedSimilarBooks(repo, 25)
+		rec := callSimilar(t, h, src.ID.String(), tc.query)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%q: expected 200, got %d", tc.query, rec.Code)
+		}
+		var body similarBooksResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%q: decode: %v", tc.query, err)
+		}
+		if len(body.Items) != tc.want {
+			t.Fatalf("%q: expected %d items, got %d", tc.query, tc.want, len(body.Items))
+		}
+	}
+}
+
+func TestListSimilarBooks_RepoError500(t *testing.T) {
+	h, repo := setupHandler()
+	repo.similarSourceErr = fmt.Errorf("db down")
+	rec := callSimilar(t, h, uuid.New().String(), "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "failed to get similar books") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
 	}
 }

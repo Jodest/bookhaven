@@ -617,6 +617,13 @@ definitions:
           $ref: '#/definitions/internal_modules_catalog_transport_http.languageResponse'
         type: array
     type: object
+  internal_modules_catalog_transport_http.similarBooksResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.bookListItemResponse'
+        type: array
+    type: object
   internal_modules_harvest_transport_http.authorCandidateResponse:
     properties:
       description:
@@ -3031,6 +3038,48 @@ paths:
       summary: Создать рецензию на книгу
       tags:
       - reviews
+  /books/{id}/similar:
+    get:
+      description: Возвращает книги, похожие на указанную (общие авторы и жанры).
+        Не более 2 книг одного автора.
+      parameters:
+      - description: ID книги (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Количество, максимум 20 (по умолчанию 8)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_catalog_transport_http.similarBooksResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Похожие книги
+      tags:
+      - catalog
   /books/{slug}:
     get:
       parameters:

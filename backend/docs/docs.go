@@ -2671,6 +2671,68 @@ const docTemplate = `{
                 }
             }
         },
+        "/books/{id}/similar": {
+            "get": {
+                "description": "Возвращает книги, похожие на указанную (общие авторы и жанры). Не более 2 книг одного автора.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "summary": "Похожие книги",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Количество, максимум 20 (по умолчанию 8)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_catalog_transport_http.similarBooksResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/books/{slug}": {
             "get": {
                 "produces": [
@@ -5826,6 +5888,17 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/internal_modules_catalog_transport_http.languageResponse"
+                    }
+                }
+            }
+        },
+        "internal_modules_catalog_transport_http.similarBooksResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_catalog_transport_http.bookListItemResponse"
                     }
                 }
             }

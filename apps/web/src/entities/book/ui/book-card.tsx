@@ -6,13 +6,18 @@ import Link from 'next/link';
 
 interface BookCardProps {
   book: Book;
+  /** `sizes` for the cover image; defaults to the responsive grid value. */
+  imageSizes?: string;
 }
 
+const DEFAULT_IMAGE_SIZES = '(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw';
+
 /**
- * Cover-first card used for book grids (home, catalog, author detail).
+ * Cover-first card used for book grids (home, catalog, author detail) and
+ * the similar-books row.
  * Presentational only — no data fetching, no behavior beyond navigation.
  */
-export function BookCard({ book }: BookCardProps) {
+export function BookCard({ book, imageSizes = DEFAULT_IMAGE_SIZES }: BookCardProps) {
   return (
     <article className="group overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm transition hover:-translate-y-0.5 hover:shadow-card">
       <Link href={`/books/${book.slug}`} className="block">
@@ -23,7 +28,7 @@ export function BookCard({ book }: BookCardProps) {
               alt={book.title}
               fill
               className="object-cover transition-transform group-hover:scale-105"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+              sizes={imageSizes}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

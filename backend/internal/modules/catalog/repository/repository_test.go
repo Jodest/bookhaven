@@ -85,6 +85,20 @@ func (m *mockRepository) ListLanguages(ctx context.Context) ([]string, error) {
 	return m.langs, nil
 }
 
+var _ Repository = (*mockRepository)(nil)
+
+func (m *mockRepository) GetSimilarSource(ctx context.Context, bookID uuid.UUID) (*SimilarSource, error) {
+	return &SimilarSource{}, nil
+}
+
+func (m *mockRepository) ListSimilarCandidates(ctx context.Context, bookID uuid.UUID, src SimilarSource, authorPool, genrePool int) ([]SimilarCandidate, error) {
+	return nil, nil
+}
+
+func (m *mockRepository) GetBooksByIDs(ctx context.Context, ids []uuid.UUID) ([]domain.Book, error) {
+	return nil, nil
+}
+
 func TestListBooks_WithLanguageFilter(t *testing.T) {
 	lang := "en"
 	repo := &mockRepository{

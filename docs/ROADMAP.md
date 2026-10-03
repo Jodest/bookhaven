@@ -44,6 +44,11 @@ Email verification at registration chain (epic #162):
 
 Email notifications (#121, in Proposed) also depend on #157.
 
+Similar books (epic #218):
+
+1. [ ] Similar books, stage 1 (content-based) — in progress (see [docs/features/similar-books.md](features/similar-books.md), #213, includes indexes #198) — implemented on `feat/similar-books-content`, awaiting review/merge
+2. [ ] Similar books, stage 2: readers also read + precompute (#217)
+
 ## Proposed (awaiting prioritization)
 
 - [ ] Custom user-created shelves — user-book-shelves business analysis (OQ-001) deferred custom shelves to a future increment needing a schema migration and an exclusivity decision, still unresolved [business-analysis] (proposed 2026-09-30, #94)
