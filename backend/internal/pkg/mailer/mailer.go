@@ -21,10 +21,10 @@
 // Rendering happens in the caller at enqueue time; the worker sends
 // exactly what is in the payload and knows nothing about email types.
 //
-// Template convention (for the first consumer, #158, to implement): add
-// templates/ under this package embedded via //go:embed, with a shared
-// layout.html.tmpl and per-email pairs <name>.html.tmpl + <name>.txt.tmpl,
-// rendered by a helper such as Render(name, data) using html/template for
+// Template convention (implemented in render.go): templates/ under this
+// package embedded via //go:embed, with a shared layout.html.tmpl and
+// per-email pairs <name>.html.tmpl + <name>.txt.tmpl, rendered by
+// Render(name, data) using html/template for
 // the HTML part (auto-escaping user-provided values) and text/template for
 // the text part. The subject lives in the template set (e.g. a
 // {{define "subject"}} block in the txt template). Email copy is Russian;

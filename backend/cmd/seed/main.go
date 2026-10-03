@@ -84,14 +84,19 @@ func shouldRefuseToRun(env string, force bool) bool {
 // login-capable test account. Always run, independent of -accounts-only,
 // since neither the account fixtures nor login depend on catalog data.
 func seedAccounts(db *gorm.DB) error {
+	// Seed accounts are always email-verified (see
+	// docs/features/email-verification-backend.md).
+	verifiedAt := time.Now()
+
 	// Create admin user
 	adminID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	admin := usersDomain.User{
-		ID:          adminID,
-		Email:       "admin@bookhaven.local",
-		Name:        ptr("Admin"),
-		Role:        usersDomain.RoleAdmin,
-		ProfileType: usersDomain.ProfileTypeReader,
+		ID:              adminID,
+		Email:           "admin@bookhaven.local",
+		Name:            ptr("Admin"),
+		Role:            usersDomain.RoleAdmin,
+		ProfileType:     usersDomain.ProfileTypeReader,
+		EmailVerifiedAt: &verifiedAt,
 	}
 	if err := db.FirstOrCreate(&admin, usersDomain.User{Email: admin.Email}).Error; err != nil {
 		return fmt.Errorf("create admin: %w", err)
@@ -105,15 +110,25 @@ func seedAccounts(db *gorm.DB) error {
 	}
 	testHashStr := string(testHash)
 	testUser := usersDomain.User{
-		ID:           uuid.MustParse("22222222-2222-2222-2222-222222222222"),
-		Email:        "test@bookhaven.local",
-		PasswordHash: &testHashStr,
-		Name:         ptr("Тестовый пользователь"),
-		Role:         usersDomain.RoleUser,
-		ProfileType:  usersDomain.ProfileTypeReader,
+		ID:              uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+		Email:           "test@bookhaven.local",
+		PasswordHash:    &testHashStr,
+		Name:            ptr("Тестовый пользователь"),
+		Role:            usersDomain.RoleUser,
+		ProfileType:     usersDomain.ProfileTypeReader,
+		EmailVerifiedAt: &verifiedAt,
 	}
 	if err := db.FirstOrCreate(&testUser, usersDomain.User{Email: testUser.Email}).Error; err != nil {
 		return fmt.Errorf("create test user: %w", err)
+	}
+
+	// Idempotently verify accounts that already existed before this seed
+	// version (FirstOrCreate does not update existing rows).
+	if err := db.Exec(
+		"UPDATE users SET email_verified_at = now() WHERE email IN (?, ?) AND email_verified_at IS NULL",
+		admin.Email, testUser.Email,
+	).Error; err != nil {
+		return fmt.Errorf("verify seed accounts: %w", err)
 	}
 
 	return nil

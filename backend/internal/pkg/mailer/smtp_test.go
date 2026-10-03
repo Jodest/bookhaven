@@ -232,3 +232,26 @@ func TestSMTPSender_PermanentRejectionIsTextprotoError(t *testing.T) {
 		t.Error("550 must be classified as permanent")
 	}
 }
+
+func TestIsInsecureAuth(t *testing.T) {
+	cases := []struct {
+		name     string
+		opts     SMTPOptions
+		startTLS bool
+		want     bool
+	}{
+		{"no credentials", SMTPOptions{Host: "smtp.example.com", Port: 587}, false, false},
+		{"implicit TLS", SMTPOptions{Host: "smtp.example.com", Port: 465, User: "u"}, false, false},
+		{"STARTTLS negotiated", SMTPOptions{Host: "smtp.example.com", Port: 587, User: "u"}, true, false},
+		{"localhost plain", SMTPOptions{Host: "localhost", Port: 1025, User: "u"}, false, false},
+		{"loopback IP plain", SMTPOptions{Host: "127.0.0.1", Port: 1025, User: "u"}, false, false},
+		{"remote plain with credentials", SMTPOptions{Host: "smtp.example.com", Port: 587, User: "u"}, false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isInsecureAuth(tc.opts, tc.startTLS); got != tc.want {
+				t.Fatalf("isInsecureAuth = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

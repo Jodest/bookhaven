@@ -107,6 +107,8 @@ Message building (MIME encoding) should be a separate pure function (e.g. `build
 
 ### How later features use this (contract for #158/#161/#121)
 
+> Implemented by #158: `mailer.Render` in `backend/internal/pkg/mailer/render.go` with embedded templates in `templates/` (first template: `verify_email`), `WEB_BASE_URL` config, and the `cmd/api` wiring (`mailer.NewQueue(taskClient)`). See [email-verification-backend.md](email-verification-backend.md).
+
 - `cmd/api/main.go`: reuse the existing `asynq.Client` (currently named `harvestClient`; rename to e.g. `taskClient` when the second consumer appears) -> `mailer.NewQueue(taskClient)` -> inject into the consuming service.
 - The consuming service depends on `mailer.Enqueuer` (or its own one-method interface with the same shape); tests use a hand-rolled fake recording messages (no mocking library, per repo convention).
 - Templates: the first feature that needs one (#158) adds `backend/internal/pkg/mailer/templates/` embedded with `//go:embed`, a shared `layout.html.tmpl`, and per-email pairs `<name>.html.tmpl` + `<name>.txt.tmpl`, rendered by a helper such as `mailer.Render(name string, data any) (Message-without-To, error)` using `html/template` for HTML (auto-escaping user-provided values like usernames) and `text/template` for the text part. Subject lives in the template set (e.g. a `{{define "subject"}}` block in the txt template). Email copy is Russian (product is Russian-only). Absolute links are built from a new `WEB_BASE_URL`-style config value added by #158, not hardcoded.

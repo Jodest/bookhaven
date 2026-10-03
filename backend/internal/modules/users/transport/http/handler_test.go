@@ -306,6 +306,12 @@ func TestUpdateMe_OwnerUpdate(t *testing.T) {
 	if body.Email != user.Email {
 		t.Fatal("owner response should include email")
 	}
+	if body.EmailVerified {
+		t.Fatal("expected email_verified false for a user without email_verified_at")
+	}
+	if !strings.Contains(rec.Body.String(), `"email_verified":false`) {
+		t.Fatalf("expected email_verified field in owner response, got %s", rec.Body.String())
+	}
 }
 
 func TestUpdateMe_ClearAvatarWithNull(t *testing.T) {

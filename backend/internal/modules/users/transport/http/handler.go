@@ -78,14 +78,15 @@ type updateProfileRequest struct {
 }
 
 type ownerUserResponse struct {
-	ID          string    `json:"id"`
-	Email       string    `json:"email"`
-	Name        *string   `json:"name"`
-	AvatarURL   *string   `json:"avatar_url"`
-	Role        string    `json:"role"`
-	ProfileType string    `json:"profile_type"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	Email         string    `json:"email"`
+	Name          *string   `json:"name"`
+	AvatarURL     *string   `json:"avatar_url"`
+	Role          string    `json:"role"`
+	ProfileType   string    `json:"profile_type"`
+	EmailVerified bool      `json:"email_verified"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type publicUserResponse struct {
@@ -122,14 +123,15 @@ type publicProfileResponse struct {
 
 func toOwnerUserResponse(u *usersDomain.User) ownerUserResponse {
 	return ownerUserResponse{
-		ID:          u.ID.String(),
-		Email:       u.Email,
-		Name:        u.Name,
-		AvatarURL:   u.AvatarURL,
-		Role:        string(u.Role),
-		ProfileType: string(u.ProfileType),
-		CreatedAt:   u.CreatedAt,
-		UpdatedAt:   u.UpdatedAt,
+		ID:            u.ID.String(),
+		Email:         u.Email,
+		Name:          u.Name,
+		AvatarURL:     u.AvatarURL,
+		Role:          string(u.Role),
+		ProfileType:   string(u.ProfileType),
+		EmailVerified: u.EmailVerifiedAt != nil,
+		CreatedAt:     u.CreatedAt,
+		UpdatedAt:     u.UpdatedAt,
 	}
 }
 

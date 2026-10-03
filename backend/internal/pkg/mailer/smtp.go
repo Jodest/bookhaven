@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -28,6 +29,24 @@ const defaultSMTPTimeout = 30 * time.Second
 // Any other port connects in plain text and upgrades via STARTTLS when the
 // server advertises it.
 const implicitTLSPort = 465
+
+// ErrInsecureAuth means credentials are configured but the connection to a
+// non-local server is not encrypted (port is not 465 and the server does
+// not offer STARTTLS). It is a misconfiguration retries cannot fix.
+var ErrInsecureAuth = errors.New("mailer: SMTP credentials configured but connection is not encrypted (no implicit TLS, no STARTTLS)")
+
+// isInsecureAuth reports whether AUTH would have to be sent over an
+// unencrypted connection to a non-loopback host.
+func isInsecureAuth(opts SMTPOptions, startTLS bool) bool {
+	if opts.User == "" || opts.Port == implicitTLSPort || startTLS {
+		return false
+	}
+	if opts.Host == "localhost" {
+		return false
+	}
+	ip := net.ParseIP(opts.Host)
+	return ip == nil || !ip.IsLoopback()
+}
 
 // SMTPOptions configures an SMTPSender.
 type SMTPOptions struct {
@@ -99,12 +118,17 @@ func (s *SMTPSender) Send(ctx context.Context, msg Message) error {
 	}
 	defer client.Close()
 
+	startTLS := false
 	if s.opts.Port != implicitTLSPort {
 		if ok, _ := client.Extension("STARTTLS"); ok {
 			if err := client.StartTLS(tlsConfig); err != nil {
 				return fmt.Errorf("mailer: starttls: %w", err)
 			}
+			startTLS = true
 		}
+	}
+	if isInsecureAuth(s.opts, startTLS) {
+		return ErrInsecureAuth
 	}
 
 	if s.opts.User != "" {
