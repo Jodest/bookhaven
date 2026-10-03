@@ -90,6 +90,11 @@ Email notifications (#121, in Proposed) also depend on #157.
 - [ ] Follow an author and get notified about their new books — readers learn when a favorite author's new book lands in the catalog; Goodreads offers author following, BookHaven has none (distinct from following users, #96) [competitive] (proposed 2026-10-03, #209)
 - [ ] Rating distribution and review sorting on the book page — readers see a 1-5 star breakdown and can sort reviews by likes/rating; today the page shows only the average and count, and reviews are newest-first only [code] (proposed 2026-10-03, #210)
 - [ ] Themed reading challenges with prompts — readers can pick prompt- or genre-based challenges and tick them off from their shelves (StoryGraph custom challenges, LiveLib community challenges); the current challenge is a single annual book count [competitive] (proposed 2026-10-03, #211)
+- [ ] Where to read or buy links to Russian stores on the book page — readers can jump from a book to ЛитРес/Яндекс Книги/MyBook as on LiveLib; the book page and schema have no store links today [competitive] (proposed 2026-10-03, #212)
+- [ ] Similar books block on the book page — any visitor, including guests, sees books like the one they are viewing (LiveLib, Goodreads "Readers also enjoyed"); distinct from personalized recommendations (#112) [competitive] (proposed 2026-10-03, #213)
+- [ ] Literary award badges and prize-winner browsing — readers see that a book won or was shortlisted for Большая книга/Ясная Поляна/НОС/Нацбест and can browse each prize's winners (LiveLib, MyBook, FantLab); no award concept exists today [competitive] (proposed 2026-10-03, #214)
+- [ ] Sort, filter and search within your own shelves — readers with long shelves can find a book and reorder by title/author/rating/date; shelf books are always listed by date added with no controls [code] (proposed 2026-10-03, #215)
+- [ ] "Up Next" queue for the want-to-read shelf — readers can pick and order the few books they will read next from a long want-to-read shelf (The StoryGraph Up Next) [competitive] (proposed 2026-10-03, #216)
 
 ## Technical Debt
 
