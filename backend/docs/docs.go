@@ -1710,6 +1710,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/forgot-password": {
+            "post": {
+                "description": "Публичный эндпоинт. Если адрес принадлежит аккаунту с паролем (подтверждённому или нет), удаляет его неиспользованные ссылки сброса и отправляет письмо с новой ссылкой (действует 1 час, одноразовая). Ответ 202 одинаков для любого корректного адреса (неизвестного, без пароля и т.д.), чтобы не раскрывать, какие адреса зарегистрированы. Ограничения: 20 запросов в час с одного IP; для одного адреса 1 раз в минуту и 5 раз в сутки. Коды ошибок: invalid_email, rate_limited, email_send_failed.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Запросить сброс пароля",
+                "parameters": [
+                    {
+                        "description": "Email аккаунта",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.forgotPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "status: sent",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.statusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.rateLimitedResponse"
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "type": "integer",
+                                "description": "Секунд до следующей попытки"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Сначала проверяется пароль, затем подтверждение email. Если пароль верный, но email не подтверждён, возвращается 403 с кодом email_not_verified, токены не создаются и cookies не устанавливаются.",
@@ -2018,6 +2076,55 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/reset-password": {
+            "post": {
+                "description": "Публичный эндпоинт. Устанавливает новый пароль по одноразовому токену из письма. Пароль проверяется до токена (минимум 8 символов), поэтому отклонённый пароль не расходует ссылку. При успехе: токен помечается использованным, email считается подтверждённым, все refresh-токены пользователя отзываются, auth-cookies очищаются. Вход не выполняется. Коды ошибок: invalid_password, invalid_token, token_used, token_expired.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Сбросить пароль",
+                "parameters": [
+                    {
+                        "description": "Токен из ссылки в письме и новый пароль",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.resetPasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "status: password_reset",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.statusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -5347,6 +5454,17 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_auth_transport_http.forgotPasswordRequest": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_auth_transport_http.loginRequest": {
             "type": "object",
             "required": [
@@ -5431,6 +5549,21 @@ const docTemplate = `{
             ],
             "properties": {
                 "email": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_auth_transport_http.resetPasswordRequest": {
+            "type": "object",
+            "required": [
+                "password"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string",
+                    "minLength": 8
+                },
+                "token": {
                     "type": "string"
                 }
             }

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> #161 implemented the "reset verifies the email" note below: completing a password reset sets `email_verified_at` if NULL (see [password-reset.md](password-reset.md)).
+
 GitHub issue: #160 "Вход только после подтверждения email" (epic #162). Depends on #158 ([email-verification-backend.md](email-verification-backend.md)) and #159 ([email-verification-web.md](email-verification-web.md)), both merged to `main`. Branch `feat/unverified-user-restrictions` from `main`. Supersedes the earlier selective-restrictions plan (rejected by the owner).
 
 ## Goal

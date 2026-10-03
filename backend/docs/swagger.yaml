@@ -369,6 +369,13 @@ definitions:
         example: invalid token
         type: string
     type: object
+  internal_modules_auth_transport_http.forgotPasswordRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
   internal_modules_auth_transport_http.loginRequest:
     properties:
       email:
@@ -428,6 +435,16 @@ definitions:
         type: string
     required:
     - email
+    type: object
+  internal_modules_auth_transport_http.resetPasswordRequest:
+    properties:
+      password:
+        minLength: 8
+        type: string
+      token:
+        type: string
+    required:
+    - password
     type: object
   internal_modules_auth_transport_http.statusResponse:
     properties:
@@ -2365,6 +2382,50 @@ paths:
       summary: Скрыть/показать рецензию (модерация)
       tags:
       - admin
+  /auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: 'Публичный эндпоинт. Если адрес принадлежит аккаунту с паролем
+        (подтверждённому или нет), удаляет его неиспользованные ссылки сброса и отправляет
+        письмо с новой ссылкой (действует 1 час, одноразовая). Ответ 202 одинаков
+        для любого корректного адреса (неизвестного, без пароля и т.д.), чтобы не
+        раскрывать, какие адреса зарегистрированы. Ограничения: 20 запросов в час
+        с одного IP; для одного адреса 1 раз в минуту и 5 раз в сутки. Коды ошибок:
+        invalid_email, rate_limited, email_send_failed.'
+      parameters:
+      - description: Email аккаунта
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_auth_transport_http.forgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: 'status: sent'
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.statusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
+        "429":
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Секунд до следующей попытки
+              type: integer
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.rateLimitedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
+      summary: Запросить сброс пароля
+      tags:
+      - auth
   /auth/login:
     post:
       consumes:
@@ -2576,6 +2637,43 @@ paths:
           schema:
             $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
       summary: Повторно отправить письмо подтверждения email
+      tags:
+      - auth
+  /auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: 'Публичный эндпоинт. Устанавливает новый пароль по одноразовому
+        токену из письма. Пароль проверяется до токена (минимум 8 символов), поэтому
+        отклонённый пароль не расходует ссылку. При успехе: токен помечается использованным,
+        email считается подтверждённым, все refresh-токены пользователя отзываются,
+        auth-cookies очищаются. Вход не выполняется. Коды ошибок: invalid_password,
+        invalid_token, token_used, token_expired.'
+      parameters:
+      - description: Токен из ссылки в письме и новый пароль
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_auth_transport_http.resetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'status: password_reset'
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.statusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Сбросить пароль
       tags:
       - auth
   /auth/verify-email:

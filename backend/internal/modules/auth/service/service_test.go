@@ -105,7 +105,7 @@ func setupTestAuthService(t *testing.T) (*Service, *fakeUsersRepository) {
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		Issuer:          "bookhaven-test",
 	}
-	return NewService(cfg, db, users, nil, ResendLimiters{}, nil), users
+	return NewService(cfg, db, users, nil, ResendLimiters{}, ResendLimiters{}, nil), users
 }
 
 func createTestUser(t *testing.T, users *fakeUsersRepository) *usersDomain.User {

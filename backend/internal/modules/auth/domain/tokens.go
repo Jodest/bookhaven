@@ -45,3 +45,21 @@ type EmailVerificationToken struct {
 func (EmailVerificationToken) TableName() string {
 	return "email_verification_tokens"
 }
+
+// PasswordResetToken is a one-time password reset token stored in the
+// database. Only the sha256 hex of the token is persisted; Email is the
+// address the link was sent to (a mismatch with users.email invalidates it).
+type PasswordResetToken struct {
+	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	UserID    uuid.UUID `gorm:"type:uuid;not null;index"`
+	Email     string    `gorm:"not null"`
+	TokenHash string    `gorm:"not null;uniqueIndex"`
+	ExpiresAt time.Time `gorm:"not null"`
+	UsedAt    *time.Time
+	CreatedAt time.Time `gorm:"not null"`
+}
+
+// TableName returns the table name for PasswordResetToken.
+func (PasswordResetToken) TableName() string {
+	return "password_reset_tokens"
+}

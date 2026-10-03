@@ -27,6 +27,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Public shelf/reading-status visibility on user profiles — a visitor can see another user's shelves (default and custom) with visible-book-only counts on the public profile and browse a shelf's books read-only, resolving OQ-003 (no privacy toggle) (see [docs/features/public-shelf-visibility.md](features/public-shelf-visibility.md), #95)
 - [x] Mailer infrastructure — SMTP sender, async `email:send` queue in the worker, Mailpit for local dev (see [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md), #157)
 - [x] Email verification at registration — verification email with one-time link, verify/resend endpoints with rate limiting (see [docs/features/email-verification-backend.md](features/email-verification-backend.md), #158), `/verify-email` page, check-email panel and site-wide unverified banner (see [docs/features/email-verification-web.md](features/email-verification-web.md), #159); merged to `main` together
+- [x] Login only after email verification — unverified users cannot authenticate and use the site as guests; public resend-verification with per-IP/per-email limits (see [docs/features/email-verification-login-gate.md](features/email-verification-login-gate.md), #160, epic #176)
 
 ## Post-MVP
 
@@ -38,8 +39,8 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 Email verification at registration chain (epic #162):
 
-1. [ ] Login only after email verification — unverified users cannot authenticate and use the site as guests (see [docs/features/email-verification-login-gate.md](features/email-verification-login-gate.md), #160, epic #176) — implemented on `feat/unverified-user-restrictions`, awaiting review/merge
-2. [ ] Password reset by email (#161)
+1. [x] Login only after email verification (#160) — merged to `main`, see Completed
+2. [ ] Password reset by email — in progress (see [docs/features/password-reset.md](features/password-reset.md), #161, epic #181) — implemented on `feat/password-reset`, awaiting review/merge
 
 Email notifications (#121, in Proposed) also depend on #157.
 
@@ -73,6 +74,7 @@ Email notifications (#121, in Proposed) also depend on #157.
 ## Technical Debt
 
 - [ ] Purge used/expired rows from `email_verification_tokens` (never cleaned up; low volume, see [docs/features/email-verification-backend.md](features/email-verification-backend.md))
+- [ ] Purge used/expired rows from `password_reset_tokens` (never cleaned up; same approach as the verification tokens, see [docs/features/password-reset.md](features/password-reset.md))
 
 - [ ] TypeScript project references
 - [ ] WSL2 backend hot reload

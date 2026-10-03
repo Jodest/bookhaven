@@ -35,6 +35,11 @@ var (
 	ErrVerificationTokenUsed    = errors.New("verification token already used")
 	ErrRateLimited              = errors.New("too many requests")
 
+	// Password reset errors.
+	ErrResetTokenInvalid = errors.New("invalid password reset token")
+	ErrResetTokenExpired = errors.New("password reset token expired")
+	ErrResetTokenUsed    = errors.New("password reset token already used")
+
 	// ErrEmailNotVerified is returned by Login (after a successful password
 	// check) and RefreshTokens when the user's email is not verified.
 	ErrEmailNotVerified = errors.New("email not verified")
@@ -60,13 +65,14 @@ type Mailer interface {
 	Enqueue(ctx context.Context, msg mailer.Message) error
 }
 
-// ResendLimiter rate-limits verification email resends per key.
+// ResendLimiter rate-limits public email-sending requests per key.
 type ResendLimiter interface {
 	Allow(ctx context.Context, key string) (allowed bool, retryAfter time.Duration, err error)
 }
 
-// ResendLimiters are the two limiters of the public resend endpoint: IP is
-// keyed by the client IP, Email by the sha256 of the normalised address.
+// ResendLimiters are the two limiters of a public email-sending endpoint
+// (resend-verification, forgot-password): IP is keyed by the client IP,
+// Email by the sha256 of the normalised address.
 type ResendLimiters struct {
 	IP    ResendLimiter
 	Email ResendLimiter
@@ -77,6 +83,14 @@ const defaultVerificationTokenTTL = 24 * time.Hour
 
 // verifyEmailTemplate is the mailer template name for the verification email.
 const verifyEmailTemplate = "verify_email"
+
+// resetPasswordTemplate is the mailer template name for the password reset
+// email.
+const resetPasswordTemplate = "reset_password"
+
+// passwordResetTokenTTL is the lifetime of a password reset token. Not
+// configurable: the email text says "1 час".
+const passwordResetTokenTTL = time.Hour
 
 // Config holds auth service configuration.
 type Config struct {
@@ -100,11 +114,14 @@ type Service struct {
 	users    repository.Repository
 	mailer   Mailer
 	limiters ResendLimiters
-	logger   *zap.Logger
+	// resetLimiters limit the public forgot-password endpoint.
+	resetLimiters ResendLimiters
+	logger        *zap.Logger
 }
 
-// NewService creates a new auth Service. logger may be nil (no logging).
-func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mailer, limiters ResendLimiters, logger *zap.Logger) *Service {
+// NewService creates a new auth Service. limiters limit resend-verification,
+// resetLimiters limit forgot-password. logger may be nil (no logging).
+func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mailer, limiters ResendLimiters, resetLimiters ResendLimiters, logger *zap.Logger) *Service {
 	if cfg.VerificationTokenTTL <= 0 {
 		cfg.VerificationTokenTTL = defaultVerificationTokenTTL
 	}
@@ -112,12 +129,13 @@ func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mai
 		logger = zap.NewNop()
 	}
 	return &Service{
-		config:   cfg,
-		db:       db,
-		users:    users,
-		mailer:   mailer,
-		limiters: limiters,
-		logger:   logger,
+		config:        cfg,
+		db:            db,
+		users:         users,
+		mailer:        mailer,
+		limiters:      limiters,
+		resetLimiters: resetLimiters,
+		logger:        logger,
 	}
 }
 
@@ -323,11 +341,15 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshTokenPlain string) (
 
 // Logout revokes all refresh tokens for a user.
 func (s *Service) Logout(ctx context.Context, userID uuid.UUID) error {
-	now := time.Now().Unix()
-	return s.db.WithContext(ctx).
-		Model(&domain.RefreshToken{}).
+	return revokeRefreshTokens(s.db.WithContext(ctx), userID, time.Now())
+}
+
+// revokeRefreshTokens revokes all active refresh tokens of userID using db
+// (a plain handle or a transaction).
+func revokeRefreshTokens(db *gorm.DB, userID uuid.UUID, now time.Time) error {
+	return db.Model(&domain.RefreshToken{}).
 		Where("user_id = ? AND revoked_at IS NULL", userID).
-		Update("revoked_at", now).Error
+		Update("revoked_at", now.Unix()).Error
 }
 
 // VerifyEmail consumes an email verification token. It returns
@@ -335,7 +357,7 @@ func (s *Service) Logout(ctx context.Context, userID uuid.UUID) error {
 // (also for used/expired tokens). Errors: ErrVerificationTokenInvalid,
 // ErrVerificationTokenExpired, ErrVerificationTokenUsed.
 func (s *Service) VerifyEmail(ctx context.Context, plain string) (alreadyVerified bool, err error) {
-	if !isVerificationTokenFormat(plain) {
+	if !isTokenFormat(plain) {
 		return false, ErrVerificationTokenInvalid
 	}
 
@@ -416,24 +438,8 @@ func (s *Service) VerifyEmail(ctx context.Context, plain string) (alreadyVerifie
 // failure to issue the email (logged) - returns nil. Errors: *RateLimitError
 // (ErrRateLimited), or a limiter error.
 func (s *Service) ResendVerification(ctx context.Context, email, ip string) error {
-	if s.limiters.IP == nil || s.limiters.Email == nil {
-		return errors.New("resend limiters not configured")
-	}
-
-	allowed, retryAfter, err := s.limiters.IP.Allow(ctx, ip)
-	if err != nil {
-		return fmt.Errorf("ip rate limiter: %w", err)
-	}
-	if !allowed {
-		return &RateLimitError{RetryAfter: retryAfter}
-	}
-
-	allowed, retryAfter, err = s.limiters.Email.Allow(ctx, resendEmailKey(email))
-	if err != nil {
-		return fmt.Errorf("email rate limiter: %w", err)
-	}
-	if !allowed {
-		return &RateLimitError{RetryAfter: retryAfter}
+	if err := checkEmailRequestLimits(ctx, s.limiters, email, ip); err != nil {
+		return err
 	}
 
 	// The lookup uses the email as given, same as Login/Register.
@@ -469,11 +475,205 @@ func (s *Service) ResendVerification(ctx context.Context, email, ip string) erro
 	return nil
 }
 
-// resendEmailKey is the per-email rate-limit key: the hex sha256 of the
+// emailRateLimitKey is the per-email rate-limit key: the hex sha256 of the
 // trimmed, lowercased address, so no plain addresses are stored in Redis
 // and differently-cased spellings share one quota.
-func resendEmailKey(email string) string {
+func emailRateLimitKey(email string) string {
 	return hashToken(strings.ToLower(strings.TrimSpace(email)))
+}
+
+// checkEmailRequestLimits applies the per-IP and then the per-email limit of
+// a public email-sending endpoint. They depend only on request data, so a
+// rate-limit answer never reveals whether the account exists. An IP-limited
+// request does not consume the email quota.
+func checkEmailRequestLimits(ctx context.Context, limiters ResendLimiters, email, ip string) error {
+	if limiters.IP == nil || limiters.Email == nil {
+		return errors.New("rate limiters not configured")
+	}
+
+	allowed, retryAfter, err := limiters.IP.Allow(ctx, ip)
+	if err != nil {
+		return fmt.Errorf("ip rate limiter: %w", err)
+	}
+	if !allowed {
+		return &RateLimitError{RetryAfter: retryAfter}
+	}
+
+	allowed, retryAfter, err = limiters.Email.Allow(ctx, emailRateLimitKey(email))
+	if err != nil {
+		return fmt.Errorf("email rate limiter: %w", err)
+	}
+	if !allowed {
+		return &RateLimitError{RetryAfter: retryAfter}
+	}
+	return nil
+}
+
+// ForgotPassword emails a password reset link to email if it belongs to an
+// account with a password (verified or not), invalidating the account's
+// unused reset tokens. It is enumeration-safe: rate limits (per ip, then per
+// normalised email) are applied before the user lookup, and every outcome
+// after the lookup - unknown email, no password, or a failure to issue the
+// email (logged) - returns nil. Errors: *RateLimitError (ErrRateLimited), or
+// a limiter error.
+func (s *Service) ForgotPassword(ctx context.Context, email, ip string) error {
+	if err := checkEmailRequestLimits(ctx, s.resetLimiters, email, ip); err != nil {
+		return err
+	}
+
+	// The lookup uses the email as given, same as Login/Register.
+	user, err := s.users.GetByEmail(ctx, email)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			s.logger.Error("forgot password: failed to look up user", zap.Error(err))
+		}
+		return nil
+	}
+	if user.PasswordHash == nil {
+		return nil
+	}
+
+	// Only the newest link works; used rows are kept so a repeated click on
+	// an already-used link still answers token_used.
+	if err := s.db.WithContext(ctx).
+		Where("user_id = ? AND used_at IS NULL", user.ID).
+		Delete(&domain.PasswordResetToken{}).Error; err != nil {
+		s.logger.Error("forgot password: failed to delete unused reset tokens",
+			zap.String("user_id", user.ID.String()),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	if err := s.issuePasswordReset(ctx, user); err != nil {
+		s.logger.Error("forgot password: failed to issue password reset",
+			zap.String("user_id", user.ID.String()),
+			zap.Error(err),
+		)
+	}
+	return nil
+}
+
+// issuePasswordReset creates a password reset token for user and enqueues
+// the reset_password message. The plain token only ever leaves this
+// function inside the email payload.
+func (s *Service) issuePasswordReset(ctx context.Context, user *usersDomain.User) error {
+	if s.mailer == nil {
+		return errors.New("mailer not configured")
+	}
+
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return fmt.Errorf("generate password reset token: %w", err)
+	}
+	plain := hex.EncodeToString(tokenBytes)
+
+	now := time.Now()
+	token := &domain.PasswordResetToken{
+		ID:        uuid.New(),
+		UserID:    user.ID,
+		Email:     user.Email,
+		TokenHash: hashToken(plain),
+		ExpiresAt: now.Add(passwordResetTokenTTL),
+		CreatedAt: now,
+	}
+	if err := s.db.WithContext(ctx).Create(token).Error; err != nil {
+		return fmt.Errorf("save password reset token: %w", err)
+	}
+
+	name := ""
+	if user.Name != nil {
+		name = strings.TrimSpace(*user.Name)
+	}
+	msg, err := mailer.Render(resetPasswordTemplate, mailer.ResetPasswordData{
+		Name:     name,
+		ResetURL: s.resetURL(plain),
+	})
+	if err != nil {
+		return fmt.Errorf("render password reset email: %w", err)
+	}
+	msg.To = user.Email
+
+	if err := s.mailer.Enqueue(ctx, msg); err != nil {
+		return fmt.Errorf("enqueue password reset email: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) resetURL(plain string) string {
+	return strings.TrimRight(s.config.WebBaseURL, "/") + "/reset-password?" + url.Values{"token": {plain}}.Encode()
+}
+
+// ResetPassword consumes a password reset token and sets newPassword (the
+// caller validates it first, so a rejected password never burns the link).
+// In one transaction it marks the token used, updates the password hash,
+// verifies the email if not yet verified (the link proves mailbox
+// ownership), deletes the user's other unused reset tokens and revokes all
+// of the user's refresh tokens. No tokens are issued. Errors:
+// ErrResetTokenInvalid, ErrResetTokenExpired, ErrResetTokenUsed.
+func (s *Service) ResetPassword(ctx context.Context, plain, newPassword string) error {
+	if !isTokenFormat(plain) {
+		return ErrResetTokenInvalid
+	}
+
+	var token domain.PasswordResetToken
+	if err := s.db.WithContext(ctx).Where("token_hash = ?", hashToken(plain)).First(&token).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrResetTokenInvalid
+		}
+		return fmt.Errorf("find password reset token: %w", err)
+	}
+
+	user, err := s.users.GetByID(ctx, token.UserID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrResetTokenInvalid
+		}
+		return fmt.Errorf("get user: %w", err)
+	}
+	if user.Email != token.Email {
+		return ErrResetTokenInvalid
+	}
+	if token.UsedAt != nil {
+		return ErrResetTokenUsed
+	}
+	if !time.Now().Before(token.ExpiresAt) {
+		return ErrResetTokenExpired
+	}
+
+	// bcrypt is slow; keep it outside the transaction.
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+
+	now := time.Now()
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&domain.PasswordResetToken{}).
+			Where("id = ? AND used_at IS NULL", token.ID).
+			Update("used_at", now)
+		if res.Error != nil {
+			return fmt.Errorf("mark password reset token used: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			// A concurrent request used this token first.
+			return ErrResetTokenUsed
+		}
+		if err := tx.Exec(
+			"UPDATE users SET password_hash = ?, email_verified_at = COALESCE(email_verified_at, ?), updated_at = ? WHERE id = ?",
+			string(hash), now, now, user.ID,
+		).Error; err != nil {
+			return fmt.Errorf("update password: %w", err)
+		}
+		if err := tx.Where("user_id = ? AND used_at IS NULL", user.ID).
+			Delete(&domain.PasswordResetToken{}).Error; err != nil {
+			return fmt.Errorf("delete unused password reset tokens: %w", err)
+		}
+		if err := revokeRefreshTokens(tx, user.ID, now); err != nil {
+			return fmt.Errorf("revoke refresh tokens: %w", err)
+		}
+		return nil
+	})
 }
 
 // issueVerification creates a verification token for user and enqueues the
@@ -539,9 +739,9 @@ func markVerificationTokenUsed(db *gorm.DB, id uuid.UUID, now time.Time) (bool, 
 	return res.RowsAffected > 0, nil
 }
 
-// isVerificationTokenFormat reports whether plain looks like a token issued
-// by issueVerification: exactly 64 hex characters.
-func isVerificationTokenFormat(plain string) bool {
+// isTokenFormat reports whether plain looks like a token issued
+// by issueVerification or issuePasswordReset: exactly 64 hex characters.
+func isTokenFormat(plain string) bool {
 	if len(plain) != 64 {
 		return false
 	}

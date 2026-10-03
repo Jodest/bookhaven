@@ -94,6 +94,11 @@ export function LoginForm({ onEmailNotVerified, onSubmitStart }: LoginFormProps 
         {errors.password && (
           <p className="mt-1 text-sm text-destructive">{errors.password.message}</p>
         )}
+        <p className="mt-1 text-right text-xs">
+          <Link href="/forgot-password" className="text-primary hover:underline">
+            Забыли пароль?
+          </Link>
+        </p>
       </div>
 
       {error && (
