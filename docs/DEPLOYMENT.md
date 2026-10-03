@@ -53,7 +53,7 @@ All three production images (`backend`, `web`, `admin`) were built and smoke-tes
    scp docker-compose.prod.yml Caddyfile deploy@<ip>:/opt/bookhaven/
    scp .env.production.example deploy@<ip>:/opt/bookhaven/.env
    ```
-5. SSH in as `deploy` and edit `/opt/bookhaven/.env`: fill in the real domains, `ACME_EMAIL`, a generated `POSTGRES_PASSWORD` (`openssl rand -base64 24`), a generated `JWT_SECRET` (`openssl rand -base64 48`), and `CORS_ALLOWED_ORIGINS` matching the web/admin domains exactly (scheme + host, no trailing slash). Then `chmod 600 .env`.
+5. SSH in as `deploy` and edit `/opt/bookhaven/.env`: fill in the real domains, `ACME_EMAIL`, a generated `POSTGRES_PASSWORD` (`openssl rand -base64 24`), a generated `JWT_SECRET` (`openssl rand -base64 48`), and `CORS_ALLOWED_ORIGINS` matching the web/admin domains exactly (scheme + host, no trailing slash). Fill in the SMTP block (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`) from your email provider — see [Email (SMTP)](#email-smtp); leaving `SMTP_HOST` blank disables sending. Then `chmod 600 .env`.
 6. If the GHCR packages end up private (private repo, default), log in once on the server with a PAT scoped to `read:packages`: `docker login ghcr.io -u <github-user> -p <PAT>`. If the repo is public, make the three GHCR packages public instead (Package settings on GitHub) and skip this — one less credential to manage on the server.
 
 ## GitHub setup
@@ -104,6 +104,37 @@ crontab -e
 
 For real durability, uncomment the `rclone` line in the script and configure an S3-compatible off-site remote (Timeweb S3 or Selectel S3 both work) — a backup that lives only on the same disk as the database it's backing up doesn't survive a disk failure.
 
+## Email (SMTP)
+
+Transactional email (verification, password reset, later notifications) is sent asynchronously: the api enqueues an `email:send` task on the `email` asynq queue and the **worker** delivers it over SMTP (see `backend/internal/pkg/mailer` and [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md)). Only the `worker` container receives the SMTP variables; the `backend` (api) container never talks to SMTP.
+
+### Environment variables (worker)
+
+| Variable | Meaning |
+|---|---|
+| `SMTP_HOST` | Provider's SMTP submission host. **Empty = sending disabled**: emails are only logged (recipient + subject; bodies are never logged in production) and the worker logs a `SMTP not configured` warning at startup. |
+| `SMTP_PORT` | `587` (default, plain connect + STARTTLS) or `465` (implicit TLS). Any port other than 465 upgrades via STARTTLS when the server offers it. |
+| `SMTP_USER` / `SMTP_PASSWORD` | Credentials (PLAIN auth). Credentials are only ever sent over an encrypted connection. `SMTP_PASSWORD` is a secret: never log or paste it outside the server's `.env`. |
+| `MAIL_FROM` | Sender, e.g. `BookHaven <noreply@bookhaven.example.com>`. Must be a valid address, and must be set explicitly in production (the worker refuses to start otherwise when `SMTP_HOST` is set) and must be on the domain that carries the SPF/DKIM/DMARC records below. |
+
+Failed sends are retried by asynq (up to 8 retries with backoff, roughly a few hours of provider outage); permanent rejections (SMTP 5xx) are not retried. Failed/archived tasks can be inspected with asynqmon / `asynq.Inspector` against the production Redis.
+
+### Choosing a provider
+
+Use a transactional SMTP service with an endpoint reachable from the VPS: for example Unisender Go, SendPulse, or Yandex 360 (fine for small volume); Postmark, Mailgun or Amazon SES if they are reachable and payable from your jurisdiction. Use port **587** (STARTTLS) or **465** (TLS) — many VPS providers block outbound port 25, and port 25 is not meant for authenticated submission anyway.
+
+### DNS records (deliverability)
+
+Without these, mail lands in spam or is rejected. All records go on the domain used in `MAIL_FROM`:
+
+1. **SPF** — a TXT record on the sender domain authorizing the provider, e.g. `v=spf1 include:<provider-spf-domain> ~all`. A domain may have **only one** SPF record: if one already exists (e.g. for Yandex 360 mailboxes), merge the `include:` into it instead of adding a second record.
+2. **DKIM** — the provider issues one or more DKIM records (TXT or CNAME, e.g. `<selector>._domainkey.<domain>`); add them exactly as given and complete the domain verification in the provider's dashboard.
+3. **DMARC** — a TXT record at `_dmarc.<domain>`, starting in monitoring mode: `v=DMARC1; p=none; rua=mailto:dmarc-reports@<domain>`. After a few weeks of clean aggregate reports, tighten to `p=quarantine` (and later `p=reject` if desired).
+
+### Verifying
+
+Send a real email to a Gmail and a Yandex inbox — either through the first real flow (e.g. registration verification once it exists) or by enqueuing a test email from a machine that can reach the production Redis (the dev-only `go run ./cmd/mailtest -to you@example.com` CLI is not shipped in the production image). In the received message open "Show original" / "Message properties" and check for `spf=pass`, `dkim=pass` and `dmarc=pass`. Watch `docker compose -f docker-compose.prod.yml logs -f worker` for send errors.
+
 ## Monitoring
 
 Kept intentionally minimal for an MVP with no ops budget:
@@ -122,7 +153,8 @@ Revisit this section once there's a real incident or real user volume — don't 
 - [x] Backend production image is distroless, non-root (`nonuser:nonuser`)
 - [x] CORS restricted to the real production origins, not `*`
 - [ ] `.env` on the server is `chmod 600`, root/deploy-owned only, never committed — verify after every manual edit
-- [ ] Rotate `JWT_SECRET`/`POSTGRES_PASSWORD` if they were ever pasted anywhere outside the server's `.env` (chat, ticket, etc.)
+- [ ] Rotate `JWT_SECRET`/`POSTGRES_PASSWORD`/`SMTP_PASSWORD` if they were ever pasted anywhere outside the server's `.env` (chat, ticket, etc.)
+- [ ] `SMTP_PASSWORD` is set only in the server's `.env` and only passed to the `worker` container; SPF/DKIM/DMARC records are in place for the `MAIL_FROM` domain before real users receive mail
 - [ ] Confirm GHCR package visibility matches intent (public if repo is public, private + PAT otherwise) so images aren't unintentionally exposed or, conversely, undeployable
 - [ ] Add rate limiting at Caddy (`rate_limit` via a plugin, or keep it at the app layer) before opening registration to the public, to blunt credential-stuffing against `/api/v1/auth/login`
 
