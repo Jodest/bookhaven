@@ -45,6 +45,7 @@ func RegisterRoutes(
 	catalogHandler := cataloghttp.NewHandler(catalogService)
 	api.GET("/books", catalogHandler.ListBooks)
 	api.GET("/books/:slug", catalogHandler.GetBook)
+	api.GET("/books/:id/similar", catalogHandler.ListSimilarBooks)
 	api.GET("/authors", catalogHandler.ListAuthors)
 	api.GET("/authors/:slug", catalogHandler.GetAuthor)
 	api.GET("/genres", catalogHandler.ListGenres)

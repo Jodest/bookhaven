@@ -83,8 +83,15 @@ func main() {
 	readingChallengesRepo := readingchallengesrepository.NewGormRepository(db)
 	notificationsRepo := notificationsrepository.NewGormRepository(db)
 
+	// Plain Redis client for rate limiting (see
+	// docs/features/email-verification-backend.md) and the similar-books
+	// ranking cache (see docs/features/similar-books.md).
+	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+	defer redisClient.Close()
+
 	// Services
-	catalogService := catalogservice.NewService(catalogRepo)
+	catalogService := catalogservice.NewService(catalogRepo,
+		catalogservice.WithSimilarCache(catalogrepository.NewRedisSimilarCache(redisClient)))
 	// bookdata.NewOpenLibraryClient() is constructed with no options, mirroring
 	// backend/cmd/worker/main.go's own zero-config construction (see
 	// docs/features/bookdata-clients.md for the accepted-risk placeholder
@@ -114,10 +121,6 @@ func main() {
 
 	mailQueue := mailer.NewQueue(taskClient)
 
-	// Plain Redis client for rate limiting (see
-	// docs/features/email-verification-backend.md).
-	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
-	defer redisClient.Close()
 	// Public resend-verification limits (see
 	// docs/features/email-verification-login-gate.md): per client IP, then
 	// per sha256 of the normalised email.
