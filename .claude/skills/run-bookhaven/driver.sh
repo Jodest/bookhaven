@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the BookHaven docker-compose stack: ensures Docker Desktop is up,
-# starts services, applies migrations + account-only seed (admin fixture +
+# starts services, applies migrations + account-only seed (admin login +
 # test login) on a fresh DB, and smoke-tests each HTTP surface. Does NOT
 # seed the demo catalog (books/genres/authors) automatically — run
 # `cmd/seed` yourself (no flags) if you want that. Safe to re-run — every
@@ -77,7 +77,7 @@ books_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/api/v
 if [ "$books_code" != "200" ]; then
   echo "Books endpoint returned $books_code — applying migrations..."
   docker compose exec -T backend go run cmd/migrate/main.go up
-  echo "Seeding accounts only (admin fixture + test login; no demo books)..."
+  echo "Seeding accounts only (admin + test logins; no demo books)..."
   docker compose exec -T backend go run cmd/seed/main.go -accounts-only
 fi
 # Demo catalog (books/genres/authors) is NOT seeded automatically — run
@@ -114,6 +114,8 @@ echo "All services up:"
 echo "  Web:   http://localhost:3000"
 echo "  Admin: http://localhost:3001"
 echo "  API:   http://localhost:8080  (Swagger: http://localhost:8080/swagger/index.html)"
-echo "  Test account: test@bookhaven.local / test1234"
+echo "  Mailpit: http://localhost:8025  (all outgoing email lands here)"
+echo "  Test account:  test@bookhaven.local / test1234"
+echo "  Admin account: admin@bookhaven.local / admin1234"
 echo "  No demo catalog seeded automatically. To seed books/genres/authors:"
 echo "    docker compose exec backend go run cmd/seed/main.go"
