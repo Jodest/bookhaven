@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net/mail"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -18,7 +20,19 @@ type Config struct {
 	JWTSecret      string
 	JWTExpiresIn   string
 	AllowedOrigins []string
+
+	// Outbound email (see internal/pkg/mailer). SMTPHost empty means
+	// "SMTP not configured": the worker only logs emails instead of
+	// sending them. SMTPPassword must never be logged.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUser     string
+	SMTPPassword string
+	MailFrom     string
 }
+
+// defaultMailFrom is used when MAIL_FROM is unset (dev / Mailpit).
+const defaultMailFrom = "BookHaven <noreply@bookhaven.local>"
 
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
@@ -33,6 +47,27 @@ func Load() (*Config, error) {
 		JWTSecret:      getEnv("JWT_SECRET", "change-me-in-production"),
 		JWTExpiresIn:   getEnv("JWT_EXPIRES_IN", "24h"),
 		AllowedOrigins: splitEnv(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001")),
+		SMTPHost:       strings.TrimSpace(getEnv("SMTP_HOST", "")),
+		SMTPUser:       getEnv("SMTP_USER", ""),
+		SMTPPassword:   getEnv("SMTP_PASSWORD", ""),
+		MailFrom:       getEnv("MAIL_FROM", defaultMailFrom),
+	}
+
+	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
+	if err != nil || smtpPort <= 0 || smtpPort > 65535 {
+		return nil, fmt.Errorf("SMTP_PORT must be a valid port number")
+	}
+	cfg.SMTPPort = smtpPort
+
+	if cfg.SMTPHost != "" {
+		// The dev default sender is not on a domain with SPF/DKIM, so a real
+		// production SMTP setup must name its sender explicitly.
+		if cfg.Env == "production" && strings.TrimSpace(os.Getenv("MAIL_FROM")) == "" {
+			return nil, fmt.Errorf("MAIL_FROM must be set when SMTP_HOST is set in production")
+		}
+		if _, err := mail.ParseAddress(cfg.MailFrom); err != nil {
+			return nil, fmt.Errorf("MAIL_FROM must be a valid email address when SMTP_HOST is set: %w", err)
+		}
 	}
 
 	if cfg.Env == "production" && cfg.JWTSecret == "change-me-in-production" {

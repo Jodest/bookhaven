@@ -1,6 +1,8 @@
-// Command worker runs the asynq server that processes queued background
-// jobs, currently just the catalog harvest job (see
-// internal/modules/harvest/service). It connects to the same Postgres
+// Command worker runs the asynq servers that process queued background
+// jobs: the catalog harvest job (see internal/modules/harvest/service) and
+// transactional email delivery (see internal/pkg/mailer). Email runs on its
+// own asynq.Server so an email is never stuck behind a long-running
+// harvest task. It connects to the same Postgres
 // database as cmd/api (via gorm) and to Redis (via cfg.RedisURL, the same
 // config value cmd/api already loads but does not yet use).
 //
@@ -21,6 +23,7 @@ import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
+	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
@@ -70,11 +73,33 @@ func main() {
 		logger.Fatal("failed to start asynq server", zap.Error(err))
 	}
 
+	emailHandler := mailer.NewHandler(mailer.NewSender(cfg, logger))
+
+	emailMux := asynq.NewServeMux()
+	emailMux.HandleFunc(mailer.TaskTypeSendEmail, emailHandler.HandleTask)
+
+	emailSrv := asynq.NewServer(
+		asynq.RedisClientOpt{Addr: cfg.RedisURL},
+		asynq.Config{
+			Queues: map[string]int{
+				mailer.QueueName: 1,
+			},
+			Concurrency: 4,
+			Logger:      zapAsynqLogger{logger},
+		},
+	)
+
+	if err := emailSrv.Start(emailMux); err != nil {
+		srv.Shutdown()
+		logger.Fatal("failed to start email asynq server", zap.Error(err))
+	}
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	logger.Info("shutting down worker")
+	emailSrv.Shutdown()
 	srv.Shutdown()
 }
 

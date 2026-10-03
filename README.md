@@ -33,6 +33,7 @@ make seed
 - Admin: http://localhost:3001
 - API: http://localhost:8080
 - API Docs: http://localhost:8080/swagger/index.html
+- Mailpit (все письма, отправленные локально): http://localhost:8025
 
 ## Команды
 
