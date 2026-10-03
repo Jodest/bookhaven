@@ -335,6 +335,61 @@ func (h *Handler) GetShelf(c echo.Context) error {
 	})
 }
 
+// GetPublicShelf godoc
+// @Summary Получить публичную полку с книгами
+// @Description Доступно без авторизации; полки не приватны, проверка владельца не выполняется
+// @Tags shelves
+// @Produce json
+// @Param id path string true "ID полки"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 100"
+// @Success 200 {object} shelfDetailResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /shelves/public/{id} [get]
+func (h *Handler) GetPublicShelf(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	shelfID, err := parseShelfID(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid shelf id"})
+	}
+
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	if page <= 0 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	shelf, books, total, err := h.service.GetPublicShelf(ctx, shelfID, page, limit)
+	if err != nil {
+		if errors.Is(err, service.ErrShelfNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "shelf not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get shelf"})
+	}
+
+	items := make([]bookListItemResponse, 0, len(books))
+	for _, b := range books {
+		items = append(items, toBookListItemResponse(b))
+	}
+
+	return c.JSON(http.StatusOK, shelfDetailResponse{
+		Shelf: toShelfResponse(*shelf),
+		Items: items,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	})
+}
+
 // RenameShelf godoc
 // @Summary Переименовать полку
 // @Tags shelves

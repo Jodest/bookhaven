@@ -15,6 +15,12 @@ const profileTypeLabels: Record<string, string> = {
   other: 'Другое',
 };
 
+const shelfTypeLabels: Record<string, string> = {
+  want_to_read: 'Хочу прочитать',
+  reading: 'Читаю',
+  read: 'Прочитано',
+};
+
 export function PublicProfileView({ id }: PublicProfileViewProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,7 +73,7 @@ export function PublicProfileView({ id }: PublicProfileViewProps) {
     );
   }
 
-  const { user, lists } = profile;
+  const { user, lists, shelves } = profile;
   const displayName = user.name ?? 'Без имени';
   const joinedDate = new Date(user.joinedAt).toLocaleDateString('ru-RU', {
     year: 'numeric',
@@ -122,6 +128,30 @@ export function PublicProfileView({ id }: PublicProfileViewProps) {
                   )}
                   <p className="mt-1 text-sm text-muted-foreground">
                     {list.booksCount} {pluralizeBooks(list.booksCount)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="mt-8">
+          <h2 className="font-display text-xl font-semibold">Полки</h2>
+
+          {shelves.length === 0 ? (
+            <p className="mt-4 text-muted-foreground">Публичных полок пока нет</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {shelves.map((shelf) => (
+                <li key={shelf.id} className="rounded-lg border p-4">
+                  <Link
+                    href={`/shelves/public/${shelf.id}`}
+                    className="text-base font-semibold leading-tight hover:underline"
+                  >
+                    {shelfTypeLabels[shelf.type] ?? shelf.name}
+                  </Link>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {shelf.booksCount} {pluralizeBooks(shelf.booksCount)}
                   </p>
                 </li>
               ))}

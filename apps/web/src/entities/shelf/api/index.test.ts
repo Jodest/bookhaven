@@ -86,6 +86,44 @@ describe('shelvesApi normalization', () => {
     });
   });
 
+  it('normalizes getPublic() shelf (and nested books) from snake_case to camelCase', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        shelf: {
+          id: 'shelf-1',
+          user_id: 'user-1',
+          name: 'Reading',
+          type: 'reading',
+          books_count: 1,
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-02T00:00:00Z',
+        },
+        items: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await shelvesApi.getPublic('shelf-1');
+
+    expect(result.shelf).toEqual({
+      id: 'shelf-1',
+      userId: 'user-1',
+      name: 'Reading',
+      type: 'reading',
+      booksCount: 1,
+      hasBook: undefined,
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-02T00:00:00Z',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/shelves/public/shelf-1'),
+      expect.anything()
+    );
+  });
+
   it('normalizes create() response from snake_case to camelCase', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({

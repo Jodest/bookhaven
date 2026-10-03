@@ -59,6 +59,7 @@ func RegisterRoutes(
 	shelves.DELETE("/:id", shelvesHandler.DeleteShelf)
 	shelves.POST("/:id/books", shelvesHandler.AddBook)
 	shelves.DELETE("/:id/books/:bookId", shelvesHandler.RemoveBook)
+	api.GET("/shelves/public/:id", shelvesHandler.GetPublicShelf, optionalAuth)
 
 	listsHandler := listshttp.NewHandler(listsService)
 	lists := api.Group("/lists", authMiddleware)
@@ -85,7 +86,7 @@ func RegisterRoutes(
 	reviews.DELETE("/:id", reviewsHandler.DeleteReview)
 	reviews.POST("/:id/likes", reviewsHandler.ToggleLike)
 
-	usersHandler := usershttp.NewHandler(usersService, listsService)
+	usersHandler := usershttp.NewHandler(usersService, listsService, shelvesService)
 	api.GET("/users/:id", usersHandler.GetUser, optionalAuth)
 	api.PATCH("/users/me", usersHandler.UpdateMe, authMiddleware)
 

@@ -84,6 +84,27 @@ func (f *fakeRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]do
 	return result, nil
 }
 
+// ListByUserVisible mirrors ListByUser but only counts books that are not
+// hidden, matching the GormRepository implementation used in production.
+func (f *fakeRepository) ListByUserVisible(ctx context.Context, userID uuid.UUID) ([]domain.Shelf, error) {
+	var result []domain.Shelf
+	for _, s := range f.shelves {
+		if s.UserID == userID {
+			copy := *s
+			for key := range f.items {
+				if key.shelfID != copy.ID {
+					continue
+				}
+				if b, ok := f.books[key.bookID]; ok && !b.IsHidden {
+					copy.BooksCount++
+				}
+			}
+			result = append(result, copy)
+		}
+	}
+	return result, nil
+}
+
 func (f *fakeRepository) GetByID(ctx context.Context, shelfID uuid.UUID) (*domain.Shelf, error) {
 	s, ok := f.shelves[shelfID]
 	if !ok {
@@ -156,9 +177,9 @@ func (f *fakeRepository) BookOnShelf(ctx context.Context, shelfID, bookID uuid.U
 
 func (f *fakeRepository) ListBooks(ctx context.Context, shelfID uuid.UUID, limit, offset int) ([]catalogDomain.Book, int64, error) {
 	var books []catalogDomain.Book
-	for key, _ := range f.items {
+	for key := range f.items {
 		if key.shelfID == shelfID {
-			if b, ok := f.books[key.bookID]; ok {
+			if b, ok := f.books[key.bookID]; ok && !b.IsHidden {
 				books = append(books, *b)
 			}
 		}
@@ -175,8 +196,8 @@ func (f *fakeRepository) ListBooks(ctx context.Context, shelfID uuid.UUID, limit
 }
 
 func (f *fakeRepository) BookExists(ctx context.Context, bookID uuid.UUID) (bool, error) {
-	_, ok := f.books[bookID]
-	return ok, nil
+	b, ok := f.books[bookID]
+	return ok && !b.IsHidden, nil
 }
 
 func (f *fakeRepository) UserShelvesWithBook(ctx context.Context, userID, bookID uuid.UUID) (map[uuid.UUID]struct{}, error) {
@@ -544,6 +565,112 @@ func TestGetShelf_PaginationDefaults(t *testing.T) {
 	}
 	if len(books) != 5 {
 		t.Fatalf("expected 5 books with default limit, got %d", len(books))
+	}
+}
+
+func TestListPublicByUser_ExcludesEmptyAndHiddenOnlyShelves(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	svc, repo := setupTestService()
+
+	visibleBook := uuid.New()
+	hiddenBook := uuid.New()
+	repo.books[visibleBook] = &catalogDomain.Book{ID: visibleBook, Title: "Visible"}
+	repo.books[hiddenBook] = &catalogDomain.Book{ID: hiddenBook, Title: "Hidden", IsHidden: true}
+
+	withVisible := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "С видимой книгой", Type: domain.ShelfTypeCustom}
+	onlyHidden := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Только скрытая", Type: domain.ShelfTypeCustom}
+	empty := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Пустая", Type: domain.ShelfTypeCustom}
+	repo.shelves[withVisible.ID] = withVisible
+	repo.shelves[onlyHidden.ID] = onlyHidden
+	repo.shelves[empty.ID] = empty
+
+	repo.items[shelfBookKey{shelfID: withVisible.ID, bookID: visibleBook}] = time.Now()
+	repo.items[shelfBookKey{shelfID: onlyHidden.ID, bookID: hiddenBook}] = time.Now()
+
+	shelves, err := svc.ListPublicByUser(ctx, userID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(shelves) != 1 {
+		t.Fatalf("expected 1 public shelf, got %d", len(shelves))
+	}
+	if shelves[0].ID != withVisible.ID {
+		t.Fatalf("expected shelf with visible book, got %s", shelves[0].ID)
+	}
+	if shelves[0].BooksCount != 1 {
+		t.Fatalf("expected books count 1, got %d", shelves[0].BooksCount)
+	}
+}
+
+func TestListPublicByUser_NoShelves(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	svc, _ := setupTestService()
+
+	shelves, err := svc.ListPublicByUser(ctx, userID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if shelves == nil {
+		t.Fatal("expected empty slice, not nil")
+	}
+	if len(shelves) != 0 {
+		t.Fatalf("expected 0 shelves, got %d", len(shelves))
+	}
+}
+
+func TestGetPublicShelf_AnyOwner(t *testing.T) {
+	ctx := context.Background()
+	ownerID := uuid.New()
+	svc, repo := setupTestService()
+
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: ownerID, Name: "Чужая", Type: domain.ShelfTypeCustom}
+	repo.shelves[shelf.ID] = shelf
+
+	result, _, _, err := svc.GetPublicShelf(ctx, shelf.ID, 1, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ID != shelf.ID {
+		t.Fatal("expected to get shelf regardless of owner")
+	}
+}
+
+func TestGetPublicShelf_NotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setupTestService()
+
+	_, _, _, err := svc.GetPublicShelf(ctx, uuid.New(), 1, 20)
+	if !errors.Is(err, ErrShelfNotFound) {
+		t.Fatalf("expected ErrShelfNotFound, got %v", err)
+	}
+}
+
+func TestGetPublicShelf_ExcludesHiddenBooks(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	svc, repo := setupTestService()
+
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom}
+	repo.shelves[shelf.ID] = shelf
+
+	visibleBook := uuid.New()
+	hiddenBook := uuid.New()
+	repo.books[visibleBook] = &catalogDomain.Book{ID: visibleBook, Title: "Visible"}
+	repo.books[hiddenBook] = &catalogDomain.Book{ID: hiddenBook, Title: "Hidden", IsHidden: true}
+	repo.items[shelfBookKey{shelfID: shelf.ID, bookID: visibleBook}] = time.Now()
+	repo.items[shelfBookKey{shelfID: shelf.ID, bookID: hiddenBook}] = time.Now()
+
+	_, books, total, err := svc.GetPublicShelf(ctx, shelf.ID, 1, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected total 1, got %d", total)
+	}
+	if len(books) != 1 || books[0].ID != visibleBook {
+		t.Fatalf("expected only visible book, got %+v", books)
 	}
 }
 

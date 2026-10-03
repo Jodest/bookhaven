@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	listsDomain "github.com/bookhaven/backend/internal/modules/lists/domain"
+	shelvesDomain "github.com/bookhaven/backend/internal/modules/shelves/domain"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	usersService "github.com/bookhaven/backend/internal/modules/users/service"
 	"github.com/google/uuid"
@@ -91,10 +92,23 @@ func (f *fakeListService) ListPublicByUser(ctx context.Context, userID uuid.UUID
 	return f.lists[userID], nil
 }
 
-func setupHandler() (*Handler, *fakeUserService, *fakeListService) {
+type fakeShelfService struct {
+	shelves map[uuid.UUID][]shelvesDomain.Shelf
+}
+
+func newFakeShelfService() *fakeShelfService {
+	return &fakeShelfService{shelves: make(map[uuid.UUID][]shelvesDomain.Shelf)}
+}
+
+func (f *fakeShelfService) ListPublicByUser(ctx context.Context, userID uuid.UUID) ([]shelvesDomain.Shelf, error) {
+	return f.shelves[userID], nil
+}
+
+func setupHandler() (*Handler, *fakeUserService, *fakeListService, *fakeShelfService) {
 	userSvc := newFakeUserService()
 	listSvc := newFakeListService()
-	return NewHandler(userSvc, listSvc), userSvc, listSvc
+	shelfSvc := newFakeShelfService()
+	return NewHandler(userSvc, listSvc, shelfSvc), userSvc, listSvc, shelfSvc
 }
 
 func newContext(method, target string, body []byte) (echo.Context, *httptest.ResponseRecorder) {
@@ -111,13 +125,17 @@ func newContext(method, target string, body []byte) (echo.Context, *httptest.Res
 }
 
 func TestGetUser_PublicProfile(t *testing.T) {
-	h, userSvc, listSvc := setupHandler()
+	h, userSvc, listSvc, shelfSvc := setupHandler()
 	name := "Alice"
 	user := &usersDomain.User{ID: uuid.New(), Email: "alice@example.com", Name: &name, ProfileType: usersDomain.ProfileTypeReader, CreatedAt: time.Now()}
 	userSvc.users[user.ID] = user
 
 	listSvc.lists[user.ID] = []listsDomain.List{
 		{ID: uuid.New(), UserID: user.ID, Title: "Публичный", Description: "Описание", IsPublic: true, BooksCount: 3, CreatedAt: time.Now(), UpdatedAt: time.Now()},
+	}
+
+	shelfSvc.shelves[user.ID] = []shelvesDomain.Shelf{
+		{ID: uuid.New(), UserID: user.ID, Name: "Читаю", Type: shelvesDomain.ShelfTypeReading, BooksCount: 2, CreatedAt: time.Now(), UpdatedAt: time.Now()},
 	}
 
 	c, rec := newContext(http.MethodGet, "/api/v1/users/"+user.ID.String(), nil)
@@ -142,10 +160,46 @@ func TestGetUser_PublicProfile(t *testing.T) {
 	if len(body.Lists) != 1 {
 		t.Fatalf("expected 1 public list, got %d", len(body.Lists))
 	}
+	if len(body.Shelves) != 1 {
+		t.Fatalf("expected 1 public shelf, got %d", len(body.Shelves))
+	}
+	if body.Shelves[0].Type != "reading" {
+		t.Fatalf("expected shelf type reading, got %s", body.Shelves[0].Type)
+	}
+	if body.Shelves[0].BooksCount != 2 {
+		t.Fatalf("expected books count 2, got %d", body.Shelves[0].BooksCount)
+	}
+}
+
+func TestGetUser_PublicProfile_EmptyShelves(t *testing.T) {
+	h, userSvc, _, _ := setupHandler()
+	name := "Alice"
+	user := &usersDomain.User{ID: uuid.New(), Email: "alice@example.com", Name: &name, ProfileType: usersDomain.ProfileTypeReader, CreatedAt: time.Now()}
+	userSvc.users[user.ID] = user
+
+	c, rec := newContext(http.MethodGet, "/api/v1/users/"+user.ID.String(), nil)
+	c.SetPath("/api/v1/users/:id")
+	c.SetParamNames("id")
+	c.SetParamValues(user.ID.String())
+
+	if err := h.GetUser(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var body publicProfileResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body.Shelves == nil {
+		t.Fatal("expected shelves to be an empty slice, not null")
+	}
+	if len(body.Shelves) != 0 {
+		t.Fatalf("expected 0 shelves, got %d", len(body.Shelves))
+	}
 }
 
 func TestGetUser_MissingID(t *testing.T) {
-	h, _, _ := setupHandler()
+	h, _, _, _ := setupHandler()
 	c, rec := newContext(http.MethodGet, "/api/v1/users/"+uuid.New().String(), nil)
 	c.SetPath("/api/v1/users/:id")
 	c.SetParamNames("id")
@@ -160,7 +214,7 @@ func TestGetUser_MissingID(t *testing.T) {
 }
 
 func TestGetUser_InvalidID(t *testing.T) {
-	h, _, _ := setupHandler()
+	h, _, _, _ := setupHandler()
 	c, rec := newContext(http.MethodGet, "/api/v1/users/bad-id", nil)
 	c.SetPath("/api/v1/users/:id")
 	c.SetParamNames("id")
@@ -175,7 +229,7 @@ func TestGetUser_InvalidID(t *testing.T) {
 }
 
 func TestGetUser_PrivacyNoEmail(t *testing.T) {
-	h, userSvc, _ := setupHandler()
+	h, userSvc, _, _ := setupHandler()
 	name := "Alice"
 	user := &usersDomain.User{ID: uuid.New(), Email: "alice@example.com", Name: &name, ProfileType: usersDomain.ProfileTypeReader, CreatedAt: time.Now()}
 	userSvc.users[user.ID] = user
@@ -209,7 +263,7 @@ func TestGetUser_PrivacyNoEmail(t *testing.T) {
 }
 
 func TestUpdateMe_RequiresAuth(t *testing.T) {
-	h, _, _ := setupHandler()
+	h, _, _, _ := setupHandler()
 	c, rec := newContext(http.MethodPatch, "/api/v1/users/me", []byte(`{"name":"New"}`))
 
 	if err := h.UpdateMe(c); err != nil {
@@ -221,7 +275,7 @@ func TestUpdateMe_RequiresAuth(t *testing.T) {
 }
 
 func TestUpdateMe_OwnerUpdate(t *testing.T) {
-	h, userSvc, _ := setupHandler()
+	h, userSvc, _, _ := setupHandler()
 	name := "Alice"
 	user := &usersDomain.User{ID: uuid.New(), Email: "alice@example.com", Name: &name, ProfileType: usersDomain.ProfileTypeReader}
 	userSvc.users[user.ID] = user
@@ -255,7 +309,7 @@ func TestUpdateMe_OwnerUpdate(t *testing.T) {
 }
 
 func TestUpdateMe_ClearAvatarWithNull(t *testing.T) {
-	h, userSvc, _ := setupHandler()
+	h, userSvc, _, _ := setupHandler()
 	name := "Alice"
 	avatar := "https://example.com/avatar.jpg"
 	user := &usersDomain.User{ID: uuid.New(), Email: "alice@example.com", Name: &name, AvatarURL: &avatar, ProfileType: usersDomain.ProfileTypeReader}
@@ -276,7 +330,7 @@ func TestUpdateMe_ClearAvatarWithNull(t *testing.T) {
 }
 
 func TestUpdateMe_OmittedAvatarUnchanged(t *testing.T) {
-	h, userSvc, _ := setupHandler()
+	h, userSvc, _, _ := setupHandler()
 	name := "Alice"
 	avatar := "https://example.com/avatar.jpg"
 	user := &usersDomain.User{ID: uuid.New(), Email: "alice@example.com", Name: &name, AvatarURL: &avatar, ProfileType: usersDomain.ProfileTypeReader}
@@ -297,7 +351,7 @@ func TestUpdateMe_OmittedAvatarUnchanged(t *testing.T) {
 }
 
 func TestUpdateMe_ValidationError(t *testing.T) {
-	h, userSvc, _ := setupHandler()
+	h, userSvc, _, _ := setupHandler()
 	name := "Alice"
 	user := &usersDomain.User{ID: uuid.New(), Email: "alice@example.com", Name: &name, ProfileType: usersDomain.ProfileTypeReader}
 	userSvc.users[user.ID] = user
@@ -314,7 +368,7 @@ func TestUpdateMe_ValidationError(t *testing.T) {
 }
 
 func TestUpdateMe_IDORAttempt(t *testing.T) {
-	h, userSvc, _ := setupHandler()
+	h, userSvc, _, _ := setupHandler()
 	ownerID := uuid.New()
 	attackerID := uuid.New()
 	name := "Alice"
