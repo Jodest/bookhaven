@@ -31,6 +31,11 @@ type fakeRepository struct {
 	lastFilter       repository.BookFilter
 	lastAuthorSearch string
 	lastAuthorLimit  int
+
+	candidates       []repository.SimilarCandidate
+	similarSourceErr error
+	candidatesErr    error
+	candidateCalls   int
 }
 
 func newFakeRepository() *fakeRepository {
@@ -102,6 +107,53 @@ func (f *fakeRepository) ListLanguages(ctx context.Context) ([]string, error) {
 		return nil, f.listLanguagesErr
 	}
 	return f.languages, nil
+}
+
+func (f *fakeRepository) GetSimilarSource(ctx context.Context, bookID uuid.UUID) (*repository.SimilarSource, error) {
+	if f.similarSourceErr != nil {
+		return nil, f.similarSourceErr
+	}
+	for _, b := range f.books {
+		if b.ID != bookID || b.IsHidden {
+			continue
+		}
+		src := &repository.SimilarSource{}
+		for _, a := range b.Authors {
+			src.AuthorIDs = append(src.AuthorIDs, a.ID)
+		}
+		for _, g := range b.Genres {
+			src.GenreIDs = append(src.GenreIDs, g.ID)
+		}
+		return src, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeRepository) ListSimilarCandidates(ctx context.Context, bookID uuid.UUID, src repository.SimilarSource, authorPool, genrePool int) ([]repository.SimilarCandidate, error) {
+	f.candidateCalls++
+	if f.candidatesErr != nil {
+		return nil, f.candidatesErr
+	}
+	if len(src.AuthorIDs) == 0 && len(src.GenreIDs) == 0 {
+		return nil, nil
+	}
+	return f.candidates, nil
+}
+
+func (f *fakeRepository) GetBooksByIDs(ctx context.Context, ids []uuid.UUID) ([]domain.Book, error) {
+	want := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	var result []domain.Book
+	// Iterate in reverse to make sure callers do not rely on result order.
+	for i := len(f.books) - 1; i >= 0; i-- {
+		b := f.books[i]
+		if want[b.ID] && !b.IsHidden {
+			result = append(result, b)
+		}
+	}
+	return result, nil
 }
 
 func setupTestService() (*Service, *fakeRepository) {

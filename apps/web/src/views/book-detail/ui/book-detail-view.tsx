@@ -3,6 +3,7 @@ import { AddToListButton } from '@/features/add-to-list';
 import { BookRating } from '@/features/rate-book';
 import { ShelveBookButtons } from '@/features/shelve-book';
 import { ReviewsSection } from '@/widgets/reviews-section';
+import { SimilarBooks } from '@/widgets/similar-books';
 import { Badge } from '@bookhaven/ui';
 import { Star } from 'lucide-react';
 import Image from 'next/image';
@@ -121,6 +122,8 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
           <ReviewsSection bookId={book.id} slug={book.slug} />
         </div>
       </div>
+
+      <SimilarBooks bookId={book.id} className="mt-12" />
     </main>
   );
 }

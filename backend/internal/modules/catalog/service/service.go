@@ -16,12 +16,28 @@ var ErrAuthorNotFound = errors.New("author not found")
 
 // Service provides catalog logic.
 type Service struct {
-	repo repository.Repository
+	repo         repository.Repository
+	similarCache SimilarCache
+}
+
+// Option configures optional Service dependencies.
+type Option func(*Service)
+
+// WithSimilarCache enables caching of the ranked similar-book ID lists.
+// A nil cache (the default) disables caching.
+func WithSimilarCache(c SimilarCache) Option {
+	return func(s *Service) {
+		s.similarCache = c
+	}
 }
 
 // NewService creates a new catalog Service.
-func NewService(repo repository.Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo repository.Repository, opts ...Option) *Service {
+	s := &Service{repo: repo}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // ListBooks returns a paginated list of books.

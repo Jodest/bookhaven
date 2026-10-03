@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 
 	"github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/google/uuid"
@@ -16,6 +17,34 @@ type Repository interface {
 	ListGenres(ctx context.Context) ([]domain.Genre, error)
 	ListAuthors(ctx context.Context, search string, limit int) ([]domain.Author, int64, error)
 	ListLanguages(ctx context.Context) ([]string, error)
+	// GetSimilarSource returns the author/genre IDs of a visible book.
+	// Returns gorm.ErrRecordNotFound when the book is missing or hidden.
+	GetSimilarSource(ctx context.Context, bookID uuid.UUID) (*SimilarSource, error)
+	// ListSimilarCandidates returns raw (unscored) candidate rows for the
+	// similar-books ranking: visible books sharing at least one author or
+	// genre with the source, bounded to authorPool author-matched and
+	// genrePool genre-only rows.
+	ListSimilarCandidates(ctx context.Context, bookID uuid.UUID, src SimilarSource, authorPool, genrePool int) ([]SimilarCandidate, error)
+	// GetBooksByIDs returns visible books with Authors and Genres preloaded.
+	// The order of the result is not guaranteed.
+	GetBooksByIDs(ctx context.Context, ids []uuid.UUID) ([]domain.Book, error)
+}
+
+// SimilarSource is the visible source book's author/genre IDs.
+type SimilarSource struct {
+	AuthorIDs []uuid.UUID
+	GenreIDs  []uuid.UUID
+}
+
+// SimilarCandidate is one raw candidate row (unscored).
+type SimilarCandidate struct {
+	BookID        uuid.UUID
+	SharedAuthors int
+	SharedGenres  int
+	GenreCount    int
+	Rating        float64
+	RatingsCount  int
+	AuthorIDs     []uuid.UUID // filled by a second query, for the per-author cap
 }
 
 // BookFilter defines filtering options for books.
@@ -194,4 +223,156 @@ func (r *GormRepository) ListLanguages(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return languages, nil
+}
+
+func (r *GormRepository) GetSimilarSource(ctx context.Context, bookID uuid.UUID) (*SimilarSource, error) {
+	db := r.db.WithContext(ctx)
+
+	var ids []uuid.UUID
+	if err := db.Model(&domain.Book{}).
+		Where("id = ? AND is_hidden = ?", bookID, false).
+		Limit(1).
+		Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	src := &SimilarSource{}
+	if err := db.Table("book_authors").
+		Where("book_id = ?", bookID).
+		Pluck("author_id", &src.AuthorIDs).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Table("book_genres").
+		Where("book_id = ?", bookID).
+		Pluck("genre_id", &src.GenreIDs).Error; err != nil {
+		return nil, err
+	}
+	return src, nil
+}
+
+// similarCandidateRow is the scan target of the candidate query.
+type similarCandidateRow struct {
+	BookID        uuid.UUID
+	SharedAuthors int
+	SharedGenres  int
+	GenreCount    int
+	Rating        float64
+	RatingsCount  int
+}
+
+// ListSimilarCandidates collects a bounded set of candidate rows with raw
+// features. The SQL is kept free of Postgres-only syntax (plain CTEs,
+// UNION ALL, GROUP BY, ROW_NUMBER) so it stays portable; scoring happens in
+// Go (catalog service).
+func (r *GormRepository) ListSimilarCandidates(ctx context.Context, bookID uuid.UUID, src SimilarSource, authorPool, genrePool int) ([]SimilarCandidate, error) {
+	if len(src.AuthorIDs) == 0 && len(src.GenreIDs) == 0 {
+		return nil, nil
+	}
+
+	params := map[string]interface{}{
+		"book_id":     bookID,
+		"author_pool": authorPool,
+		"genre_pool":  genrePool,
+	}
+	// Build the matches CTE only from non-empty branches so no empty IN ()
+	// is ever sent.
+	var branches []string
+	if len(src.AuthorIDs) > 0 {
+		branches = append(branches, `SELECT ba.book_id, 1 AS is_author, 0 AS is_genre
+        FROM book_authors ba
+        WHERE ba.author_id IN @author_ids`)
+		params["author_ids"] = src.AuthorIDs
+	}
+	if len(src.GenreIDs) > 0 {
+		branches = append(branches, `SELECT bg.book_id, 0 AS is_author, 1 AS is_genre
+        FROM book_genres bg
+        WHERE bg.genre_id IN @genre_ids`)
+		params["genre_ids"] = src.GenreIDs
+	}
+
+	query := `WITH matches AS (
+    ` + strings.Join(branches, "\n    UNION ALL\n    ") + `
+),
+agg AS (
+    SELECT book_id,
+           SUM(is_author) AS shared_authors,
+           SUM(is_genre)  AS shared_genres
+    FROM matches
+    WHERE book_id <> @book_id
+    GROUP BY book_id
+),
+ranked AS (
+    SELECT b.id AS book_id, agg.shared_authors, agg.shared_genres,
+           b.rating, b.ratings_count,
+           ROW_NUMBER() OVER (
+               PARTITION BY CASE WHEN agg.shared_authors > 0 THEN 1 ELSE 0 END
+               ORDER BY agg.shared_genres DESC, b.ratings_count DESC, b.rating DESC, b.id
+           ) AS rn
+    FROM agg
+    JOIN books b ON b.id = agg.book_id
+    WHERE b.is_hidden = FALSE
+)
+SELECT r.book_id, r.shared_authors, r.shared_genres, r.rating, r.ratings_count,
+       (SELECT COUNT(*) FROM book_genres g WHERE g.book_id = r.book_id) AS genre_count
+FROM ranked r
+WHERE (r.shared_authors > 0 AND r.rn <= @author_pool)
+   OR (r.shared_authors = 0 AND r.rn <= @genre_pool)`
+
+	db := r.db.WithContext(ctx)
+	var rows []similarCandidateRow
+	if err := db.Raw(query, params).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.BookID)
+	}
+	var links []struct {
+		BookID   uuid.UUID
+		AuthorID uuid.UUID
+	}
+	if err := db.Raw("SELECT book_id, author_id FROM book_authors WHERE book_id IN ?", ids).
+		Scan(&links).Error; err != nil {
+		return nil, err
+	}
+	authorsByBook := make(map[uuid.UUID][]uuid.UUID, len(rows))
+	for _, l := range links {
+		authorsByBook[l.BookID] = append(authorsByBook[l.BookID], l.AuthorID)
+	}
+
+	cands := make([]SimilarCandidate, 0, len(rows))
+	for _, row := range rows {
+		cands = append(cands, SimilarCandidate{
+			BookID:        row.BookID,
+			SharedAuthors: row.SharedAuthors,
+			SharedGenres:  row.SharedGenres,
+			GenreCount:    row.GenreCount,
+			Rating:        row.Rating,
+			RatingsCount:  row.RatingsCount,
+			AuthorIDs:     authorsByBook[row.BookID],
+		})
+	}
+	return cands, nil
+}
+
+func (r *GormRepository) GetBooksByIDs(ctx context.Context, ids []uuid.UUID) ([]domain.Book, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var books []domain.Book
+	if err := r.db.WithContext(ctx).
+		Preload("Authors").
+		Preload("Genres").
+		Where("id IN ? AND is_hidden = ?", ids, false).
+		Find(&books).Error; err != nil {
+		return nil, err
+	}
+	return books, nil
 }

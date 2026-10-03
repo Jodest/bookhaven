@@ -84,6 +84,10 @@ type listBooksResponse struct {
 	Limit int                    `json:"limit"`
 }
 
+type similarBooksResponse struct {
+	Items []bookListItemResponse `json:"items"`
+}
+
 type listAuthorsResponse struct {
 	Items []authorResponse `json:"items"`
 	Total int64            `json:"total"`
@@ -329,6 +333,50 @@ func (h *Handler) GetBook(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, toBookResponse(*book))
+}
+
+// ListSimilarBooks godoc
+// @Summary Похожие книги
+// @Description Возвращает книги, похожие на указанную (общие авторы и жанры). Не более 2 книг одного автора.
+// @Tags catalog
+// @Produce json
+// @Param id path string true "ID книги (UUID)"
+// @Param limit query int false "Количество, максимум 20 (по умолчанию 8)"
+// @Success 200 {object} similarBooksResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /books/{id}/similar [get]
+func (h *Handler) ListSimilarBooks(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	bookID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid book id"})
+	}
+
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	if limit <= 0 {
+		limit = service.DefaultSimilarLimit
+	}
+	if limit > service.MaxSimilarLimit {
+		limit = service.MaxSimilarLimit
+	}
+
+	books, err := h.service.ListSimilarBooks(ctx, bookID, limit)
+	if err != nil {
+		if errors.Is(err, service.ErrBookNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "book not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get similar books"})
+	}
+
+	items := make([]bookListItemResponse, 0, len(books))
+	for _, b := range books {
+		items = append(items, toBookListItemResponse(b))
+	}
+
+	return c.JSON(http.StatusOK, similarBooksResponse{Items: items})
 }
 
 // GetAuthor godoc

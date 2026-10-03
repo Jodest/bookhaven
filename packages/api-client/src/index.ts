@@ -731,11 +731,11 @@ type RawGenre = Genre & {
   created_at: string;
 };
 
-// Author-detail's nested `books` come back from the backend as the lighter
-// `bookListItemResponse` shape (see catalog handler's `toBookListItemResponse`)
-// — it omits description/isbn/page_count/language/reviews_count/timestamps
-// that the full book-list/book-detail responses include.
-type RawAuthorBookListItem = {
+// The lighter generic `bookListItemResponse` shape (see catalog handler's
+// `toBookListItemResponse`), used by author detail's nested `books` and by
+// similar books — it omits description/isbn/page_count/language/
+// reviews_count/timestamps that the full book-detail response includes.
+type RawBookListItem = {
   id: string;
   title: string;
   slug: string;
@@ -748,7 +748,7 @@ type RawAuthorBookListItem = {
 };
 
 type RawAuthorDetail = Omit<RawAuthor, 'books'> & {
-  books: RawAuthorBookListItem[];
+  books: RawBookListItem[];
 };
 
 type RawList = List & {
@@ -799,10 +799,10 @@ function normalizeBook(raw: RawBook): Book {
   };
 }
 
-// The author-detail response's nested books don't carry the fields full
-// Book objects have (see RawAuthorBookListItem above); fill those in with
-// neutral defaults since BookCard (the only consumer) never reads them.
-function normalizeAuthorBookListItem(raw: RawAuthorBookListItem): Book {
+// Book list items (author detail's nested books, similar books) don't carry
+// the fields full Book objects have (see RawBookListItem above); fill those
+// in with neutral defaults since BookCard (the only consumer) never reads them.
+function normalizeBookListItem(raw: RawBookListItem): Book {
   return {
     id: raw.id,
     title: raw.title,
@@ -827,7 +827,7 @@ function normalizeAuthorDetail(raw: RawAuthorDetail): Author {
   const { books, ...authorFields } = raw;
   return {
     ...normalizeAuthor(authorFields),
-    books: books.map(normalizeAuthorBookListItem),
+    books: books.map(normalizeBookListItem),
   };
 }
 
@@ -992,6 +992,11 @@ export const api = {
     get: async (slug: string) => {
       const raw = await fetcher<RawBook>(`/api/v1/books/${slug}`);
       return normalizeBook(raw);
+    },
+    similar: async (id: string, params?: { limit?: number }) => {
+      const qs = params?.limit !== undefined ? `?limit=${params.limit}` : '';
+      const raw = await fetcher<{ items: RawBookListItem[] }>(`/api/v1/books/${id}/similar${qs}`);
+      return { items: raw.items.map(normalizeBookListItem) };
     },
   },
   authors: {
