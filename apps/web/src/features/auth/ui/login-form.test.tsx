@@ -46,6 +46,15 @@ describe('LoginForm', () => {
     vi.clearAllMocks();
   });
 
+  it('links to /forgot-password', () => {
+    render(<LoginForm />);
+
+    expect(screen.getByRole('link', { name: 'Забыли пароль?' })).toHaveAttribute(
+      'href',
+      '/forgot-password'
+    );
+  });
+
   it('redirects to the safe `redirect` param on success', async () => {
     searchParamsValue = new URLSearchParams({ redirect: '/books/abc' });
     render(<LoginForm />);

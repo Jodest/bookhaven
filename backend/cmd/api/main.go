@@ -133,6 +133,21 @@ func main() {
 		WindowLimit: 5,
 		Window:      24 * time.Hour,
 	})
+	// Public forgot-password limits (see docs/features/password-reset.md):
+	// same shape as resend-verification, separate prefixes so the two flows
+	// do not share quota.
+	pwResetIPLimiter := ratelimit.NewRedisLimiter(redisClient, ratelimit.Options{
+		Prefix:      "rl:pwreset-ip",
+		MinInterval: 0,
+		WindowLimit: 20,
+		Window:      time.Hour,
+	})
+	pwResetEmailLimiter := ratelimit.NewRedisLimiter(redisClient, ratelimit.Options{
+		Prefix:      "rl:pwreset-email",
+		MinInterval: time.Minute,
+		WindowLimit: 5,
+		Window:      24 * time.Hour,
+	})
 
 	authService := authservice.NewService(authservice.Config{
 		JWTSecret:            cfg.JWTSecret,
@@ -144,6 +159,9 @@ func main() {
 	}, db, usersRepo, mailQueue, authservice.ResendLimiters{
 		IP:    verifyResendIPLimiter,
 		Email: verifyResendEmailLimiter,
+	}, authservice.ResendLimiters{
+		IP:    pwResetIPLimiter,
+		Email: pwResetEmailLimiter,
 	}, logger)
 
 	// Validator
@@ -155,8 +173,8 @@ func main() {
 	// In prod Caddy reaches the api over the private Docker network and does
 	// not trust client-supplied X-Forwarded-For, so the header carries the
 	// real client IP; direct callers cannot spoof it. Used by the per-IP
-	// resend-verification rate limit - see docs/DEPLOYMENT.md before putting
-	// another proxy in front.
+	// resend-verification and forgot-password rate limits - see
+	// docs/DEPLOYMENT.md before putting another proxy in front.
 	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 
 	e.Use(echomiddleware.Recover())
@@ -200,6 +218,8 @@ func main() {
 	api.POST("/auth/logout", authHandler.Logout, authMiddleware)
 	api.POST("/auth/verify-email", authHandler.VerifyEmail)
 	api.POST("/auth/resend-verification", authHandler.ResendVerification)
+	api.POST("/auth/forgot-password", authHandler.ForgotPassword)
+	api.POST("/auth/reset-password", authHandler.ResetPassword)
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{

@@ -74,4 +74,63 @@ func TestRender_AllTemplatesParse(t *testing.T) {
 	if _, ok := set["verify_email"]; !ok {
 		t.Fatal("verify_email template not found")
 	}
+	if _, ok := set["reset_password"]; !ok {
+		t.Fatal("reset_password template not found")
+	}
+}
+
+func TestRender_ResetPassword(t *testing.T) {
+	url := "http://localhost:3000/reset-password?token=abc123"
+	msg, err := Render("reset_password", ResetPasswordData{Name: "Анна", ResetURL: url})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if msg.Subject != "Сброс пароля — BookHaven" {
+		t.Errorf("unexpected subject %q", msg.Subject)
+	}
+	if !strings.Contains(msg.TextBody, url) {
+		t.Errorf("text body does not contain URL: %q", msg.TextBody)
+	}
+	if !strings.Contains(msg.TextBody, "Здравствуйте, Анна!") {
+		t.Errorf("text body does not greet by name: %q", msg.TextBody)
+	}
+	for _, want := range []string{"1 час", "не запрашивали сброс пароля"} {
+		if !strings.Contains(msg.TextBody, want) {
+			t.Errorf("text body does not contain %q: %q", want, msg.TextBody)
+		}
+	}
+	if !strings.Contains(msg.HTMLBody, "Задать новый пароль") {
+		t.Errorf("html body has no button: %q", msg.HTMLBody)
+	}
+	if !strings.Contains(msg.HTMLBody, url) {
+		t.Errorf("html body does not contain URL: %q", msg.HTMLBody)
+	}
+
+	msg.To = "anna@example.com"
+	if err := msg.Validate(); err != nil {
+		t.Errorf("rendered message does not validate: %v", err)
+	}
+}
+
+func TestRender_ResetPassword_EmptyNameFallback(t *testing.T) {
+	msg, err := Render("reset_password", ResetPasswordData{ResetURL: "http://x/reset-password?token=t"})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.HasPrefix(msg.TextBody, "Здравствуйте!") {
+		t.Errorf("expected fallback greeting, got %q", msg.TextBody)
+	}
+}
+
+func TestRender_ResetPassword_EscapesNameInHTML(t *testing.T) {
+	msg, err := Render("reset_password", ResetPasswordData{Name: "<script>alert(1)</script>", ResetURL: "http://x/reset-password?token=t"})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(msg.HTMLBody, "<script>") {
+		t.Errorf("html body contains unescaped script tag: %q", msg.HTMLBody)
+	}
+	if !strings.Contains(msg.HTMLBody, "&lt;script&gt;") {
+		t.Errorf("expected escaped name in html body: %q", msg.HTMLBody)
+	}
 }

@@ -44,6 +44,17 @@ const emailVerificationTokensDDL = `CREATE TABLE email_verification_tokens (
 	created_at DATETIME NOT NULL
 )`
 
+// passwordResetTokensDDL mirrors migration 000012 password_reset_tokens.
+const passwordResetTokensDDL = `CREATE TABLE password_reset_tokens (
+	id TEXT PRIMARY KEY,
+	user_id TEXT NOT NULL,
+	email TEXT NOT NULL,
+	token_hash TEXT NOT NULL UNIQUE,
+	expires_at DATETIME NOT NULL,
+	used_at DATETIME,
+	created_at DATETIME NOT NULL
+)`
+
 type fakeMailer struct {
 	mu       sync.Mutex
 	messages []mailer.Message
@@ -81,6 +92,9 @@ type verificationEnv struct {
 	mailer       *fakeMailer
 	ipLimiter    *fakeLimiter
 	emailLimiter *fakeLimiter
+	// resetIPLimiter / resetEmailLimiter limit ForgotPassword.
+	resetIPLimiter    *fakeLimiter
+	resetEmailLimiter *fakeLimiter
 }
 
 func setupVerificationEnv(t *testing.T) *verificationEnv {
@@ -96,7 +110,7 @@ func setupVerificationEnv(t *testing.T) *verificationEnv {
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	for _, ddl := range []string{refreshTokensDDL, usersDDL, emailVerificationTokensDDL} {
+	for _, ddl := range []string{refreshTokensDDL, usersDDL, emailVerificationTokensDDL, passwordResetTokensDDL} {
 		if err := db.Exec(ddl).Error; err != nil {
 			t.Fatalf("create table: %v", err)
 		}
@@ -105,14 +119,20 @@ func setupVerificationEnv(t *testing.T) *verificationEnv {
 	m := &fakeMailer{}
 	ipL := &fakeLimiter{allowed: true}
 	emailL := &fakeLimiter{allowed: true}
+	resetIPL := &fakeLimiter{allowed: true}
+	resetEmailL := &fakeLimiter{allowed: true}
 	svc := NewService(Config{
 		JWTSecret:       "test-secret",
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		Issuer:          "bookhaven-test",
 		WebBaseURL:      "http://localhost:3000",
-	}, db, users, m, ResendLimiters{IP: ipL, Email: emailL}, nil)
-	return &verificationEnv{svc: svc, db: db, users: users, mailer: m, ipLimiter: ipL, emailLimiter: emailL}
+	}, db, users, m, ResendLimiters{IP: ipL, Email: emailL}, ResendLimiters{IP: resetIPL, Email: resetEmailL}, nil)
+	return &verificationEnv{
+		svc: svc, db: db, users: users, mailer: m,
+		ipLimiter: ipL, emailLimiter: emailL,
+		resetIPLimiter: resetIPL, resetEmailLimiter: resetEmailL,
+	}
 }
 
 // tokenFromMessage extracts the plain token from the link in msg's text.
