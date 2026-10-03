@@ -26,6 +26,13 @@ export interface PublicProfile {
     createdAt: string;
     updatedAt: string;
   }[];
+  shelves: {
+    id: string;
+    name: string;
+    type: Shelf['type'];
+    booksCount: number;
+    createdAt: string;
+  }[];
 }
 
 export interface UpdateProfileInput {
@@ -820,6 +827,26 @@ function normalizeShelf(raw: RawShelf): Shelf {
   };
 }
 
+// Shape of a shelf entry in PublicProfile.shelves (publicShelfActivityResponse
+// on the backend) - no user_id/updated_at, mirroring PublicList above.
+type RawPublicShelf = {
+  id: string;
+  name: string;
+  type: Shelf['type'];
+  books_count: number;
+  created_at: string;
+};
+
+function normalizePublicShelf(raw: RawPublicShelf): PublicProfile['shelves'][number] {
+  return {
+    id: raw.id,
+    name: raw.name,
+    type: raw.type,
+    booksCount: raw.books_count,
+    createdAt: raw.created_at,
+  };
+}
+
 export interface LoginInput {
   email: string;
   password: string;
@@ -1001,6 +1028,7 @@ export const api = {
           joined_at: string;
         };
         lists: RawPublicList[];
+        shelves: RawPublicShelf[];
       }>(`/api/v1/users/${id}`);
       return {
         user: {
@@ -1011,6 +1039,7 @@ export const api = {
           joinedAt: raw.user.joined_at,
         },
         lists: raw.lists.map(normalizePublicList),
+        shelves: raw.shelves.map(normalizePublicShelf),
       };
     },
     updateMe: async (data: UpdateProfileInput) => {
@@ -1088,6 +1117,24 @@ export const api = {
       fetcher<{ status: string }>(`/api/v1/shelves/${id}/books/${bookId}`, {
         method: 'DELETE',
       }),
+    getPublic: async (id: string, params?: { page?: number; limit?: number }) => {
+      const queryParams: Record<string, string> = {};
+      if (params?.page !== undefined) queryParams.page = String(params.page);
+      if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+      const query = new URLSearchParams(queryParams).toString();
+      const raw = await fetcher<{
+        shelf: RawShelf;
+        items: RawBook[];
+        total: number;
+        page: number;
+        limit: number;
+      }>(`/api/v1/shelves/public/${id}${query ? `?${query}` : ''}`);
+      return {
+        ...raw,
+        shelf: normalizeShelf(raw.shelf),
+        items: raw.items.map(normalizeBook),
+      };
+    },
   },
   readingChallenges: {
     list: async () => {

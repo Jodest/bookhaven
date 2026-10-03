@@ -114,6 +114,58 @@ func (s *Service) GetShelf(ctx context.Context, userID uuid.UUID, shelfID uuid.U
 	return shelf, books, total, nil
 }
 
+// ListPublicByUser returns all shelves owned by the user that have at least
+// one visible book, with BooksCount computed over visible books only.
+// Shelves are unconditionally public (see OQ-003 resolution) - there is no
+// privacy flag to filter on, unlike lists' IsPublic.
+func (s *Service) ListPublicByUser(ctx context.Context, userID uuid.UUID) ([]domain.Shelf, error) {
+	shelves, err := s.repo.ListByUserVisible(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list public shelves: %w", err)
+	}
+
+	public := make([]domain.Shelf, 0, len(shelves))
+	for _, sh := range shelves {
+		if sh.BooksCount > 0 {
+			public = append(public, sh)
+		}
+	}
+
+	return public, nil
+}
+
+// GetPublicShelf returns a shelf with paginated, visible-only books. Unlike
+// GetShelf, it performs no ownership check: shelves are unconditionally
+// public, so any existing shelf ID is viewable by anyone.
+func (s *Service) GetPublicShelf(ctx context.Context, shelfID uuid.UUID, page, limit int) (*domain.Shelf, []catalogDomain.Book, int64, error) {
+	shelf, err := s.repo.GetByID(ctx, shelfID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, 0, ErrShelfNotFound
+		}
+		return nil, nil, 0, fmt.Errorf("get shelf: %w", err)
+	}
+
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	offset := (page - 1) * limit
+
+	books, total, err := s.repo.ListBooks(ctx, shelfID, limit, offset)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("list books: %w", err)
+	}
+
+	shelf.BooksCount = total
+	return shelf, books, total, nil
+}
+
 // RenameShelf renames a custom shelf.
 func (s *Service) RenameShelf(ctx context.Context, userID uuid.UUID, shelfID uuid.UUID, name string) (*domain.Shelf, error) {
 	name = strings.TrimSpace(name)
