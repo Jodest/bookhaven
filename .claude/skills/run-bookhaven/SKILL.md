@@ -3,7 +3,7 @@ name: run-bookhaven
 description: Build, run, and drive the BookHaven stack (Go backend, Next.js web + admin, Postgres, Redis) via Docker Compose. Use when asked to start/run/launch BookHaven, bring up the app, check it's running, or smoke-test its web/admin/API surfaces. Auto-seeds a login-capable test account on a fresh DB, but not the demo catalog — that's a separate, manual step (see below).
 ---
 
-BookHaven is a Docker Compose stack (Postgres, Redis, Go/Echo backend, two Next.js apps: web + admin). Drive it via `.claude/skills/run-bookhaven/driver.sh` — it starts every container, waits for each HTTP surface, and on a fresh DB (no schema yet) applies migrations plus an accounts-only seed (`cmd/seed -accounts-only`: the admin fixture + a working `test@bookhaven.local` / `test1234` login, no catalog data). Run it from the repo root. It deliberately does **not** auto-seed the demo catalog (books/genres/authors) — run `cmd/seed` yourself (no flags) if you want that (see below).
+BookHaven is a Docker Compose stack (Postgres, Redis, Go/Echo backend, two Next.js apps: web + admin). Drive it via `.claude/skills/run-bookhaven/driver.sh` — it starts every container, waits for each HTTP surface, and on a fresh DB (no schema yet) applies migrations plus an accounts-only seed (`cmd/seed -accounts-only`: working `admin@bookhaven.local` / `admin1234` and `test@bookhaven.local` / `test1234` logins, no catalog data). Run it from the repo root. It deliberately does **not** auto-seed the demo catalog (books/genres/authors) — run `cmd/seed` yourself (no flags) if you want that (see below).
 
 ## Prerequisites
 
@@ -22,9 +22,9 @@ The script is idempotent — safe to re-run any time to check status or recover 
 1. Locates `docker.exe`, launches Docker Desktop if the daemon isn't responding, and polls until it's stably up (3 consecutive successful `docker info` calls — a single success can be a transient blip right after launch).
 2. Runs `docker compose up -d` (uses cached images; does **not** pass `--build` — add that yourself if `docker-compose.yml`/Dockerfiles changed).
 3. Waits for the backend (`:8080/swagger/index.html` → 200).
-4. Checks `/api/v1/books?limit=1`: if it 500s (tables missing), runs `docker compose exec backend go run cmd/migrate/main.go up` **then** `docker compose exec backend go run cmd/seed/main.go -accounts-only` (admin fixture + test login only — no genres/authors/books). On a DB that already has schema, neither runs again (idempotent, and re-running would be a no-op anyway via `FirstOrCreate`).
+4. Checks `/api/v1/books?limit=1`: if it 500s (tables missing), runs `docker compose exec backend go run cmd/migrate/main.go up` **then** `docker compose exec backend go run cmd/seed/main.go -accounts-only` (admin + test logins only — no genres/authors/books). On a DB that already has schema, neither runs again (idempotent, and re-running would be a no-op anyway via `FirstOrCreate`).
 5. Waits for web (`:3000` → 200) and admin (`:3001` → 200 or 307 — admin redirects unauthenticated requests to login, that's healthy).
-6. Prints a smoke-test summary with all URLs, the test account, and a reminder that the demo catalog isn't seeded.
+6. Prints a smoke-test summary with all URLs (incl. Mailpit), the admin and test accounts, and a reminder that the demo catalog isn't seeded.
 
 On success you'll see:
 ```
@@ -32,7 +32,9 @@ All services up:
   Web:   http://localhost:3000
   Admin: http://localhost:3001
   API:   http://localhost:8080  (Swagger: http://localhost:8080/swagger/index.html)
-  Test account: test@bookhaven.local / test1234
+  Mailpit: http://localhost:8025  (all outgoing email lands here)
+  Test account:  test@bookhaven.local / test1234
+  Admin account: admin@bookhaven.local / admin1234
   No demo catalog seeded automatically. To seed books/genres/authors:
     docker compose exec backend go run cmd/seed/main.go
 ```
@@ -47,9 +49,9 @@ The driver seeds accounts only (see above) — it never seeds the demo catalog f
 docker compose exec backend go run cmd/seed/main.go
 ```
 
-Idempotent (`FirstOrCreate` by email/slug) — safe to re-run; running it after `-accounts-only` already ran just adds the catalog on top (accounts are matched by fixed UUID/email and left as-is). Note `admin@bookhaven.local` has no password set (it's a fixture record, not a login-able account) — for an actual admin session, register a real account via `POST /api/v1/auth/register` and promote it: `docker compose exec -T postgres psql -U bookhaven -d bookhaven -c "UPDATE users SET role='admin' WHERE email='<your-email>';"`.
+Idempotent (`FirstOrCreate` by email/slug) — safe to re-run; running it after `-accounts-only` already ran just adds the catalog on top (accounts are matched by fixed UUID/email and left as-is). `admin@bookhaven.local` logs in with `admin1234`; on a DB seeded by an older seed version (admin row with no password) re-running the seed backfills that password — it never overwrites a password that is already set.
 
-**First run after a fresh Docker install/rebuild is slow** (5-10+ min): `web`/`admin` containers run `pnpm install && pnpm dev` as their container command (see `docker-compose.yml`), so every container recreation reinstalls all frontend deps from scratch, not just on first build. There is no faster documented path for this repo — a native (non-Docker) run was not verified this session, so it isn't documented here.
+**First run after a fresh Docker install/rebuild is slow** (5-10+ min): `web`/`admin` containers run `pnpm install && pnpm dev` as their container command (see `docker-compose.yml`). Every workspace `node_modules` dir is shadowed by a container-only anonymous volume (shared `x-node-dev-volumes` anchor), so the containers never touch the host's `node_modules`; a plain `--force-recreate` reuses those anonymous volumes, so reinstalls after the first one are quick. There is no faster documented path for this repo — a native (non-Docker) run was not verified this session, so it isn't documented here.
 
 ## Test
 
