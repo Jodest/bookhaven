@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+// `/verify-email` must stay public (in neither list): the emailed link has to
+// work logged in and logged out, in any browser.
 const protectedRoutes = ['/profile', '/shelves'];
 const authRoutes = ['/login', '/register'];
 

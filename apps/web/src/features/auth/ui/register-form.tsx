@@ -17,7 +17,13 @@ const registerSchema = z.object({
 
 type RegisterFormData = z.infer<typeof registerSchema>;
 
-export function RegisterForm() {
+interface RegisterFormProps {
+  // When provided, called with the registered email instead of navigating
+  // away (the register view shows a "check your email" panel in place).
+  onRegistered?: (email: string) => void;
+}
+
+export function RegisterForm({ onRegistered }: RegisterFormProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { register: registerUser, error, clearError } = useAuthStore();
@@ -34,6 +40,10 @@ export function RegisterForm() {
     clearError();
     try {
       await registerUser(data.email, data.password, data.name);
+      if (onRegistered) {
+        onRegistered(data.email);
+        return;
+      }
       const redirect = searchParams.get('redirect');
       router.push((isSafeRedirectPath(redirect) ? redirect : '/profile') as any);
     } catch {

@@ -73,4 +73,15 @@ describe('RegisterForm', () => {
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/profile'));
   });
+
+  it('calls onRegistered with the email instead of navigating when provided', async () => {
+    const onRegistered = vi.fn();
+    searchParamsValue = new URLSearchParams({ redirect: '/books/abc' });
+    render(<RegisterForm onRegistered={onRegistered} />);
+
+    await fillAndSubmit();
+
+    await waitFor(() => expect(onRegistered).toHaveBeenCalledWith('user@example.com'));
+    expect(pushMock).not.toHaveBeenCalled();
+  });
 });

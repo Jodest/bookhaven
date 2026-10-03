@@ -37,8 +37,8 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 Email verification at registration chain (epic #162):
 
-1. [ ] Email verification backend (see [docs/features/email-verification-backend.md](features/email-verification-backend.md), #158, epic #167) — in progress; must be merged to `main` together with #159 (otherwise the emailed link leads to a 404)
-2. [ ] Email verification frontend (#159)
+1. [x] Email verification backend (see [docs/features/email-verification-backend.md](features/email-verification-backend.md), #158, epic #167) — implemented, merged into `dev`; waiting for #159 to be merged to `main` together (otherwise the emailed link leads to a 404)
+2. [ ] Email verification frontend (see [docs/features/email-verification-web.md](features/email-verification-web.md), #159, epic #172) — in progress
 3. [ ] Restrictions for unverified users (#160)
 4. [ ] Password reset by email (#161)
 
