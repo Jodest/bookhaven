@@ -269,6 +269,97 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/authors/{id}/merge": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. :id — автор-дубликат, который будет удалён; canonical_id в теле запроса — автор, который останется (его собственные поля не изменяются). Необратимо.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Слить дубликат автора в канонического (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID автора-дубликата (будет удалён)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "ID канонического автора",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.mergeAuthorsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.mergeAuthorsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/books": {
             "get": {
                 "security": [
@@ -293,8 +384,26 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Фильтр видимости (all/visible/hidden)",
+                        "description": "Фильтр видимости (all/visible/hidden/pending_review)",
                         "name": "visibility",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Фильтр по жанру (UUID)",
+                        "name": "genre_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Фильтр по автору (UUID)",
+                        "name": "author_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Фильтр по источнику (manual/harvested)",
+                        "name": "source",
                         "in": "query"
                     },
                     {
@@ -419,6 +528,261 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/books/bulk-publish": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Публикует (is_hidden=false) каждую книгу, подходящую под предикат pending_review (is_hidden=true AND external_source IS NOT NULL), опционально уточнённый тем же search, что и GET /admin/books. Поле visibility в теле запроса игнорируется — предикат всегда фиксирован на сервере. Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов (кроме 422 при превышении лимита партии).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Опубликовать все книги на проверке (админ)",
+                "parameters": [
+                    {
+                        "description": "Опциональный поиск",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.bulkPublishBooksRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishReport"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/books/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. multipart/form-data: file (обязательно, .csv/.json), format (опционально, csv|json — иначе определяется по расширению), is_hidden (опционально, true/false, применяется ко всей партии). Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Массовый импорт книг из CSV/JSON файла (админ)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.ImportReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/books/lookup": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Синхронный, только для чтения вызов Open Library - не создаёт и не изменяет записи; сохранение выполняется отдельным POST /admin/books.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Поиск книги по ISBN или названию во внешнем источнике (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ISBN",
+                        "name": "isbn",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Название книги",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Автор (уточняет поиск по названию)",
+                        "name": "author",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.lookupResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -912,6 +1276,277 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/harvest": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен (state-changing запросы не принимаются по cookie). Ставит задачу харвеста в очередь; сам харвест выполняется асинхронно воркером.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Запустить харвест по списку авторов (Wikidata)",
+                "parameters": [
+                    {
+                        "description": "QID авторов Wikidata и опциональный лимит",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_harvest_transport_http.triggerHarvestRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_harvest_transport_http.triggerHarvestResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/harvest/authors/search": {
+            "get": {
+                "description": "Требуется роль admin. Синхронный, только для чтения вызов Wikidata (wbsearchentities) - не создаёт и не изменяет записи; результат - кандидаты для ручного подтверждения администратором перед запуском POST /admin/harvest. Отсутствие совпадений - не ошибка (200, items: []).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Поиск авторов в Wikidata по имени (для подбора QID перед харвестом)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Искомое имя автора",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_harvest_transport_http.listAuthorCandidatesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/harvest/jobs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Источник данных - состояние очереди asynq/Redis, а не отдельная таблица в БД; список ограничен 50 задачами на состояние и сгруппирован по состоянию (active, retry, pending, completed, archived), не единой хронологией.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Список задач харвеста (недавние)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_harvest_transport_http.listHarvestJobsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/harvest/jobs/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Статус задачи харвеста по ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID задачи asynq",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_harvest_transport_http.harvestJobResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/reviews": {
             "get": {
                 "security": [
@@ -1321,6 +1956,110 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/resend-verification": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Удаляет неиспользованные ссылки подтверждения текущего пользователя и отправляет новую. Ограничение: 1 раз в минуту и 5 раз в сутки. Коды ошибок: already_verified, rate_limited, email_send_failed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Повторно отправить письмо подтверждения email",
+                "responses": {
+                    "202": {
+                        "description": "status: sent",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.statusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.rateLimitedResponse"
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "type": "integer",
+                                "description": "Секунд до следующей попытки"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/verify-email": {
+            "post": {
+                "description": "Подтверждает адрес электронной почты по одноразовому токену из письма. Не требует авторизации и не меняет cookies. Коды ошибок: invalid_token, token_expired, token_used.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Подтвердить email",
+                "parameters": [
+                    {
+                        "description": "Токен из ссылки в письме",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.verifyEmailRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "status: verified или already_verified",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.statusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
                         }
                     }
                 }
@@ -2654,6 +3393,221 @@ const docTemplate = `{
                 }
             }
         },
+        "/notifications": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Список уведомлений текущего пользователя",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Номер страницы",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Размер страницы",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_notifications_transport_http.listNotificationsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/notifications/read-all": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Отметить все уведомления прочитанными",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/notifications/unread-count": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Количество непрочитанных уведомлений",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_notifications_transport_http.unreadCountResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/notifications/{id}/read": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Отметить уведомление прочитанным",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID уведомления",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/reading-challenges": {
             "get": {
                 "security": [
@@ -3158,6 +4112,74 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/shelves/public/{id}": {
+            "get": {
+                "description": "Доступно без авторизации; полки не приватны, проверка владельца не выполняется",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "shelves"
+                ],
+                "summary": "Получить публичную полку с книгами",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID полки",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Номер страницы",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Размер страницы, максимум 100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_shelves_transport_http.shelfDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -3755,6 +4777,125 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishReport": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishRowError"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "published": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishRowError": {
+            "type": "object",
+            "properties": {
+                "book_id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_admin_service.ImportReport": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "integer"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.ImportRowError"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "skipped_existing": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_admin_service.ImportRowError": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "row": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_harvest_service.HarvestRecordError": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_harvest_service.HarvestResult": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "integer"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_harvest_service.HarvestRecordError"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "skipped_existing": {
+                    "type": "integer"
+                },
+                "skipped_records": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_harvest_service.HarvestSkippedRecord"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_harvest_service.HarvestSkippedRecord": {
+            "type": "object",
+            "properties": {
+                "index": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_admin_transport_http.authorResponse": {
             "type": "object",
             "properties": {
@@ -3799,6 +4940,9 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "external_source": {
+                    "type": "string"
+                },
                 "genres": {
                     "type": "array",
                     "items": {
@@ -3839,6 +4983,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.bulkPublishBooksRequest": {
+            "type": "object",
+            "properties": {
+                "search": {
                     "type": "string"
                 }
             }
@@ -3934,6 +5086,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "hidden_books": {
+                    "type": "integer"
+                },
+                "pending_import_review": {
                     "type": "integer"
                 },
                 "pending_reviews": {
@@ -4035,6 +5190,69 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.lookupResponse": {
+            "type": "object",
+            "properties": {
+                "authors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cover_url": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "genres": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "isbn": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "page_count": {
+                    "type": "integer"
+                },
+                "published_year": {
+                    "type": "integer"
+                },
+                "source_id": {
+                    "type": "string"
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.mergeAuthorsRequest": {
+            "type": "object",
+            "properties": {
+                "canonical_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.mergeAuthorsResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.authorResponse"
+                },
+                "books_reassigned": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_modules_admin_transport_http.moderateReviewRequest": {
             "type": "object",
             "properties": {
@@ -4112,6 +5330,19 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_auth_transport_http.errorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "invalid_token"
+                },
+                "error": {
+                    "type": "string",
+                    "example": "invalid token"
+                }
+            }
+        },
         "internal_modules_auth_transport_http.loginRequest": {
             "type": "object",
             "required": [
@@ -4124,6 +5355,23 @@ const docTemplate = `{
                 },
                 "password": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_auth_transport_http.rateLimitedResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "rate_limited"
+                },
+                "error": {
+                    "type": "string",
+                    "example": "too many requests"
+                },
+                "retry_after_seconds": {
+                    "type": "integer",
+                    "example": 42
                 }
             }
         },
@@ -4159,6 +5407,15 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_auth_transport_http.statusResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "verified"
+                }
+            }
+        },
         "internal_modules_auth_transport_http.userResponse": {
             "type": "object",
             "properties": {
@@ -4170,6 +5427,9 @@ const docTemplate = `{
                 },
                 "email": {
                     "type": "string"
+                },
+                "email_verified": {
+                    "type": "boolean"
                 },
                 "id": {
                     "type": "string"
@@ -4184,6 +5444,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_auth_transport_http.verifyEmailRequest": {
+            "type": "object",
+            "properties": {
+                "token": {
                     "type": "string"
                 }
             }
@@ -4398,6 +5666,99 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/internal_modules_catalog_transport_http.languageResponse"
                     }
+                }
+            }
+        },
+        "internal_modules_harvest_transport_http.authorCandidateResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "qid": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_harvest_transport_http.harvestJobResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "max_retry": {
+                    "type": "integer"
+                },
+                "queue": {
+                    "type": "string"
+                },
+                "result": {
+                    "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_harvest_service.HarvestResult"
+                },
+                "retried": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_harvest_transport_http.listAuthorCandidatesResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_harvest_transport_http.authorCandidateResponse"
+                    }
+                }
+            }
+        },
+        "internal_modules_harvest_transport_http.listHarvestJobsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_harvest_transport_http.harvestJobResponse"
+                    }
+                }
+            }
+        },
+        "internal_modules_harvest_transport_http.triggerHarvestRequest": {
+            "type": "object",
+            "properties": {
+                "author_qids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_harvest_transport_http.triggerHarvestResponse": {
+            "type": "object",
+            "properties": {
+                "queue": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
                 }
             }
         },
@@ -4672,6 +6033,88 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_notifications_transport_http.listNotificationsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_notifications_transport_http.notificationResponse"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_notifications_transport_http.notificationActorResponse": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_notifications_transport_http.notificationResponse": {
+            "type": "object",
+            "properties": {
+                "actor": {
+                    "$ref": "#/definitions/internal_modules_notifications_transport_http.notificationActorResponse"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_read": {
+                    "type": "boolean"
+                },
+                "review": {
+                    "$ref": "#/definitions/internal_modules_notifications_transport_http.notificationReviewResponse"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_notifications_transport_http.notificationReviewResponse": {
+            "type": "object",
+            "properties": {
+                "book_id": {
+                    "type": "string"
+                },
+                "book_slug": {
+                    "type": "string"
+                },
+                "book_title": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_notifications_transport_http.unreadCountResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
                 }
             }
         },
@@ -5081,6 +6524,9 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "email_verified": {
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -5136,8 +6582,34 @@ const docTemplate = `{
                         "$ref": "#/definitions/internal_modules_users_transport_http.publicListActivityResponse"
                     }
                 },
+                "shelves": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_users_transport_http.publicShelfActivityResponse"
+                    }
+                },
                 "user": {
                     "$ref": "#/definitions/internal_modules_users_transport_http.publicUserResponse"
+                }
+            }
+        },
+        "internal_modules_users_transport_http.publicShelfActivityResponse": {
+            "type": "object",
+            "properties": {
+                "books_count": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
                 }
             }
         },

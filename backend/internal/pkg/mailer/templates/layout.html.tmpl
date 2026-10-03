@@ -1,0 +1,19 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BookHaven</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f5f4;font-family:Arial,Helvetica,sans-serif;color:#1c1917;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f5f5f4;padding:24px 0;">
+<tr><td align="center">
+<table role="presentation" width="560" cellspacing="0" cellpadding="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:8px;padding:32px;">
+<tr><td style="font-size:20px;font-weight:bold;padding-bottom:24px;">BookHaven</td></tr>
+<tr><td style="font-size:15px;line-height:1.6;">{{template "content" .}}</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+{{end}}

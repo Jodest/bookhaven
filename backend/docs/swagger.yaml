@@ -1,5 +1,82 @@
 basePath: /api/v1
 definitions:
+  github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishReport:
+    properties:
+      errors:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishRowError'
+        type: array
+      processed:
+        type: integer
+      published:
+        type: integer
+    type: object
+  github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishRowError:
+    properties:
+      book_id:
+        type: string
+      message:
+        type: string
+      title:
+        type: string
+    type: object
+  github_com_bookhaven_backend_internal_modules_admin_service.ImportReport:
+    properties:
+      created:
+        type: integer
+      errors:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.ImportRowError'
+        type: array
+      processed:
+        type: integer
+      skipped_existing:
+        type: integer
+    type: object
+  github_com_bookhaven_backend_internal_modules_admin_service.ImportRowError:
+    properties:
+      message:
+        type: string
+      row:
+        type: integer
+      title:
+        type: string
+    type: object
+  github_com_bookhaven_backend_internal_modules_harvest_service.HarvestRecordError:
+    properties:
+      index:
+        type: integer
+      message:
+        type: string
+      title:
+        type: string
+    type: object
+  github_com_bookhaven_backend_internal_modules_harvest_service.HarvestResult:
+    properties:
+      created:
+        type: integer
+      errors:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_harvest_service.HarvestRecordError'
+        type: array
+      processed:
+        type: integer
+      skipped_existing:
+        type: integer
+      skipped_records:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_harvest_service.HarvestSkippedRecord'
+        type: array
+      total:
+        type: integer
+    type: object
+  github_com_bookhaven_backend_internal_modules_harvest_service.HarvestSkippedRecord:
+    properties:
+      index:
+        type: integer
+      title:
+        type: string
+    type: object
   internal_modules_admin_transport_http.authorResponse:
     properties:
       biography:
@@ -29,6 +106,8 @@ definitions:
         type: string
       description:
         type: string
+      external_source:
+        type: string
       genres:
         items:
           $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
@@ -56,6 +135,11 @@ definitions:
       title:
         type: string
       updated_at:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.bulkPublishBooksRequest:
+    properties:
+      search:
         type: string
     type: object
   internal_modules_admin_transport_http.createUpdateAuthorRequest:
@@ -118,6 +202,8 @@ definitions:
       genres:
         type: integer
       hidden_books:
+        type: integer
+      pending_import_review:
         type: integer
       pending_reviews:
         type: integer
@@ -183,6 +269,47 @@ definitions:
       total:
         type: integer
     type: object
+  internal_modules_admin_transport_http.lookupResponse:
+    properties:
+      authors:
+        items:
+          type: string
+        type: array
+      cover_url:
+        type: string
+      description:
+        type: string
+      genres:
+        items:
+          type: string
+        type: array
+      isbn:
+        type: string
+      language:
+        type: string
+      page_count:
+        type: integer
+      published_year:
+        type: integer
+      source_id:
+        type: string
+      source_name:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.mergeAuthorsRequest:
+    properties:
+      canonical_id:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.mergeAuthorsResponse:
+    properties:
+      author:
+        $ref: '#/definitions/internal_modules_admin_transport_http.authorResponse'
+      books_reassigned:
+        type: integer
+    type: object
   internal_modules_admin_transport_http.moderateReviewRequest:
     properties:
       is_hidden:
@@ -233,6 +360,15 @@ definitions:
       user:
         $ref: '#/definitions/internal_modules_auth_transport_http.userResponse'
     type: object
+  internal_modules_auth_transport_http.errorResponse:
+    properties:
+      code:
+        example: invalid_token
+        type: string
+      error:
+        example: invalid token
+        type: string
+    type: object
   internal_modules_auth_transport_http.loginRequest:
     properties:
       email:
@@ -242,6 +378,18 @@ definitions:
     required:
     - email
     - password
+    type: object
+  internal_modules_auth_transport_http.rateLimitedResponse:
+    properties:
+      code:
+        example: rate_limited
+        type: string
+      error:
+        example: too many requests
+        type: string
+      retry_after_seconds:
+        example: 42
+        type: integer
     type: object
   internal_modules_auth_transport_http.refreshRequest:
     properties:
@@ -265,6 +413,12 @@ definitions:
     - name
     - password
     type: object
+  internal_modules_auth_transport_http.statusResponse:
+    properties:
+      status:
+        example: verified
+        type: string
+    type: object
   internal_modules_auth_transport_http.userResponse:
     properties:
       avatar_url:
@@ -273,6 +427,8 @@ definitions:
         type: string
       email:
         type: string
+      email_verified:
+        type: boolean
       id:
         type: string
       name:
@@ -282,6 +438,11 @@ definitions:
       role:
         type: string
       updated_at:
+        type: string
+    type: object
+  internal_modules_auth_transport_http.verifyEmailRequest:
+    properties:
+      token:
         type: string
     type: object
   internal_modules_catalog_transport_http.authorDetailResponse:
@@ -422,6 +583,66 @@ definitions:
         items:
           $ref: '#/definitions/internal_modules_catalog_transport_http.languageResponse'
         type: array
+    type: object
+  internal_modules_harvest_transport_http.authorCandidateResponse:
+    properties:
+      description:
+        type: string
+      label:
+        type: string
+      qid:
+        type: string
+    type: object
+  internal_modules_harvest_transport_http.harvestJobResponse:
+    properties:
+      id:
+        type: string
+      last_error:
+        type: string
+      max_retry:
+        type: integer
+      queue:
+        type: string
+      result:
+        $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_harvest_service.HarvestResult'
+      retried:
+        type: integer
+      state:
+        type: string
+      type:
+        type: string
+    type: object
+  internal_modules_harvest_transport_http.listAuthorCandidatesResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_harvest_transport_http.authorCandidateResponse'
+        type: array
+    type: object
+  internal_modules_harvest_transport_http.listHarvestJobsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_harvest_transport_http.harvestJobResponse'
+        type: array
+    type: object
+  internal_modules_harvest_transport_http.triggerHarvestRequest:
+    properties:
+      author_qids:
+        items:
+          type: string
+        type: array
+      limit:
+        type: integer
+    type: object
+  internal_modules_harvest_transport_http.triggerHarvestResponse:
+    properties:
+      queue:
+        type: string
+      state:
+        type: string
+      task_id:
+        type: string
     type: object
   internal_modules_lists_transport_http.addBookRequest:
     properties:
@@ -601,6 +822,59 @@ definitions:
         type: boolean
       title:
         type: string
+    type: object
+  internal_modules_notifications_transport_http.listNotificationsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_notifications_transport_http.notificationResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_notifications_transport_http.notificationActorResponse:
+    properties:
+      avatar_url:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  internal_modules_notifications_transport_http.notificationResponse:
+    properties:
+      actor:
+        $ref: '#/definitions/internal_modules_notifications_transport_http.notificationActorResponse'
+      created_at:
+        type: string
+      id:
+        type: string
+      is_read:
+        type: boolean
+      review:
+        $ref: '#/definitions/internal_modules_notifications_transport_http.notificationReviewResponse'
+      type:
+        type: string
+    type: object
+  internal_modules_notifications_transport_http.notificationReviewResponse:
+    properties:
+      book_id:
+        type: string
+      book_slug:
+        type: string
+      book_title:
+        type: string
+      id:
+        type: string
+    type: object
+  internal_modules_notifications_transport_http.unreadCountResponse:
+    properties:
+      count:
+        type: integer
     type: object
   internal_modules_ratings_transport_http.myRatingResponse:
     properties:
@@ -871,6 +1145,8 @@ definitions:
         type: string
       email:
         type: string
+      email_verified:
+        type: boolean
       id:
         type: string
       name:
@@ -907,8 +1183,25 @@ definitions:
         items:
           $ref: '#/definitions/internal_modules_users_transport_http.publicListActivityResponse'
         type: array
+      shelves:
+        items:
+          $ref: '#/definitions/internal_modules_users_transport_http.publicShelfActivityResponse'
+        type: array
       user:
         $ref: '#/definitions/internal_modules_users_transport_http.publicUserResponse'
+    type: object
+  internal_modules_users_transport_http.publicShelfActivityResponse:
+    properties:
+      books_count:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      type:
+        type: string
     type: object
   internal_modules_users_transport_http.publicUserResponse:
     properties:
@@ -1103,6 +1396,67 @@ paths:
       summary: Обновить автора (админ)
       tags:
       - admin
+  /admin/authors/{id}/merge:
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен. :id — автор-дубликат, который
+        будет удалён; canonical_id в теле запроса — автор, который останется (его
+        собственные поля не изменяются). Необратимо.
+      parameters:
+      - description: ID автора-дубликата (будет удалён)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID канонического автора
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.mergeAuthorsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.mergeAuthorsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Слить дубликат автора в канонического (админ)
+      tags:
+      - admin
   /admin/books:
     get:
       description: Требуется роль admin
@@ -1111,9 +1465,21 @@ paths:
         in: query
         name: search
         type: string
-      - description: Фильтр видимости (all/visible/hidden)
+      - description: Фильтр видимости (all/visible/hidden/pending_review)
         in: query
         name: visibility
+        type: string
+      - description: Фильтр по жанру (UUID)
+        in: query
+        name: genre_id
+        type: string
+      - description: Фильтр по автору (UUID)
+        in: query
+        name: author_id
+        type: string
+      - description: Фильтр по источнику (manual/harvested)
+        in: query
+        name: source
         type: string
       - description: Номер страницы
         in: query
@@ -1323,6 +1689,182 @@ paths:
       summary: Обновить книгу (админ)
       tags:
       - admin
+  /admin/books/bulk-publish:
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен. Публикует (is_hidden=false)
+        каждую книгу, подходящую под предикат pending_review (is_hidden=true AND external_source
+        IS NOT NULL), опционально уточнённый тем же search, что и GET /admin/books.
+        Поле visibility в теле запроса игнорируется — предикат всегда фиксирован на
+        сервере. Каждая строка обрабатывается независимо; результат — отчёт со счётчиками
+        и построчными ошибками, HTTP 200 независимо от построчных исходов (кроме 422
+        при превышении лимита партии).
+      parameters:
+      - description: Опциональный поиск
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.bulkPublishBooksRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishReport'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Опубликовать все книги на проверке (админ)
+      tags:
+      - admin
+  /admin/books/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Требуется роль admin и Bearer-токен. multipart/form-data: file
+        (обязательно, .csv/.json), format (опционально, csv|json — иначе определяется
+        по расширению), is_hidden (опционально, true/false, применяется ко всей партии).
+        Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и
+        построчными ошибками, HTTP 200 независимо от построчных исходов.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.ImportReport'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "413":
+          description: Request Entity Too Large
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Массовый импорт книг из CSV/JSON файла (админ)
+      tags:
+      - admin
+  /admin/books/lookup:
+    get:
+      description: Требуется роль admin. Синхронный, только для чтения вызов Open
+        Library - не создаёт и не изменяет записи; сохранение выполняется отдельным
+        POST /admin/books.
+      parameters:
+      - description: ISBN
+        in: query
+        name: isbn
+        type: string
+      - description: Название книги
+        in: query
+        name: q
+        type: string
+      - description: Автор (уточняет поиск по названию)
+        in: query
+        name: author
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.lookupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Поиск книги по ISBN или названию во внешнем источнике (админ)
+      tags:
+      - admin
   /admin/dashboard:
     get:
       description: Требуется роль admin
@@ -1518,6 +2060,188 @@ paths:
       security:
       - BearerAuth: []
       summary: Обновить жанр (админ)
+      tags:
+      - admin
+  /admin/harvest:
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен (state-changing запросы не
+        принимаются по cookie). Ставит задачу харвеста в очередь; сам харвест выполняется
+        асинхронно воркером.
+      parameters:
+      - description: QID авторов Wikidata и опциональный лимит
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_harvest_transport_http.triggerHarvestRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_harvest_transport_http.triggerHarvestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Запустить харвест по списку авторов (Wikidata)
+      tags:
+      - admin
+  /admin/harvest/authors/search:
+    get:
+      description: 'Требуется роль admin. Синхронный, только для чтения вызов Wikidata
+        (wbsearchentities) - не создаёт и не изменяет записи; результат - кандидаты
+        для ручного подтверждения администратором перед запуском POST /admin/harvest.
+        Отсутствие совпадений - не ошибка (200, items: []).'
+      parameters:
+      - description: Искомое имя автора
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_harvest_transport_http.listAuthorCandidatesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Поиск авторов в Wikidata по имени (для подбора QID перед харвестом)
+      tags:
+      - admin
+  /admin/harvest/jobs:
+    get:
+      description: Требуется роль admin. Источник данных - состояние очереди asynq/Redis,
+        а не отдельная таблица в БД; список ограничен 50 задачами на состояние и сгруппирован
+        по состоянию (active, retry, pending, completed, archived), не единой хронологией.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_harvest_transport_http.listHarvestJobsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список задач харвеста (недавние)
+      tags:
+      - admin
+  /admin/harvest/jobs/{id}:
+    get:
+      description: Требуется роль admin.
+      parameters:
+      - description: ID задачи asynq
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_harvest_transport_http.harvestJobResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Статус задачи харвеста по ID
       tags:
       - admin
   /admin/reviews:
@@ -1784,6 +2508,77 @@ paths:
               type: string
             type: object
       summary: Регистрация пользователя
+      tags:
+      - auth
+  /auth/resend-verification:
+    post:
+      description: 'Удаляет неиспользованные ссылки подтверждения текущего пользователя
+        и отправляет новую. Ограничение: 1 раз в минуту и 5 раз в сутки. Коды ошибок:
+        already_verified, rate_limited, email_send_failed.'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: 'status: sent'
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.statusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
+        "429":
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Секунд до следующей попытки
+              type: integer
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.rateLimitedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
+      security:
+      - BearerAuth: []
+      summary: Повторно отправить письмо подтверждения email
+      tags:
+      - auth
+  /auth/verify-email:
+    post:
+      consumes:
+      - application/json
+      description: 'Подтверждает адрес электронной почты по одноразовому токену из
+        письма. Не требует авторизации и не меняет cookies. Коды ошибок: invalid_token,
+        token_expired, token_used.'
+      parameters:
+      - description: Токен из ссылки в письме
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_auth_transport_http.verifyEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'status: verified или already_verified'
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.statusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.errorResponse'
+      summary: Подтвердить email
       tags:
       - auth
   /authors:
@@ -2648,6 +3443,141 @@ paths:
       summary: Получить публичный список с книгами
       tags:
       - lists
+  /notifications:
+    get:
+      parameters:
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_notifications_transport_http.listNotificationsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список уведомлений текущего пользователя
+      tags:
+      - notifications
+  /notifications/{id}/read:
+    patch:
+      parameters:
+      - description: ID уведомления
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Отметить уведомление прочитанным
+      tags:
+      - notifications
+  /notifications/read-all:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Отметить все уведомления прочитанными
+      tags:
+      - notifications
+  /notifications/unread-count:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_notifications_transport_http.unreadCountResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Количество непрочитанных уведомлений
+      tags:
+      - notifications
   /reading-challenges:
     get:
       produces:
@@ -3268,6 +4198,52 @@ paths:
       security:
       - BearerAuth: []
       summary: Убрать книгу с полки
+      tags:
+      - shelves
+  /shelves/public/{id}:
+    get:
+      description: Доступно без авторизации; полки не приватны, проверка владельца
+        не выполняется
+      parameters:
+      - description: ID полки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_shelves_transport_http.shelfDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить публичную полку с книгами
       tags:
       - shelves
   /users/{id}:

@@ -8,13 +8,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/bookhaven/backend/internal/modules/auth/domain"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	"github.com/bookhaven/backend/internal/modules/users/repository"
+	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -24,29 +28,86 @@ var (
 	ErrUserExists         = errors.New("user with this email already exists")
 	ErrTokenInvalid       = errors.New("invalid or expired token")
 	ErrTokenRevoked       = errors.New("token has been revoked")
+
+	// Email verification errors.
+	ErrVerificationTokenInvalid = errors.New("invalid verification token")
+	ErrVerificationTokenExpired = errors.New("verification token expired")
+	ErrVerificationTokenUsed    = errors.New("verification token already used")
+	ErrAlreadyVerified          = errors.New("email already verified")
+	ErrRateLimited              = errors.New("too many requests")
 )
+
+// RateLimitError is returned when an action is rate limited; it matches
+// ErrRateLimited via errors.Is and carries the time until a retry is allowed.
+type RateLimitError struct {
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("too many requests, retry after %s", e.RetryAfter)
+}
+
+// Is makes errors.Is(err, ErrRateLimited) true for *RateLimitError.
+func (e *RateLimitError) Is(target error) bool {
+	return target == ErrRateLimited
+}
+
+// Mailer enqueues a rendered email (shape of mailer.Enqueuer).
+type Mailer interface {
+	Enqueue(ctx context.Context, msg mailer.Message) error
+}
+
+// ResendLimiter rate-limits verification email resends per key (user id).
+type ResendLimiter interface {
+	Allow(ctx context.Context, key string) (allowed bool, retryAfter time.Duration, err error)
+}
+
+// defaultVerificationTokenTTL is used when Config.VerificationTokenTTL is 0.
+const defaultVerificationTokenTTL = 24 * time.Hour
+
+// verifyEmailTemplate is the mailer template name for the verification email.
+const verifyEmailTemplate = "verify_email"
 
 // Config holds auth service configuration.
 type Config struct {
-	JWTSecret        string
-	AccessTokenTTL   time.Duration
-	RefreshTokenTTL  time.Duration
-	Issuer           string
+	JWTSecret       string
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
+	Issuer          string
+
+	// WebBaseURL is the public web origin (no trailing slash) used to build
+	// the /verify-email link.
+	WebBaseURL string
+	// VerificationTokenTTL is the lifetime of an email verification token
+	// (24h when zero).
+	VerificationTokenTTL time.Duration
 }
 
 // Service provides authentication logic.
 type Service struct {
-	config   Config
-	db       *gorm.DB
-	users    repository.Repository
+	config  Config
+	db      *gorm.DB
+	users   repository.Repository
+	mailer  Mailer
+	limiter ResendLimiter
+	logger  *zap.Logger
 }
 
-// NewService creates a new auth Service.
-func NewService(cfg Config, db *gorm.DB, users repository.Repository) *Service {
+// NewService creates a new auth Service. logger may be nil (no logging).
+func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mailer, limiter ResendLimiter, logger *zap.Logger) *Service {
+	if cfg.VerificationTokenTTL <= 0 {
+		cfg.VerificationTokenTTL = defaultVerificationTokenTTL
+	}
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &Service{
-		config:   cfg,
-		db:       db,
-		users:    users,
+		config:  cfg,
+		db:      db,
+		users:   users,
+		mailer:  mailer,
+		limiter: limiter,
+		logger:  logger,
 	}
 }
 
@@ -79,6 +140,16 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 
 	if err := s.users.Create(ctx, user); err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
+	}
+
+	// The verification email must never fail registration: a user without
+	// a (delivered) token can always use resend-verification. Never log the
+	// token or the link.
+	if err := s.issueVerification(ctx, user); err != nil {
+		s.logger.Error("failed to issue email verification on register",
+			zap.String("user_id", user.ID.String()),
+			zap.Error(err),
+		)
 	}
 
 	return user, nil
@@ -224,6 +295,192 @@ func (s *Service) Logout(ctx context.Context, userID uuid.UUID) error {
 		Model(&domain.RefreshToken{}).
 		Where("user_id = ? AND revoked_at IS NULL", userID).
 		Update("revoked_at", now).Error
+}
+
+// VerifyEmail consumes an email verification token. It returns
+// alreadyVerified=true when the token's user had already been verified
+// (also for used/expired tokens). Errors: ErrVerificationTokenInvalid,
+// ErrVerificationTokenExpired, ErrVerificationTokenUsed.
+func (s *Service) VerifyEmail(ctx context.Context, plain string) (alreadyVerified bool, err error) {
+	if !isVerificationTokenFormat(plain) {
+		return false, ErrVerificationTokenInvalid
+	}
+
+	var token domain.EmailVerificationToken
+	if err := s.db.WithContext(ctx).Where("token_hash = ?", hashToken(plain)).First(&token).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, ErrVerificationTokenInvalid
+		}
+		return false, fmt.Errorf("find verification token: %w", err)
+	}
+
+	user, err := s.users.GetByID(ctx, token.UserID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, ErrVerificationTokenInvalid
+		}
+		return false, fmt.Errorf("get user: %w", err)
+	}
+	if user.Email != token.Email {
+		return false, ErrVerificationTokenInvalid
+	}
+
+	now := time.Now()
+	if user.EmailVerifiedAt != nil {
+		if token.UsedAt == nil {
+			if _, err := markVerificationTokenUsed(s.db.WithContext(ctx), token.ID, now); err != nil {
+				return false, err
+			}
+		}
+		return true, nil
+	}
+	if token.UsedAt != nil {
+		return false, ErrVerificationTokenUsed
+	}
+	if !now.Before(token.ExpiresAt) {
+		return false, ErrVerificationTokenExpired
+	}
+
+	errLostRace := errors.New("verification token consumed concurrently")
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		marked, err := markVerificationTokenUsed(tx, token.ID, now)
+		if err != nil {
+			return err
+		}
+		if !marked {
+			return errLostRace
+		}
+		if err := tx.Exec(
+			"UPDATE users SET email_verified_at = ?, updated_at = ? WHERE id = ? AND email_verified_at IS NULL",
+			now, now, user.ID,
+		).Error; err != nil {
+			return fmt.Errorf("mark user verified: %w", err)
+		}
+		return nil
+	})
+	if errors.Is(err, errLostRace) {
+		// A concurrent request used this token first; re-evaluate.
+		current, getErr := s.users.GetByID(ctx, user.ID)
+		if getErr != nil {
+			return false, fmt.Errorf("get user: %w", getErr)
+		}
+		if current.EmailVerifiedAt != nil {
+			return true, nil
+		}
+		return false, ErrVerificationTokenUsed
+	}
+	if err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+// ResendVerification invalidates the user's unused verification tokens and
+// emails a new link. Errors: ErrAlreadyVerified, *RateLimitError
+// (ErrRateLimited); any other error means the email was not enqueued.
+func (s *Service) ResendVerification(ctx context.Context, userID uuid.UUID) error {
+	user, err := s.users.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+	// Checked before the limiter so it never consumes quota.
+	if user.EmailVerifiedAt != nil {
+		return ErrAlreadyVerified
+	}
+
+	if s.limiter == nil {
+		return errors.New("resend limiter not configured")
+	}
+	allowed, retryAfter, err := s.limiter.Allow(ctx, user.ID.String())
+	if err != nil {
+		return fmt.Errorf("rate limiter: %w", err)
+	}
+	if !allowed {
+		return &RateLimitError{RetryAfter: retryAfter}
+	}
+
+	// Old links stop working; used rows are kept so a repeated click on an
+	// already-used link still answers already_verified.
+	if err := s.db.WithContext(ctx).
+		Where("user_id = ? AND used_at IS NULL", user.ID).
+		Delete(&domain.EmailVerificationToken{}).Error; err != nil {
+		return fmt.Errorf("delete unused verification tokens: %w", err)
+	}
+
+	return s.issueVerification(ctx, user)
+}
+
+// issueVerification creates a verification token for user and enqueues the
+// verify_email message. The plain token only ever leaves this function
+// inside the email payload.
+func (s *Service) issueVerification(ctx context.Context, user *usersDomain.User) error {
+	if s.mailer == nil {
+		return errors.New("mailer not configured")
+	}
+
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return fmt.Errorf("generate verification token: %w", err)
+	}
+	plain := hex.EncodeToString(tokenBytes)
+
+	now := time.Now()
+	token := &domain.EmailVerificationToken{
+		ID:        uuid.New(),
+		UserID:    user.ID,
+		Email:     user.Email,
+		TokenHash: hashToken(plain),
+		ExpiresAt: now.Add(s.config.VerificationTokenTTL),
+		CreatedAt: now,
+	}
+	if err := s.db.WithContext(ctx).Create(token).Error; err != nil {
+		return fmt.Errorf("save verification token: %w", err)
+	}
+
+	name := ""
+	if user.Name != nil {
+		name = strings.TrimSpace(*user.Name)
+	}
+	msg, err := mailer.Render(verifyEmailTemplate, mailer.VerifyEmailData{
+		Name:      name,
+		VerifyURL: s.verifyURL(plain),
+		TTLHours:  int(s.config.VerificationTokenTTL / time.Hour),
+	})
+	if err != nil {
+		return fmt.Errorf("render verification email: %w", err)
+	}
+	msg.To = user.Email
+
+	if err := s.mailer.Enqueue(ctx, msg); err != nil {
+		return fmt.Errorf("enqueue verification email: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) verifyURL(plain string) string {
+	return strings.TrimRight(s.config.WebBaseURL, "/") + "/verify-email?" + url.Values{"token": {plain}}.Encode()
+}
+
+// markVerificationTokenUsed sets used_at on an unused token and reports
+// whether this call was the one that marked it.
+func markVerificationTokenUsed(db *gorm.DB, id uuid.UUID, now time.Time) (bool, error) {
+	res := db.Model(&domain.EmailVerificationToken{}).
+		Where("id = ? AND used_at IS NULL", id).
+		Update("used_at", now)
+	if res.Error != nil {
+		return false, fmt.Errorf("mark verification token used: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// isVerificationTokenFormat reports whether plain looks like a token issued
+// by issueVerification: exactly 64 hex characters.
+func isVerificationTokenFormat(plain string) bool {
+	if len(plain) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(plain)
+	return err == nil
 }
 
 func hashToken(token string) string {

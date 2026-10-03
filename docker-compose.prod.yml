@@ -42,6 +42,8 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      # Public web origin for links in emails (e.g. /verify-email).
+      WEB_BASE_URL: https://${WEB_DOMAIN}
       YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
       YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -63,6 +65,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       REDIS_URL: redis:6379
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Not used by the worker itself, but config.Load requires it in production.
+      WEB_BASE_URL: https://${WEB_DOMAIN}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

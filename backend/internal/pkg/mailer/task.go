@@ -66,7 +66,7 @@ func (h *Handler) HandleTask(ctx context.Context, t *asynq.Task) error {
 	}
 
 	if err := h.sender.Send(ctx, msg); err != nil {
-		if isPermanentSMTPError(err) {
+		if isPermanentSMTPError(err) || errors.Is(err, ErrInsecureAuth) {
 			return fmt.Errorf("mailer: permanent SMTP failure: %v: %w", err, asynq.SkipRetry)
 		}
 		return fmt.Errorf("mailer: send: %w", err)

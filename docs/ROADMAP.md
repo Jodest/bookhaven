@@ -25,6 +25,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Admin book list filters — genre, author, and manual/harvested source filters on the admin books list, combinable with the existing search/visibility filters (see [docs/features/admin-book-list-filters.md](features/admin-book-list-filters.md))
 - [x] Duplicate author merge — admin action to consolidate a duplicate author record into a canonical one, reassigning its books and removing the duplicate (merge-only scope; no automated duplicate-detection UI, see [docs/features/duplicate-author-merge.md](features/duplicate-author-merge.md))
 - [x] Public shelf/reading-status visibility on user profiles — a visitor can see another user's shelves (default and custom) with visible-book-only counts on the public profile and browse a shelf's books read-only, resolving OQ-003 (no privacy toggle) (see [docs/features/public-shelf-visibility.md](features/public-shelf-visibility.md), #95)
+- [x] Mailer infrastructure — SMTP sender, async `email:send` queue in the worker, Mailpit for local dev (see [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md), #157)
 
 ## Post-MVP
 
@@ -36,11 +37,10 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 Email verification at registration chain (epic #162):
 
-1. [ ] Mailer infrastructure — SMTP sender, async `email:send` queue in the worker, Mailpit for local dev (see [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md), #157) — implemented, pending merge
-2. [ ] Email verification backend (#158)
-3. [ ] Email verification frontend (#159)
-4. [ ] Restrictions for unverified users (#160)
-5. [ ] Password reset by email (#161)
+1. [ ] Email verification backend (see [docs/features/email-verification-backend.md](features/email-verification-backend.md), #158, epic #167) — in progress; must be merged to `main` together with #159 (otherwise the emailed link leads to a 404)
+2. [ ] Email verification frontend (#159)
+3. [ ] Restrictions for unverified users (#160)
+4. [ ] Password reset by email (#161)
 
 Email notifications (#121, in Proposed) also depend on #157.
 
@@ -72,6 +72,8 @@ Email notifications (#121, in Proposed) also depend on #157.
 - [ ] Author detail API response is not camelCase-normalized, breaking photo, dates, and book covers on the author page — api.authors.get fetches the snake_case authorDetailResponse directly as the camelCase Author/Book types with no normalize step (unlike api.books.get), so author.photoUrl/birthDate/deathDate and nested book covers/publishedYear all render as undefined; same root-cause class as #127 on a different endpoint [code] (proposed 2026-10-02, #128)
 
 ## Technical Debt
+
+- [ ] Purge used/expired rows from `email_verification_tokens` (never cleaned up; low volume, see [docs/features/email-verification-backend.md](features/email-verification-backend.md))
 
 - [ ] TypeScript project references
 - [ ] WSL2 backend hot reload
