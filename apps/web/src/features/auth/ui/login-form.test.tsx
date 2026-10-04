@@ -55,6 +55,15 @@ describe('LoginForm', () => {
     );
   });
 
+  it('ignores a redirect back to a guest-only auth page', async () => {
+    searchParamsValue = new URLSearchParams({ redirect: '/register' });
+    render(<LoginForm />);
+
+    await fillAndSubmit();
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/profile'));
+  });
+
   it('redirects to the safe `redirect` param on success', async () => {
     searchParamsValue = new URLSearchParams({ redirect: '/books/abc' });
     render(<LoginForm />);
