@@ -106,6 +106,20 @@ crontab -e
 
 For real durability, uncomment the `rclone` line in the script and configure an S3-compatible off-site remote (Timeweb S3 or Selectel S3 both work) — a backup that lives only on the same disk as the database it's backing up doesn't survive a disk failure.
 
+## Background jobs (worker)
+
+The `worker` container runs three asynq servers (harvest, `email`, `similarity`) plus an in-process `asynq.Scheduler`. The scheduler enqueues the daily similar-books recompute (`similarity:recompute` on the `similarity` queue, 03:30 UTC; see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md)). The recompute reads shelves/ratings, builds the "readers also read" ranking and fully replaces the `book_similarities` table in one transaction. Books without rows keep the stage-1 content-based list, so an empty table is always safe.
+
+> **Do not run more than one worker replica** without moving the scheduler out of the worker. Prod runs exactly one (`container_name: bookhaven-worker`). The task's `asynq.Unique(6h)` rejects a duplicate enqueue if two schedulers ever run, but that is a safety net, not a design.
+
+The worker never recomputes on startup. Run the recompute by hand once right after the first deploy of this feature (and after a large data import); it runs in-process and needs no Redis or worker:
+
+```
+docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/similarity backend
+```
+
+It prints the run stats and exits non-zero on error. If the worker is unhealthy (see the known config issue with the worker's environment), the nightly run never fires and every book silently stays on the stage-1 list: check `docker compose -f docker-compose.prod.yml logs worker` for `asynq scheduler started` and `similar books recomputed`.
+
 ## Email (SMTP)
 
 Transactional email (verification, password reset, later notifications) is sent asynchronously: the api enqueues an `email:send` task on the `email` asynq queue and the **worker** delivers it over SMTP (see `backend/internal/pkg/mailer` and [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md)). Only the `worker` container receives the SMTP variables; the `backend` (api) container never talks to SMTP.

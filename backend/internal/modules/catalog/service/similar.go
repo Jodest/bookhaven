@@ -76,52 +76,44 @@ func similarScore(srcGenreCount int, authorMatch bool, c repository.SimilarCandi
 	return score
 }
 
-// rankSimilar scores, sorts, applies the per-author cap and truncates the
-// candidates to limit IDs. It is pure and deterministic: ties are broken by
-// ratings_count DESC, then book ID string ASC. The result is never nil.
-func rankSimilar(srcGenreCount int, srcAuthorIDs []uuid.UUID, cands []repository.SimilarCandidate, limit int) []uuid.UUID {
+// rankedItem is one scored candidate ready for ordering and the per-author
+// cap. It is shared by the stage-1 live ranking and the stage-2 blend.
+type rankedItem struct {
+	ID           uuid.UUID
+	Score        float64
+	RatingsCount int
+	AuthorIDs    []uuid.UUID
+}
+
+// lessRanked is the shared ranking order: score DESC, then ratings_count
+// DESC, then book ID string ASC (deterministic).
+func lessRanked(a, b rankedItem) bool {
+	if a.Score != b.Score {
+		return a.Score > b.Score
+	}
+	if a.RatingsCount != b.RatingsCount {
+		return a.RatingsCount > b.RatingsCount
+	}
+	return a.ID.String() < b.ID.String()
+}
+
+// sortRanked sorts items in place with lessRanked.
+func sortRanked(items []rankedItem) {
+	sort.SliceStable(items, func(i, j int) bool { return lessRanked(items[i], items[j]) })
+}
+
+// selectWithAuthorCap greedily walks items (already sorted with lessRanked)
+// and keeps an item only while none of its authors already has perAuthorCap
+// kept books. It stops at limit items. The result is never nil.
+func selectWithAuthorCap(items []rankedItem, limit int) []rankedItem {
 	if limit <= 0 {
-		return []uuid.UUID{}
+		return []rankedItem{}
 	}
-	srcAuthors := make(map[uuid.UUID]struct{}, len(srcAuthorIDs))
-	for _, id := range srcAuthorIDs {
-		srcAuthors[id] = struct{}{}
-	}
-
-	type scored struct {
-		cand  repository.SimilarCandidate
-		score float64
-		id    string
-	}
-	items := make([]scored, 0, len(cands))
-	for _, c := range cands {
-		authorMatch := c.SharedAuthors > 0
-		if !authorMatch {
-			for _, a := range c.AuthorIDs {
-				if _, ok := srcAuthors[a]; ok {
-					authorMatch = true
-					break
-				}
-			}
-		}
-		items = append(items, scored{cand: c, score: similarScore(srcGenreCount, authorMatch, c), id: c.BookID.String()})
-	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].score != items[j].score {
-			return items[i].score > items[j].score
-		}
-		if items[i].cand.RatingsCount != items[j].cand.RatingsCount {
-			return items[i].cand.RatingsCount > items[j].cand.RatingsCount
-		}
-		return items[i].id < items[j].id
-	})
-
-	result := make([]uuid.UUID, 0, min(limit, len(items)))
+	result := make([]rankedItem, 0, min(limit, len(items)))
 	perAuthor := make(map[uuid.UUID]int)
 	for _, it := range items {
 		blocked := false
-		for _, a := range it.cand.AuthorIDs {
+		for _, a := range it.AuthorIDs {
 			if perAuthor[a] >= perAuthorCap {
 				blocked = true
 				break
@@ -130,13 +122,64 @@ func rankSimilar(srcGenreCount int, srcAuthorIDs []uuid.UUID, cands []repository
 		if blocked {
 			continue
 		}
-		for _, a := range it.cand.AuthorIDs {
+		for _, a := range it.AuthorIDs {
 			perAuthor[a]++
 		}
-		result = append(result, it.cand.BookID)
+		result = append(result, it)
 		if len(result) >= limit {
 			break
 		}
+	}
+	return result
+}
+
+// authorSet builds a lookup set of the source book's authors.
+func authorSet(ids []uuid.UUID) map[uuid.UUID]struct{} {
+	set := make(map[uuid.UUID]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set
+}
+
+// isAuthorMatch reports whether the candidate shares an author with the
+// source (from the SQL count or the candidate's author IDs).
+func isAuthorMatch(srcAuthors map[uuid.UUID]struct{}, c repository.SimilarCandidate) bool {
+	if c.SharedAuthors > 0 {
+		return true
+	}
+	for _, a := range c.AuthorIDs {
+		if _, ok := srcAuthors[a]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// rankSimilar scores, sorts, applies the per-author cap and truncates the
+// candidates to limit IDs. It is pure and deterministic: ties are broken by
+// ratings_count DESC, then book ID string ASC. The result is never nil.
+func rankSimilar(srcGenreCount int, srcAuthorIDs []uuid.UUID, cands []repository.SimilarCandidate, limit int) []uuid.UUID {
+	if limit <= 0 {
+		return []uuid.UUID{}
+	}
+	srcAuthors := authorSet(srcAuthorIDs)
+
+	items := make([]rankedItem, 0, len(cands))
+	for _, c := range cands {
+		items = append(items, rankedItem{
+			ID:           c.BookID,
+			Score:        similarScore(srcGenreCount, isAuthorMatch(srcAuthors, c), c),
+			RatingsCount: c.RatingsCount,
+			AuthorIDs:    c.AuthorIDs,
+		})
+	}
+	sortRanked(items)
+
+	selected := selectWithAuthorCap(items, limit)
+	result := make([]uuid.UUID, 0, len(selected))
+	for _, it := range selected {
+		result = append(result, it.ID)
 	}
 	return result
 }
@@ -154,8 +197,10 @@ func normalizeSimilarLimit(limit int) int {
 }
 
 // ListSimilarBooks returns up to limit visible books related to the visible
-// source book, ranked by shared authors/genres. Only the ranked ID list is
-// cached; visibility and card data are always read fresh.
+// source book. The precomputed stage-2 list (book_similarities) is used when
+// it has rows for the book; otherwise the stage-1 ranking by shared
+// authors/genres (Redis-cached ID list, live compute on miss). Visibility and
+// card data are always read fresh.
 func (s *Service) ListSimilarBooks(ctx context.Context, bookID uuid.UUID, limit int) ([]domain.Book, error) {
 	limit = normalizeSimilarLimit(limit)
 
@@ -170,8 +215,18 @@ func (s *Service) ListSimilarBooks(ctx context.Context, bookID uuid.UUID, limit 
 	}
 
 	var ids []uuid.UUID
-	cached := false
-	if s.similarCache != nil {
+	// Stage 2: the precomputed (co-reading blend) list wins when it exists.
+	// It is checked before Redis so a warm stage-1 entry never hides it, and
+	// a read error is a 500, not a silent fallback.
+	if s.precomputed != nil {
+		pre, err := s.precomputed.ListPrecomputedSimilar(ctx, bookID, MaxSimilarLimit)
+		if err != nil {
+			return nil, fmt.Errorf("list precomputed similar: %w", err)
+		}
+		ids = pre
+	}
+	cached := len(ids) > 0
+	if !cached && s.similarCache != nil {
 		cachedIDs, ok, cacheErr := s.similarCache.Get(ctx, bookID)
 		if cacheErr == nil && ok {
 			ids, cached = cachedIDs, true

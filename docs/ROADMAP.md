@@ -28,6 +28,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Mailer infrastructure — SMTP sender, async `email:send` queue in the worker, Mailpit for local dev (see [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md), #157)
 - [x] Email verification at registration — verification email with one-time link, verify/resend endpoints with rate limiting (see [docs/features/email-verification-backend.md](features/email-verification-backend.md), #158), `/verify-email` page, check-email panel and site-wide unverified banner (see [docs/features/email-verification-web.md](features/email-verification-web.md), #159); merged to `main` together
 - [x] Login only after email verification — unverified users cannot authenticate and use the site as guests; public resend-verification with per-IP/per-email limits (see [docs/features/email-verification-login-gate.md](features/email-verification-login-gate.md), #160, epic #176)
+- [x] Similar books, stage 1 (content-based) — "Похожие книги" block on the book page ranked by shared authors/genres, plus the reverse indexes #198 (see [docs/features/similar-books.md](features/similar-books.md), #213, epic #218; merged in #221/#222)
 
 ## Post-MVP
 
@@ -44,10 +45,10 @@ Email verification at registration chain (epic #162):
 
 Email notifications (#121, in Proposed) also depend on #157.
 
-Similar books (epic #218):
+Similar books (epics #218 stage 1, #223 stage 2):
 
-1. [ ] Similar books, stage 1 (content-based) — in progress (see [docs/features/similar-books.md](features/similar-books.md), #213, includes indexes #198) — implemented on `feat/similar-books-content`, awaiting review/merge
-2. [ ] Similar books, stage 2: readers also read + precompute (#217)
+1. [x] Similar books, stage 1 (content-based) — merged to `main`, see Completed
+2. [ ] Similar books, stage 2: readers also read + precompute — in progress (see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md), #217, epic #223, #224, #225) — implemented on `feat/similar-books-co-reading`, awaiting review/merge
 
 ## Proposed (awaiting prioritization)
 
@@ -82,7 +83,6 @@ Similar books (epic #218):
 - [ ] Self-service account deletion — Goodreads and The StoryGraph let users delete their account and data from settings; BookHaven has no deletion path [competitive] (proposed 2026-10-03, #195)
 - [ ] No brute-force protection on login — `/auth/login` has no per-IP/per-account rate limit or lockout, unlike resend-verification and forgot-password which already use the in-repo ratelimit package [code] (proposed 2026-10-03, #196)
 - [ ] HTTP security headers (CSP, HSTS, X-Frame-Options, nosniff) on web, admin and API — none are set in the Caddyfile, either next.config.js, or the Echo middleware stack [code] (proposed 2026-10-03, #197)
-- [ ] Missing reverse indexes on `book_authors(author_id)`, `book_genres(genre_id)` and `lists(user_id)` — author pages, genre filters, author merge and per-user list lookups filter on unindexed columns [code] (proposed 2026-10-03, #198)
 - [ ] Per-page SEO metadata, Open Graph tags, sitemap and robots.txt for public pages — only the root layout has static metadata; book/author/profile pages have no `generateMetadata` and no sitemap/robots exists [code] (proposed 2026-10-03, #199)
 - [ ] Custom error and not-found boundaries in web and admin — neither app defines `error.tsx`/`global-error.tsx`/`not-found.tsx`, so failures and unknown slugs show bare Next.js defaults [code] (proposed 2026-10-03, #200)
 - [ ] API request logging lacks latency, request ID, user ID and error details — the Echo request logger records only method/uri/status, so slow or failing requests cannot be traced or correlated [code] (proposed 2026-10-03, #201)
@@ -96,7 +96,6 @@ Similar books (epic #218):
 - [ ] Rating distribution and review sorting on the book page — readers see a 1-5 star breakdown and can sort reviews by likes/rating; today the page shows only the average and count, and reviews are newest-first only [code] (proposed 2026-10-03, #210)
 - [ ] Themed reading challenges with prompts — readers can pick prompt- or genre-based challenges and tick them off from their shelves (StoryGraph custom challenges, LiveLib community challenges); the current challenge is a single annual book count [competitive] (proposed 2026-10-03, #211)
 - [ ] Where to read or buy links to Russian stores on the book page — readers can jump from a book to ЛитРес/Яндекс Книги/MyBook as on LiveLib; the book page and schema have no store links today [competitive] (proposed 2026-10-03, #212)
-- [ ] Similar books block on the book page — any visitor, including guests, sees books like the one they are viewing (LiveLib, Goodreads "Readers also enjoyed"); distinct from personalized recommendations (#112) [competitive] (proposed 2026-10-03, #213)
 - [ ] Literary award badges and prize-winner browsing — readers see that a book won or was shortlisted for Большая книга/Ясная Поляна/НОС/Нацбест and can browse each prize's winners (LiveLib, MyBook, FantLab); no award concept exists today [competitive] (proposed 2026-10-03, #214)
 - [ ] Sort, filter and search within your own shelves — readers with long shelves can find a book and reorder by title/author/rating/date; shelf books are always listed by date added with no controls [code] (proposed 2026-10-03, #215)
 - [ ] "Up Next" queue for the want-to-read shelf — readers can pick and order the few books they will read next from a long want-to-read shelf (The StoryGraph Up Next) [competitive] (proposed 2026-10-03, #216)
