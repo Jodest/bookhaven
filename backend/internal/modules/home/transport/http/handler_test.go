@@ -23,6 +23,15 @@ type fakeHomeService struct {
 	randomErr  error
 	gotGenre   *uuid.UUID
 	gotExclude *uuid.UUID
+
+	personal    *service.PersonalHome
+	personalErr error
+	gotUserID   *uuid.UUID
+}
+
+func (f *fakeHomeService) GetPersonalHome(_ context.Context, userID uuid.UUID) (*service.PersonalHome, error) {
+	f.gotUserID = &userID
+	return f.personal, f.personalErr
 }
 
 func (f *fakeHomeService) GetHome(context.Context) (*service.Home, error) {
@@ -208,6 +217,90 @@ func TestRandomBook_Book(t *testing.T) {
 	svc.randomErr = errors.New("db")
 	rec := serve(t, NewHandler(svc).RandomBook, "/api/v1/home/random")
 	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+func serveAs(t *testing.T, h echo.HandlerFunc, target, userID string) *httptest.ResponseRecorder {
+	t.Helper()
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	if userID != "" {
+		c.Set("user_id", userID)
+	}
+	if err := h(c); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	return rec
+}
+
+func TestGetMyHome_401WithoutUser(t *testing.T) {
+	svc := &fakeHomeService{}
+	for _, user := range []string{"", "not-a-uuid"} {
+		rec := serveAs(t, NewHandler(svc).GetMyHome, "/api/v1/home/me", user)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("user %q: expected 401, got %d", user, rec.Code)
+		}
+	}
+	if svc.gotUserID != nil {
+		t.Fatal("service must not be called without a user")
+	}
+}
+
+func TestGetMyHome_UsesContextUserAndEmptyShape(t *testing.T) {
+	user := uuid.New()
+	svc := &fakeHomeService{personal: &service.PersonalHome{Recommendations: []catalogdomain.Book{}}}
+	// A user_id query parameter must be ignored.
+	rec := serveAs(t, NewHandler(svc).GetMyHome, "/api/v1/home/me?user_id="+uuid.New().String(), user.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if svc.gotUserID == nil || *svc.gotUserID != user {
+		t.Fatalf("expected the context user %s, got %v", user, svc.gotUserID)
+	}
+	body := decode(t, rec)
+	for _, k := range []string{"continue_reading", "want_to_read_pick"} {
+		if v, ok := body[k]; !ok || v != nil {
+			t.Fatalf("expected %s: null, got %v (present=%v)", k, v, ok)
+		}
+	}
+	if arr, ok := body["recommendations"].([]interface{}); !ok || len(arr) != 0 {
+		t.Fatalf("expected recommendations: [], got %v", body["recommendations"])
+	}
+}
+
+func TestGetMyHome_FullShape(t *testing.T) {
+	shelf, wtr := uuid.New(), uuid.New()
+	book := catalogdomain.Book{ID: uuid.New(), Title: "Книга", Slug: "kniga", RatingsCount: 2}
+	svc := &fakeHomeService{personal: &service.PersonalHome{
+		ContinueReading: &service.ContinueReading{ShelfID: shelf, Total: 7, Books: []catalogdomain.Book{book}},
+		Recommendations: []catalogdomain.Book{book},
+		WantToReadPick:  &service.WantToReadPick{ShelfID: wtr, Total: 14},
+	}}
+	body := decode(t, serveAs(t, NewHandler(svc).GetMyHome, "/api/v1/home/me", uuid.New().String()))
+
+	cr := body["continue_reading"].(map[string]interface{})
+	if cr["shelf_id"] != shelf.String() || cr["total"].(float64) != 7 {
+		t.Fatalf("unexpected continue_reading %v", cr)
+	}
+	if b := cr["books"].([]interface{})[0].(map[string]interface{}); b["slug"] != "kniga" || b["ratings_count"].(float64) != 2 {
+		t.Fatalf("unexpected book %v", b)
+	}
+	pick := body["want_to_read_pick"].(map[string]interface{})
+	if pick["shelf_id"] != wtr.String() || pick["total"].(float64) != 14 {
+		t.Fatalf("unexpected want_to_read_pick %v", pick)
+	}
+	if v, ok := pick["book"]; !ok || v != nil {
+		t.Fatalf("expected book: null, got %v", pick)
+	}
+	if len(body["recommendations"].([]interface{})) != 1 {
+		t.Fatalf("unexpected recommendations %v", body["recommendations"])
+	}
+
+	svc.personalErr = errors.New("db")
+	if rec := serveAs(t, NewHandler(svc).GetMyHome, "/api/v1/home/me", uuid.New().String()); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }

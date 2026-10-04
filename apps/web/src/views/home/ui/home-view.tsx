@@ -4,14 +4,16 @@ import { homeApi } from '@/entities/home';
 import { PickRandomBook } from '@/features/pick-random-book';
 import { BookOfTheDay } from '@/widgets/book-of-the-day';
 import { LiteraryCalendar } from '@/widgets/literary-calendar';
+import { PersonalHome, PersonalRecommendations } from '@/widgets/personal-home';
 import { RecentReviews } from '@/widgets/recent-reviews';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
 
 /**
  * Home page (see docs/features/home-page-content.md). Public blocks are
- * server-rendered from GET /home; if it fails, only the hero and genre
- * chips render. Empty blocks render nothing.
+ * server-rendered from GET /home; if it fails, only the hero, genre chips
+ * and the personal blocks render. Personal blocks (logged-in only) are
+ * client-side widgets over GET /home/me. Empty blocks render nothing.
  */
 export async function HomeView() {
   const [home, { items: genres }] = await Promise.all([
@@ -60,7 +62,7 @@ export async function HomeView() {
         )}
       </section>
 
-      {/* Personal blocks for logged-in users go here (PR 2, #233/#234). */}
+      <PersonalHome />
 
       {home && (
         <div className="container mx-auto space-y-12 px-4 pb-12 sm:px-6 md:pb-16 lg:px-8">
@@ -76,6 +78,8 @@ export async function HomeView() {
               <LiteraryCalendar calendar={calendar} />
             </div>
           )}
+
+          <PersonalRecommendations />
 
           <PickRandomBook genres={genres.map((g) => ({ id: g.id, name: g.name }))} />
 
@@ -95,6 +99,10 @@ export async function HomeView() {
 
           <RecentReviews reviews={home.recentReviews} />
         </div>
+      )}
+
+      {!home && (
+        <PersonalRecommendations className="container mx-auto px-4 pb-12 sm:px-6 md:pb-16 lg:px-8" />
       )}
     </main>
   );

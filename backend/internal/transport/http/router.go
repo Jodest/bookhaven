@@ -110,6 +110,7 @@ func RegisterRoutes(
 	homeHandler := homehttp.NewHandler(homeService)
 	api.GET("/home", homeHandler.GetHome)
 	api.GET("/home/random", homeHandler.RandomBook)
+	api.GET("/home/me", homeHandler.GetMyHome, authMiddleware)
 }
 
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
