@@ -114,9 +114,11 @@ func main() {
 	notificationsService := notificationsservice.NewService(notificationsRepo)
 	// Home page composition (see docs/features/home-page-content.md): the
 	// public payload selection is cached in Redis as ID lists, books are
-	// hydrated live through the catalog repository.
+	// hydrated live through the catalog repository. Personal
+	// recommendations top up from the catalog similar-books service.
 	homeService := homeservice.NewService(homerepository.NewGormRepository(db), catalogRepo,
 		homeservice.WithCache(homerepository.NewRedisCache(redisClient)),
+		homeservice.WithSimilarLister(catalogService),
 		homeservice.WithLogger(logger))
 
 	// Shared asynq.Client for every task the api enqueues: admin

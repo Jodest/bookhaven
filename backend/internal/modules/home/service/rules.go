@@ -31,8 +31,22 @@ const (
 	ReviewMinLength = 40
 	HomeCacheTTL    = 10 * time.Minute
 
+	// Personal blocks (GET /home/me).
+	ContinueReadingLimit = 6
+	RecommendationsLimit = 10
+	RecommendationSeeds  = 50
+	// RecommendationsTopUpBelow triggers tier 2 (live similar lists) when
+	// the precomputed tier returns fewer books.
+	RecommendationsTopUpBelow = 6
+	// RecommendationsTopUpSeeds is how many most recent seeds tier 2 uses.
+	RecommendationsTopUpSeeds = 3
+	// RecommendationsTopUpPerSeed is the similar-list length per tier-2 seed.
+	RecommendationsTopUpPerSeed = 20
+
 	// bookOfTheDaySalt salts the daily pick of the book of the day.
 	bookOfTheDaySalt = "botd"
+	// wantToReadSaltPrefix + userID salts the per-user want-to-read pick.
+	wantToReadSaltPrefix = "wtr:"
 )
 
 // moscow is the fixed UTC+3 zone that defines "today". Moscow has had no
@@ -222,4 +236,45 @@ func lastSpace(rs []rune) int {
 		}
 	}
 	return -1
+}
+
+// mergeRecommendations keeps the tier-1 order, then fills up to limit
+// round-robin from perSeed (ordered by seed recency), skipping excluded IDs
+// and duplicates.
+func mergeRecommendations(tier1 []uuid.UUID, perSeed [][]uuid.UUID, exclude map[uuid.UUID]struct{}, limit int) []uuid.UUID {
+	result := make([]uuid.UUID, 0)
+	if limit <= 0 {
+		return result
+	}
+	seen := make(map[uuid.UUID]struct{})
+	add := func(id uuid.UUID) bool {
+		if _, skip := exclude[id]; skip {
+			return false
+		}
+		if _, dup := seen[id]; dup {
+			return false
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+		return len(result) >= limit
+	}
+	for _, id := range tier1 {
+		if add(id) {
+			return result
+		}
+	}
+	longest := 0
+	for _, list := range perSeed {
+		if len(list) > longest {
+			longest = len(list)
+		}
+	}
+	for i := 0; i < longest; i++ {
+		for _, list := range perSeed {
+			if i < len(list) && add(list[i]) {
+				return result
+			}
+		}
+	}
+	return result
 }

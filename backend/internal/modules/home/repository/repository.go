@@ -3,9 +3,10 @@
 //
 // The home module owns no tables. GormRepository reads these tables owned
 // by other modules in raw SQL and returns IDs and scalars only:
-// books, authors, book_authors, book_genres, reviews, users.
-// If those schemas change (visibility flags, rating columns, review fields),
-// update the queries below.
+// books, authors, book_authors, book_genres, reviews, users, shelves,
+// shelf_items, ratings, book_similarities.
+// If those schemas change (visibility flags, rating columns, review fields,
+// shelf types, similarity columns), update the queries below.
 package repository
 
 import (
@@ -95,6 +96,39 @@ type Repository interface {
 	// GetReviewsByIDs reads reviews live; hidden reviews or reviews of
 	// hidden books are not returned. Order is unspecified.
 	GetReviewsByIDs(ctx context.Context, ids []uuid.UUID) ([]ReviewRow, error)
+
+	// Personal (GET /home/me). userID always comes from the token.
+
+	// GetSystemShelf returns the user's system shelf of shelfType with its
+	// visible book count, or nil when the shelf is not materialized yet.
+	GetSystemShelf(ctx context.Context, userID uuid.UUID, shelfType string) (*ShelfRef, error)
+	// ListShelfBookIDs returns visible book IDs of the shelf, newest
+	// addition first. limit <= 0 returns all.
+	ListShelfBookIDs(ctx context.Context, shelfID uuid.UUID, limit int) ([]uuid.UUID, error)
+	// ListRecommendationSeeds returns the user's positive visible books
+	// (read/reading shelf or rated >= 4, never rated <= 2), latest activity
+	// first.
+	ListRecommendationSeeds(ctx context.Context, userID uuid.UUID, limit int) ([]uuid.UUID, error)
+	// ListUserExcludedBookIDs returns every book on any of the user's
+	// shelves (custom included) and every book the user rated.
+	ListUserExcludedBookIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]struct{}, error)
+	// AggregatePrecomputedSimilar sums book_similarities scores over seeds
+	// for visible books that are not seeds and not excluded for the user,
+	// ordered by score sum DESC, seed count DESC, id ASC.
+	AggregatePrecomputedSimilar(ctx context.Context, userID uuid.UUID, seeds []uuid.UUID, limit int) ([]ScoredID, error)
+}
+
+// ShelfRef is a user's system shelf with its visible book count.
+type ShelfRef struct {
+	ID    uuid.UUID
+	Total int
+}
+
+// ScoredID is an aggregated precomputed recommendation.
+type ScoredID struct {
+	ID    uuid.UUID
+	Score float64
+	Count int
 }
 
 // GormRepository implements Repository with raw SQL.
@@ -310,6 +344,124 @@ func (r *GormRepository) GetReviewsByIDs(ctx context.Context, reviewIDs []uuid.U
 	}
 	var rows []ReviewRow
 	if err := r.db.WithContext(ctx).Raw(reviewsByIDsQuery, reviewIDs).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *GormRepository) GetSystemShelf(ctx context.Context, userID uuid.UUID, shelfType string) (*ShelfRef, error) {
+	var rows []ShelfRef
+	if err := r.db.WithContext(ctx).Raw(`SELECT s.id,
+       (SELECT COUNT(*) FROM shelf_items si
+        JOIN books b ON b.id = si.book_id AND b.is_hidden = FALSE
+        WHERE si.shelf_id = s.id) AS total
+FROM shelves s
+WHERE s.user_id = ? AND s.type = ?
+LIMIT 1`, userID, shelfType).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	ref := rows[0]
+	return &ref, nil
+}
+
+func (r *GormRepository) ListShelfBookIDs(ctx context.Context, shelfID uuid.UUID, limit int) ([]uuid.UUID, error) {
+	q := `SELECT b.id FROM shelf_items si
+JOIN books b ON b.id = si.book_id AND b.is_hidden = FALSE
+WHERE si.shelf_id = ?
+ORDER BY si.added_at DESC, b.id ASC`
+	args := []interface{}{shelfID}
+	if limit > 0 {
+		q += " LIMIT ?"
+		args = append(args, limit)
+	}
+	var rows []idRow
+	if err := r.db.WithContext(ctx).Raw(q, args...).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return ids(rows), nil
+}
+
+// recommendationSeedsQuery mirrors the stage-2 positive interactions
+// (catalog/repository.ListInteractions) for one user.
+const recommendationSeedsQuery = `WITH pos AS (
+    SELECT si.book_id, si.added_at AS at
+    FROM shelf_items si
+    JOIN shelves s ON s.id = si.shelf_id
+    WHERE s.user_id = @user AND s.type IN ('read', 'reading')
+  UNION ALL
+    SELECT r.book_id, r.updated_at AS at
+    FROM ratings r
+    WHERE r.user_id = @user AND r.value >= 4
+)
+SELECT pos.book_id AS id
+FROM pos
+JOIN books b ON b.id = pos.book_id AND b.is_hidden = FALSE
+WHERE NOT EXISTS (
+    SELECT 1 FROM ratings r2
+    WHERE r2.user_id = @user AND r2.book_id = pos.book_id AND r2.value <= 2
+)
+GROUP BY pos.book_id
+ORDER BY MAX(pos.at) DESC, pos.book_id ASC
+LIMIT @lim`
+
+func (r *GormRepository) ListRecommendationSeeds(ctx context.Context, userID uuid.UUID, limit int) ([]uuid.UUID, error) {
+	if limit <= 0 {
+		return []uuid.UUID{}, nil
+	}
+	var rows []idRow
+	if err := r.db.WithContext(ctx).Raw(recommendationSeedsQuery, map[string]interface{}{
+		"user": userID, "lim": limit,
+	}).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return ids(rows), nil
+}
+
+func (r *GormRepository) ListUserExcludedBookIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]struct{}, error) {
+	var rows []idRow
+	if err := r.db.WithContext(ctx).Raw(`SELECT si.book_id AS id
+FROM shelf_items si
+JOIN shelves s ON s.id = si.shelf_id
+WHERE s.user_id = @user
+UNION
+SELECT r.book_id AS id FROM ratings r WHERE r.user_id = @user`, map[string]interface{}{"user": userID}).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[uuid.UUID]struct{}, len(rows))
+	for _, row := range rows {
+		result[row.ID] = struct{}{}
+	}
+	return result, nil
+}
+
+// aggregateSimilarQuery applies the visibility filter and the user's
+// exclusions in SQL so the LIMIT never cuts valid candidates.
+const aggregateSimilarQuery = `SELECT bs.similar_book_id AS id, SUM(bs.score) AS score, COUNT(*) AS count
+FROM book_similarities bs
+JOIN books b ON b.id = bs.similar_book_id AND b.is_hidden = FALSE
+WHERE bs.book_id IN @seeds
+  AND bs.similar_book_id NOT IN @seeds
+  AND NOT EXISTS (
+      SELECT 1 FROM shelf_items si JOIN shelves s ON s.id = si.shelf_id
+      WHERE s.user_id = @user AND si.book_id = bs.similar_book_id)
+  AND NOT EXISTS (
+      SELECT 1 FROM ratings r WHERE r.user_id = @user AND r.book_id = bs.similar_book_id)
+GROUP BY bs.similar_book_id
+ORDER BY 2 DESC, 3 DESC, 1 ASC
+LIMIT @lim`
+
+func (r *GormRepository) AggregatePrecomputedSimilar(ctx context.Context, userID uuid.UUID, seeds []uuid.UUID, limit int) ([]ScoredID, error) {
+	if len(seeds) == 0 || limit <= 0 {
+		return []ScoredID{}, nil
+	}
+	var rows []ScoredID
+	if err := r.db.WithContext(ctx).Raw(aggregateSimilarQuery, map[string]interface{}{
+		"user": userID, "seeds": seeds, "lim": limit,
+	}).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil

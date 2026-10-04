@@ -29,6 +29,12 @@ type BookLoader interface {
 	GetBooksByIDs(ctx context.Context, ids []uuid.UUID) ([]catalogdomain.Book, error)
 }
 
+// SimilarLister returns visible books similar to a book (precomputed, then
+// the stage-1 cache, then live). Satisfied by *catalogservice.Service.
+type SimilarLister interface {
+	ListSimilarBooks(ctx context.Context, bookID uuid.UUID, limit int) ([]catalogdomain.Book, error)
+}
+
 // Cache is a fail-fast byte cache. Get errors are treated as a miss and Set
 // errors are ignored.
 type Cache interface {
@@ -38,11 +44,12 @@ type Cache interface {
 
 // Service builds the home page payloads.
 type Service struct {
-	repo   repository.Repository
-	books  BookLoader
-	cache  Cache
-	logger *zap.Logger
-	now    func() time.Time
+	repo    repository.Repository
+	books   BookLoader
+	cache   Cache
+	similar SimilarLister
+	logger  *zap.Logger
+	now     func() time.Time
 }
 
 // Option configures optional Service dependencies.
@@ -51,6 +58,11 @@ type Option func(*Service)
 // WithCache enables the Redis cache of the public payload selection.
 func WithCache(c Cache) Option {
 	return func(s *Service) { s.cache = c }
+}
+
+// WithSimilarLister enables the tier-2 top-up of personal recommendations.
+func WithSimilarLister(l SimilarLister) Option {
+	return func(s *Service) { s.similar = l }
 }
 
 // WithLogger sets the logger used for per-block failures.

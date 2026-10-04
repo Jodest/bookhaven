@@ -791,6 +791,17 @@ definitions:
       is_today:
         type: boolean
     type: object
+  internal_modules_home_transport_http.continueReadingResponse:
+    properties:
+      books:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
+        type: array
+      shelf_id:
+        type: string
+      total:
+        type: integer
+    type: object
   internal_modules_home_transport_http.homeResponse:
     properties:
       book_of_the_day:
@@ -811,6 +822,17 @@ definitions:
         items:
           $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
         type: array
+    type: object
+  internal_modules_home_transport_http.personalHomeResponse:
+    properties:
+      continue_reading:
+        $ref: '#/definitions/internal_modules_home_transport_http.continueReadingResponse'
+      recommendations:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
+        type: array
+      want_to_read_pick:
+        $ref: '#/definitions/internal_modules_home_transport_http.wantToReadPickResponse'
     type: object
   internal_modules_home_transport_http.randomBookResponse:
     properties:
@@ -864,6 +886,15 @@ definitions:
         type: string
       name:
         type: string
+    type: object
+  internal_modules_home_transport_http.wantToReadPickResponse:
+    properties:
+      book:
+        $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
+      shelf_id:
+        type: string
+      total:
+        type: integer
     type: object
   internal_modules_lists_transport_http.addBookRequest:
     properties:
@@ -3330,6 +3361,37 @@ paths:
               type: string
             type: object
       summary: Главная страница (публичные блоки)
+      tags:
+      - home
+  /home/me:
+    get:
+      description: 'Персональные блоки текущего пользователя (ID берётся только из
+        токена): «Продолжить чтение» (полка «Читаю»), «Вам может понравиться» (без
+        книг с полок пользователя и оценённых им) и книга дня из полки «Хочу прочитать».
+        continue_reading и want_to_read_pick равны null, если системная полка ещё
+        не создана. Не кэшируется. Прогресс челленджа — GET /reading-challenges/{year}.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_home_transport_http.personalHomeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Главная страница (персональные блоки)
       tags:
       - home
   /home/random:

@@ -2837,6 +2837,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/home/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Персональные блоки текущего пользователя (ID берётся только из токена): «Продолжить чтение» (полка «Читаю»), «Вам может понравиться» (без книг с полок пользователя и оценённых им) и книга дня из полки «Хочу прочитать». continue_reading и want_to_read_pick равны null, если системная полка ещё не создана. Не кэшируется. Прогресс челленджа — GET /reading-challenges/{year}.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "home"
+                ],
+                "summary": "Главная страница (персональные блоки)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_home_transport_http.personalHomeResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/home/random": {
             "get": {
                 "description": "Возвращает одну случайную видимую книгу: сначала из хорошо оценённых, затем из книг с оценками, затем любую. Не кэшируется. Если ничего не найдено, book = null.",
@@ -6241,6 +6284,23 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_home_transport_http.continueReadingResponse": {
+            "type": "object",
+            "properties": {
+                "books": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
+                    }
+                },
+                "shelf_id": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_modules_home_transport_http.homeResponse": {
             "type": "object",
             "properties": {
@@ -6270,6 +6330,23 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
                     }
+                }
+            }
+        },
+        "internal_modules_home_transport_http.personalHomeResponse": {
+            "type": "object",
+            "properties": {
+                "continue_reading": {
+                    "$ref": "#/definitions/internal_modules_home_transport_http.continueReadingResponse"
+                },
+                "recommendations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
+                    }
+                },
+                "want_to_read_pick": {
+                    "$ref": "#/definitions/internal_modules_home_transport_http.wantToReadPickResponse"
                 }
             }
         },
@@ -6352,6 +6429,20 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.wantToReadPickResponse": {
+            "type": "object",
+            "properties": {
+                "book": {
+                    "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
+                },
+                "shelf_id": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

@@ -991,6 +991,34 @@ function normalizeHomePayload(raw: RawHomePayload): HomePayload {
   };
 }
 
+// Personal home blocks (GET /api/v1/home/me). continueReading and
+// wantToReadPick are null until the system shelf is materialized.
+export interface PersonalHome {
+  continueReading: { shelfId: string; total: number; books: Book[] } | null;
+  recommendations: Book[];
+  wantToReadPick: { shelfId: string; total: number; book: Book | null } | null;
+}
+
+type RawPersonalHome = {
+  continue_reading: { shelf_id: string; total: number; books: RawBookListItem[] | null } | null;
+  recommendations: RawBookListItem[] | null;
+  want_to_read_pick: { shelf_id: string; total: number; book: RawBookListItem | null } | null;
+};
+
+function normalizePersonalHome(raw: RawPersonalHome): PersonalHome {
+  const cr = raw.continue_reading;
+  const wtr = raw.want_to_read_pick;
+  return {
+    continueReading: cr
+      ? { shelfId: cr.shelf_id, total: cr.total, books: (cr.books ?? []).map(normalizeBookListItem) }
+      : null,
+    recommendations: (raw.recommendations ?? []).map(normalizeBookListItem),
+    wantToReadPick: wtr
+      ? { shelfId: wtr.shelf_id, total: wtr.total, book: wtr.book ? normalizeBookListItem(wtr.book) : null }
+      : null,
+  };
+}
+
 function normalizeAuthorDetail(raw: RawAuthorDetail): Author {
   const { books, ...authorFields } = raw;
   return {
@@ -1423,6 +1451,10 @@ export const api = {
         `/api/v1/home/random${qs ? `?${qs}` : ''}`
       );
       return { book: raw.book ? normalizeBookListItem(raw.book) : null };
+    },
+    me: async (): Promise<PersonalHome> => {
+      const raw = await fetcher<RawPersonalHome>('/api/v1/home/me');
+      return normalizePersonalHome(raw);
     },
   },
   readingChallenges: {

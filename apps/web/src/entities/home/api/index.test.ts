@@ -155,4 +155,41 @@ describe('homeApi normalization', () => {
     expect(fetchMock.mock.calls[1][0]).toMatch(/\/api\/v1\/home\/random$/);
     expect(second.book).toBeNull();
   });
+
+  it('me() normalizes every personal block to camelCase', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        continue_reading: { shelf_id: 's1', total: 2, books: [rawBook] },
+        recommendations: [rawBook],
+        want_to_read_pick: { shelf_id: 's2', total: 14, book: rawBook },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const me = await homeApi.me();
+
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/v1\/home\/me$/);
+    expect(me.continueReading).toMatchObject({ shelfId: 's1', total: 2 });
+    expect(me.continueReading?.books[0]).toMatchObject({ coverUrl: 'https://example.com/c.jpg', ratingsCount: 12 });
+    expect(me.recommendations[0]).toMatchObject({ publishedYear: 1840 });
+    expect(me.wantToReadPick).toMatchObject({ shelfId: 's2', total: 14, book: { slug: 'geroy', ratingsCount: 12 } });
+    expect(me.continueReading).not.toHaveProperty('shelf_id');
+    expect(me.wantToReadPick).not.toHaveProperty('shelf_id');
+  });
+
+  it('me() keeps null shelf blocks and a null pick book', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(
+        jsonResponse({ continue_reading: null, recommendations: [], want_to_read_pick: null })
+      ).mockResolvedValueOnce(
+        jsonResponse({ continue_reading: null, recommendations: null, want_to_read_pick: { shelf_id: 's2', total: 0, book: null } })
+      )
+    );
+    const empty = await homeApi.me();
+    expect(empty).toEqual({ continueReading: null, recommendations: [], wantToReadPick: null });
+    const noBook = await homeApi.me();
+    expect(noBook.recommendations).toEqual([]);
+    expect(noBook.wantToReadPick).toEqual({ shelfId: 's2', total: 0, book: null });
+  });
 });
