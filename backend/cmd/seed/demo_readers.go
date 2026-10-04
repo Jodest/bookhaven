@@ -11,10 +11,13 @@ import (
 )
 
 // demoReader is one -demo-readers fixture: books on the system "read" shelf
-// plus explicit ratings (book slug -> 1..5).
+// plus explicit ratings (book slug -> 1..5) and reviews (book slug ->
+// content; the review's rating is the reader's rating of that book, as the
+// reviews module keeps them in sync).
 type demoReader struct {
 	read    []string
 	ratings map[string]int
+	reviews map[string]string
 }
 
 // demoReaders are 12 verified dev/demo readers with deterministic,
@@ -25,19 +28,41 @@ type demoReader struct {
 // crime-and-punishment bridge the two. reader06 rates war-and-peace 1, which
 // exercises the "disliked is not a signal" rule; reader11 rates
 // fathers-and-sons 5 without shelving it (rating-only signal).
+//
+// The 4-5 ratings of read books also give at least 6 books
+// ratings_count >= 3 and rating >= 4 (the home page "Высоко оценённые" row
+// and the strict book-of-the-day pool), and four readers review different
+// books with 40+ characters (the home page "Свежие рецензии"). See
+// docs/features/home-page-content.md (Dev data).
 var demoReaders = []demoReader{
-	{read: []string{"war-and-peace", "crime-and-punishment", "anna-karenina", "brothers-karamazov"}, ratings: map[string]int{"war-and-peace": 5, "anna-karenina": 4}},
-	{read: []string{"war-and-peace", "crime-and-punishment", "anna-karenina", "the-idiot"}},
-	{read: []string{"war-and-peace", "crime-and-punishment", "brothers-karamazov", "master-and-margarita"}, ratings: map[string]int{"master-and-margarita": 5}},
-	{read: []string{"war-and-peace", "anna-karenina", "brothers-karamazov", "dead-souls"}},
-	{read: []string{"crime-and-punishment", "brothers-karamazov", "the-idiot", "master-and-margarita"}, ratings: map[string]int{"the-idiot": 4}},
+	{
+		read:    []string{"war-and-peace", "crime-and-punishment", "anna-karenina", "brothers-karamazov"},
+		ratings: map[string]int{"war-and-peace": 5, "anna-karenina": 4, "crime-and-punishment": 5, "brothers-karamazov": 5},
+		reviews: map[string]string{"war-and-peace": "Читал всё лето и ни разу не пожалел: батальные сцены и семейные главы держат одинаково крепко, а Наташа Ростова - один из самых живых героев русской прозы."},
+	},
+	{read: []string{"war-and-peace", "crime-and-punishment", "anna-karenina", "the-idiot"}, ratings: map[string]int{"war-and-peace": 5, "crime-and-punishment": 4, "anna-karenina": 5}},
+	{
+		read:    []string{"war-and-peace", "crime-and-punishment", "brothers-karamazov", "master-and-margarita"},
+		ratings: map[string]int{"master-and-margarita": 5, "war-and-peace": 5, "brothers-karamazov": 4},
+		reviews: map[string]string{"master-and-margarita": "Перечитываю раз в несколько лет и каждый раз нахожу новое: московская сатира смешит, а ершалаимские главы звучат как отдельная великая повесть."},
+	},
+	{read: []string{"war-and-peace", "anna-karenina", "brothers-karamazov", "dead-souls"}, ratings: map[string]int{"war-and-peace": 5, "anna-karenina": 4}},
+	{
+		read:    []string{"crime-and-punishment", "brothers-karamazov", "the-idiot", "master-and-margarita"},
+		ratings: map[string]int{"the-idiot": 4, "crime-and-punishment": 5, "brothers-karamazov": 5, "master-and-margarita": 5},
+		reviews: map[string]string{"crime-and-punishment": "Тяжёлая, душная и при этом невероятно затягивающая книга. Сцены с Порфирием Петровичем читаются как лучший психологический детектив."},
+	},
 	{read: []string{"war-and-peace", "anna-karenina", "the-idiot", "yevgeny-onegin"}, ratings: map[string]int{"war-and-peace": 1}},
-	{read: []string{"1984", "brave-new-world", "animal-farm", "master-and-margarita"}, ratings: map[string]int{"1984": 5}},
-	{read: []string{"1984", "brave-new-world", "all-quiet-on-the-western-front", "master-and-margarita"}},
-	{read: []string{"1984", "animal-farm", "all-quiet-on-the-western-front", "crime-and-punishment"}},
-	{read: []string{"1984", "brave-new-world", "animal-farm", "all-quiet-on-the-western-front"}, ratings: map[string]int{"brave-new-world": 4}},
-	{read: []string{"brave-new-world", "animal-farm", "all-quiet-on-the-western-front", "master-and-margarita"}, ratings: map[string]int{"fathers-and-sons": 5}},
-	{read: []string{"1984", "animal-farm", "crime-and-punishment", "war-and-peace"}},
+	{
+		read:    []string{"1984", "brave-new-world", "animal-farm", "master-and-margarita"},
+		ratings: map[string]int{"1984": 5, "brave-new-world": 4},
+		reviews: map[string]string{"1984": "Страшно, насколько точно Оруэлл описал механику пропаганды. После финала долго не мог взяться за следующую книгу, настолько сильное послевкусие."},
+	},
+	{read: []string{"1984", "brave-new-world", "all-quiet-on-the-western-front", "master-and-margarita"}, ratings: map[string]int{"1984": 5, "brave-new-world": 5, "master-and-margarita": 4}},
+	{read: []string{"1984", "animal-farm", "all-quiet-on-the-western-front", "crime-and-punishment"}, ratings: map[string]int{"1984": 4, "animal-farm": 4, "crime-and-punishment": 4}},
+	{read: []string{"1984", "brave-new-world", "animal-farm", "all-quiet-on-the-western-front"}, ratings: map[string]int{"brave-new-world": 4, "1984": 5, "animal-farm": 5}},
+	{read: []string{"brave-new-world", "animal-farm", "all-quiet-on-the-western-front", "master-and-margarita"}, ratings: map[string]int{"fathers-and-sons": 5, "master-and-margarita": 5}},
+	{read: []string{"1984", "animal-farm", "crime-and-punishment", "war-and-peace"}, ratings: map[string]int{"animal-farm": 4, "war-and-peace": 4}},
 }
 
 func demoReaderEmail(i int) string {
@@ -47,7 +72,9 @@ func demoReaderEmail(i int) string {
 // seedDemoReaders idempotently creates the demo readers (verified, no
 // password, so nobody can log in as them), their system shelves (same
 // semantics as shelves.EnsureDefaultShelves), "read" shelf items and
-// ratings, then recalculates books.rating/ratings_count for rated books.
+// ratings and reviews (an existing review of the same reader and book is
+// left untouched), then recalculates books.rating/ratings_count/
+// reviews_count for rated books.
 // Books are resolved by seed slug; missing ones are skipped.
 func seedDemoReaders(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
@@ -65,7 +92,7 @@ func seedDemoReaders(db *gorm.DB) error {
 
 		verifiedAt := time.Now()
 		rated := make(map[uuid.UUID]struct{})
-		items, ratings, skipped := 0, 0, 0
+		items, ratings, reviews, skipped := 0, 0, 0, 0
 		for i, r := range demoReaders {
 			n := i + 1
 			user := usersDomain.User{
@@ -135,20 +162,40 @@ func seedDemoReaders(db *gorm.DB) error {
 				rated[bookID] = struct{}{}
 				ratings++
 			}
+			for slug, content := range r.reviews {
+				bookID, ok := bySlug[slug]
+				if !ok {
+					skipped++
+					continue
+				}
+				value, ok := r.ratings[slug]
+				if !ok {
+					return fmt.Errorf("demo reader %d: review of %s has no rating", n, slug)
+				}
+				if err := tx.Exec(`
+					INSERT INTO reviews (id, book_id, user_id, rating, content, created_at, updated_at)
+					VALUES (gen_random_uuid(), ?, ?, ?, ?, now(), now())
+					ON CONFLICT (book_id, user_id) DO NOTHING`,
+					bookID, user.ID, value, content).Error; err != nil {
+					return fmt.Errorf("review %s for demo reader %d: %w", slug, n, err)
+				}
+				reviews++
+			}
 		}
 
 		for bookID := range rated {
 			if err := tx.Exec(`
 				UPDATE books
 				SET rating = COALESCE(ROUND((SELECT AVG(value) FROM ratings WHERE book_id = ?)::numeric, 2), 0),
-				    ratings_count = (SELECT COUNT(*) FROM ratings WHERE book_id = ?)
-				WHERE id = ?`, bookID, bookID, bookID).Error; err != nil {
+				    ratings_count = (SELECT COUNT(*) FROM ratings WHERE book_id = ?),
+				    reviews_count = (SELECT COUNT(*) FROM reviews WHERE book_id = ? AND is_hidden = false)
+				WHERE id = ?`, bookID, bookID, bookID, bookID).Error; err != nil {
 				return fmt.Errorf("recalc rating: %w", err)
 			}
 		}
 
-		fmt.Printf("demo readers: %d users (%s..%s, no password), %d shelf items, %d ratings, %d missing books skipped\n",
-			len(demoReaders), demoReaderEmail(1), demoReaderEmail(len(demoReaders)), items, ratings, skipped)
+		fmt.Printf("demo readers: %d users (%s..%s, no password), %d shelf items, %d ratings, %d reviews, %d missing books skipped\n",
+			len(demoReaders), demoReaderEmail(1), demoReaderEmail(len(demoReaders)), items, ratings, reviews, skipped)
 		return nil
 	})
 }

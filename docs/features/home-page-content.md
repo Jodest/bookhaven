@@ -1,6 +1,6 @@
 # Home Page: Book of the Day, Literary Calendar and Personal Blocks
 
-Status: in progress (PR 1 implemented on `feat/home-page-content`, awaiting review/merge; PR 2 not started)
+Status: implemented (PR 1 merged in #235; PR 2 implemented on `feat/home-page-personal`, awaiting review/merge)
 
 GitHub issue: #229 "Главная страница: книга дня, литературный календарь и персональные блоки". Branch `feat/home-page-content` from `main`.
 
@@ -59,11 +59,11 @@ PR 1 is shippable on its own. Each PR ticks its own criteria below.
 
 ### PR 2: personal
 
-- [ ] `GET /api/v1/home/me` (`authMiddleware`) returns only the caller's data, using the user ID from the token and no ID parameter. It returns 401 without a session.
-- [ ] Logged-in users see these blocks, each hidden when empty: "Продолжить чтение", the challenge card, "Вам может понравиться" and "Из вашего «Хочу прочитать»". Guests see none of them, and no `/home/me` request is made for them.
-- [ ] The challenge card reuses `GET /api/v1/reading-challenges/{year}` (no new endpoint). It shows "Прочитано N из M в <год>" with a progress bar, or a "Поставить цель" CTA linking to `/challenge` when `goal` is null.
-- [ ] Recommendations never include a book on any of the user's shelves (custom shelves included) or a book the user has rated.
-- [ ] The tests listed under Tests pass.
+- [x] `GET /api/v1/home/me` (`authMiddleware`) returns only the caller's data, using the user ID from the token and no ID parameter. It returns 401 without a session.
+- [x] Logged-in users see these blocks, each hidden when empty: "Продолжить чтение", the challenge card, "Вам может понравиться" and "Из вашего «Хочу прочитать»". Guests see none of them, and no `/home/me` request is made for them. (Component-tested, guest SSR HTML checked and `/home/me` checked via the API with demo data; logged-in browser check pending, to record in the PR.)
+- [x] The challenge card reuses `GET /api/v1/reading-challenges/{year}` (no new endpoint). It shows "Прочитано N из M в <год>" with a progress bar, or a "Поставить цель" CTA linking to `/challenge` when `goal` is null.
+- [x] Recommendations never include a book on any of the user's shelves (custom shelves included) or a book the user has rated.
+- [x] The tests listed under Tests pass.
 
 ## Business Rules
 
@@ -549,4 +549,12 @@ Manual (record in the PR):
   UPDATE authors a SET death_date = v.d::date FROM (VALUES ('lev-tolstoy','1910-11-20'),('fyodor-dostoevsky','1881-02-09'),('george-orwell','1950-01-21'),('mikhail-bulgakov','1940-03-10'),('nikolai-gogol','1852-03-04'),('ivan-turgenev','1883-09-03'),('anton-chekhov','1904-07-15'),('mikhail-lermontov','1841-07-27'),('aleksandr-pushkin','1837-02-10'),('aldous-huxley','1963-11-22'),('erich-maria-remarque','1970-09-25')) AS v(slug, d) WHERE a.slug = v.slug AND a.death_date IS NULL;
   ```
 
-  None of these dates falls in early October, so locally the calendar is usually empty (verified by temporarily moving an author's date, then reverting). Ratings/reviews seed data is PR 2 (`-demo-readers`); until then the top-rated and fresh-reviews blocks are hidden locally.
+  None of these dates falls in early October, so locally the calendar is usually empty (verified by temporarily moving an author's date, then reverting). Ratings/reviews seed data came with PR 2 (`-demo-readers`, below).
+
+### PR 2 (personal) — #233, #234
+
+- **Repository.** Five personal methods as in the contract: `GetSystemShelf` (id + visible count, `nil` when not materialized; never creates shelves), `ListShelfBookIDs` (`added_at DESC`, visible, `limit <= 0` = all), `ListRecommendationSeeds` (the stage-2 positive-interaction rule for one user, ordered by the latest `added_at`/`ratings.updated_at`), `ListUserExcludedBookIDs` (any shelf, custom included, plus any rating) and `AggregatePrecomputedSimilar`. The aggregate takes the user ID and applies visibility, the seeds and the user's shelf/rating exclusions **in SQL**, so its `LIMIT` never cuts valid candidates; `mergeRecommendations` still filters against the same exclusion set, which also covers tier 2.
+- **Service.** `GetPersonalHome(ctx, userID)` computes three independent blocks (`continue_reading`, `recommendations`, `want_to_read_pick`) with the public per-block error policy (`ErrAllPersonalBlocksFailed` → 500 only when all three fail) and hydrates every book in one `GetBooksByIDs`. No cache. Tier 2 runs when tier 1 has fewer than `RecommendationsTopUpBelow` (6) books: `ListSimilarBooks(seed, RecommendationsTopUpPerSeed = 20)` for the `RecommendationsTopUpSeeds` (3) most recent seeds. `ErrBookNotFound` is skipped silently; any other lister error is logged and only drops that seed's top-up (tier 1 is kept) rather than failing the block. The want-to-read pick is `pickDaily(visible shelf IDs, today MSK, "wtr:" + userID)`; an empty shelf gives the block with `book: null`.
+- **Handler/route.** `GET /api/v1/home/me` behind `authMiddleware`; the user ID comes only from the `user_id` context value (401 when missing or malformed, a `user_id` query parameter is ignored). Wired with `WithSimilarLister(catalogService)` in `cmd/api/main.go`.
+- **Web.** `homeApi.me` / `api.home.me` with `PersonalHome` (camelCase, all nested books normalized). `widgets/personal-home` exports `PersonalHome` (continue reading + challenge card + want-to-read pick, mounted right below the hero) and `PersonalRecommendations` (mounted between the book of the day/calendar and "Что почитать?"; if `GET /home` failed it still renders below the personal section). Both share one `useQuery` (`['home', 'me', userId]`; the user ID is in the key so another account never sees a cached payload, `staleTime` 60s, `refetchOnWindowFocus: false`); the challenge uses `['reading-challenges', year, userId]` in parallel. Queries are disabled for guests and while the session resolves, so guests make no `/home/me` request. Skeletons while pending; failed or empty blocks render nothing, and the whole personal section renders nothing when every block is empty. The challenge card reads "Прочитано N из M в <год>" with a progress bar and a "Подробнее" link, or "Поставить цель" → `/challenge` when `goal` is null.
+- **Dev data.** `cmd/seed -demo-readers` now adds 4-5 ratings of books the demo readers already read, so 8 seed books reach `ratings_count >= 3` and `rating >= 4.0` (war-and-peace stays above 4.0 despite reader06's 1), plus 4 reviews (40+ characters, one per book, rating = the reader's rating) on war-and-peace, master-and-margarita, crime-and-punishment and 1984. It recalculates `rating`/`ratings_count`/`reviews_count`; existing reviews of the same reader and book are left untouched. A fixture test (`cmd/seed/demo_readers_test.go`) guards these numbers. Re-run `go run ./cmd/seed -demo-readers` and then `go run ./cmd/similarity` on an existing dev DB.

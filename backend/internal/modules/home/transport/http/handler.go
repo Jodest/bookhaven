@@ -18,6 +18,7 @@ import (
 type HomeService interface {
 	GetHome(ctx context.Context) (*service.Home, error)
 	RandomBook(ctx context.Context, genreID, excludeID *uuid.UUID) (*catalogdomain.Book, error)
+	GetPersonalHome(ctx context.Context, userID uuid.UUID) (*service.PersonalHome, error)
 }
 
 // Handler handles home HTTP requests.
@@ -103,6 +104,24 @@ type homeResponse struct {
 
 type randomBookResponse struct {
 	Book *cataloghttp.BookListItemResponse `json:"book"`
+}
+
+type continueReadingResponse struct {
+	ShelfID string                             `json:"shelf_id"`
+	Total   int                                `json:"total"`
+	Books   []cataloghttp.BookListItemResponse `json:"books"`
+}
+
+type wantToReadPickResponse struct {
+	ShelfID string                            `json:"shelf_id"`
+	Total   int                               `json:"total"`
+	Book    *cataloghttp.BookListItemResponse `json:"book"`
+}
+
+type personalHomeResponse struct {
+	ContinueReading *continueReadingResponse           `json:"continue_reading"`
+	Recommendations []cataloghttp.BookListItemResponse `json:"recommendations"`
+	WantToReadPick  *wantToReadPickResponse            `json:"want_to_read_pick"`
 }
 
 func formatDate(t *time.Time) *string {
@@ -253,4 +272,62 @@ func (h *Handler) RandomBook(c echo.Context) error {
 		resp.Book = &item
 	}
 	return c.JSON(http.StatusOK, resp)
+}
+
+func toPersonalHomeResponse(h *service.PersonalHome) personalHomeResponse {
+	resp := personalHomeResponse{Recommendations: toBookList(h.Recommendations)}
+	if h.ContinueReading != nil {
+		resp.ContinueReading = &continueReadingResponse{
+			ShelfID: h.ContinueReading.ShelfID.String(),
+			Total:   h.ContinueReading.Total,
+			Books:   toBookList(h.ContinueReading.Books),
+		}
+	}
+	if h.WantToReadPick != nil {
+		pick := &wantToReadPickResponse{
+			ShelfID: h.WantToReadPick.ShelfID.String(),
+			Total:   h.WantToReadPick.Total,
+		}
+		if h.WantToReadPick.Book != nil {
+			item := cataloghttp.ToBookListItemResponse(*h.WantToReadPick.Book)
+			pick.Book = &item
+		}
+		resp.WantToReadPick = pick
+	}
+	return resp
+}
+
+// getUserID reads the authenticated user ID set by the auth middleware.
+func getUserID(c echo.Context) (uuid.UUID, bool) {
+	raw, ok := c.Get("user_id").(string)
+	if !ok || raw == "" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// GetMyHome godoc
+// @Summary Главная страница (персональные блоки)
+// @Description Персональные блоки текущего пользователя (ID берётся только из токена): «Продолжить чтение» (полка «Читаю»), «Вам может понравиться» (без книг с полок пользователя и оценённых им) и книга дня из полки «Хочу прочитать». continue_reading и want_to_read_pick равны null, если системная полка ещё не создана. Не кэшируется. Прогресс челленджа — GET /reading-challenges/{year}.
+// @Tags home
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} personalHomeResponse
+// @Failure 401 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /home/me [get]
+func (h *Handler) GetMyHome(c echo.Context) error {
+	userID, ok := getUserID(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+	home, err := h.service.GetPersonalHome(c.Request().Context(), userID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get personal home"})
+	}
+	return c.JSON(http.StatusOK, toPersonalHomeResponse(home))
 }

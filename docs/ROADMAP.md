@@ -40,13 +40,9 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-Nothing queued — pick the next item from Proposed via `/backlog-next`. Email notifications (#121, in Proposed) can build on the mailer from #157.
-
-Home page content (epic #230):
-
-- [ ] Home page content (#229) — in progress (see [docs/features/home-page-content.md](features/home-page-content.md)); two PRs merged in order:
-  1. [ ] PR 1 (public): `home` backend module, `GET /home`, `GET /home/random`, book of the day, literary calendar, "Что почитать?", new/top-rated rows, fresh reviews, hero/genres rework (#231 backend, #232 frontend) — implemented on `feat/home-page-content`, awaiting review/merge
-  2. [ ] PR 2 (personal): `GET /home/me`, "Продолжить чтение", challenge card, "Вам может понравиться", want-to-read pick, `-demo-readers` extension (#233, #234)
+- [ ] Home page content (#229, epic #230) — in progress (see [docs/features/home-page-content.md](features/home-page-content.md)); two PRs merged in order:
+  1. [x] PR 1 (public): `home` backend module, `GET /home`, `GET /home/random`, book of the day, literary calendar, "Что почитать?", new/top-rated rows, fresh reviews, hero/genres rework (#231 backend, #232 frontend) — merged (#235)
+  2. [ ] PR 2 (personal): `GET /home/me`, "Продолжить чтение", challenge card, "Вам может понравиться", want-to-read pick, `-demo-readers` extension (#233 backend, #234 frontend) — implemented on `feat/home-page-personal`, awaiting review/merge
 
 ## Proposed (awaiting prioritization)
 

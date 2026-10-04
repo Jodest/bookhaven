@@ -209,3 +209,57 @@ func TestExcerpt(t *testing.T) {
 		t.Fatalf("trailing punctuation: %q", got)
 	}
 }
+
+func TestMergeRecommendations(t *testing.T) {
+	ids := pool(7)
+	a, b, c, d, e, f, g := ids[0], ids[1], ids[2], ids[3], ids[4], ids[5], ids[6]
+	set := func(xs ...uuid.UUID) map[uuid.UUID]struct{} {
+		m := map[uuid.UUID]struct{}{}
+		for _, x := range xs {
+			m[x] = struct{}{}
+		}
+		return m
+	}
+	equal := func(got, want []uuid.UUID) bool {
+		if len(got) != len(want) {
+			return false
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	t.Run("tier1 order kept", func(t *testing.T) {
+		if got := mergeRecommendations([]uuid.UUID{c, a, b}, nil, nil, 10); !equal(got, []uuid.UUID{c, a, b}) {
+			t.Fatalf("got %v", got)
+		}
+	})
+	t.Run("round-robin fill", func(t *testing.T) {
+		got := mergeRecommendations([]uuid.UUID{a}, [][]uuid.UUID{{b, c}, {d, e}, {f}}, nil, 10)
+		if !equal(got, []uuid.UUID{a, b, d, f, c, e}) {
+			t.Fatalf("got %v", got)
+		}
+	})
+	t.Run("exclusions and duplicates removed", func(t *testing.T) {
+		got := mergeRecommendations([]uuid.UUID{a, g, a}, [][]uuid.UUID{{a, b}, {b, c}}, set(g, c), 10)
+		if !equal(got, []uuid.UUID{a, b}) {
+			t.Fatalf("got %v", got)
+		}
+	})
+	t.Run("limit honored", func(t *testing.T) {
+		if got := mergeRecommendations([]uuid.UUID{a, b}, [][]uuid.UUID{{c, d}, {e, f}}, nil, 3); !equal(got, []uuid.UUID{a, b, c}) {
+			t.Fatalf("got %v", got)
+		}
+		if got := mergeRecommendations([]uuid.UUID{a, b, c}, nil, nil, 2); !equal(got, []uuid.UUID{a, b}) {
+			t.Fatalf("tier1 not truncated: %v", got)
+		}
+	})
+	t.Run("empty in empty out", func(t *testing.T) {
+		if got := mergeRecommendations(nil, nil, nil, 10); got == nil || len(got) != 0 {
+			t.Fatalf("expected empty non-nil, got %v", got)
+		}
+	})
+}

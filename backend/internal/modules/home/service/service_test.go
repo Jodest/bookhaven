@@ -31,6 +31,16 @@ type fakeRepo struct {
 
 	randomByTier map[int]*uuid.UUID
 	randomCalls  []repository.PoolFilter
+
+	// personal
+	shelves     map[string]*repository.ShelfRef // by shelf type
+	shelfBooks  map[uuid.UUID][]uuid.UUID       // by shelf ID
+	shelfErr    error
+	seeds       []uuid.UUID
+	seedsErr    error
+	excluded    map[uuid.UUID]struct{}
+	precomputed []repository.ScoredID
+	gotUserIDs  []uuid.UUID
 }
 
 func newFakeRepo() *fakeRepo {
@@ -103,6 +113,35 @@ func (f *fakeRepo) GetReviewsByIDs(_ context.Context, ids []uuid.UUID) ([]reposi
 		}
 	}
 	return rows, nil
+}
+
+func (f *fakeRepo) GetSystemShelf(_ context.Context, userID uuid.UUID, shelfType string) (*repository.ShelfRef, error) {
+	f.gotUserIDs = append(f.gotUserIDs, userID)
+	if f.shelfErr != nil {
+		return nil, f.shelfErr
+	}
+	return f.shelves[shelfType], nil
+}
+
+func (f *fakeRepo) ListShelfBookIDs(_ context.Context, shelfID uuid.UUID, limit int) ([]uuid.UUID, error) {
+	ids := f.shelfBooks[shelfID]
+	if limit > 0 && len(ids) > limit {
+		ids = ids[:limit]
+	}
+	return ids, nil
+}
+
+func (f *fakeRepo) ListRecommendationSeeds(_ context.Context, userID uuid.UUID, _ int) ([]uuid.UUID, error) {
+	f.gotUserIDs = append(f.gotUserIDs, userID)
+	return f.seeds, f.seedsErr
+}
+
+func (f *fakeRepo) ListUserExcludedBookIDs(context.Context, uuid.UUID) (map[uuid.UUID]struct{}, error) {
+	return f.excluded, nil
+}
+
+func (f *fakeRepo) AggregatePrecomputedSimilar(context.Context, uuid.UUID, []uuid.UUID, int) ([]repository.ScoredID, error) {
+	return f.precomputed, nil
 }
 
 // fakeLoader returns visible books by ID.
