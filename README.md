@@ -28,9 +28,14 @@ docker compose exec backend go run ./cmd/seed -accounts-only
 
 #    ...или аккаунты + демо-каталог (~19 книг, жанры, авторы) (= make seed)
 docker compose exec backend go run ./cmd/seed
+
+# 5. (Необязательно) 12 демо-читателей с пересекающимися полками для блока
+#    «Похожие книги» (этап 2, «читатели также читали») и ручной пересчёт
+docker compose exec backend go run ./cmd/seed -demo-readers
+docker compose exec backend go run ./cmd/similarity
 ```
 
-Сид идемпотентен — его можно запускать повторно; `-accounts-only` можно позже «догнать» полным сидом. В `APP_ENV=production` сид отказывается работать без `-force`.
+Сид идемпотентен — его можно запускать повторно; `-accounts-only` можно позже «догнать» полным сидом. В `APP_ENV=production` сид отказывается работать без `-force`. Демо-читатели (`reader01..reader12@demo.bookhaven.local`) создаются без пароля, войти под ними нельзя. Пересчёт похожих книг воркер также запускает сам ежедневно в 03:30 UTC (см. [docs/features/similar-books-stage2.md](docs/features/similar-books-stage2.md)).
 
 Первый запуск `web`/`admin` занимает несколько минут: контейнеры выполняют `pnpm install` в собственные (анонимные) тома `node_modules` и не трогают `node_modules` на хосте, поэтому нативные `pnpm`/`tsc`/`next` на хосте продолжают работать.
 

@@ -91,7 +91,8 @@ func main() {
 
 	// Services
 	catalogService := catalogservice.NewService(catalogRepo,
-		catalogservice.WithSimilarCache(catalogrepository.NewRedisSimilarCache(redisClient)))
+		catalogservice.WithSimilarCache(catalogrepository.NewRedisSimilarCache(redisClient)),
+		catalogservice.WithPrecomputedSimilar(catalogrepository.NewGormSimilarityRepository(db)))
 	// bookdata.NewOpenLibraryClient() is constructed with no options, mirroring
 	// backend/cmd/worker/main.go's own zero-config construction (see
 	// docs/features/bookdata-clients.md for the accepted-risk placeholder

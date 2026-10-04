@@ -18,6 +18,7 @@ var ErrAuthorNotFound = errors.New("author not found")
 type Service struct {
 	repo         repository.Repository
 	similarCache SimilarCache
+	precomputed  repository.PrecomputedSimilarReader
 }
 
 // Option configures optional Service dependencies.
@@ -28,6 +29,15 @@ type Option func(*Service)
 func WithSimilarCache(c SimilarCache) Option {
 	return func(s *Service) {
 		s.similarCache = c
+	}
+}
+
+// WithPrecomputedSimilar enables the stage-2 precomputed similar-books list
+// (see docs/features/similar-books-stage2.md). A nil reader (the default)
+// means the stage-1 path only.
+func WithPrecomputedSimilar(r repository.PrecomputedSimilarReader) Option {
+	return func(s *Service) {
+		s.precomputed = r
 	}
 }
 

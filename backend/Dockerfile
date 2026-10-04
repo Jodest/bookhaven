@@ -21,6 +21,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/migrate ./cmd/migrate
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/worker ./cmd/worker
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/harvest ./cmd/harvest
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/similarity ./cmd/similarity
 
 # Production stage
 FROM gcr.io/distroless/static-debian12:nonroot AS production
@@ -29,6 +30,7 @@ COPY --from=builder /app/bin/api /app/api
 COPY --from=builder /app/bin/migrate /app/migrate
 COPY --from=builder /app/bin/worker /app/worker
 COPY --from=builder /app/bin/harvest /app/harvest
+COPY --from=builder /app/bin/similarity /app/similarity
 COPY --from=builder /app/migrations /app/migrations
 EXPOSE 8080
 USER nonroot:nonroot
