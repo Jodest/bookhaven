@@ -29,6 +29,8 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Email verification at registration — verification email with one-time link, verify/resend endpoints with rate limiting (see [docs/features/email-verification-backend.md](features/email-verification-backend.md), #158), `/verify-email` page, check-email panel and site-wide unverified banner (see [docs/features/email-verification-web.md](features/email-verification-web.md), #159); merged to `main` together
 - [x] Login only after email verification — unverified users cannot authenticate and use the site as guests; public resend-verification with per-IP/per-email limits (see [docs/features/email-verification-login-gate.md](features/email-verification-login-gate.md), #160, epic #176)
 - [x] Similar books, stage 1 (content-based) — "Похожие книги" block on the book page ranked by shared authors/genres, plus the reverse indexes #198 (see [docs/features/similar-books.md](features/similar-books.md), #213, epic #218; merged in #221/#222)
+- [x] Password reset by email — forgot/reset endpoints with enumeration-safe responses and per-IP/per-email limits, one-time 1h links, reset also verifies the email (see [docs/features/password-reset.md](features/password-reset.md), #161, epic #181)
+- [x] Similar books, stage 2 (readers also enjoyed) — co-reading signal with a 3-reader privacy threshold blended into stage 1, precomputed nightly into `book_similarities` by the worker scheduler (see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md), #217, epic #223; merged in #226/#227)
 
 ## Post-MVP
 
@@ -38,17 +40,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-Email verification at registration chain (epic #162):
-
-1. [x] Login only after email verification (#160) — merged to `main`, see Completed
-2. [ ] Password reset by email — in progress (see [docs/features/password-reset.md](features/password-reset.md), #161, epic #181) — implemented on `feat/password-reset`, awaiting review/merge
-
-Email notifications (#121, in Proposed) also depend on #157.
-
-Similar books (epics #218 stage 1, #223 stage 2):
-
-1. [x] Similar books, stage 1 (content-based) — merged to `main`, see Completed
-2. [ ] Similar books, stage 2: readers also read + precompute — in progress (see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md), #217, epic #223, #224, #225) — implemented on `feat/similar-books-co-reading`, awaiting review/merge
+Nothing queued — pick the next item from Proposed via `/backlog-next`. Email notifications (#121, in Proposed) can build on the mailer from #157.
 
 ## Proposed (awaiting prioritization)
 
