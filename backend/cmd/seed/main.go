@@ -1,6 +1,7 @@
 // Command seed populates the database with a fixed set of dev/demo data
 // (a demo admin/test user plus, unless -accounts-only is passed, ~19
-// hardcoded classic-literature books). It is dev/demo-only tooling and
+// hardcoded classic-literature books; with -demo-readers also 12 demo
+// readers for the similar-books co-reading job). It is dev/demo-only tooling and
 // must NOT be used to populate a real catalog:
 // its output is a small, hand-picked fixture set, not real production
 // content, and it carries none of the provenance/review metadata
@@ -29,6 +30,7 @@ import (
 func main() {
 	force := flag.Bool("force", false, "allow running against APP_ENV=production (dangerous, dev/demo data only)")
 	accountsOnly := flag.Bool("accounts-only", false, "seed only the admin/test user accounts; skip genres/authors/demo books")
+	demoReadersFlag := flag.Bool("demo-readers", false, "also seed 12 verified demo readers (no password) with overlapping read shelves/ratings for the similar-books co-reading job; then run cmd/similarity")
 	flag.Parse()
 
 	_ = godotenv.Load()
@@ -69,6 +71,12 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("seed data applied successfully")
+	}
+	if *demoReadersFlag {
+		if err := seedDemoReaders(db); err != nil {
+			fmt.Printf("failed to seed demo readers: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	fmt.Printf("admin account: %s / %s\n", seedAdminEmail, seedAdminPassword)
 	fmt.Printf("test account: %s / %s\n", seedTestEmail, seedTestPassword)

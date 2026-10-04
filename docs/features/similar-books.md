@@ -4,6 +4,8 @@ Status: implemented
 
 GitHub issue: #213 "Похожие книги, этап 1: по жанрам и авторам". This issue also covers #198 (the missing reverse indexes on `book_authors(author_id)`, `book_genres(genre_id)` and `lists(user_id)`). Stage 2 is #217 ("readers also read" plus precomputation). This is separate from personal recommendations (#112). Branch `feat/similar-books-content` from `main`.
 
+Stage 2 (co-reading + precompute): see [similar-books-stage2.md](similar-books-stage2.md).
+
 ## Goal
 
 The book page shows a "Похожие книги" block: a horizontal row of book cards, chosen by shared authors and genres. Everyone sees it, including guests, and every viewer gets the same list for a given book. The endpoint is public and cheap. The ranking is computed on request and cached in Redis. No precomputation and no collaborative signal in this stage.
