@@ -1,11 +1,22 @@
 'use client';
 
+import { useAuthStore } from '@/entities/session';
 import { RegisterForm } from '@/features/auth';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { CheckEmailPanel } from './check-email-panel';
 
 export function RegisterView() {
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const { isAuthenticated } = useAuthStore();
+  const router = useRouter();
+
+  // Registration is guest-only: a signed-in user has nothing to do here.
+  useEffect(() => {
+    if (isAuthenticated) router.replace('/profile');
+  }, [isAuthenticated, router]);
+
+  if (isAuthenticated) return null;
 
   return (
     <main className="container mx-auto flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">

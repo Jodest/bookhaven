@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isSafeRedirectPath, loginHrefWithRedirect } from './safe-redirect';
+import {
+  isAuthPagePath,
+  isSafeRedirectPath,
+  loginHrefWithRedirect,
+  postLoginRedirectPath,
+} from './safe-redirect';
 
 describe('isSafeRedirectPath', () => {
   it.each(['/books/some-slug', '/profile', '/shelves?tab=custom'])(
@@ -44,4 +49,33 @@ describe('loginHrefWithRedirect', () => {
   it.each(['//evil.com', '', null, undefined])('drops unsafe redirect %j', (value) => {
     expect(loginHrefWithRedirect(value)).toBe('/login');
   });
+});
+
+describe('isAuthPagePath', () => {
+  it.each(['/login', '/register', '/register?redirect=%2Fbooks', '/register/', '/reset-password#x'])(
+    'treats %s as an auth page',
+    (value) => {
+      expect(isAuthPagePath(value)).toBe(true);
+    }
+  );
+
+  it.each(['/', '/profile', '/books/register', '/registered'])(
+    'does not treat %s as an auth page',
+    (value) => {
+      expect(isAuthPagePath(value)).toBe(false);
+    }
+  );
+});
+
+describe('postLoginRedirectPath', () => {
+  it('keeps a safe non-auth redirect', () => {
+    expect(postLoginRedirectPath('/books/abc')).toBe('/books/abc');
+  });
+
+  it.each(['/register', '/login?redirect=%2Fbooks', '//evil.com', null])(
+    'falls back to /profile for %j',
+    (value) => {
+      expect(postLoginRedirectPath(value)).toBe('/profile');
+    }
+  );
 });

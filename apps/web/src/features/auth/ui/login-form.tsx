@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuthStore } from '@/entities/session';
-import { isSafeRedirectPath } from '@/shared/lib/safe-redirect';
+import { postLoginRedirectPath } from '@/shared/lib/safe-redirect';
 import { isEmailNotVerifiedError } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -48,8 +48,7 @@ export function LoginForm({ onEmailNotVerified, onSubmitStart }: LoginFormProps 
     onSubmitStart?.();
     try {
       await login(data.email, data.password);
-      const redirect = searchParams.get('redirect');
-      router.push((isSafeRedirectPath(redirect) ? redirect : '/profile') as any);
+      router.push(postLoginRedirectPath(searchParams.get('redirect')) as any);
     } catch (err) {
       if (isEmailNotVerifiedError(err)) {
         if (onEmailNotVerified) {
