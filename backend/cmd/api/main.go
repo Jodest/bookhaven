@@ -16,6 +16,8 @@ import (
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
+	homerepository "github.com/bookhaven/backend/internal/modules/home/repository"
+	homeservice "github.com/bookhaven/backend/internal/modules/home/service"
 	listsrepository "github.com/bookhaven/backend/internal/modules/lists/repository"
 	listsservice "github.com/bookhaven/backend/internal/modules/lists/service"
 	notificationsrepository "github.com/bookhaven/backend/internal/modules/notifications/repository"
@@ -110,6 +112,12 @@ func main() {
 	reviewsService := reviewsservice.NewService(reviewsRepo)
 	readingChallengesService := readingchallengesservice.NewService(readingChallengesRepo)
 	notificationsService := notificationsservice.NewService(notificationsRepo)
+	// Home page composition (see docs/features/home-page-content.md): the
+	// public payload selection is cached in Redis as ID lists, books are
+	// hydrated live through the catalog repository.
+	homeService := homeservice.NewService(homerepository.NewGormRepository(db), catalogRepo,
+		homeservice.WithCache(homerepository.NewRedisCache(redisClient)),
+		homeservice.WithLogger(logger))
 
 	// Shared asynq.Client for every task the api enqueues: admin
 	// harvest-trigger jobs (see docs/features/admin-harvest-trigger.md) and
@@ -207,7 +215,7 @@ func main() {
 	optionalAuth := middleware.OptionalAuth(authService, usersRepo)
 
 	// Public + protected routes
-	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, authMiddleware, optionalAuth)
+	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, authMiddleware, optionalAuth)
 
 	// Admin routes
 	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, taskClient, harvestInspector, wikidataClient)

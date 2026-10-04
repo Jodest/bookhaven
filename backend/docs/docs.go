@@ -2808,6 +2808,87 @@ const docTemplate = `{
                 }
             }
         },
+        "/home": {
+            "get": {
+                "description": "Книга дня, литературный календарь (события авторов на сегодня или ближайший день в пределах 7 дней, юбилеи книг года), новое в каталоге, высоко оценённые книги и свежие рецензии. День — дата по Москве (UTC+3). Блок, который не удалось собрать, возвращается пустым (null или []).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "home"
+                ],
+                "summary": "Главная страница (публичные блоки)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_home_transport_http.homeResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/home/random": {
+            "get": {
+                "description": "Возвращает одну случайную видимую книгу: сначала из хорошо оценённых, затем из книг с оценками, затем любую. Не кэшируется. Если ничего не найдено, book = null.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "home"
+                ],
+                "summary": "Случайная книга («Что почитать?»)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID жанра (UUID)",
+                        "name": "genre_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID книги, которую исключить (UUID)",
+                        "name": "exclude_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_home_transport_http.randomBookResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/languages": {
             "get": {
                 "produces": [
@@ -5015,6 +5096,78 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_bookhaven_backend_internal_modules_catalog_transport_http.AuthorResponse": {
+            "type": "object",
+            "properties": {
+                "birth_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "photo_url": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse": {
+            "type": "object",
+            "properties": {
+                "authors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.AuthorResponse"
+                    }
+                },
+                "cover_url": {
+                    "type": "string"
+                },
+                "genres": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.GenreResponse"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "published_year": {
+                    "type": "integer"
+                },
+                "rating": {
+                    "type": "number"
+                },
+                "ratings_count": {
+                    "type": "integer"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_catalog_transport_http.GenreResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_bookhaven_backend_internal_modules_harvest_service.HarvestRecordError": {
             "type": "object",
             "properties": {
@@ -5679,39 +5832,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_modules_catalog_transport_http.authorDetailResponse": {
-            "type": "object",
-            "properties": {
-                "biography": {
-                    "type": "string"
-                },
-                "birth_date": {
-                    "type": "string"
-                },
-                "books": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_modules_catalog_transport_http.bookListItemResponse"
-                    }
-                },
-                "death_date": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "photo_url": {
-                    "type": "string"
-                },
-                "slug": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_modules_catalog_transport_http.authorResponse": {
+        "internal_modules_catalog_transport_http.AuthorResponse": {
             "type": "object",
             "properties": {
                 "birth_date": {
@@ -5731,13 +5852,13 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_modules_catalog_transport_http.bookListItemResponse": {
+        "internal_modules_catalog_transport_http.BookListItemResponse": {
             "type": "object",
             "properties": {
                 "authors": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_modules_catalog_transport_http.authorResponse"
+                        "$ref": "#/definitions/internal_modules_catalog_transport_http.AuthorResponse"
                     }
                 },
                 "cover_url": {
@@ -5746,7 +5867,7 @@ const docTemplate = `{
                 "genres": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_modules_catalog_transport_http.genreResponse"
+                        "$ref": "#/definitions/internal_modules_catalog_transport_http.GenreResponse"
                     }
                 },
                 "id": {
@@ -5769,13 +5890,59 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_catalog_transport_http.GenreResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_catalog_transport_http.authorDetailResponse": {
+            "type": "object",
+            "properties": {
+                "biography": {
+                    "type": "string"
+                },
+                "birth_date": {
+                    "type": "string"
+                },
+                "books": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_catalog_transport_http.BookListItemResponse"
+                    }
+                },
+                "death_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "photo_url": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_catalog_transport_http.bookResponse": {
             "type": "object",
             "properties": {
                 "authors": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_modules_catalog_transport_http.authorResponse"
+                        "$ref": "#/definitions/internal_modules_catalog_transport_http.AuthorResponse"
                     }
                 },
                 "cover_url": {
@@ -5787,7 +5954,7 @@ const docTemplate = `{
                 "genres": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_modules_catalog_transport_http.genreResponse"
+                        "$ref": "#/definitions/internal_modules_catalog_transport_http.GenreResponse"
                     }
                 },
                 "id": {
@@ -5822,20 +5989,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_modules_catalog_transport_http.genreResponse": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "slug": {
-                    "type": "string"
-                }
-            }
-        },
         "internal_modules_catalog_transport_http.languageResponse": {
             "type": "object",
             "properties": {
@@ -5853,7 +6006,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_modules_catalog_transport_http.authorResponse"
+                        "$ref": "#/definitions/internal_modules_catalog_transport_http.AuthorResponse"
                     }
                 },
                 "total": {
@@ -5867,7 +6020,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_modules_catalog_transport_http.bookListItemResponse"
+                        "$ref": "#/definitions/internal_modules_catalog_transport_http.BookListItemResponse"
                     }
                 },
                 "limit": {
@@ -5898,7 +6051,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_modules_catalog_transport_http.bookListItemResponse"
+                        "$ref": "#/definitions/internal_modules_catalog_transport_http.BookListItemResponse"
                     }
                 }
             }
@@ -5992,6 +6145,212 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.anniversaryResponse": {
+            "type": "object",
+            "properties": {
+                "book": {
+                    "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
+                },
+                "years": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.bookOfTheDayResponse": {
+            "type": "object",
+            "properties": {
+                "book": {
+                    "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
+                },
+                "description_excerpt": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.calendarAuthorResponse": {
+            "type": "object",
+            "properties": {
+                "birth_date": {
+                    "type": "string"
+                },
+                "death_date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "photo_url": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.calendarEventResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/internal_modules_home_transport_http.calendarAuthorResponse"
+                },
+                "books": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
+                    }
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "birth",
+                        "death"
+                    ]
+                },
+                "years": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.calendarResponse": {
+            "type": "object",
+            "properties": {
+                "anniversaries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_home_transport_http.anniversaryResponse"
+                    }
+                },
+                "date": {
+                    "type": "string"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_home_transport_http.calendarEventResponse"
+                    }
+                },
+                "is_today": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.homeResponse": {
+            "type": "object",
+            "properties": {
+                "book_of_the_day": {
+                    "$ref": "#/definitions/internal_modules_home_transport_http.bookOfTheDayResponse"
+                },
+                "calendar": {
+                    "$ref": "#/definitions/internal_modules_home_transport_http.calendarResponse"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "new_books": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
+                    }
+                },
+                "recent_reviews": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_home_transport_http.recentReviewResponse"
+                    }
+                },
+                "top_rated": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
+                    }
+                }
+            }
+        },
+        "internal_modules_home_transport_http.randomBookResponse": {
+            "type": "object",
+            "properties": {
+                "book": {
+                    "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.recentReviewResponse": {
+            "type": "object",
+            "properties": {
+                "book": {
+                    "$ref": "#/definitions/internal_modules_home_transport_http.reviewBookResponse"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "excerpt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "likes_count": {
+                    "type": "integer"
+                },
+                "rating": {
+                    "type": "integer"
+                },
+                "user": {
+                    "$ref": "#/definitions/internal_modules_home_transport_http.reviewUserResponse"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.reviewBookAuthorResponse": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.reviewBookResponse": {
+            "type": "object",
+            "properties": {
+                "authors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_home_transport_http.reviewBookAuthorResponse"
+                    }
+                },
+                "cover_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_home_transport_http.reviewUserResponse": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 }
             }

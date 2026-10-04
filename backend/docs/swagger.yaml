@@ -42,6 +42,53 @@ definitions:
       title:
         type: string
     type: object
+  github_com_bookhaven_backend_internal_modules_catalog_transport_http.AuthorResponse:
+    properties:
+      birth_date:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
+  github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.AuthorResponse'
+        type: array
+      cover_url:
+        type: string
+      genres:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.GenreResponse'
+        type: array
+      id:
+        type: string
+      published_year:
+        type: integer
+      rating:
+        type: number
+      ratings_count:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  github_com_bookhaven_backend_internal_modules_catalog_transport_http.GenreResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
   github_com_bookhaven_backend_internal_modules_harvest_service.HarvestRecordError:
     properties:
       index:
@@ -478,28 +525,7 @@ definitions:
       token:
         type: string
     type: object
-  internal_modules_catalog_transport_http.authorDetailResponse:
-    properties:
-      biography:
-        type: string
-      birth_date:
-        type: string
-      books:
-        items:
-          $ref: '#/definitions/internal_modules_catalog_transport_http.bookListItemResponse'
-        type: array
-      death_date:
-        type: string
-      id:
-        type: string
-      name:
-        type: string
-      photo_url:
-        type: string
-      slug:
-        type: string
-    type: object
-  internal_modules_catalog_transport_http.authorResponse:
+  internal_modules_catalog_transport_http.AuthorResponse:
     properties:
       birth_date:
         type: string
@@ -512,17 +538,17 @@ definitions:
       slug:
         type: string
     type: object
-  internal_modules_catalog_transport_http.bookListItemResponse:
+  internal_modules_catalog_transport_http.BookListItemResponse:
     properties:
       authors:
         items:
-          $ref: '#/definitions/internal_modules_catalog_transport_http.authorResponse'
+          $ref: '#/definitions/internal_modules_catalog_transport_http.AuthorResponse'
         type: array
       cover_url:
         type: string
       genres:
         items:
-          $ref: '#/definitions/internal_modules_catalog_transport_http.genreResponse'
+          $ref: '#/definitions/internal_modules_catalog_transport_http.GenreResponse'
         type: array
       id:
         type: string
@@ -537,11 +563,41 @@ definitions:
       title:
         type: string
     type: object
+  internal_modules_catalog_transport_http.GenreResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_catalog_transport_http.authorDetailResponse:
+    properties:
+      biography:
+        type: string
+      birth_date:
+        type: string
+      books:
+        items:
+          $ref: '#/definitions/internal_modules_catalog_transport_http.BookListItemResponse'
+        type: array
+      death_date:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
   internal_modules_catalog_transport_http.bookResponse:
     properties:
       authors:
         items:
-          $ref: '#/definitions/internal_modules_catalog_transport_http.authorResponse'
+          $ref: '#/definitions/internal_modules_catalog_transport_http.AuthorResponse'
         type: array
       cover_url:
         type: string
@@ -549,7 +605,7 @@ definitions:
         type: string
       genres:
         items:
-          $ref: '#/definitions/internal_modules_catalog_transport_http.genreResponse'
+          $ref: '#/definitions/internal_modules_catalog_transport_http.GenreResponse'
         type: array
       id:
         type: string
@@ -572,15 +628,6 @@ definitions:
       title:
         type: string
     type: object
-  internal_modules_catalog_transport_http.genreResponse:
-    properties:
-      id:
-        type: string
-      name:
-        type: string
-      slug:
-        type: string
-    type: object
   internal_modules_catalog_transport_http.languageResponse:
     properties:
       code:
@@ -592,7 +639,7 @@ definitions:
     properties:
       items:
         items:
-          $ref: '#/definitions/internal_modules_catalog_transport_http.authorResponse'
+          $ref: '#/definitions/internal_modules_catalog_transport_http.AuthorResponse'
         type: array
       total:
         type: integer
@@ -601,7 +648,7 @@ definitions:
     properties:
       items:
         items:
-          $ref: '#/definitions/internal_modules_catalog_transport_http.bookListItemResponse'
+          $ref: '#/definitions/internal_modules_catalog_transport_http.BookListItemResponse'
         type: array
       limit:
         type: integer
@@ -621,7 +668,7 @@ definitions:
     properties:
       items:
         items:
-          $ref: '#/definitions/internal_modules_catalog_transport_http.bookListItemResponse'
+          $ref: '#/definitions/internal_modules_catalog_transport_http.BookListItemResponse'
         type: array
     type: object
   internal_modules_harvest_transport_http.authorCandidateResponse:
@@ -682,6 +729,140 @@ definitions:
       state:
         type: string
       task_id:
+        type: string
+    type: object
+  internal_modules_home_transport_http.anniversaryResponse:
+    properties:
+      book:
+        $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
+      years:
+        type: integer
+    type: object
+  internal_modules_home_transport_http.bookOfTheDayResponse:
+    properties:
+      book:
+        $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
+      description_excerpt:
+        type: string
+    type: object
+  internal_modules_home_transport_http.calendarAuthorResponse:
+    properties:
+      birth_date:
+        type: string
+      death_date:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_home_transport_http.calendarEventResponse:
+    properties:
+      author:
+        $ref: '#/definitions/internal_modules_home_transport_http.calendarAuthorResponse'
+      books:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
+        type: array
+      type:
+        enum:
+        - birth
+        - death
+        type: string
+      years:
+        type: integer
+    type: object
+  internal_modules_home_transport_http.calendarResponse:
+    properties:
+      anniversaries:
+        items:
+          $ref: '#/definitions/internal_modules_home_transport_http.anniversaryResponse'
+        type: array
+      date:
+        type: string
+      events:
+        items:
+          $ref: '#/definitions/internal_modules_home_transport_http.calendarEventResponse'
+        type: array
+      is_today:
+        type: boolean
+    type: object
+  internal_modules_home_transport_http.homeResponse:
+    properties:
+      book_of_the_day:
+        $ref: '#/definitions/internal_modules_home_transport_http.bookOfTheDayResponse'
+      calendar:
+        $ref: '#/definitions/internal_modules_home_transport_http.calendarResponse'
+      date:
+        type: string
+      new_books:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
+        type: array
+      recent_reviews:
+        items:
+          $ref: '#/definitions/internal_modules_home_transport_http.recentReviewResponse'
+        type: array
+      top_rated:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
+        type: array
+    type: object
+  internal_modules_home_transport_http.randomBookResponse:
+    properties:
+      book:
+        $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_catalog_transport_http.BookListItemResponse'
+    type: object
+  internal_modules_home_transport_http.recentReviewResponse:
+    properties:
+      book:
+        $ref: '#/definitions/internal_modules_home_transport_http.reviewBookResponse'
+      created_at:
+        type: string
+      excerpt:
+        type: string
+      id:
+        type: string
+      likes_count:
+        type: integer
+      rating:
+        type: integer
+      user:
+        $ref: '#/definitions/internal_modules_home_transport_http.reviewUserResponse'
+    type: object
+  internal_modules_home_transport_http.reviewBookAuthorResponse:
+    properties:
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_home_transport_http.reviewBookResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_home_transport_http.reviewBookAuthorResponse'
+        type: array
+      cover_url:
+        type: string
+      id:
+        type: string
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_home_transport_http.reviewUserResponse:
+    properties:
+      avatar_url:
+        type: string
+      id:
+        type: string
+      name:
         type: string
     type: object
   internal_modules_lists_transport_http.addBookRequest:
@@ -3129,6 +3310,64 @@ paths:
       summary: Список жанров
       tags:
       - catalog
+  /home:
+    get:
+      description: Книга дня, литературный календарь (события авторов на сегодня или
+        ближайший день в пределах 7 дней, юбилеи книг года), новое в каталоге, высоко
+        оценённые книги и свежие рецензии. День — дата по Москве (UTC+3). Блок, который
+        не удалось собрать, возвращается пустым (null или []).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_home_transport_http.homeResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Главная страница (публичные блоки)
+      tags:
+      - home
+  /home/random:
+    get:
+      description: 'Возвращает одну случайную видимую книгу: сначала из хорошо оценённых,
+        затем из книг с оценками, затем любую. Не кэшируется. Если ничего не найдено,
+        book = null.'
+      parameters:
+      - description: ID жанра (UUID)
+        in: query
+        name: genre_id
+        type: string
+      - description: ID книги, которую исключить (UUID)
+        in: query
+        name: exclude_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_home_transport_http.randomBookResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Случайная книга («Что почитать?»)
+      tags:
+      - home
   /languages:
     get:
       produces:

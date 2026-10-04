@@ -7,9 +7,17 @@ import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+type DefaultShelfType = 'want_to_read' | 'reading' | 'read';
+
 interface ShelveBookButtonsProps {
   bookId: string;
   slug: string;
+  /** System shelves to show buttons for; defaults to all three. */
+  types?: DefaultShelfType[];
+  /** Whether to show the custom-shelves checklist; defaults to true. */
+  showCustomShelves?: boolean;
+  /** Guest login redirect target; defaults to `/books/{slug}`. */
+  loginRedirect?: string;
 }
 
 const defaultTypeLabels: Record<string, string> = {
@@ -18,9 +26,19 @@ const defaultTypeLabels: Record<string, string> = {
   read: 'Прочитано',
 };
 
-const defaultTypeOrder = ['want_to_read', 'reading', 'read'];
+const defaultTypeOrder: DefaultShelfType[] = ['want_to_read', 'reading', 'read'];
+// Shelf.type is a wider union (custom shelves); compare as plain strings.
+const isDefaultType = (type: string) => (defaultTypeOrder as string[]).includes(type);
 
-export function ShelveBookButtons({ bookId, slug }: ShelveBookButtonsProps) {
+export function ShelveBookButtons({
+  bookId,
+  slug,
+  types = defaultTypeOrder,
+  showCustomShelves = true,
+  loginRedirect,
+}: ShelveBookButtonsProps) {
+  const visibleTypes = defaultTypeOrder.filter((type) => types.includes(type));
+  const redirectTarget = loginRedirect ?? `/books/${slug}`;
   const { isAuthenticated } = useAuthStore();
   const [shelves, setShelves] = useState<Shelf[]>([]);
   const [loading, setLoading] = useState(false);
@@ -62,7 +80,7 @@ export function ShelveBookButtons({ bookId, slug }: ShelveBookButtonsProps) {
 
     setShelves((prev) =>
       prev.map((s) => {
-        if (defaultTypeOrder.includes(s.type)) {
+        if (isDefaultType(s.type)) {
           return { ...s, hasBook: s.type === targetType ? !wasActive : false };
         }
         return s;
@@ -78,7 +96,7 @@ export function ShelveBookButtons({ bookId, slug }: ShelveBookButtonsProps) {
     } catch (err) {
       setShelves((prev) =>
         prev.map((s) => {
-          if (defaultTypeOrder.includes(s.type)) {
+          if (isDefaultType(s.type)) {
             return { ...s, hasBook: s.type === targetType ? wasActive : s.hasBook };
           }
           return s;
@@ -114,9 +132,9 @@ export function ShelveBookButtons({ bookId, slug }: ShelveBookButtonsProps) {
   if (!isAuthenticated) {
     return (
       <div className="flex flex-wrap gap-2">
-        {defaultTypeOrder.map((type) => (
+        {visibleTypes.map((type) => (
           <Button key={type} variant="outline" asChild>
-            <Link href={`/login?redirect=/books/${slug}`}>
+            <Link href={`/login?redirect=${redirectTarget}`}>
               {defaultTypeLabels[type]}
             </Link>
           </Button>
@@ -125,8 +143,8 @@ export function ShelveBookButtons({ bookId, slug }: ShelveBookButtonsProps) {
     );
   }
 
-  const defaultShelves = shelves.filter((s) => defaultTypeOrder.includes(s.type));
-  const customShelves = shelves.filter((s) => s.type === 'custom');
+  const defaultShelves = shelves.filter((s) => isDefaultType(s.type));
+  const customShelves = showCustomShelves ? shelves.filter((s) => s.type === 'custom') : [];
 
   return (
     <div className="space-y-4">
@@ -137,7 +155,7 @@ export function ShelveBookButtons({ bookId, slug }: ShelveBookButtonsProps) {
       )}
 
       <div className="flex flex-wrap gap-2">
-        {defaultTypeOrder.map((type) => {
+        {visibleTypes.map((type) => {
           const shelf = defaultShelves.find((s) => s.type === type);
           if (!shelf) return null;
           return (

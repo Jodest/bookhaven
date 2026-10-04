@@ -6,6 +6,8 @@ import (
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	cataloghttp "github.com/bookhaven/backend/internal/modules/catalog/transport/http"
 	harvesthttp "github.com/bookhaven/backend/internal/modules/harvest/transport/http"
+	homeservice "github.com/bookhaven/backend/internal/modules/home/service"
+	homehttp "github.com/bookhaven/backend/internal/modules/home/transport/http"
 	listsservice "github.com/bookhaven/backend/internal/modules/lists/service"
 	listshttp "github.com/bookhaven/backend/internal/modules/lists/transport/http"
 	notificationsservice "github.com/bookhaven/backend/internal/modules/notifications/service"
@@ -37,6 +39,7 @@ func RegisterRoutes(
 	usersService *usersservice.Service,
 	readingChallengesService *readingchallengesservice.Service,
 	notificationsService *notificationsservice.Service,
+	homeService *homeservice.Service,
 	authMiddleware echo.MiddlewareFunc,
 	optionalAuth echo.MiddlewareFunc,
 ) {
@@ -103,6 +106,10 @@ func RegisterRoutes(
 	notifications.GET("/unread-count", notificationsHandler.UnreadCount)
 	notifications.PATCH("/:id/read", notificationsHandler.MarkRead)
 	notifications.POST("/read-all", notificationsHandler.MarkAllRead)
+
+	homeHandler := homehttp.NewHandler(homeService)
+	api.GET("/home", homeHandler.GetHome)
+	api.GET("/home/random", homeHandler.RandomBook)
 }
 
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
