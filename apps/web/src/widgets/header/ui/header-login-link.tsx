@@ -1,5 +1,6 @@
 'use client';
 
+import { isAuthPagePath } from '@/shared/lib/safe-redirect';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
@@ -7,7 +8,8 @@ import { usePathname, useSearchParams } from 'next/navigation';
 /**
  * Renders the generic "Войти" (Log in) link, passing the current
  * path + query string as `?redirect=` so a successful login returns
- * the user to the page they were on.
+ * the user to the page they were on. On guest-only auth pages (/register,
+ * /login, ...) no redirect is passed — login lands on the default page.
  *
  * Isolated into its own component (rather than inlined in `Header`)
  * because it calls `useSearchParams()`, which requires a `<Suspense>`
@@ -22,7 +24,13 @@ export function HeaderLoginLink() {
 
   return (
     <Button variant="ghost" asChild>
-      <Link href={`/login?redirect=${encodeURIComponent(currentPath)}`}>Войти</Link>
+      <Link
+        href={
+          isAuthPagePath(pathname) ? '/login' : `/login?redirect=${encodeURIComponent(currentPath)}`
+        }
+      >
+        Войти
+      </Link>
     </Button>
   );
 }

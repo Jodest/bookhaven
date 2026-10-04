@@ -25,6 +25,24 @@ export function isSafeRedirectPath(
   return true;
 }
 
+// Guest-only pages: returning to them after a successful login would show a
+// login/registration form to a signed-in user (e.g. "Войти" in the header
+// clicked on /register carries `redirect=/register`).
+const AUTH_PAGE_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
+
+export function isAuthPagePath(path: string): boolean {
+  const pathname = path.split(/[?#]/, 1)[0].replace(/\/+$/, '');
+  return AUTH_PAGE_PATHS.includes(pathname);
+}
+
+/**
+ * Where to send the user after a successful login: the `redirect` param when
+ * it is safe and not a guest-only auth page, otherwise `/profile`.
+ */
+export function postLoginRedirectPath(redirect: string | null | undefined): string {
+  return isSafeRedirectPath(redirect) && !isAuthPagePath(redirect) ? redirect : '/profile';
+}
+
 /**
  * `/login`, carrying `redirect` along only when it is a safe path (e.g. after
  * registration, so the user lands where they started once they log in).

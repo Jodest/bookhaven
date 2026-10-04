@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RegisterView } from './register-view';
 
 const pushMock = vi.fn();
+const replaceMock = vi.fn();
+let isAuthenticatedValue = false;
 const registerMock = vi.fn();
 const resendVerificationMock = vi.fn();
 let searchParamsValue = new URLSearchParams();
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
   useSearchParams: () => searchParamsValue,
 }));
 
@@ -26,7 +28,12 @@ vi.mock('@bookhaven/api-client', async () => {
 });
 
 vi.mock('@/entities/session', () => ({
-  useAuthStore: () => ({ register: registerMock, error: null, clearError: vi.fn() }),
+  useAuthStore: () => ({
+    register: registerMock,
+    error: null,
+    clearError: vi.fn(),
+    isAuthenticated: isAuthenticatedValue,
+  }),
 }));
 
 async function register() {
@@ -45,6 +52,16 @@ describe('RegisterView', () => {
     resendVerificationMock.mockReset();
     resendVerificationMock.mockResolvedValue({ status: 'sent' });
     pushMock.mockReset();
+    replaceMock.mockReset();
+    isAuthenticatedValue = false;
+  });
+
+  it('sends an already signed-in user to /profile instead of showing the form', async () => {
+    isAuthenticatedValue = true;
+    render(<RegisterView />);
+
+    expect(screen.queryByRole('button', { name: 'Зарегистрироваться' })).not.toBeInTheDocument();
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/profile'));
   });
 
   afterEach(() => {
