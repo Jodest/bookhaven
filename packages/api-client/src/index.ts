@@ -823,6 +823,174 @@ function normalizeBookListItem(raw: RawBookListItem): Book {
   };
 }
 
+// Home page (see docs/features/home-page-content.md). All fields are
+// normalized to camelCase, nested review user/book and calendar authors
+// included.
+export interface HomeBookOfTheDay {
+  book: Book;
+  descriptionExcerpt: string | null;
+}
+
+export interface HomeCalendarAuthor {
+  id: string;
+  name: string;
+  slug: string;
+  photoUrl: string | null;
+  birthDate: string | null;
+  deathDate: string | null;
+}
+
+export interface HomeCalendarEvent {
+  type: 'birth' | 'death';
+  years: number;
+  author: HomeCalendarAuthor;
+  books: Book[];
+}
+
+export interface HomeAnniversary {
+  years: number;
+  book: Book;
+}
+
+export interface HomeCalendar {
+  /** YYYY-MM-DD of the events: today, or the nearest day with events. */
+  date: string;
+  isToday: boolean;
+  events: HomeCalendarEvent[];
+  anniversaries: HomeAnniversary[];
+}
+
+export interface HomeReview {
+  id: string;
+  excerpt: string;
+  rating: number;
+  likesCount: number;
+  createdAt: string;
+  user: { id: string; name: string | null; avatarUrl: string | null };
+  book: {
+    id: string;
+    slug: string;
+    title: string;
+    coverUrl: string | null;
+    authors: { name: string; slug: string }[];
+  };
+}
+
+export interface HomePayload {
+  /** Moscow date (YYYY-MM-DD) the payload was built for. */
+  date: string;
+  bookOfTheDay: HomeBookOfTheDay | null;
+  calendar: HomeCalendar | null;
+  newBooks: Book[];
+  topRated: Book[];
+  recentReviews: HomeReview[];
+}
+
+type RawHomeCalendarEvent = {
+  type: 'birth' | 'death';
+  years: number;
+  author: {
+    id: string;
+    name: string;
+    slug: string;
+    photo_url: string | null;
+    birth_date: string | null;
+    death_date: string | null;
+  };
+  books: RawBookListItem[];
+};
+
+type RawHomeReview = {
+  id: string;
+  excerpt: string;
+  rating: number;
+  likes_count: number;
+  created_at: string;
+  user: { id: string; name: string | null; avatar_url: string | null };
+  book: {
+    id: string;
+    slug: string;
+    title: string;
+    cover_url: string | null;
+    authors: { name: string; slug: string }[] | null;
+  };
+};
+
+type RawHomePayload = {
+  date: string;
+  book_of_the_day: { book: RawBookListItem; description_excerpt: string | null } | null;
+  calendar: {
+    date: string;
+    is_today: boolean;
+    events: RawHomeCalendarEvent[] | null;
+    anniversaries: { years: number; book: RawBookListItem }[] | null;
+  } | null;
+  new_books: RawBookListItem[] | null;
+  top_rated: RawBookListItem[] | null;
+  recent_reviews: RawHomeReview[] | null;
+};
+
+function normalizeHomeReview(raw: RawHomeReview): HomeReview {
+  return {
+    id: raw.id,
+    excerpt: raw.excerpt,
+    rating: raw.rating,
+    likesCount: raw.likes_count,
+    createdAt: raw.created_at,
+    user: {
+      id: raw.user.id,
+      name: raw.user.name ?? null,
+      avatarUrl: raw.user.avatar_url ?? null,
+    },
+    book: {
+      id: raw.book.id,
+      slug: raw.book.slug,
+      title: raw.book.title,
+      coverUrl: raw.book.cover_url ?? null,
+      authors: (raw.book.authors ?? []).map((a) => ({ name: a.name, slug: a.slug })),
+    },
+  };
+}
+
+function normalizeHomePayload(raw: RawHomePayload): HomePayload {
+  const cal = raw.calendar;
+  return {
+    date: raw.date,
+    bookOfTheDay: raw.book_of_the_day
+      ? {
+          book: normalizeBookListItem(raw.book_of_the_day.book),
+          descriptionExcerpt: raw.book_of_the_day.description_excerpt ?? null,
+        }
+      : null,
+    calendar: cal
+      ? {
+          date: cal.date,
+          isToday: cal.is_today,
+          events: (cal.events ?? []).map((e) => ({
+            type: e.type,
+            years: e.years,
+            author: {
+              id: e.author.id,
+              name: e.author.name,
+              slug: e.author.slug,
+              photoUrl: e.author.photo_url ?? null,
+              birthDate: e.author.birth_date ?? null,
+              deathDate: e.author.death_date ?? null,
+            },
+            books: (e.books ?? []).map(normalizeBookListItem),
+          })),
+          anniversaries: (cal.anniversaries ?? []).map((a) => ({
+            years: a.years,
+            book: normalizeBookListItem(a.book),
+          })),
+        }
+      : null,
+    newBooks: (raw.new_books ?? []).map(normalizeBookListItem),
+    topRated: (raw.top_rated ?? []).map(normalizeBookListItem),
+    recentReviews: (raw.recent_reviews ?? []).map(normalizeHomeReview),
+  };
+}
+
 function normalizeAuthorDetail(raw: RawAuthorDetail): Author {
   const { books, ...authorFields } = raw;
   return {
@@ -1239,6 +1407,22 @@ export const api = {
         shelf: normalizeShelf(raw.shelf),
         items: raw.items.map(normalizeBook),
       };
+    },
+  },
+  home: {
+    get: async (): Promise<HomePayload> => {
+      const raw = await fetcher<RawHomePayload>('/api/v1/home');
+      return normalizeHomePayload(raw);
+    },
+    random: async (params?: { genreId?: string; excludeId?: string }): Promise<{ book: Book | null }> => {
+      const query = new URLSearchParams();
+      if (params?.genreId) query.set('genre_id', params.genreId);
+      if (params?.excludeId) query.set('exclude_id', params.excludeId);
+      const qs = query.toString();
+      const raw = await fetcher<{ book: RawBookListItem | null }>(
+        `/api/v1/home/random${qs ? `?${qs}` : ''}`
+      );
+      return { book: raw.book ? normalizeBookListItem(raw.book) : null };
     },
   },
   readingChallenges: {

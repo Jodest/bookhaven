@@ -50,6 +50,12 @@ Similar books (epics #218 stage 1, #223 stage 2):
 1. [x] Similar books, stage 1 (content-based) — merged to `main`, see Completed
 2. [ ] Similar books, stage 2: readers also read + precompute — in progress (see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md), #217, epic #223, #224, #225) — implemented on `feat/similar-books-co-reading`, awaiting review/merge
 
+Home page content (epic #230):
+
+- [ ] Home page content (#229) — in progress (see [docs/features/home-page-content.md](features/home-page-content.md)); two PRs merged in order:
+  1. [ ] PR 1 (public): `home` backend module, `GET /home`, `GET /home/random`, book of the day, literary calendar, "Что почитать?", new/top-rated rows, fresh reviews, hero/genres rework (#231 backend, #232 frontend) — implemented on `feat/home-page-content`, awaiting review/merge
+  2. [ ] PR 2 (personal): `GET /home/me`, "Продолжить чтение", challenge card, "Вам может понравиться", want-to-read pick, `-demo-readers` extension (#233, #234)
+
 ## Proposed (awaiting prioritization)
 
 - [ ] Custom user-created shelves — user-book-shelves business analysis (OQ-001) deferred custom shelves to a future increment needing a schema migration and an exclusivity decision, still unresolved [business-analysis] (proposed 2026-09-30, #94)
