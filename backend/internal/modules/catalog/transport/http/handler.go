@@ -23,7 +23,8 @@ func NewHandler(service *service.Service) *Handler {
 	return &Handler{service: service}
 }
 
-type authorResponse struct {
+// AuthorResponse is the author shape embedded in book list items.
+type AuthorResponse struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
 	Slug      string  `json:"slug"`
@@ -31,13 +32,16 @@ type authorResponse struct {
 	BirthDate *string `json:"birth_date,omitempty"`
 }
 
-type genreResponse struct {
+// GenreResponse is the genre shape embedded in book list items.
+type GenreResponse struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Slug string `json:"slug"`
 }
 
-type bookListItemResponse struct {
+// BookListItemResponse is the shared book card shape. It is exported so
+// other modules (home) render books with the exact same JSON.
+type BookListItemResponse struct {
 	ID            string           `json:"id"`
 	Title         string           `json:"title"`
 	Slug          string           `json:"slug"`
@@ -45,8 +49,8 @@ type bookListItemResponse struct {
 	PublishedYear *int             `json:"published_year,omitempty"`
 	Rating        float64          `json:"rating"`
 	RatingsCount  int              `json:"ratings_count"`
-	Authors       []authorResponse `json:"authors"`
-	Genres        []genreResponse  `json:"genres"`
+	Authors       []AuthorResponse `json:"authors"`
+	Genres        []GenreResponse  `json:"genres"`
 }
 
 type bookResponse struct {
@@ -62,8 +66,8 @@ type bookResponse struct {
 	Rating        float64          `json:"rating"`
 	RatingsCount  int              `json:"ratings_count"`
 	ReviewsCount  int              `json:"reviews_count"`
-	Authors       []authorResponse `json:"authors"`
-	Genres        []genreResponse  `json:"genres"`
+	Authors       []AuthorResponse `json:"authors"`
+	Genres        []GenreResponse  `json:"genres"`
 }
 
 type authorDetailResponse struct {
@@ -74,22 +78,22 @@ type authorDetailResponse struct {
 	PhotoURL  *string                `json:"photo_url,omitempty"`
 	BirthDate *string                `json:"birth_date,omitempty"`
 	DeathDate *string                `json:"death_date,omitempty"`
-	Books     []bookListItemResponse `json:"books"`
+	Books     []BookListItemResponse `json:"books"`
 }
 
 type listBooksResponse struct {
-	Items []bookListItemResponse `json:"items"`
+	Items []BookListItemResponse `json:"items"`
 	Total int64                  `json:"total"`
 	Page  int                    `json:"page"`
 	Limit int                    `json:"limit"`
 }
 
 type similarBooksResponse struct {
-	Items []bookListItemResponse `json:"items"`
+	Items []BookListItemResponse `json:"items"`
 }
 
 type listAuthorsResponse struct {
-	Items []authorResponse `json:"items"`
+	Items []AuthorResponse `json:"items"`
 	Total int64            `json:"total"`
 }
 
@@ -110,12 +114,12 @@ func formatDate(t *time.Time) *string {
 	return &s
 }
 
-func toAuthorResponse(a domain.Author) authorResponse {
+func toAuthorResponse(a domain.Author) AuthorResponse {
 	id := ""
 	if a.ID != uuid.Nil {
 		id = a.ID.String()
 	}
-	return authorResponse{
+	return AuthorResponse{
 		ID:        id,
 		Name:      a.Name,
 		Slug:      a.Slug,
@@ -124,30 +128,31 @@ func toAuthorResponse(a domain.Author) authorResponse {
 	}
 }
 
-func toGenreResponse(g domain.Genre) genreResponse {
+func toGenreResponse(g domain.Genre) GenreResponse {
 	id := ""
 	if g.ID != uuid.Nil {
 		id = g.ID.String()
 	}
-	return genreResponse{
+	return GenreResponse{
 		ID:   id,
 		Name: g.Name,
 		Slug: g.Slug,
 	}
 }
 
-func toBookListItemResponse(b domain.Book) bookListItemResponse {
-	authors := make([]authorResponse, 0, len(b.Authors))
+// ToBookListItemResponse maps a catalog book to BookListItemResponse.
+func ToBookListItemResponse(b domain.Book) BookListItemResponse {
+	authors := make([]AuthorResponse, 0, len(b.Authors))
 	for _, a := range b.Authors {
 		authors = append(authors, toAuthorResponse(a))
 	}
 
-	genres := make([]genreResponse, 0, len(b.Genres))
+	genres := make([]GenreResponse, 0, len(b.Genres))
 	for _, g := range b.Genres {
 		genres = append(genres, toGenreResponse(g))
 	}
 
-	return bookListItemResponse{
+	return BookListItemResponse{
 		ID:            b.ID.String(),
 		Title:         b.Title,
 		Slug:          b.Slug,
@@ -161,12 +166,12 @@ func toBookListItemResponse(b domain.Book) bookListItemResponse {
 }
 
 func toBookResponse(b domain.Book) bookResponse {
-	authors := make([]authorResponse, 0, len(b.Authors))
+	authors := make([]AuthorResponse, 0, len(b.Authors))
 	for _, a := range b.Authors {
 		authors = append(authors, toAuthorResponse(a))
 	}
 
-	genres := make([]genreResponse, 0, len(b.Genres))
+	genres := make([]GenreResponse, 0, len(b.Genres))
 	for _, g := range b.Genres {
 		genres = append(genres, toGenreResponse(g))
 	}
@@ -190,9 +195,9 @@ func toBookResponse(b domain.Book) bookResponse {
 }
 
 func toAuthorDetailResponse(a domain.Author) authorDetailResponse {
-	books := make([]bookListItemResponse, 0, len(a.Books))
+	books := make([]BookListItemResponse, 0, len(a.Books))
 	for _, b := range a.Books {
-		books = append(books, toBookListItemResponse(b))
+		books = append(books, ToBookListItemResponse(b))
 	}
 
 	id := ""
@@ -298,9 +303,9 @@ func (h *Handler) ListBooks(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list books"})
 	}
 
-	items := make([]bookListItemResponse, 0, len(books))
+	items := make([]BookListItemResponse, 0, len(books))
 	for _, b := range books {
-		items = append(items, toBookListItemResponse(b))
+		items = append(items, ToBookListItemResponse(b))
 	}
 
 	return c.JSON(http.StatusOK, listBooksResponse{
@@ -371,9 +376,9 @@ func (h *Handler) ListSimilarBooks(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get similar books"})
 	}
 
-	items := make([]bookListItemResponse, 0, len(books))
+	items := make([]BookListItemResponse, 0, len(books))
 	for _, b := range books {
-		items = append(items, toBookListItemResponse(b))
+		items = append(items, ToBookListItemResponse(b))
 	}
 
 	return c.JSON(http.StatusOK, similarBooksResponse{Items: items})
@@ -426,7 +431,7 @@ func (h *Handler) ListAuthors(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list authors"})
 	}
 
-	items := make([]authorResponse, 0, len(authors))
+	items := make([]AuthorResponse, 0, len(authors))
 	for _, a := range authors {
 		items = append(items, toAuthorResponse(a))
 	}
@@ -452,7 +457,7 @@ func (h *Handler) ListGenres(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list genres"})
 	}
 
-	items := make([]genreResponse, 0, len(genres))
+	items := make([]GenreResponse, 0, len(genres))
 	for _, g := range genres {
 		items = append(items, toGenreResponse(g))
 	}

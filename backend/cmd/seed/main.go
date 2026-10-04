@@ -190,6 +190,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Русский писатель, автор романов «Война и мир», «Анна Каренина», «Воскресение»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL26783A-L.jpg"),
 		BirthDate: ptrTime("1828-09-09"),
+		DeathDate: ptrTime("1910-11-20"),
 	}
 	dostoevsky := catalogDomain.Author{
 		Name:      "Фёдор Достоевский",
@@ -197,6 +198,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Русский писатель, автор романов «Преступление и наказание», «Идиот», «Братья Карамазовы»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL22266A-L.jpg"),
 		BirthDate: ptrTime("1821-11-11"),
+		DeathDate: ptrTime("1881-02-09"),
 	}
 	orwell := catalogDomain.Author{
 		Name:      "Джордж Оруэлл",
@@ -204,6 +206,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Английский писатель и публицист, автор «1984» и «Скотный двор»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL31827A-L.jpg"),
 		BirthDate: ptrTime("1903-06-25"),
+		DeathDate: ptrTime("1950-01-21"),
 	}
 	bulgakov := catalogDomain.Author{
 		Name:      "Михаил Булгаков",
@@ -211,6 +214,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Русский писатель, автор романа «Мастер и Маргарита»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL22149A-L.jpg"),
 		BirthDate: ptrTime("1891-05-15"),
+		DeathDate: ptrTime("1940-03-10"),
 	}
 	gogol := catalogDomain.Author{
 		Name:      "Николай Гоголь",
@@ -218,6 +222,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Русский писатель, автор «Мёртвые души», «Ревизор»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL25067A-L.jpg"),
 		BirthDate: ptrTime("1809-04-01"),
+		DeathDate: ptrTime("1852-03-04"),
 	}
 	turgenev := catalogDomain.Author{
 		Name:      "Иван Тургенев",
@@ -225,6 +230,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Русский писатель, автор «Отцы и дети»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL27049A-L.jpg"),
 		BirthDate: ptrTime("1818-11-09"),
+		DeathDate: ptrTime("1883-09-03"),
 	}
 	chekhov := catalogDomain.Author{
 		Name:      "Антон Чехов",
@@ -232,6 +238,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Русский писатель и драматург, автор «Вишнёвый сад», «Чайка»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL22753A-L.jpg"),
 		BirthDate: ptrTime("1860-01-29"),
+		DeathDate: ptrTime("1904-07-15"),
 	}
 	lermontov := catalogDomain.Author{
 		Name:      "Михаил Лермонтов",
@@ -239,6 +246,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Русский поэт и писатель, автор «Герой нашего времени»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL21554A-L.jpg"),
 		BirthDate: ptrTime("1814-10-15"),
+		DeathDate: ptrTime("1841-07-27"),
 	}
 	pushkin := catalogDomain.Author{
 		Name:      "Александр Пушкин",
@@ -246,6 +254,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Русский поэт, автор «Евгений Онегин», «Капитанская дочка»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL23919A-L.jpg"),
 		BirthDate: ptrTime("1799-06-06"),
+		DeathDate: ptrTime("1837-02-10"),
 	}
 	huxley := catalogDomain.Author{
 		Name:      "Олдос Хаксли",
@@ -253,6 +262,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Английский писатель, автор «Дивный новый мир»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL18053A-L.jpg"),
 		BirthDate: ptrTime("1894-07-26"),
+		DeathDate: ptrTime("1963-11-22"),
 	}
 	remarque := catalogDomain.Author{
 		Name:      "Эрих Мария Ремарк",
@@ -260,6 +270,7 @@ func seedCatalog(db *gorm.DB) error {
 		Biography: ptr("Немецкий писатель, автор «На Западе без перемен»."),
 		PhotoURL:  ptr("https://covers.openlibrary.org/a/olid/OL27074A-L.jpg"),
 		BirthDate: ptrTime("1898-06-22"),
+		DeathDate: ptrTime("1970-09-25"),
 	}
 
 	// Authors are created via pointers so that FirstOrCreate fills in the
