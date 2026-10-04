@@ -1,6 +1,6 @@
 # Home Page: Book of the Day, Literary Calendar and Personal Blocks
 
-Status: implemented (PR 1 merged in #235; PR 2 implemented on `feat/home-page-personal`, awaiting review/merge)
+Status: implemented (PR 1 merged in #235/#236, PR 2 merged in #237/#238)
 
 GitHub issue: #229 "Главная страница: книга дня, литературный календарь и персональные блоки". Branch `feat/home-page-content` from `main`.
 
