@@ -1,4 +1,5 @@
 import { Book } from '@bookhaven/api-client';
+import type { Route } from 'next';
 import Link from 'next/link';
 import { BookCard } from './book-card';
 
@@ -6,7 +7,7 @@ interface BookRowProps {
   title: string;
   books: Book[];
   /** Optional "see all" link next to the heading. */
-  href?: string;
+  href?: Route;
   linkLabel?: string;
   className?: string;
 }
