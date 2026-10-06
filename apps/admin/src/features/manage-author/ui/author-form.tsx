@@ -1,7 +1,13 @@
 'use client';
 
-import { AdminAuthor, AdminAuthorInput } from '@bookhaven/api-client';
-import { Button, Input, Label } from '@bookhaven/ui';
+import { AUTHOR_STATUS_LABELS } from '@/entities/author';
+import { AdminAuthor, AdminAuthorInput, AdminAuthorStatus } from '@bookhaven/api-client';
+import { Button, Input, Label, Select } from '@bookhaven/ui';
+
+const STATUS_OPTIONS = (['pending', 'published', 'rejected'] as const).map((value) => ({
+  value,
+  label: AUTHOR_STATUS_LABELS[value],
+}));
 
 interface AuthorFormProps {
   formData: AdminAuthorInput;
@@ -50,6 +56,19 @@ export function AuthorForm({
             placeholder="Автоматически из имени"
           />
         </div>
+        {/* Status is editable on existing authors only; new authors are
+            always created published by the server. */}
+        {editing && (
+          <div className="space-y-2">
+            <Label htmlFor="status">Статус</Label>
+            <Select
+              id="status"
+              options={STATUS_OPTIONS}
+              value={formData.status ?? editing.status}
+              onChange={(e) => onFieldChange({ status: e.target.value as AdminAuthorStatus })}
+            />
+          </div>
+        )}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">

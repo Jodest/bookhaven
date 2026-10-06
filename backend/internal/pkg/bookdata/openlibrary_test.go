@@ -60,6 +60,9 @@ func TestOpenLibraryFindByISBN_ParsesFixture(t *testing.T) {
 	if len(record.Authors) != 1 || record.Authors[0] != "Leo Tolstoy" {
 		t.Errorf("Authors = %v", record.Authors)
 	}
+	if len(record.AuthorRefs) != 0 {
+		t.Errorf("AuthorRefs = %v, want empty for Open Library (names only)", record.AuthorRefs)
+	}
 	if len(record.Genres) != 2 {
 		t.Errorf("Genres = %v", record.Genres)
 	}

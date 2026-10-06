@@ -29,9 +29,18 @@ type Repository interface {
 	BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
 
 	// Authors.
-	ListAuthors(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Author, int64, error)
+	// ListAuthors lists authors of every status; status, when non-empty,
+	// restricts the result to that status.
+	ListAuthors(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Author, int64, error)
 	GetAuthorByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error)
 	GetAuthorBySlug(ctx context.Context, slug string) (*catalogDomain.Author, error)
+	// GetAuthorByExternalID returns the author with the given
+	// (external_source, external_id) identity, any status. Returns
+	// gorm.ErrRecordNotFound when none exists.
+	GetAuthorByExternalID(ctx context.Context, source, id string) (*catalogDomain.Author, error)
+	// SetAuthorExternalID sets an author's external identity without
+	// touching any other column (status included).
+	SetAuthorExternalID(ctx context.Context, id uuid.UUID, source, externalID string) error
 	CreateAuthor(ctx context.Context, author *catalogDomain.Author) error
 	UpdateAuthor(ctx context.Context, author *catalogDomain.Author) error
 	AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
@@ -43,7 +52,10 @@ type Repository interface {
 	// booksReassigned counts only the reassigned rows, not the dropped
 	// duplicates. Callers (Service.MergeAuthors) must have already verified
 	// both authors exist and are distinct; MergeAuthors itself does not
-	// check either.
+	// check either. In the same transaction, when the canonical author has
+	// no external identity and the duplicate has one, the identity moves
+	// to the canonical (after the duplicate row is deleted, so the partial
+	// unique index is never violated).
 	MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (booksReassigned int64, err error)
 
 	// Genres.
@@ -287,11 +299,15 @@ func (r *GormRepository) BookSlugExists(ctx context.Context, slug string, exclud
 	return count > 0, nil
 }
 
-func (r *GormRepository) ListAuthors(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Author, int64, error) {
+func (r *GormRepository) ListAuthors(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Author, int64, error) {
 	var authors []catalogDomain.Author
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&catalogDomain.Author{})
+
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
 
 	if search != "" {
 		query = query.Where(
@@ -340,6 +356,22 @@ func (r *GormRepository) GetAuthorBySlug(ctx context.Context, slug string) (*cat
 	return &author, nil
 }
 
+func (r *GormRepository) GetAuthorByExternalID(ctx context.Context, source, id string) (*catalogDomain.Author, error) {
+	var author catalogDomain.Author
+	if err := r.db.WithContext(ctx).
+		Where("external_source = ? AND external_id = ?", source, id).
+		First(&author).Error; err != nil {
+		return nil, err
+	}
+	return &author, nil
+}
+
+func (r *GormRepository) SetAuthorExternalID(ctx context.Context, id uuid.UUID, source, externalID string) error {
+	return r.db.WithContext(ctx).Model(&catalogDomain.Author{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{"external_source": source, "external_id": externalID}).Error
+}
+
 func (r *GormRepository) CreateAuthor(ctx context.Context, author *catalogDomain.Author) error {
 	return r.db.WithContext(ctx).Create(author).Error
 }
@@ -369,6 +401,11 @@ func (r *GormRepository) AuthorSlugExists(ctx context.Context, slug string, excl
 //     duplicateID (books already linked to both authors before the merge
 //     - now a redundant duplicate-author row).
 //  3. Delete the duplicate author row.
+//  4. If the canonical author has no external identity, copy the
+//     duplicate's (read before step 3) onto it. Done after step 3 so the
+//     (external_source, external_id) partial unique index never sees two
+//     rows with the same identity. A canonical that already has an
+//     identity keeps it; the duplicate's is dropped.
 //
 // Step 3's ON DELETE CASCADE on book_authors.author_id is not relied upon
 // for correctness - step 2 already leaves nothing to cascade - so the
@@ -376,6 +413,15 @@ func (r *GormRepository) AuthorSlugExists(ctx context.Context, slug string, excl
 func (r *GormRepository) MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (int64, error) {
 	var booksReassigned int64
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var dup struct {
+			ExternalSource *string
+			ExternalID     *string
+		}
+		if err := tx.Raw("SELECT external_source, external_id FROM authors WHERE id = ?", duplicateID).
+			Scan(&dup).Error; err != nil {
+			return err
+		}
+
 		result := tx.Exec(`
 			UPDATE book_authors
 			SET author_id = ?
@@ -391,7 +437,17 @@ func (r *GormRepository) MergeAuthors(ctx context.Context, duplicateID, canonica
 			return err
 		}
 
-		return tx.Exec("DELETE FROM authors WHERE id = ?", duplicateID).Error
+		if err := tx.Exec("DELETE FROM authors WHERE id = ?", duplicateID).Error; err != nil {
+			return err
+		}
+
+		if dup.ExternalSource == nil || dup.ExternalID == nil {
+			return nil
+		}
+		return tx.Exec(
+			"UPDATE authors SET external_source = ?, external_id = ? WHERE id = ? AND external_source IS NULL",
+			*dup.ExternalSource, *dup.ExternalID, canonicalID,
+		).Error
 	})
 	if err != nil {
 		return 0, err

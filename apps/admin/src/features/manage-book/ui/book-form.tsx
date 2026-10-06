@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { adminAuthorsApi } from '@/entities/author';
+import { adminAuthorsApi, AuthorStatusBadge, AUTHOR_STATUS_LABELS } from '@/entities/author';
 import { adminGenresApi } from '@/entities/genre';
 import { adminBooksApi } from '@/entities/book';
-import { AdminBook, AdminBookInput, ApiError, LookupRecord } from '@bookhaven/api-client';
+import { AdminAuthor, AdminBook, AdminBookInput, ApiError, LookupRecord } from '@bookhaven/api-client';
 import {
   Button,
   Input,
@@ -75,8 +75,19 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
     queryFn: () => adminGenresApi.list({ limit: 100 }),
   });
 
+  // Non-published authors are marked in the picker (a native <option> can
+  // only hold text) and listed with a status badge below it once selected.
   const authorOptions =
-    authorsData?.items.map((a) => ({ value: a.id, label: a.name })) || [];
+    authorsData?.items.map((a) => ({
+      value: a.id,
+      label: a.status && a.status !== 'published' ? `${a.name} · ${AUTHOR_STATUS_LABELS[a.status]}` : a.name,
+    })) || [];
+  const knownAuthors = new Map<string, AdminAuthor>(
+    [...(initial?.authors ?? []), ...(authorsData?.items ?? [])].map((a) => [a.id, a])
+  );
+  const selectedNonPublishedAuthors = (authorIds || [])
+    .map((id) => knownAuthors.get(id))
+    .filter((a): a is AdminAuthor => !!a && !!a.status && a.status !== 'published');
   const genreOptions =
     genresData?.items.map((g) => ({ value: g.id, label: g.name })) || [];
 
@@ -261,6 +272,16 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
             value={authorIds || []}
             onChange={(v) => setValue('author_ids', v)}
           />
+          {selectedNonPublishedAuthors.length > 0 && (
+            <ul className="space-y-1 text-xs" aria-label="Неопубликованные авторы">
+              {selectedNonPublishedAuthors.map((a) => (
+                <li key={a.id} className="flex items-center gap-2">
+                  <AuthorStatusBadge status={a.status} />
+                  <span>{a.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           {lookupResult && (lookupResult.authors?.length ?? 0) > 0 && (
             <p className="text-xs text-muted-foreground">
               Из результата поиска (выберите вручную): {lookupResult.authors.join(', ')}

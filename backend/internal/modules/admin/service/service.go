@@ -10,12 +10,13 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -28,6 +29,7 @@ var (
 	ErrTitleNotRussian       = errors.New("title must be in Russian")
 	ErrDescriptionNotRussian = errors.New("description must be in Russian")
 	ErrInvalidAuthorName     = errors.New("author name is required")
+	ErrInvalidAuthorStatus   = errors.New("author status is invalid")
 	ErrInvalidGenreName      = errors.New("genre name is required")
 	ErrInvalidSlug           = errors.New("slug is not URL safe")
 	ErrDuplicateSlug         = errors.New("slug already exists")
@@ -49,6 +51,9 @@ type Service struct {
 	// use for the lookup assistant (backend/cmd/worker, every existing
 	// admin/service test's NewService(repo) call).
 	lookupClient bookdata.Client
+	// log receives informational events (harvest tombstone skips, merge
+	// QID drops). A no-op logger unless configured via WithLogger.
+	log *zap.Logger
 }
 
 // Option configures an optional Service dependency via the functional-
@@ -67,11 +72,21 @@ func WithLookupClient(client bookdata.Client) Option {
 	}
 }
 
+// WithLogger wires the logger used for informational events. A nil logger
+// keeps the default no-op logger.
+func WithLogger(log *zap.Logger) Option {
+	return func(s *Service) {
+		if log != nil {
+			s.log = log
+		}
+	}
+}
+
 // NewService creates a new admin Service. opts configures optional
 // dependencies (see Option) and defaults to none, matching every existing
 // call site's NewService(repo) signature.
 func NewService(repo repository.Repository, opts ...Option) *Service {
-	s := &Service{repo: repo}
+	s := &Service{repo: repo, log: zap.NewNop()}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -379,12 +394,34 @@ type AuthorInput struct {
 	PhotoURL  *string
 	BirthDate *string // YYYY-MM-DD
 	DeathDate *string // YYYY-MM-DD
+	// Status is applied by UpdateAuthor only (nil = unchanged); CreateAuthor
+	// ignores it and always creates a published author.
+	Status *string
 }
 
-// CreateAuthor creates a new author.
+// authorIdentity is the creation-time status and optional external
+// identity used by the shared createAuthor helper.
+type authorIdentity struct {
+	status         string
+	externalSource *string
+	externalID     *string
+}
+
+// CreateAuthor creates a new published author (admin-curated input). Any
+// input.Status is ignored.
 func (s *Service) CreateAuthor(ctx context.Context, input AuthorInput) (*catalogDomain.Author, error) {
+	return s.createAuthor(ctx, input, authorIdentity{status: catalogDomain.AuthorStatusPublished})
+}
+
+// createAuthor is the shared create path (validation, slug derivation and
+// uniqueness) for every author creation: admin manual/import (published)
+// and harvest (pending, with a Wikidata QID).
+func (s *Service) createAuthor(ctx context.Context, input AuthorInput, identity authorIdentity) (*catalogDomain.Author, error) {
 	if err := validateAuthorInput(input); err != nil {
 		return nil, err
+	}
+	if !catalogDomain.IsValidAuthorStatus(identity.status) {
+		return nil, ErrInvalidAuthorStatus
 	}
 
 	slug := strings.TrimSpace(input.Slug)
@@ -404,11 +441,14 @@ func (s *Service) CreateAuthor(ctx context.Context, input AuthorInput) (*catalog
 	}
 
 	author := &catalogDomain.Author{
-		ID:        uuid.New(),
-		Name:      strings.TrimSpace(input.Name),
-		Slug:      slug,
-		Biography: normalizeOptionalString(input.Biography),
-		PhotoURL:  normalizeOptionalURL(input.PhotoURL),
+		ID:             uuid.New(),
+		Name:           strings.TrimSpace(input.Name),
+		Slug:           slug,
+		Biography:      normalizeOptionalString(input.Biography),
+		PhotoURL:       normalizeOptionalURL(input.PhotoURL),
+		Status:         identity.status,
+		ExternalSource: identity.externalSource,
+		ExternalID:     identity.externalID,
 	}
 	if input.BirthDate != nil {
 		t, err := parseDate(*input.BirthDate)
@@ -452,6 +492,9 @@ func (s *Service) UpdateAuthor(ctx context.Context, id uuid.UUID, input AuthorIn
 	if err := validateAuthorInput(input); err != nil {
 		return nil, err
 	}
+	if input.Status != nil && !catalogDomain.IsValidAuthorStatus(*input.Status) {
+		return nil, ErrInvalidAuthorStatus
+	}
 
 	slug := strings.TrimSpace(input.Slug)
 	if slug == "" {
@@ -475,6 +518,9 @@ func (s *Service) UpdateAuthor(ctx context.Context, id uuid.UUID, input AuthorIn
 	author.Slug = slug
 	author.Biography = normalizeOptionalString(input.Biography)
 	author.PhotoURL = normalizeOptionalURL(input.PhotoURL)
+	if input.Status != nil {
+		author.Status = *input.Status
+	}
 	if input.BirthDate != nil {
 		t, err := parseDate(*input.BirthDate)
 		if err != nil {
@@ -607,8 +653,13 @@ func validateGenreInput(input GenreInput) error {
 	return nil
 }
 
-// ListAuthors returns a paginated list of authors for admin.
-func (s *Service) ListAuthors(ctx context.Context, search string, page, limit int) ([]catalogDomain.Author, int64, error) {
+// ListAuthors returns a paginated list of authors (every status) for
+// admin. status, when non-empty, must be a valid author status
+// (ErrInvalidAuthorStatus otherwise) and filters the list to it.
+func (s *Service) ListAuthors(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Author, int64, error) {
+	if status != "" && !catalogDomain.IsValidAuthorStatus(status) {
+		return nil, 0, ErrInvalidAuthorStatus
+	}
 	if page <= 0 {
 		page = 1
 	}
@@ -619,7 +670,7 @@ func (s *Service) ListAuthors(ctx context.Context, search string, page, limit in
 		limit = 100
 	}
 	offset := (page - 1) * limit
-	return s.repo.ListAuthors(ctx, search, limit, offset)
+	return s.repo.ListAuthors(ctx, search, status, limit, offset)
 }
 
 // ListGenres returns a paginated list of genres for admin.
@@ -820,4 +871,3 @@ func parseDate(s string) (*time.Time, error) {
 	}
 	return &t, nil
 }
-

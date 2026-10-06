@@ -8,7 +8,7 @@ import { Search } from 'lucide-react';
 interface Author {
   id: string;
   name: string;
-  slug: string;
+  slug: string | null;
 }
 
 interface AuthorFilterProps {

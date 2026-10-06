@@ -23,6 +23,9 @@ type fakeAdminRepository struct {
 	books   []catalogDomain.Book
 	authors []catalogDomain.Author
 	genres  []catalogDomain.Genre
+	// bookAuthorIDs records the author IDs passed to each CreateBook call,
+	// parallel to books.
+	bookAuthorIDs [][]uuid.UUID
 }
 
 var _ adminrepository.Repository = (*fakeAdminRepository)(nil)
@@ -56,6 +59,7 @@ func (f *fakeAdminRepository) GetBookByExternalID(ctx context.Context, source, i
 
 func (f *fakeAdminRepository) CreateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error {
 	f.books = append(f.books, *book)
+	f.bookAuthorIDs = append(f.bookAuthorIDs, authorIDs)
 	return nil
 }
 
@@ -78,8 +82,39 @@ func (f *fakeAdminRepository) BookSlugExists(ctx context.Context, slug string, e
 	return false, nil
 }
 
-func (f *fakeAdminRepository) ListAuthors(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Author, int64, error) {
-	return f.authors, int64(len(f.authors)), nil
+func (f *fakeAdminRepository) ListAuthors(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Author, int64, error) {
+	if status == "" {
+		return f.authors, int64(len(f.authors)), nil
+	}
+	var out []catalogDomain.Author
+	for _, a := range f.authors {
+		if a.Status == status {
+			out = append(out, a)
+		}
+	}
+	return out, int64(len(out)), nil
+}
+
+func (f *fakeAdminRepository) GetAuthorByExternalID(ctx context.Context, source, id string) (*catalogDomain.Author, error) {
+	for i := range f.authors {
+		a := f.authors[i]
+		if a.ExternalSource != nil && *a.ExternalSource == source && a.ExternalID != nil && *a.ExternalID == id {
+			return &f.authors[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeAdminRepository) SetAuthorExternalID(ctx context.Context, id uuid.UUID, source, externalID string) error {
+	for i := range f.authors {
+		if f.authors[i].ID == id {
+			src, ext := source, externalID
+			f.authors[i].ExternalSource = &src
+			f.authors[i].ExternalID = &ext
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeAdminRepository) GetAuthorByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error) {
@@ -918,5 +953,88 @@ func TestHandleTask_WikidataQueryErrorIsRetryable(t *testing.T) {
 	}
 	if errors.Is(err, asynq.SkipRetry) {
 		t.Error("expected a retryable error (not wrapping asynq.SkipRetry) for a source-unavailable failure")
+	}
+}
+
+func TestProcessRecord_UsesAuthorRefsQIDs(t *testing.T) {
+	admin, repo := newTestAdmin()
+	ctx := context.Background()
+
+	renamedID := uuid.New()
+	repo.authors = append(repo.authors, catalogDomain.Author{
+		ID: renamedID, Name: "Lev Tolstoi", Slug: "lev-tolstoi", Status: catalogDomain.AuthorStatusPublished,
+		ExternalSource: strPtr("wikidata"), ExternalID: strPtr("Q7243"),
+	})
+
+	rec := bookdata.ExternalBookRecord{
+		Title:      "Война и мир",
+		Authors:    []string{"Leo Tolstoy", "New Author"},
+		AuthorRefs: []bookdata.ExternalAuthor{{Name: "Leo Tolstoy", QID: "Q7243"}, {Name: "New Author", QID: "Q99"}},
+		Language:   "ru",
+		SourceName: "wikidata",
+		SourceID:   "Q170583",
+	}
+
+	if _, err := processRecord(ctx, rec, nil, admin); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repo.authors) != 2 {
+		t.Fatalf("expected QID match + 1 new author, got %d authors", len(repo.authors))
+	}
+	created := repo.authors[1]
+	if created.Status != catalogDomain.AuthorStatusPending || created.ExternalID == nil || *created.ExternalID != "Q99" {
+		t.Fatalf("expected new pending author with Q99, got %+v", created)
+	}
+	ids := repo.bookAuthorIDs[0]
+	if len(ids) != 2 || ids[0] != renamedID {
+		t.Fatalf("expected book linked to QID-matched author first, got %v", ids)
+	}
+}
+
+func TestProcessRecord_FallsBackToAuthorNamesWithoutRefs(t *testing.T) {
+	admin, repo := newTestAdmin()
+	rec := bookdata.ExternalBookRecord{
+		Title:      "Война и мир",
+		Authors:    []string{"Leo Tolstoy"},
+		Language:   "ru",
+		SourceName: "wikidata",
+		SourceID:   "Q170583",
+	}
+
+	if _, err := processRecord(context.Background(), rec, nil, admin); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repo.authors) != 1 || repo.authors[0].Status != catalogDomain.AuthorStatusPending || repo.authors[0].ExternalID != nil {
+		t.Fatalf("expected one QID-less pending author, got %+v", repo.authors)
+	}
+}
+
+func TestProcessRecord_AllAuthorsRejectedStillCreatesHiddenBook(t *testing.T) {
+	admin, repo := newTestAdmin()
+	repo.authors = append(repo.authors, catalogDomain.Author{
+		ID: uuid.New(), Name: "Junk", Slug: "junk", Status: catalogDomain.AuthorStatusRejected,
+		ExternalSource: strPtr("wikidata"), ExternalID: strPtr("Q1"),
+	})
+	rec := bookdata.ExternalBookRecord{
+		Title:      "Война и мир",
+		Authors:    []string{"Some Label"},
+		AuthorRefs: []bookdata.ExternalAuthor{{Name: "Some Label", QID: "Q1"}},
+		Language:   "ru",
+		SourceName: "wikidata",
+		SourceID:   "Q170583",
+	}
+
+	outcome, err := processRecord(context.Background(), rec, nil, admin)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome != outcomeCreated || len(repo.books) != 1 || !repo.books[0].IsHidden {
+		t.Fatalf("expected one hidden book created, outcome=%v books=%+v", outcome, repo.books)
+	}
+	if len(repo.authors) != 1 {
+		t.Fatalf("expected no new author, got %d", len(repo.authors))
+	}
+	if len(repo.bookAuthorIDs[0]) != 0 {
+		t.Fatalf("expected no book_authors link to the rejected author, got %v", repo.bookAuthorIDs[0])
 	}
 }

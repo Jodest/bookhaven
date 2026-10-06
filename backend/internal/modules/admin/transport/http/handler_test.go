@@ -46,6 +46,9 @@ type fakeAdminService struct {
 	mergeAuthorsBooksReturned int64
 	lastMergeDuplicateID      uuid.UUID
 	lastMergeCanonicalID      uuid.UUID
+
+	lastAuthorStatusFilter string
+	lastAuthorInput        *adminService.AuthorInput
 }
 
 func (f *fakeAdminService) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
@@ -103,7 +106,8 @@ func (f *fakeAdminService) UpdateBook(ctx context.Context, id uuid.UUID, input a
 	return nil, adminService.ErrBookNotFound
 }
 
-func (f *fakeAdminService) ListAuthors(ctx context.Context, search string, page, limit int) ([]catalogDomain.Author, int64, error) {
+func (f *fakeAdminService) ListAuthors(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Author, int64, error) {
+	f.lastAuthorStatusFilter = status
 	return f.authors, int64(len(f.authors)), nil
 }
 
@@ -126,9 +130,16 @@ func (f *fakeAdminService) UpdateAuthor(ctx context.Context, id uuid.UUID, input
 	if input.DeathDate != nil && *input.DeathDate == "not-a-date" {
 		return nil, adminService.ErrInvalidDate
 	}
+	f.lastAuthorInput = &input
+	if input.Status != nil && !catalogDomain.IsValidAuthorStatus(*input.Status) {
+		return nil, adminService.ErrInvalidAuthorStatus
+	}
 	for i := range f.authors {
 		if f.authors[i].ID == id {
 			f.authors[i].Name = input.Name
+			if input.Status != nil {
+				f.authors[i].Status = *input.Status
+			}
 			return &f.authors[i], nil
 		}
 	}
@@ -809,5 +820,120 @@ func TestLookupBook_SourceUnavailable(t *testing.T) {
 	}
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", rec.Code)
+	}
+}
+
+func TestListAuthors_StatusInResponseAndFilterPassedThrough(t *testing.T) {
+	h, svc := setupHandler()
+	qid := "Q7243"
+	src := "wikidata"
+	svc.authors = []catalogDomain.Author{{ID: uuid.New(), Name: "Лев Толстой", Slug: "lev-tolstoy", Status: catalogDomain.AuthorStatusPending, ExternalSource: &src, ExternalID: &qid}}
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/authors?status=pending", nil)
+	setAdminUser(c)
+
+	if err := h.ListAuthors(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if svc.lastAuthorStatusFilter != "pending" {
+		t.Fatalf("expected status filter pending, got %q", svc.lastAuthorStatusFilter)
+	}
+	var body struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	item := body.Items[0]
+	if item["status"] != "pending" || item["external_source"] != "wikidata" || item["external_id"] != "Q7243" {
+		t.Fatalf("unexpected author item: %+v", item)
+	}
+}
+
+func TestListAuthors_NullExternalIDsSerializeAsNull(t *testing.T) {
+	h, svc := setupHandler()
+	svc.authors = []catalogDomain.Author{{ID: uuid.New(), Name: "A", Slug: "a", Status: catalogDomain.AuthorStatusPublished}}
+
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/authors", nil)
+	setAdminUser(c)
+	if err := h.ListAuthors(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(rec.Body.String(), `"external_source":null`) || !strings.Contains(rec.Body.String(), `"external_id":null`) {
+		t.Fatalf("expected explicit null external ids, got %s", rec.Body.String())
+	}
+	if svc.lastAuthorStatusFilter != "" {
+		t.Fatalf("expected no status filter, got %q", svc.lastAuthorStatusFilter)
+	}
+}
+
+func TestListAuthors_InvalidStatus_BadRequest(t *testing.T) {
+	h, _ := setupHandler()
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/authors?status=bogus", nil)
+	setAdminUser(c)
+
+	if err := h.ListAuthors(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateAuthor_Status(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantCode   int
+		wantStatus string
+		wantNil    bool
+	}{
+		{name: "valid status", body: `{"name":"A","status":"rejected"}`, wantCode: http.StatusOK, wantStatus: "rejected"},
+		{name: "omitted status unchanged", body: `{"name":"A"}`, wantCode: http.StatusOK, wantStatus: "pending", wantNil: true},
+		{name: "invalid status", body: `{"name":"A","status":"deleted"}`, wantCode: http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, svc := setupHandler()
+			id := uuid.New()
+			svc.authors = []catalogDomain.Author{{ID: id, Name: "A", Slug: "a", Status: catalogDomain.AuthorStatusPending}}
+
+			c, rec := newContext(http.MethodPatch, "/api/v1/admin/authors/"+id.String(), []byte(tt.body))
+			c.SetPath("/api/v1/admin/authors/:id")
+			c.SetParamNames("id")
+			c.SetParamValues(id.String())
+			setAdminUser(c)
+
+			if err := h.UpdateAuthor(c); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if rec.Code != tt.wantCode {
+				t.Fatalf("expected %d, got %d: %s", tt.wantCode, rec.Code, rec.Body.String())
+			}
+			if tt.wantNil && svc.lastAuthorInput.Status != nil {
+				t.Fatalf("expected nil status input, got %q", *svc.lastAuthorInput.Status)
+			}
+			if tt.wantCode != http.StatusOK {
+				return
+			}
+			var body authorResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("failed to decode: %v", err)
+			}
+			if body.Status != tt.wantStatus {
+				t.Fatalf("expected status %q, got %q", tt.wantStatus, body.Status)
+			}
+		})
+	}
+}
+
+func TestGetBook_EmbeddedAuthorsIncludeStatus(t *testing.T) {
+	a := catalogDomain.Author{ID: uuid.New(), Name: "A", Slug: "a", Status: catalogDomain.AuthorStatusPending}
+	resp := toBookResponse(catalogDomain.Book{ID: uuid.New(), Title: "T", Authors: []catalogDomain.Author{a}})
+	if len(resp.Authors) != 1 || resp.Authors[0].Status != "pending" {
+		t.Fatalf("expected embedded author status pending, got %+v", resp.Authors)
 	}
 }
