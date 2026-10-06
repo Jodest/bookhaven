@@ -26,8 +26,8 @@ type fakeMergeAuthorsRepository struct {
 
 var _ repository.Repository = (*fakeMergeAuthorsRepository)(nil)
 
-func (f *fakeMergeAuthorsRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
-	return int64(len(f.books)), 0, int64(len(f.authors)), 0, 0, 0, nil
+func (f *fakeMergeAuthorsRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
+	return repository.DashboardStats{Books: int64(len(f.books)), HiddenBooks: 0, Authors: int64(len(f.authors)), Genres: 0}, nil
 }
 
 func (f *fakeMergeAuthorsRepository) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -423,4 +423,20 @@ func TestMergeAuthors(t *testing.T) {
 			t.Fatalf("expected canonical to keep Q2, got result=%v repo=%v", *result.ExternalID, *repo.authors[0].ExternalID)
 		}
 	})
+}
+
+func (f *fakeMergeAuthorsRepository) ListAuthorsForModeration(ctx context.Context, filter repository.AuthorModerationFilter) ([]repository.AuthorModerationRow, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeMergeAuthorsRepository) ListAuthorSampleBooks(ctx context.Context, authorIDs []uuid.UUID) (map[uuid.UUID][]repository.SampleBook, error) {
+	return map[uuid.UUID][]repository.SampleBook{}, nil
+}
+
+func (f *fakeMergeAuthorsRepository) FindAuthorsBySurnames(ctx context.Context, surnames []string, excludeIDs []uuid.UUID) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
+func (f *fakeMergeAuthorsRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	return false, nil
 }

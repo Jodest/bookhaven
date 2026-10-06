@@ -11,6 +11,9 @@ interface MergeAuthorDialogProps {
   // duplicate/source author that will be deleted (docs/features/
   // duplicate-author-merge.md's UX section). Read-only in this dialog.
   duplicate: AdminAuthor;
+  // Optional preselected canonical author (e.g. a similar-name hint from
+  // the author moderation queue). Still changeable via "Изменить".
+  initialCanonical?: Pick<AdminAuthor, 'id' | 'name'>;
   onClose: () => void;
   // Called once the merge API call succeeds, with the number of books
   // reassigned - the caller (AuthorsView) uses this to show a success
@@ -24,10 +27,17 @@ interface MergeAuthorDialogProps {
 // multi-select already use). The merge is irreversible, so the confirm
 // button stays disabled until a distinct canonical author is selected and
 // its label names the duplicate author being deleted.
-export function MergeAuthorDialog({ duplicate, onClose, onMerged }: MergeAuthorDialogProps) {
+export function MergeAuthorDialog({
+  duplicate,
+  initialCanonical,
+  onClose,
+  onMerged,
+}: MergeAuthorDialogProps) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [canonical, setCanonical] = useState<AdminAuthor | null>(null);
+  const [canonical, setCanonical] = useState<Pick<AdminAuthor, 'id' | 'name'> | null>(
+    initialCanonical ?? null
+  );
 
   const trimmedSearch = search.trim();
 
@@ -50,6 +60,7 @@ export function MergeAuthorDialog({ duplicate, onClose, onMerged }: MergeAuthorD
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'authors'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
       onMerged(result.books_reassigned);
     },
   });
