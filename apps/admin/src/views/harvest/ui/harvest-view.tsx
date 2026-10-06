@@ -266,9 +266,14 @@ export function HarvestView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Харвестер</h1>
-        <Link href={'/books?visibility=pending_review' as any}>
-          <Button variant="outline">К очереди на проверку</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href={'/books?visibility=pending_review' as any}>
+            <Button variant="outline">К очереди на проверку</Button>
+          </Link>
+          <Link href={'/authors/moderation' as any}>
+            <Button variant="outline">К авторам на модерации</Button>
+          </Link>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-xl space-y-4 rounded-lg border p-6">
@@ -374,11 +379,18 @@ export function HarvestView() {
                       </TableCell>
                       <TableCell className="space-x-2">
                         {job.state === 'completed' && job.result && job.result.created > 0 && (
-                          <Link href={'/books?visibility=pending_review' as any}>
-                            <Button variant="outline" size="sm">
-                              К очереди на проверку
-                            </Button>
-                          </Link>
+                          <>
+                            <Link href={'/books?visibility=pending_review' as any}>
+                              <Button variant="outline" size="sm">
+                                К очереди на проверку
+                              </Button>
+                            </Link>
+                            <Link href={'/authors/moderation' as any}>
+                              <Button variant="outline" size="sm">
+                                К авторам на модерации
+                              </Button>
+                            </Link>
+                          </>
                         )}
                         {hasReport && (
                           <Button variant="outline" size="sm" onClick={() => toggleJobExpanded(job.id)}>

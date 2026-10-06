@@ -128,4 +128,54 @@ describe('MergeAuthorDialog', () => {
     );
     expect(onMerged).not.toHaveBeenCalled();
   });
+
+  it('preselects initialCanonical, enables confirm, and still allows changing it', async () => {
+    mergeMock.mockResolvedValue({ author: canonical, books_reassigned: 2 });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const onMerged = vi.fn();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MergeAuthorDialog
+          duplicate={duplicate as any}
+          initialCanonical={{ id: canonical.id, name: canonical.name }}
+          onClose={vi.fn()}
+          onMerged={onMerged}
+        />
+      </QueryClientProvider>
+    );
+
+    const confirmButton = screen.getByRole('button', {
+      name: /Слить и удалить «Л\. Н\. Толстой»/,
+    });
+    expect(confirmButton).toBeEnabled();
+    expect(screen.getByText('Лев Толстой')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Поиск канонического автора')).not.toBeInTheDocument();
+
+    fireEvent.click(confirmButton);
+    await waitFor(() => expect(onMerged).toHaveBeenCalledWith(2));
+    expect(mergeMock).toHaveBeenCalledWith('dup-1', 'canon-1');
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'authors'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'dashboard'] });
+  });
+
+  it('lets the admin replace a preselected canonical author', () => {
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MergeAuthorDialog
+          duplicate={duplicate as any}
+          initialCanonical={{ id: canonical.id, name: canonical.name }}
+          onClose={vi.fn()}
+          onMerged={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить' }));
+    expect(screen.getByLabelText('Поиск канонического автора')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Слить и удалить/ })).toBeDisabled();
+  });
 });

@@ -15,7 +15,7 @@ import (
 // Repository defines admin-only catalog and moderation operations.
 type Repository interface {
 	// Dashboard counts.
-	DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error)
+	DashboardCounts(ctx context.Context) (DashboardStats, error)
 
 	// Books (includes hidden records).
 	ListBooks(ctx context.Context, filter BookFilter) ([]catalogDomain.Book, int64, error)
@@ -58,6 +58,22 @@ type Repository interface {
 	// unique index is never violated).
 	MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (booksReassigned int64, err error)
 
+	// Author moderation queue (docs/features/author-moderation-queue.md).
+	// ListAuthorsForModeration lists authors matching filter, newest first,
+	// each with its linked-books counts.
+	ListAuthorsForModeration(ctx context.Context, filter AuthorModerationFilter) ([]AuthorModerationRow, int64, error)
+	// ListAuthorSampleBooks returns up to sampleBooksPerAuthor linked books
+	// (ordered by title) per author, for all authorIDs in one query.
+	ListAuthorSampleBooks(ctx context.Context, authorIDs []uuid.UUID) (map[uuid.UUID][]SampleBook, error)
+	// FindAuthorsBySurnames is a coarse SQL prefilter for similar-name
+	// hints: non-rejected authors (excluding excludeIDs) whose lowercased
+	// name equals a surname, ends with " <surname>" or starts with
+	// "<surname>," / "<surname> ,". Callers re-check every result.
+	FindAuthorsBySurnames(ctx context.Context, surnames []string, excludeIDs []uuid.UUID) ([]catalogDomain.Author, error)
+	// SetAuthorStatus updates only status (and updated_at) of one author.
+	// found is false when no author has that id.
+	SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (found bool, err error)
+
 	// Genres.
 	ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error)
 	GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error)
@@ -97,6 +113,48 @@ type BookFilter struct {
 	Offset int
 }
 
+// DashboardStats holds the admin dashboard counters.
+type DashboardStats struct {
+	Books               int64
+	HiddenBooks         int64
+	Authors             int64
+	Genres              int64
+	PendingReviews      int64
+	PendingImportReview int64
+	PendingAuthors      int64
+}
+
+// AuthorModerationFilter defines filtering options for the author
+// moderation queue. Status is a valid author status or "" (any); QID is ""
+// (any), "with" or "without"; Books is "" (any) or "none". Search uses the
+// same full-text condition as ListAuthors.
+type AuthorModerationFilter struct {
+	Status string
+	QID    string
+	Books  string
+	Search string
+	Limit  int
+	Offset int
+}
+
+// AuthorModerationRow is one author of the moderation queue with its
+// linked-books counts (books_visible = linked books with is_hidden = false).
+type AuthorModerationRow struct {
+	Author       catalogDomain.Author
+	BooksTotal   int64
+	BooksVisible int64
+}
+
+// SampleBook is a short linked-book reference shown in the moderation queue.
+type SampleBook struct {
+	ID       uuid.UUID
+	Title    string
+	IsHidden bool
+}
+
+// sampleBooksPerAuthor bounds ListAuthorSampleBooks per author.
+const sampleBooksPerAuthor = 3
+
 // ReviewFilter defines filtering options for review moderation.
 type ReviewFilter struct {
 	Visibility string // "", "visible", "hidden"
@@ -114,29 +172,33 @@ func NewGormRepository(db *gorm.DB) Repository {
 	return &GormRepository{db: db}
 }
 
-func (r *GormRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
+func (r *GormRepository) DashboardCounts(ctx context.Context) (DashboardStats, error) {
 	db := r.db.WithContext(ctx)
+	var st DashboardStats
 
-	if err = db.Model(&catalogDomain.Book{}).Count(&books).Error; err != nil {
-		return 0, 0, 0, 0, 0, 0, err
+	if err := db.Model(&catalogDomain.Book{}).Count(&st.Books).Error; err != nil {
+		return DashboardStats{}, err
 	}
-	if err = db.Model(&catalogDomain.Book{}).Where("is_hidden = ?", true).Count(&hiddenBooks).Error; err != nil {
-		return 0, 0, 0, 0, 0, 0, err
+	if err := db.Model(&catalogDomain.Book{}).Where("is_hidden = ?", true).Count(&st.HiddenBooks).Error; err != nil {
+		return DashboardStats{}, err
 	}
-	if err = db.Model(&catalogDomain.Author{}).Count(&authors).Error; err != nil {
-		return 0, 0, 0, 0, 0, 0, err
+	if err := db.Model(&catalogDomain.Author{}).Count(&st.Authors).Error; err != nil {
+		return DashboardStats{}, err
 	}
-	if err = db.Model(&catalogDomain.Genre{}).Count(&genres).Error; err != nil {
-		return 0, 0, 0, 0, 0, 0, err
+	if err := db.Model(&catalogDomain.Genre{}).Count(&st.Genres).Error; err != nil {
+		return DashboardStats{}, err
 	}
-	if err = db.Model(&reviewsDomain.Review{}).Where("is_hidden = ?", true).Count(&pendingReviews).Error; err != nil {
-		return 0, 0, 0, 0, 0, 0, err
+	if err := db.Model(&reviewsDomain.Review{}).Where("is_hidden = ?", true).Count(&st.PendingReviews).Error; err != nil {
+		return DashboardStats{}, err
 	}
-	if err = db.Model(&catalogDomain.Book{}).Where("is_hidden = ? AND external_source IS NOT NULL", true).Count(&pendingImportReview).Error; err != nil {
-		return 0, 0, 0, 0, 0, 0, err
+	if err := db.Model(&catalogDomain.Book{}).Where("is_hidden = ? AND external_source IS NOT NULL", true).Count(&st.PendingImportReview).Error; err != nil {
+		return DashboardStats{}, err
+	}
+	if err := db.Model(&catalogDomain.Author{}).Where("status = ?", catalogDomain.AuthorStatusPending).Count(&st.PendingAuthors).Error; err != nil {
+		return DashboardStats{}, err
 	}
 
-	return books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview, nil
+	return st, nil
 }
 
 func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]catalogDomain.Book, int64, error) {

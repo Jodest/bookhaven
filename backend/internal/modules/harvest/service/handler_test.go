@@ -30,8 +30,8 @@ type fakeAdminRepository struct {
 
 var _ adminrepository.Repository = (*fakeAdminRepository)(nil)
 
-func (f *fakeAdminRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
-	return int64(len(f.books)), 0, int64(len(f.authors)), int64(len(f.genres)), 0, 0, nil
+func (f *fakeAdminRepository) DashboardCounts(ctx context.Context) (adminrepository.DashboardStats, error) {
+	return adminrepository.DashboardStats{Books: int64(len(f.books)), HiddenBooks: 0, Authors: int64(len(f.authors)), Genres: int64(len(f.genres))}, nil
 }
 
 func (f *fakeAdminRepository) ListBooks(ctx context.Context, filter adminrepository.BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -1037,4 +1037,20 @@ func TestProcessRecord_AllAuthorsRejectedStillCreatesHiddenBook(t *testing.T) {
 	if len(repo.bookAuthorIDs[0]) != 0 {
 		t.Fatalf("expected no book_authors link to the rejected author, got %v", repo.bookAuthorIDs[0])
 	}
+}
+
+func (f *fakeAdminRepository) ListAuthorsForModeration(ctx context.Context, filter adminrepository.AuthorModerationFilter) ([]adminrepository.AuthorModerationRow, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeAdminRepository) ListAuthorSampleBooks(ctx context.Context, authorIDs []uuid.UUID) (map[uuid.UUID][]adminrepository.SampleBook, error) {
+	return map[uuid.UUID][]adminrepository.SampleBook{}, nil
+}
+
+func (f *fakeAdminRepository) FindAuthorsBySurnames(ctx context.Context, surnames []string, excludeIDs []uuid.UUID) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
+func (f *fakeAdminRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	return false, nil
 }

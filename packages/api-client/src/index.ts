@@ -268,6 +268,8 @@ export interface AdminDashboard {
   genres: number;
   pending_reviews: number;
   pending_import_review: number;
+  /** Authors with status 'pending' (the author moderation queue). */
+  pending_authors: number;
 }
 
 export interface AdminBook {
@@ -321,6 +323,55 @@ export interface AdminGenre {
 export interface AdminAuthorMergeResult {
   author: AdminAuthor;
   books_reassigned: number;
+}
+
+// Author moderation queue (GET /api/v1/admin/authors/moderation).
+export interface AdminAuthorSampleBook {
+  id: string;
+  title: string;
+  is_hidden: boolean;
+}
+
+/** Display-only "possibly the same person" suggestion. */
+export interface AdminAuthorHint {
+  author: AdminAuthor;
+  match: 'exact_name' | 'surname_initial' | 'surname';
+}
+
+export interface AdminAuthorQueueItem {
+  author: AdminAuthor;
+  created_at: string;
+  /** All linked books. */
+  books_total: number;
+  /** Linked books with is_hidden = false. */
+  books_visible: number;
+  /** Up to 3 linked books, ordered by title. */
+  sample_books: AdminAuthorSampleBook[];
+  similar: AdminAuthorHint[];
+}
+
+export interface AdminAuthorQueueParams {
+  /** Defaults to 'pending' on the server. */
+  status?: AdminAuthorStatus;
+  qid?: 'with' | 'without';
+  books?: 'none';
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface AdminAuthorBulkStatusRowError {
+  author_id: string;
+  name: string;
+  message: string;
+}
+
+// Response of POST /api/v1/admin/authors/bulk-status (HTTP 200 regardless
+// of per-row outcomes).
+export interface AdminAuthorBulkStatusReport {
+  processed: number;
+  updated: number;
+  errors: AdminAuthorBulkStatusRowError[];
 }
 
 export interface AdminReview {
@@ -1691,6 +1742,23 @@ export const api = {
         fetcher<AdminAuthorMergeResult>(`/api/v1/admin/authors/${duplicateId}/merge`, {
           method: 'POST',
           body: JSON.stringify({ canonical_id: canonicalId }),
+        }),
+      moderationQueue: (params?: AdminAuthorQueueParams) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        if (params?.status) queryParams.status = params.status;
+        if (params?.qid) queryParams.qid = params.qid;
+        if (params?.books) queryParams.books = params.books;
+        if (params?.search) queryParams.search = params.search;
+        return fetcher<PaginatedResponse<AdminAuthorQueueItem>>(
+          `/api/v1/admin/authors/moderation?${new URLSearchParams(queryParams)}`
+        );
+      },
+      bulkStatus: (ids: string[], status: AdminAuthorStatus) =>
+        fetcher<AdminAuthorBulkStatusReport>('/api/v1/admin/authors/bulk-status', {
+          method: 'POST',
+          body: JSON.stringify({ ids, status }),
         }),
     },
     genres: {

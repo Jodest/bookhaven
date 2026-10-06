@@ -20,7 +20,7 @@ import (
 
 // Service defines the admin operations used by the handler.
 type Service interface {
-	DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error)
+	DashboardCounts(ctx context.Context) (repository.DashboardStats, error)
 	ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error)
 	GetBook(ctx context.Context, id uuid.UUID) (*catalogDomain.Book, error)
 	CreateBook(ctx context.Context, input adminService.BookInput) (*catalogDomain.Book, error)
@@ -29,6 +29,8 @@ type Service interface {
 	CreateAuthor(ctx context.Context, input adminService.AuthorInput) (*catalogDomain.Author, error)
 	UpdateAuthor(ctx context.Context, id uuid.UUID, input adminService.AuthorInput) (*catalogDomain.Author, error)
 	MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (*catalogDomain.Author, int64, error)
+	ListAuthorModerationQueue(ctx context.Context, filter repository.AuthorModerationFilter, page, limit int) ([]adminService.AuthorQueueItem, int64, error)
+	BulkSetAuthorStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.BulkStatusReport, error)
 	ListGenres(ctx context.Context, search string, page, limit int) ([]catalogDomain.Genre, int64, error)
 	CreateGenre(ctx context.Context, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error)
@@ -121,6 +123,40 @@ type dashboardResponse struct {
 	Genres              int64 `json:"genres"`
 	PendingReviews      int64 `json:"pending_reviews"`
 	PendingImportReview int64 `json:"pending_import_review"`
+	PendingAuthors      int64 `json:"pending_authors"`
+}
+
+type authorSampleBookResponse struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	IsHidden bool   `json:"is_hidden"`
+}
+
+type authorHintResponse struct {
+	Author authorResponse `json:"author"`
+	// Match is exact_name | surname_initial | surname.
+	Match string `json:"match"`
+}
+
+type authorQueueItemResponse struct {
+	Author       authorResponse             `json:"author"`
+	CreatedAt    time.Time                  `json:"created_at"`
+	BooksTotal   int64                      `json:"books_total"`
+	BooksVisible int64                      `json:"books_visible"`
+	SampleBooks  []authorSampleBookResponse `json:"sample_books"`
+	Similar      []authorHintResponse       `json:"similar"`
+}
+
+type listAuthorQueueResponse struct {
+	Items []authorQueueItemResponse `json:"items"`
+	Total int64                     `json:"total"`
+	Page  int                       `json:"page"`
+	Limit int                       `json:"limit"`
+}
+
+type bulkAuthorStatusRequest struct {
+	IDs    []string `json:"ids"`
+	Status string   `json:"status"`
 }
 
 type createUpdateBookRequest struct {
@@ -388,18 +424,19 @@ func parsePagination(c echo.Context) (page, limit int) {
 func (h *Handler) Dashboard(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview, err := h.service.DashboardCounts(ctx)
+	stats, err := h.service.DashboardCounts(ctx)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to load dashboard"})
 	}
 
 	return c.JSON(http.StatusOK, dashboardResponse{
-		Books:               books,
-		HiddenBooks:         hiddenBooks,
-		Authors:             authors,
-		Genres:              genres,
-		PendingReviews:      pendingReviews,
-		PendingImportReview: pendingImportReview,
+		Books:               stats.Books,
+		HiddenBooks:         stats.HiddenBooks,
+		Authors:             stats.Authors,
+		Genres:              stats.Genres,
+		PendingReviews:      stats.PendingReviews,
+		PendingImportReview: stats.PendingImportReview,
+		PendingAuthors:      stats.PendingAuthors,
 	})
 }
 
@@ -831,6 +868,125 @@ func (h *Handler) MergeAuthors(c echo.Context) error {
 		Author:          toAuthorResponse(*author),
 		BooksReassigned: booksReassigned,
 	})
+}
+
+// ListAuthorModerationQueue godoc
+// @Summary Очередь модерации авторов (админ)
+// @Description Требуется роль admin. Авторы с заданным статусом (по умолчанию pending), новые сверху, с количеством связанных книг, до 3 примеров книг и подсказками «возможно, тот же человек» (только для отображения).
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param status query string false "Статус: pending (по умолчанию) / published / rejected"
+// @Param qid query string false "Wikidata QID: with / without"
+// @Param books query string false "Книги: none — без связанных книг"
+// @Param search query string false "Поиск"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 50"
+// @Success 200 {object} listAuthorQueueResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/authors/moderation [get]
+func (h *Handler) ListAuthorModerationQueue(c echo.Context) error {
+	ctx := c.Request().Context()
+	page, limit := parsePagination(c)
+	if limit > 50 {
+		limit = 50
+	}
+
+	filter := repository.AuthorModerationFilter{
+		Status: c.QueryParam("status"),
+		QID:    c.QueryParam("qid"),
+		Books:  c.QueryParam("books"),
+		Search: c.QueryParam("search"),
+	}
+
+	queue, total, err := h.service.ListAuthorModerationQueue(ctx, filter, page, limit)
+	if err != nil {
+		if errors.Is(err, adminService.ErrInvalidModerationFilter) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list author moderation queue"})
+	}
+
+	items := make([]authorQueueItemResponse, 0, len(queue))
+	for _, q := range queue {
+		samples := make([]authorSampleBookResponse, 0, len(q.SampleBooks))
+		for _, b := range q.SampleBooks {
+			samples = append(samples, authorSampleBookResponse{ID: b.ID.String(), Title: b.Title, IsHidden: b.IsHidden})
+		}
+		similar := make([]authorHintResponse, 0, len(q.Similar))
+		for _, hint := range q.Similar {
+			similar = append(similar, authorHintResponse{Author: toAuthorResponse(hint.Author), Match: hint.Match})
+		}
+		items = append(items, authorQueueItemResponse{
+			Author:       toAuthorResponse(q.Author),
+			CreatedAt:    q.Author.CreatedAt,
+			BooksTotal:   q.BooksTotal,
+			BooksVisible: q.BooksVisible,
+			SampleBooks:  samples,
+			Similar:      similar,
+		})
+	}
+
+	return c.JSON(http.StatusOK, listAuthorQueueResponse{
+		Items: items,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	})
+}
+
+// BulkSetAuthorStatus godoc
+// @Summary Сменить статус выбранных авторов (админ)
+// @Description Требуется роль admin и Bearer-токен. Меняет только status (и updated_at) у каждого автора из ids (не более 100, дубликаты схлопываются); имя, slug, биография, QID и связи с книгами не меняются. Каждый id обрабатывается независимо: неизвестный id — построчная ошибка, остальные применяются. HTTP 200 независимо от построчных исходов.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body bulkAuthorStatusRequest true "ID авторов и новый статус (pending / published / rejected)"
+// @Success 200 {object} adminService.BulkStatusReport
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/authors/bulk-status [post]
+func (h *Handler) BulkSetAuthorStatus(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req bulkAuthorStatusRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if !catalogDomain.IsValidAuthorStatus(req.Status) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": adminService.ErrInvalidAuthorStatus.Error()})
+	}
+	if len(req.IDs) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ids must not be empty"})
+	}
+
+	ids := make([]uuid.UUID, 0, len(req.IDs))
+	for _, raw := range req.IDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid author id: %q", raw)})
+		}
+		ids = append(ids, id)
+	}
+
+	report, err := h.service.BulkSetAuthorStatus(ctx, ids, req.Status)
+	if err != nil {
+		switch {
+		case errors.Is(err, adminService.ErrInvalidAuthorStatus),
+			errors.Is(err, adminService.ErrBulkStatusTooLarge):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update author statuses"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, report)
 }
 
 // ListGenres godoc

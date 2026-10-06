@@ -33,8 +33,8 @@ type fakeBulkPublishRepository struct {
 
 var _ repository.Repository = (*fakeBulkPublishRepository)(nil)
 
-func (f *fakeBulkPublishRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
-	return int64(len(f.books)), 0, int64(len(f.authors)), int64(len(f.genres)), 0, 0, nil
+func (f *fakeBulkPublishRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
+	return repository.DashboardStats{Books: int64(len(f.books)), HiddenBooks: 0, Authors: int64(len(f.authors)), Genres: int64(len(f.genres))}, nil
 }
 
 func (f *fakeBulkPublishRepository) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -381,4 +381,20 @@ func TestBulkPublishBooks(t *testing.T) {
 			t.Fatalf("expected only the pending_review book to be processed, got %+v", report)
 		}
 	})
+}
+
+func (f *fakeBulkPublishRepository) ListAuthorsForModeration(ctx context.Context, filter repository.AuthorModerationFilter) ([]repository.AuthorModerationRow, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeBulkPublishRepository) ListAuthorSampleBooks(ctx context.Context, authorIDs []uuid.UUID) (map[uuid.UUID][]repository.SampleBook, error) {
+	return map[uuid.UUID][]repository.SampleBook{}, nil
+}
+
+func (f *fakeBulkPublishRepository) FindAuthorsBySurnames(ctx context.Context, surnames []string, excludeIDs []uuid.UUID) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
+func (f *fakeBulkPublishRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	return false, nil
 }

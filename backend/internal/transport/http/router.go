@@ -150,6 +150,8 @@ func RegisterAdminRoutes(
 
 	authors := admin.Group("/authors", adminRole)
 	authors.GET("", adminHandler.ListAuthors)
+	authors.GET("/moderation", adminHandler.ListAuthorModerationQueue)
+	authors.POST("/bulk-status", adminHandler.BulkSetAuthorStatus, requireBearer)
 	authors.POST("", adminHandler.CreateAuthor, requireBearer)
 	authors.PATCH("/:id", adminHandler.UpdateAuthor, requireBearer)
 	authors.POST("/:id/merge", adminHandler.MergeAuthors, requireBearer)
