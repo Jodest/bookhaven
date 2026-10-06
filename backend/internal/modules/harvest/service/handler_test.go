@@ -150,6 +150,10 @@ func (f *fakeAdminRepository) UpdateAuthor(ctx context.Context, author *catalogD
 	return errors.New("record not found")
 }
 
+func (f *fakeAdminRepository) ListAuthorsByExternalIDs(ctx context.Context, source string, ids []string) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
 func (f *fakeAdminRepository) AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
 	for _, a := range f.authors {
 		if a.Slug == slug && (excludeID == nil || a.ID != *excludeID) {

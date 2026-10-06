@@ -60,6 +60,18 @@ type fakeAdminService struct {
 	bulkStatusCalled bool
 	lastBulkIDs      []uuid.UUID
 	lastBulkStatus   string
+
+	importResult  *adminService.AuthorImportResult
+	importErr     error
+	lastImportQID string
+}
+
+func (f *fakeAdminService) ImportWikidataAuthor(ctx context.Context, qid string) (*adminService.AuthorImportResult, error) {
+	f.lastImportQID = qid
+	if f.importErr != nil {
+		return nil, f.importErr
+	}
+	return f.importResult, nil
 }
 
 func (f *fakeAdminService) ListAuthorModerationQueue(ctx context.Context, filter repository.AuthorModerationFilter, page, limit int) ([]adminService.AuthorQueueItem, int64, error) {

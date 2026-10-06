@@ -41,6 +41,10 @@ type Repository interface {
 	// SetAuthorExternalID sets an author's external identity without
 	// touching any other column (status included).
 	SetAuthorExternalID(ctx context.Context, id uuid.UUID, source, externalID string) error
+	// ListAuthorsByExternalIDs returns the authors (any status) whose
+	// external identity is source plus one of ids, in a single query. An
+	// empty ids slice returns an empty result without querying.
+	ListAuthorsByExternalIDs(ctx context.Context, source string, ids []string) ([]catalogDomain.Author, error)
 	CreateAuthor(ctx context.Context, author *catalogDomain.Author) error
 	UpdateAuthor(ctx context.Context, author *catalogDomain.Author) error
 	AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
@@ -432,6 +436,19 @@ func (r *GormRepository) SetAuthorExternalID(ctx context.Context, id uuid.UUID, 
 	return r.db.WithContext(ctx).Model(&catalogDomain.Author{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{"external_source": source, "external_id": externalID}).Error
+}
+
+func (r *GormRepository) ListAuthorsByExternalIDs(ctx context.Context, source string, ids []string) ([]catalogDomain.Author, error) {
+	if len(ids) == 0 {
+		return []catalogDomain.Author{}, nil
+	}
+	var authors []catalogDomain.Author
+	if err := r.db.WithContext(ctx).
+		Where("external_source = ? AND external_id IN ?", source, ids).
+		Find(&authors).Error; err != nil {
+		return nil, err
+	}
+	return authors, nil
 }
 
 func (r *GormRepository) CreateAuthor(ctx context.Context, author *catalogDomain.Author) error {

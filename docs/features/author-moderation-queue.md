@@ -13,7 +13,7 @@ Give admins one place to process harvested `pending` authors (and find legacy ju
 In scope: the queue page, a read endpoint with per-author context and similar-name hints, a bulk status endpoint (also used for single-row actions), a dashboard tile, links from the harvest page, a merge dialog prefilled from a hint.
 
 Out of scope:
-- Feature 3 (import an author from Wikidata search) and feature 4 (enrichment: dates, photo, bio).
+- Feature 3 (import an author from Wikidata search) and feature 4 (enrichment: dates, photo, bio). Feature 3 shipped: see [author-direct-import.md](author-direct-import.md) (the "Импорт из Wikidata" panel on this page).
 - **Per-harvest-job filtering.** Not derivable cheaply: asynq jobs carry no timestamps in our API, `HarvestResult` records no author IDs, and authors have no `created_by_job` column. The harvest page links to the plain queue instead; the queue sorts newest first, so the latest run's authors are on top. Revisit only if admins ask for it (it would need `HarvestResult.CreatedAuthorIDs` or a column).
 - Automatic merging or auto-rejecting of any kind. Hints are display-only (Decision 3.b in `docs/ai/features/catalog-data-import/business-analysis.md` still holds).
 - pg_trgm or any fuzzy-matching infrastructure. Migrations have no extensions, and none are added.
