@@ -92,6 +92,19 @@ Nothing queued — pick the next item from Proposed via `/backlog-next`. Email n
 - [ ] Literary award badges and prize-winner browsing — readers see that a book won or was shortlisted for Большая книга/Ясная Поляна/НОС/Нацбест and can browse each prize's winners (LiveLib, MyBook, FantLab); no award concept exists today [competitive] (proposed 2026-10-03, #214)
 - [ ] Sort, filter and search within your own shelves — readers with long shelves can find a book and reorder by title/author/rating/date; shelf books are always listed by date added with no controls [code] (proposed 2026-10-03, #215)
 - [ ] "Up Next" queue for the want-to-read shelf — readers can pick and order the few books they will read next from a long want-to-read shelf (The StoryGraph Up Next) [competitive] (proposed 2026-10-03, #216)
+- [ ] Authors directory page in the web app — readers cannot browse authors: GET /authors exists (search + limit, no offset paging) but the web app has only /authors/[slug] detail pages [code] (proposed 2026-10-06, #243)
+- [ ] Purge expired and revoked refresh tokens — `refresh_tokens` rows are never deleted after expiry, logout or reset revocation; only the verification/reset token tables are tracked as purge debt [code] (proposed 2026-10-06, #244)
+- [ ] Track publish time for harvested books so "Новое в каталоге" is accurate — queue-published books keep their harvest-time `created_at`; home-page-content Risks names a `published_at` follow-up [code] (proposed 2026-10-06, #245)
+- [ ] Embeddable reading widget for external sites and blogs — LiveLib lets readers embed a configurable widget of their favorite/recent books; BookHaven can only share links [competitive] (proposed 2026-10-06, #246)
+- [ ] Admin user management (list users, change role, block account) — there is no admin users route or page; moderator/contributor roles can only be assigned by editing the database [code] (proposed 2026-10-06, #247)
+- [ ] Health endpoint does not check database or Redis — `/health` returns a static ok, so healthchecks and uptime monitoring stay green when PostgreSQL or Redis is down [code] (proposed 2026-10-06, #248)
+- [ ] Configure database connection pool limits — api, worker and similarity call `gorm.Open` with no max open/idle conns or conn lifetime, so connections are unbounded under load [code] (proposed 2026-10-06, #249)
+- [ ] Dark theme for the web app — The StoryGraph and Goodreads offer dark mode; tailwind has class-based dark mode enabled but no dark palette or toggle exists [competitive] (proposed 2026-10-06, #250)
+- [ ] Installable web app (PWA manifest and icons) for mobile readers — Goodreads/The StoryGraph ship mobile apps; the web app has no manifest, icons or installability [competitive] (proposed 2026-10-06, #251)
+- [ ] Partial-word and typo-tolerant catalog search — readers typing part of a word (e.g. "Достоев") get no results: book/author search uses only `plainto_tsquery` full-text matching, with no prefix, trigram or search-as-you-type support [code] (proposed 2026-10-06, #252)
+- [ ] Error tracking (e.g. Sentry) for API, worker and web apps — unhandled production errors go unnoticed; DEPLOYMENT.md recommends Sentry as a follow-up but it is not tracked [code] (proposed 2026-10-06, #253)
+- [ ] Dependency vulnerability scanning in CI — CI runs build/vet/test/lint only, with no govulncheck, pnpm audit or Dependabot, so known-vulnerable dependencies are never flagged [code] (proposed 2026-10-06, #254)
+- [ ] Annual community "Readers' Choice" book awards voting — readers vote for the year's best books by category, as in LiveLib's Выбор читателей and Goodreads Choice Awards; distinct from external prizes (#214) and list voting (#208) [competitive] (proposed 2026-10-06, #255)
 
 ## Technical Debt
 
