@@ -337,6 +337,12 @@ export interface AdminBookInput {
   author_ids: string[];
   genre_ids: string[];
   is_hidden: boolean;
+  /**
+   * Opt-in: lifts only the server's Russian-title check for books whose
+   * official title is written in Latin script (e.g. «Empire V»). Input-only,
+   * not persisted. Not needed when the title is unchanged on update.
+   */
+  allow_non_russian_title?: boolean;
 }
 
 export interface AdminAuthorInput {

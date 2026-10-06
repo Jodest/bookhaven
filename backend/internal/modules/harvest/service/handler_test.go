@@ -571,16 +571,16 @@ func TestRunHarvest_PartialFailureDoesNotAbortBatch(t *testing.T) {
 	}
 }
 
-func TestRunHarvest_NonRussianTitlePastSPARQLFilterIsAPerRecordError(t *testing.T) {
-	// Simulates a data-quality edge case (e.g. a "ru"-tagged Wikidata label
-	// that is not actually Cyrillic) that slips past the SPARQL-level
-	// filter - the Cyrillic-ratio check on Title is defense-in-depth for
-	// exactly this case.
+func TestRunHarvest_LatinScriptRuLabelTitleIsCreated(t *testing.T) {
+	// A "ru"-tagged Wikidata label written in Latin script (e.g. Pelevin's
+	// «S.N.U.F.F.») is the book's official Russian title, so harvest
+	// exempts it from the title-language check - see
+	// docs/features/latin-book-titles.md.
 	admin, repo := newTestAdmin()
 
 	records := []bookdata.ExternalBookRecord{
 		{
-			Title:      "Non-Russian Title",
+			Title:      "S.N.U.F.F.",
 			Language:   "ru",
 			SourceName: "wikidata",
 			SourceID:   "Q1",
@@ -600,17 +600,51 @@ func TestRunHarvest_NonRussianTitlePastSPARQLFilterIsAPerRecordError(t *testing.
 		t.Fatalf("runHarvest returned unexpected top-level error: %v", err)
 	}
 
-	if len(repo.books) != 1 {
-		t.Fatalf("expected 1 successfully created book (the other record still processes), got %d", len(repo.books))
+	if result.Created != 2 {
+		t.Errorf("Created = %d, want 2", result.Created)
 	}
-	if result.Created != 1 {
-		t.Errorf("Created = %d, want 1", result.Created)
+	if len(result.Errors) != 0 {
+		t.Fatalf("Errors = %v, want none", result.Errors)
 	}
-	if len(result.Errors) != 1 {
-		t.Fatalf("Errors = %v, want 1 entry", result.Errors)
+	if len(repo.books) != 2 || repo.books[0].Title != "S.N.U.F.F." {
+		t.Fatalf("expected both books created with the Latin title preserved, got %+v", repo.books)
 	}
-	if result.Errors[0].Index != 0 || result.Errors[0].Title != "Non-Russian Title" {
-		t.Errorf("unexpected error entry: %+v", result.Errors[0])
+}
+
+func TestProcessRecord_LatinTitleBypassesOnlyTitleCheck(t *testing.T) {
+	// processRecord sets BookInput.AllowNonRussianTitle: a Latin-script
+	// title is created, but a non-Russian description would still be
+	// rejected by CreateBook (the description check is not lifted).
+	admin, repo := newTestAdmin()
+	ctx := context.Background()
+
+	rec := bookdata.ExternalBookRecord{
+		Title:      "Empire V",
+		Language:   "ru",
+		SourceName: "wikidata",
+		SourceID:   "Q4380003",
+	}
+
+	outcome, err := processRecord(ctx, rec, nil, admin)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome != outcomeCreated {
+		t.Fatalf("expected outcomeCreated, got %v", outcome)
+	}
+	if len(repo.books) != 1 || repo.books[0].Title != "Empire V" {
+		t.Fatalf("expected 1 book titled %q, got %+v", "Empire V", repo.books)
+	}
+
+	rec2 := bookdata.ExternalBookRecord{
+		Title:       "Empire W",
+		Description: strPtr("An English description"),
+		Language:    "ru",
+		SourceName:  "wikidata",
+		SourceID:    "Q4380004",
+	}
+	if _, err := processRecord(ctx, rec2, nil, admin); !errors.Is(err, adminservice.ErrDescriptionNotRussian) {
+		t.Fatalf("expected ErrDescriptionNotRussian, got %v", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
@@ -411,4 +412,18 @@ func TestImportBooks(t *testing.T) {
 			t.Fatalf("expected exactly 1 book created, got %+v", repo.books)
 		}
 	})
+}
+
+// TestImportRowInput_HasNoTitleLanguageBypass guards that bulk CSV/JSON
+// import can never lift the Russian-title check: ImportRowInput (the only
+// thing the CSV/JSON parsers produce) must not carry an
+// AllowNonRussianTitle-style field, so a JSON row with
+// "allow_non_russian_title": true is silently ignored and the title is
+// still validated (see the non-Russian title subtest in TestImportBooks
+// and docs/features/latin-book-titles.md).
+func TestImportRowInput_HasNoTitleLanguageBypass(t *testing.T) {
+	typ := reflect.TypeOf(ImportRowInput{})
+	if _, ok := typ.FieldByName("AllowNonRussianTitle"); ok {
+		t.Fatal("ImportRowInput must not expose AllowNonRussianTitle: bulk import has no title-language bypass")
+	}
 }

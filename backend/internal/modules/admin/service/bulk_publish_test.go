@@ -253,6 +253,22 @@ func TestBulkPublishBooks(t *testing.T) {
 		}
 	})
 
+	t.Run("Latin-script title publishes via the unchanged-title rule", func(t *testing.T) {
+		svc, repo := newBulkPublishService()
+		repo.books = []catalogDomain.Book{pendingBook("Empire V")}
+
+		report, err := svc.BulkPublishBooks(context.Background(), "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if report.Processed != 1 || report.Published != 1 || len(report.Errors) != 0 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if repo.books[0].IsHidden {
+			t.Fatalf("expected %q to be published, got %+v", "Empire V", repo.books[0])
+		}
+	})
+
 	t.Run("partial failure: one row's UpdateBook error is recorded and the rest of the batch still proceeds", func(t *testing.T) {
 		svc, repo := newBulkPublishService()
 		repo.books = []catalogDomain.Book{

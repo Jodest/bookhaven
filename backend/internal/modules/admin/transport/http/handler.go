@@ -130,6 +130,9 @@ type createUpdateBookRequest struct {
 	AuthorIDs     []string `json:"author_ids"`
 	GenreIDs      []string `json:"genre_ids"`
 	IsHidden      bool     `json:"is_hidden"`
+	// AllowNonRussianTitle lifts only the Russian-title check for official
+	// Latin-script titles. Input-only, not persisted.
+	AllowNonRussianTitle bool `json:"allow_non_russian_title"`
 }
 
 type createUpdateAuthorRequest struct {
@@ -517,6 +520,8 @@ func (h *Handler) CreateBook(c echo.Context) error {
 		AuthorIDs:     req.AuthorIDs,
 		GenreIDs:      req.GenreIDs,
 		IsHidden:      req.IsHidden,
+
+		AllowNonRussianTitle: req.AllowNonRussianTitle,
 	})
 	if err != nil {
 		switch {
@@ -583,6 +588,8 @@ func (h *Handler) UpdateBook(c echo.Context) error {
 		AuthorIDs:     req.AuthorIDs,
 		GenreIDs:      req.GenreIDs,
 		IsHidden:      req.IsHidden,
+
+		AllowNonRussianTitle: req.AllowNonRussianTitle,
 	})
 	if err != nil {
 		switch {

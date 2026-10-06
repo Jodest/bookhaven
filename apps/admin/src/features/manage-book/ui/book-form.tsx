@@ -17,6 +17,12 @@ import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { MultiSelect } from '@/shared/ui';
 
+// Must match the backend's ErrTitleNotRussian message exactly
+// (backend/internal/modules/admin/service/service.go).
+const TITLE_NOT_RUSSIAN_ERROR = 'title must be in Russian';
+const TITLE_NOT_RUSSIAN_HINT =
+  'Название должно быть на русском языке. Если официальное название книги пишется латиницей, отметьте «Название на латинице допустимо».';
+
 interface BookFormProps {
   initial?: AdminBook;
   onSubmit: (data: AdminBookInput) => Promise<unknown>;
@@ -45,12 +51,14 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
           author_ids: initial.authors.map((a) => a.id),
           genre_ids: initial.genres.map((g) => g.id),
           is_hidden: initial.is_hidden,
+          allow_non_russian_title: false,
         }
       : {
           language: 'ru',
           author_ids: [],
           genre_ids: [],
           is_hidden: false,
+          allow_non_russian_title: false,
         },
   });
 
@@ -144,6 +152,8 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
       if (error instanceof ApiError) {
         if (error.status === 409) {
           message = 'Книга с таким slug уже существует.';
+        } else if (error.status === 422 && error.message === TITLE_NOT_RUSSIAN_ERROR) {
+          message = TITLE_NOT_RUSSIAN_HINT;
         } else if (error.status === 422 && error.message) {
           message = error.message;
         } else if (error.status >= 500) {
@@ -166,6 +176,19 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
         <Label htmlFor="title">Название *</Label>
         <Input id="title" {...register('title', { required: 'Обязательное поле' })} />
         {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="allow_non_russian_title"
+            className="h-4 w-4"
+            {...register('allow_non_russian_title')}
+          />
+          <Label htmlFor="allow_non_russian_title">Название на латинице допустимо</Label>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Только для книг, официальное название которых пишется латиницей (например, «Empire V»).
+          При редактировании без изменения названия отмечать не нужно.
+        </p>
       </div>
 
       <div className="space-y-2">
