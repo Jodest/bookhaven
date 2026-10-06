@@ -184,6 +184,180 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/authors/bulk-status": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Меняет только status (и updated_at) у каждого автора из ids (не более 100, дубликаты схлопываются); имя, slug, биография, QID и связи с книгами не меняются. Каждый id обрабатывается независимо: неизвестный id — построчная ошибка, остальные применяются. HTTP 200 независимо от построчных исходов.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Сменить статус выбранных авторов (админ)",
+                "parameters": [
+                    {
+                        "description": "ID авторов и новый статус (pending / published / rejected)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.bulkAuthorStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkStatusReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/authors/moderation": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Авторы с заданным статусом (по умолчанию pending), новые сверху, с количеством связанных книг, до 3 примеров книг и подсказками «возможно, тот же человек» (только для отображения).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Очередь модерации авторов (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Статус: pending (по умолчанию) / published / rejected",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Wikidata QID: with / without",
+                        "name": "qid",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Книги: none — без связанных книг",
+                        "name": "books",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Поиск",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Номер страницы",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Размер страницы, максимум 50",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.listAuthorQueueResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/authors/{id}": {
             "patch": {
                 "security": [
@@ -5129,6 +5303,37 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_bookhaven_backend_internal_modules_admin_service.BulkStatusReport": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkStatusRowError"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_admin_service.BulkStatusRowError": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_bookhaven_backend_internal_modules_admin_service.ImportReport": {
             "type": "object",
             "properties": {
@@ -5289,6 +5494,47 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.authorHintResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.authorResponse"
+                },
+                "match": {
+                    "description": "Match is exact_name | surname_initial | surname.",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.authorQueueItemResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.authorResponse"
+                },
+                "books_total": {
+                    "type": "integer"
+                },
+                "books_visible": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "sample_books": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.authorSampleBookResponse"
+                    }
+                },
+                "similar": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.authorHintResponse"
+                    }
+                }
+            }
+        },
         "internal_modules_admin_transport_http.authorResponse": {
             "type": "object",
             "properties": {
@@ -5321,6 +5567,20 @@ const docTemplate = `{
                 },
                 "status": {
                     "description": "Status is pending | published | rejected (admin payloads always\ninclude it, embedded book authors too).",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.authorSampleBookResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "is_hidden": {
+                    "type": "boolean"
+                },
+                "title": {
                     "type": "string"
                 }
             }
@@ -5386,6 +5646,20 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.bulkAuthorStatusRequest": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -5499,6 +5773,9 @@ const docTemplate = `{
                 "hidden_books": {
                     "type": "integer"
                 },
+                "pending_authors": {
+                    "type": "integer"
+                },
                 "pending_import_review": {
                     "type": "integer"
                 },
@@ -5518,6 +5795,26 @@ const docTemplate = `{
                 },
                 "slug": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.listAuthorQueueResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.authorQueueItemResponse"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

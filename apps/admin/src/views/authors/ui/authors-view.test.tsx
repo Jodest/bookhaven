@@ -123,4 +123,14 @@ describe('AuthorsView status', () => {
       expect(updateMock).toHaveBeenCalledWith('a1', expect.objectContaining({ status: 'published' }))
     );
   });
+
+  it('links to the author moderation queue from the header', async () => {
+    listMock.mockResolvedValue({ items: [makeAuthor()], total: 1, page: 1, limit: 20 });
+
+    renderView();
+
+    const link = screen.getByRole('link', { name: 'Очередь модерации' });
+    expect(link).toHaveAttribute('href', '/authors/moderation');
+    await waitFor(() => expect(listMock).toHaveBeenCalled());
+  });
 });

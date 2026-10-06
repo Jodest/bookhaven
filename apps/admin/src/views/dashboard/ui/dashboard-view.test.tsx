@@ -34,6 +34,7 @@ describe('DashboardView', () => {
       genres: 5,
       pending_reviews: 2,
       pending_import_review: 4,
+      pending_authors: 7,
     });
   });
 
@@ -49,5 +50,15 @@ describe('DashboardView', () => {
 
     const link = screen.getByText('Импортировано, на проверке').closest('a');
     expect(link).toHaveAttribute('href', '/books?visibility=pending_review');
+  });
+
+  it('renders a card for pending authors linking to the author moderation queue', async () => {
+    renderView();
+
+    await waitFor(() => expect(screen.getByText('Авторы на модерации')).toBeInTheDocument());
+    expect(screen.getByText('7')).toBeInTheDocument();
+
+    const link = screen.getByText('Авторы на модерации').closest('a');
+    expect(link).toHaveAttribute('href', '/authors/moderation');
   });
 });

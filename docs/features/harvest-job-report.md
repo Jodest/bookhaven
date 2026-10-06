@@ -73,6 +73,7 @@ This is the next increment on top of `docs/features/admin-harvest-trigger.md` (`
 ## UX
 
 - Jobs table gains a "Подробнее"/"Скрыть" toggle button per row (in the existing trailing action column, alongside the "К очереди на проверку" link), shown only when there is at least one error or skip to report.
+- Later ([author-moderation-queue.md](author-moderation-queue.md)): a "К авторам на модерации" link to `/authors/moderation` sits next to both "К очереди на проверку" links (header and per completed job). It opens the plain queue (newest first); per-job author filtering is deliberately not built, since jobs record no created author IDs.
 - Expanding a row reveals a full breakdown directly beneath it: an "Ошибки" table (№/Название/Причина) if any errors, a "Пропущено" table (№/Название/Причина) if any skips — both scoped to that one job, collapsible independently per row.
 - No new page, no new nav entry, no change to the 5-second polling cadence or the progress-bar behavior from `harvest-progress.md`.
 

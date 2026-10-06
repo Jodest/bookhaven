@@ -46,6 +46,7 @@ export function DashboardView() {
       value: data.pending_import_review,
       href: '/books?visibility=pending_review',
     },
+    { label: 'Авторы на модерации', value: data.pending_authors, href: '/authors/moderation' },
   ];
 
   return (

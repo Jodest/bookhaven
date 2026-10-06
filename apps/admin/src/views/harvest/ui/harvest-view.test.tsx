@@ -226,6 +226,10 @@ describe('HarvestView', () => {
     expect(
       screen.getAllByRole('link', { name: 'К очереди на проверку' }).length
     ).toBeGreaterThan(0);
+    // Header + the completed job: both link to the author moderation queue.
+    const authorLinks = screen.getAllByRole('link', { name: 'К авторам на модерации' });
+    expect(authorLinks).toHaveLength(2);
+    authorLinks.forEach((link) => expect(link).toHaveAttribute('href', '/authors/moderation'));
   });
 
   it('renders a progress bar with N / M (P%) text for an active job with a partial result', async () => {

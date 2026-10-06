@@ -49,13 +49,49 @@ type fakeAdminService struct {
 
 	lastAuthorStatusFilter string
 	lastAuthorInput        *adminService.AuthorInput
+
+	queueItems       []adminService.AuthorQueueItem
+	queueErr         error
+	lastQueueFilter  repository.AuthorModerationFilter
+	lastQueuePage    int
+	lastQueueLimit   int
+	bulkStatusReport *adminService.BulkStatusReport
+	bulkStatusErr    error
+	bulkStatusCalled bool
+	lastBulkIDs      []uuid.UUID
+	lastBulkStatus   string
 }
 
-func (f *fakeAdminService) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
-	if f.dashboardErr != nil {
-		return 0, 0, 0, 0, 0, 0, f.dashboardErr
+func (f *fakeAdminService) ListAuthorModerationQueue(ctx context.Context, filter repository.AuthorModerationFilter, page, limit int) ([]adminService.AuthorQueueItem, int64, error) {
+	f.lastQueueFilter = filter
+	f.lastQueuePage = page
+	f.lastQueueLimit = limit
+	if f.queueErr != nil {
+		return nil, 0, f.queueErr
 	}
-	return 10, 2, 5, 4, 3, 1, nil
+	return f.queueItems, int64(len(f.queueItems)), nil
+}
+
+func (f *fakeAdminService) BulkSetAuthorStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.BulkStatusReport, error) {
+	f.bulkStatusCalled = true
+	f.lastBulkIDs = ids
+	f.lastBulkStatus = status
+	if f.bulkStatusErr != nil {
+		return adminService.BulkStatusReport{}, f.bulkStatusErr
+	}
+	if f.bulkStatusReport != nil {
+		return *f.bulkStatusReport, nil
+	}
+	return adminService.BulkStatusReport{Processed: len(ids), Updated: len(ids), Errors: []adminService.BulkStatusRowError{}}, nil
+}
+
+func (f *fakeAdminService) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
+	if f.dashboardErr != nil {
+		return repository.DashboardStats{}, f.dashboardErr
+	}
+	return repository.DashboardStats{
+		Books: 10, HiddenBooks: 2, Authors: 5, Genres: 4, PendingReviews: 3, PendingImportReview: 1, PendingAuthors: 7,
+	}, nil
 }
 
 func (f *fakeAdminService) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -259,7 +295,7 @@ func TestDashboard_Admin(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
-	if body.Books != 10 || body.HiddenBooks != 2 || body.PendingReviews != 3 || body.PendingImportReview != 1 {
+	if body.Books != 10 || body.HiddenBooks != 2 || body.PendingReviews != 3 || body.PendingImportReview != 1 || body.PendingAuthors != 7 {
 		t.Fatalf("unexpected dashboard counts: %+v", body)
 	}
 }

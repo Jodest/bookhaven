@@ -30,27 +30,33 @@ type fakeRepository struct {
 	genreLookupErr   error
 }
 
-func (f *fakeRepository) DashboardCounts(ctx context.Context) (books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview int64, err error) {
+func (f *fakeRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
 	if f.dashboardErr != nil {
-		return 0, 0, 0, 0, 0, 0, f.dashboardErr
+		return repository.DashboardStats{}, f.dashboardErr
 	}
+	var st repository.DashboardStats
 	for _, b := range f.books {
-		books++
+		st.Books++
 		if b.IsHidden {
-			hiddenBooks++
+			st.HiddenBooks++
 		}
 		if b.IsHidden && b.ExternalSource != nil {
-			pendingImportReview++
+			st.PendingImportReview++
 		}
 	}
-	authors = int64(len(f.authors))
-	genres = int64(len(f.genres))
+	st.Authors = int64(len(f.authors))
+	for _, a := range f.authors {
+		if a.Status == catalogDomain.AuthorStatusPending {
+			st.PendingAuthors++
+		}
+	}
+	st.Genres = int64(len(f.genres))
 	for _, r := range f.reviews {
 		if r.IsHidden {
-			pendingReviews++
+			st.PendingReviews++
 		}
 	}
-	return books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview, nil
+	return st, nil
 }
 
 func (f *fakeRepository) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -283,12 +289,12 @@ func TestDashboardCounts(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 
-	books, hiddenBooks, authors, genres, pendingReviews, pendingImportReview, err := svc.DashboardCounts(ctx)
+	stats, err := svc.DashboardCounts(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if books != 0 || hiddenBooks != 0 || authors != 0 || genres != 0 || pendingReviews != 0 || pendingImportReview != 0 {
-		t.Fatal("expected empty dashboard counts")
+	if stats != (repository.DashboardStats{}) {
+		t.Fatalf("expected empty dashboard counts, got %+v", stats)
 	}
 }
 
@@ -303,15 +309,15 @@ func TestDashboardCounts_PendingImportReview(t *testing.T) {
 		{ID: uuid.New(), IsHidden: false},
 	}
 
-	_, hiddenBooks, _, _, _, pendingImportReview, err := svc.DashboardCounts(ctx)
+	stats, err := svc.DashboardCounts(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if hiddenBooks != 2 {
-		t.Fatalf("expected 2 hidden books, got %d", hiddenBooks)
+	if stats.HiddenBooks != 2 {
+		t.Fatalf("expected 2 hidden books, got %d", stats.HiddenBooks)
 	}
-	if pendingImportReview != 1 {
-		t.Fatalf("expected 1 pending import review book, got %d", pendingImportReview)
+	if stats.PendingImportReview != 1 {
+		t.Fatalf("expected 1 pending import review book, got %d", stats.PendingImportReview)
 	}
 }
 
@@ -859,4 +865,38 @@ func TestListAuthors_StatusFilter(t *testing.T) {
 	if _, _, err := svc.ListAuthors(context.Background(), "", "bogus", 1, 20); !errors.Is(err, ErrInvalidAuthorStatus) {
 		t.Fatalf("expected ErrInvalidAuthorStatus, got %v", err)
 	}
+}
+
+func TestDashboardCounts_PendingAuthors(t *testing.T) {
+	svc, repo := newService()
+	repo.authors = []catalogDomain.Author{
+		{ID: uuid.New(), Status: catalogDomain.AuthorStatusPending},
+		{ID: uuid.New(), Status: catalogDomain.AuthorStatusPending},
+		{ID: uuid.New(), Status: catalogDomain.AuthorStatusPublished},
+		{ID: uuid.New(), Status: catalogDomain.AuthorStatusRejected},
+	}
+
+	stats, err := svc.DashboardCounts(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stats.PendingAuthors != 2 || stats.Authors != 4 {
+		t.Fatalf("expected 2 pending of 4 authors, got %+v", stats)
+	}
+}
+
+func (f *fakeRepository) ListAuthorsForModeration(ctx context.Context, filter repository.AuthorModerationFilter) ([]repository.AuthorModerationRow, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeRepository) ListAuthorSampleBooks(ctx context.Context, authorIDs []uuid.UUID) (map[uuid.UUID][]repository.SampleBook, error) {
+	return map[uuid.UUID][]repository.SampleBook{}, nil
+}
+
+func (f *fakeRepository) FindAuthorsBySurnames(ctx context.Context, surnames []string, excludeIDs []uuid.UUID) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
+func (f *fakeRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	return false, nil
 }

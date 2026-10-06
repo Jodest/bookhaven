@@ -5,4 +5,6 @@ export const adminAuthorsApi = {
   create: api.admin.authors.create,
   update: api.admin.authors.update,
   merge: api.admin.authors.merge,
+  moderationQueue: api.admin.authors.moderationQueue,
+  bulkStatus: api.admin.authors.bulkStatus,
 };
