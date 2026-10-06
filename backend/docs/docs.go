@@ -5390,6 +5390,10 @@ const docTemplate = `{
         "internal_modules_admin_transport_http.createUpdateBookRequest": {
             "type": "object",
             "properties": {
+                "allow_non_russian_title": {
+                    "description": "AllowNonRussianTitle lifts only the Russian-title check for official\nLatin-script titles. Input-only, not persisted.",
+                    "type": "boolean"
+                },
                 "author_ids": {
                     "type": "array",
                     "items": {

@@ -132,11 +132,19 @@ type BookInput struct {
 	// by existing callers (regular admin create/update flows).
 	ExternalSource *string
 	ExternalID     *string
+	// AllowNonRussianTitle lifts only the ErrTitleNotRussian check (for
+	// official Latin-script titles such as «Empire V»). Every other
+	// validation, including the description language check, still applies.
+	// Set by the Wikidata harvest pipeline (always true) and by the admin
+	// HTTP create/update handlers (from the request body). Never set by
+	// bulk CSV/JSON import. Not persisted.
+	// See docs/features/latin-book-titles.md.
+	AllowNonRussianTitle bool
 }
 
 // CreateBook creates a new book with relationships.
 func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDomain.Book, error) {
-	if err := validateBookInput(input); err != nil {
+	if err := validateBookInput(input, input.AllowNonRussianTitle); err != nil {
 		return nil, err
 	}
 
@@ -221,7 +229,14 @@ func (s *Service) UpdateBook(ctx context.Context, id uuid.UUID, input BookInput)
 		return nil, fmt.Errorf("get book: %w", err)
 	}
 
-	if err := validateBookInput(input); err != nil {
+	// Grandfathering: the title-language check guards against *new*
+	// non-Russian titles entering the catalog. A title equal to the one
+	// already stored is not new text (it got in via the explicit bypass or
+	// predates the russian-only rule), so editing other fields or
+	// publishing (single-row or bulk) does not require the opt-in flag.
+	// See docs/features/latin-book-titles.md, Design decision 2.
+	skipTitleLangCheck := input.AllowNonRussianTitle || strings.TrimSpace(input.Title) == book.Title
+	if err := validateBookInput(input, skipTitleLangCheck); err != nil {
 		return nil, err
 	}
 
@@ -327,11 +342,14 @@ var supportedLanguageCodes = map[string]struct{}{
 	"pt": {}, // Portuguese
 }
 
-func validateBookInput(input BookInput) error {
+// validateBookInput validates book fields. skipTitleLangCheck (decided by
+// the caller) lifts only the ErrTitleNotRussian check; the empty-title and
+// description-language checks always apply.
+func validateBookInput(input BookInput, skipTitleLangCheck bool) error {
 	if strings.TrimSpace(input.Title) == "" {
 		return ErrInvalidTitle
 	}
-	if !IsRussianText(strings.TrimSpace(input.Title)) {
+	if !skipTitleLangCheck && !IsRussianText(strings.TrimSpace(input.Title)) {
 		return ErrTitleNotRussian
 	}
 	if desc := normalizeOptionalString(input.Description); desc != nil && !IsRussianText(*desc) {

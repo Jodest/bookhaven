@@ -475,6 +475,86 @@ func TestUpdateBook_NonRussianDescription(t *testing.T) {
 	}
 }
 
+func TestCreateBook_LatinTitleWithAllowFlag_Succeeds(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	book, err := svc.CreateBook(ctx, BookInput{Title: "Empire V", Language: "ru", AllowNonRussianTitle: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if book == nil || book.Title != "Empire V" {
+		t.Fatalf("expected created book titled %q, got %+v", "Empire V", book)
+	}
+}
+
+func TestCreateBook_AllowFlagDoesNotLiftDescriptionCheck(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	desc := "An English description"
+	_, err := svc.CreateBook(ctx, BookInput{Title: "Empire V", Language: "ru", Description: &desc, AllowNonRussianTitle: true})
+	if !errors.Is(err, ErrDescriptionNotRussian) {
+		t.Fatalf("expected description not russian error, got %v", err)
+	}
+}
+
+func TestCreateBook_AllowFlagDoesNotLiftEmptyTitleCheck(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+
+	_, err := svc.CreateBook(ctx, BookInput{Title: "   ", Language: "ru", AllowNonRussianTitle: true})
+	if !errors.Is(err, ErrInvalidTitle) {
+		t.Fatalf("expected invalid title error, got %v", err)
+	}
+}
+
+func TestUpdateBook_UnchangedLatinTitleWithoutFlag_Succeeds(t *testing.T) {
+	// Grandfathering: a stored Latin-script title is not new text, so
+	// editing other fields (or publishing) needs no opt-in flag.
+	svc, repo := newService()
+	ctx := context.Background()
+
+	id := uuid.New()
+	repo.books = []catalogDomain.Book{{ID: id, Title: "Empire V", Slug: "empire-v", Language: "ru", IsHidden: true}}
+
+	book, err := svc.UpdateBook(ctx, id, BookInput{Title: "  Empire V  ", Slug: "empire-v", Language: "ru", IsHidden: false})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if book.IsHidden {
+		t.Fatalf("expected book to be updated (is_hidden=false), got %+v", book)
+	}
+}
+
+func TestUpdateBook_ChangedLatinTitle(t *testing.T) {
+	newRepo := func() (*Service, uuid.UUID) {
+		svc, repo := newService()
+		id := uuid.New()
+		repo.books = []catalogDomain.Book{{ID: id, Title: "Empire V", Slug: "empire-v", Language: "ru"}}
+		return svc, id
+	}
+
+	t.Run("without flag is rejected", func(t *testing.T) {
+		svc, id := newRepo()
+		_, err := svc.UpdateBook(context.Background(), id, BookInput{Title: "Empire W", Slug: "empire-v", Language: "ru"})
+		if !errors.Is(err, ErrTitleNotRussian) {
+			t.Fatalf("expected title not russian error, got %v", err)
+		}
+	})
+
+	t.Run("with flag succeeds", func(t *testing.T) {
+		svc, id := newRepo()
+		book, err := svc.UpdateBook(context.Background(), id, BookInput{Title: "Empire W", Slug: "empire-v", Language: "ru", AllowNonRussianTitle: true})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if book.Title != "Empire W" {
+			t.Fatalf("expected title %q, got %q", "Empire W", book.Title)
+		}
+	})
+}
+
 func TestCreateAuthor_Valid(t *testing.T) {
 	svc, repo := newService()
 	ctx := context.Background()

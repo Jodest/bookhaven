@@ -1,7 +1,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from '@bookhaven/api-client';
+import { AdminBook, ApiError } from '@bookhaven/api-client';
 import { BookForm } from './book-form';
 
 const pushMock = vi.fn();
@@ -30,18 +30,41 @@ vi.mock('@/entities/genre', () => ({
   },
 }));
 
-function renderForm() {
+function renderForm(
+  initial?: AdminBook,
+  onSubmit: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue(undefined)
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  const onSubmit = vi.fn().mockResolvedValue(undefined);
   const utils = render(
     <QueryClientProvider client={queryClient}>
-      <BookForm onSubmit={onSubmit} />
+      <BookForm initial={initial} onSubmit={onSubmit} />
     </QueryClientProvider>
   );
   return { onSubmit, ...utils };
 }
+
+const latinBook: AdminBook = {
+  id: 'b1',
+  title: 'Empire V',
+  slug: 'empire-v',
+  description: null,
+  cover_url: null,
+  isbn: null,
+  published_year: 2006,
+  page_count: null,
+  language: 'ru',
+  rating: 0,
+  ratings_count: 0,
+  reviews_count: 0,
+  is_hidden: false,
+  external_source: null,
+  authors: [],
+  genres: [],
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+};
 
 describe('BookForm lookup assistant', () => {
   beforeEach(() => {
@@ -203,5 +226,76 @@ describe('BookForm lookup assistant', () => {
       expect(screen.getByText('Введите ISBN или название для поиска.')).toBeInTheDocument()
     );
     expect(lookupMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('BookForm Latin-script title opt-in', () => {
+  const checkboxLabel = 'Название на латинице допустимо';
+
+  beforeEach(() => {
+    pushMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders the checkbox unchecked in create mode', () => {
+    renderForm();
+    expect((screen.getByLabelText(checkboxLabel) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('renders the checkbox unchecked in edit mode, even for a Latin title', () => {
+    renderForm(latinBook);
+    expect((screen.getByLabelText(checkboxLabel) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('submits allow_non_russian_title: true when the checkbox is ticked', async () => {
+    const { onSubmit } = renderForm();
+
+    fireEvent.change(screen.getByLabelText('Название *'), { target: { value: 'Empire V' } });
+    fireEvent.click(screen.getByLabelText(checkboxLabel));
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({
+      title: 'Empire V',
+      allow_non_russian_title: true,
+    });
+  });
+
+  it('shows a Russian hint pointing at the checkbox on a 422 "title must be in Russian"', async () => {
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(new ApiError(422, 'Unprocessable Entity', 'title must be in Russian'));
+    renderForm(undefined, onSubmit);
+
+    fireEvent.change(screen.getByLabelText('Название *'), { target: { value: 'Empire V' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Название должно быть на русском языке. Если официальное название книги пишется латиницей, отметьте «Название на латинице допустимо».'
+        )
+      ).toBeInTheDocument()
+    );
+    expect(screen.queryByText('title must be in Russian')).not.toBeInTheDocument();
+  });
+
+  it('shows other 422 messages as is', async () => {
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError(422, 'Unprocessable Entity', 'description must be in Russian')
+      );
+    renderForm(undefined, onSubmit);
+
+    fireEvent.change(screen.getByLabelText('Название *'), { target: { value: 'Книга' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('description must be in Russian')).toBeInTheDocument()
+    );
   });
 });

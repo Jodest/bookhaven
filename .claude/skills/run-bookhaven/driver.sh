@@ -76,12 +76,20 @@ fi
 books_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/api/v1/books?limit=1")
 if [ "$books_code" != "200" ]; then
   echo "Books endpoint returned $books_code — applying migrations..."
-  docker compose exec -T backend go run cmd/migrate/main.go up
+  # Run as packages (./cmd/...), not main.go: cmd/seed spans several files
+  # (e.g. demo_readers.go), and `go run main.go` compiles only that one file.
+  if ! docker compose exec -T backend go run ./cmd/migrate up; then
+    echo "FATAL: migrations failed." >&2
+    exit 1
+  fi
   echo "Seeding accounts only (admin + test logins; no demo books)..."
-  docker compose exec -T backend go run cmd/seed/main.go -accounts-only
+  if ! docker compose exec -T backend go run ./cmd/seed -accounts-only; then
+    echo "FATAL: account seed failed — test/admin logins will not work." >&2
+    exit 1
+  fi
 fi
 # Demo catalog (books/genres/authors) is NOT seeded automatically — run
-# yourself if wanted: docker compose exec backend go run cmd/seed/main.go
+# yourself if wanted: docker compose exec backend go run ./cmd/seed
 
 # --- 5. Wait for web/admin dev servers (first boot runs `pnpm install`, can take minutes) ---
 echo "Waiting for web (:3000) and admin (:3001) — first boot reinstalls deps, can take a few minutes..."
@@ -118,4 +126,4 @@ echo "  Mailpit: http://localhost:8025  (all outgoing email lands here)"
 echo "  Test account:  test@bookhaven.local / test1234"
 echo "  Admin account: admin@bookhaven.local / admin1234"
 echo "  No demo catalog seeded automatically. To seed books/genres/authors:"
-echo "    docker compose exec backend go run cmd/seed/main.go"
+echo "    docker compose exec backend go run ./cmd/seed"
