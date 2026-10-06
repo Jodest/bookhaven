@@ -49,7 +49,7 @@ Add an admin route group under `/api/v1/admin` using the existing `Auth` middlew
 - `GET /dashboard` — counts for books, hidden books, authors, genres, and reviews needing moderation.
 - `GET /books?search=&visibility=&page=&limit=` — paginated admin list, including hidden records; `POST /books` creates.
 - `GET /books/:id` — admin detail; `PATCH /books/:id` updates fields, relationships, and visibility.
-- `GET /authors?search=&page=&limit=` and `POST /authors`; `PATCH /authors/:id` updates an author.
+- `GET /authors?search=&status=&page=&limit=` and `POST /authors`; `PATCH /authors/:id` updates an author (incl. optional `status`). Author payloads include `status`, `external_source`, `external_id` (see [author-status.md](author-status.md)).
 - `GET /genres?search=&page=&limit=` and `POST /genres`; `PATCH /genres/:id` updates a genre.
 - `GET /reviews?visibility=&page=&limit=` — paginated moderation queue; `PATCH /reviews/:id` updates only `is_hidden`.
 

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -98,8 +98,39 @@ func (f *fakeRepository) BookSlugExists(ctx context.Context, slug string, exclud
 	return f.bookSlugExists, nil
 }
 
-func (f *fakeRepository) ListAuthors(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Author, int64, error) {
-	return f.authors, int64(len(f.authors)), nil
+func (f *fakeRepository) ListAuthors(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Author, int64, error) {
+	if status == "" {
+		return f.authors, int64(len(f.authors)), nil
+	}
+	var out []catalogDomain.Author
+	for _, a := range f.authors {
+		if a.Status == status {
+			out = append(out, a)
+		}
+	}
+	return out, int64(len(out)), nil
+}
+
+func (f *fakeRepository) GetAuthorByExternalID(ctx context.Context, source, id string) (*catalogDomain.Author, error) {
+	for i := range f.authors {
+		a := f.authors[i]
+		if a.ExternalSource != nil && *a.ExternalSource == source && a.ExternalID != nil && *a.ExternalID == id {
+			return &f.authors[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeRepository) SetAuthorExternalID(ctx context.Context, id uuid.UUID, source, externalID string) error {
+	for i := range f.authors {
+		if f.authors[i].ID == id {
+			src, ext := source, externalID
+			f.authors[i].ExternalSource = &src
+			f.authors[i].ExternalID = &ext
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeRepository) GetAuthorByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error) {
@@ -755,5 +786,77 @@ func TestIsValidISBN(t *testing.T) {
 		if isValidISBN(v) {
 			t.Errorf("expected %s to be invalid", v)
 		}
+	}
+}
+
+func TestCreateAuthor_ForcesPublishedIgnoringInputStatus(t *testing.T) {
+	svc, repo := newService()
+	pending := catalogDomain.AuthorStatusPending
+
+	author, err := svc.CreateAuthor(context.Background(), AuthorInput{Name: "Leo Tolstoy", Status: &pending})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if author.Status != catalogDomain.AuthorStatusPublished || repo.authors[0].Status != catalogDomain.AuthorStatusPublished {
+		t.Fatalf("expected published author, got %q", author.Status)
+	}
+}
+
+func TestUpdateAuthor_Status(t *testing.T) {
+	rejected := catalogDomain.AuthorStatusRejected
+	bogus := "deleted"
+	tests := []struct {
+		name    string
+		status  *string
+		want    string
+		wantErr error
+	}{
+		{name: "valid status applied", status: &rejected, want: catalogDomain.AuthorStatusRejected},
+		{name: "omitted status unchanged", status: nil, want: catalogDomain.AuthorStatusPending},
+		{name: "invalid status rejected", status: &bogus, wantErr: ErrInvalidAuthorStatus},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, repo := newService()
+			id := uuid.New()
+			repo.authors = []catalogDomain.Author{{ID: id, Name: "Leo Tolstoy", Slug: "leo-tolstoy", Status: catalogDomain.AuthorStatusPending}}
+
+			_, err := svc.UpdateAuthor(context.Background(), id, AuthorInput{Name: "Leo Tolstoy", Slug: "leo-tolstoy", Status: tt.status})
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("expected %v, got %v", tt.wantErr, err)
+				}
+				if repo.authors[0].Status != catalogDomain.AuthorStatusPending {
+					t.Fatalf("status must stay unchanged on error, got %q", repo.authors[0].Status)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if repo.authors[0].Status != tt.want {
+				t.Fatalf("expected status %q, got %q", tt.want, repo.authors[0].Status)
+			}
+		})
+	}
+}
+
+func TestListAuthors_StatusFilter(t *testing.T) {
+	svc, repo := newService()
+	repo.authors = []catalogDomain.Author{
+		{ID: uuid.New(), Name: "A", Slug: "a", Status: catalogDomain.AuthorStatusPublished},
+		{ID: uuid.New(), Name: "B", Slug: "b", Status: catalogDomain.AuthorStatusPending},
+	}
+
+	all, total, err := svc.ListAuthors(context.Background(), "", "", 1, 20)
+	if err != nil || total != 2 || len(all) != 2 {
+		t.Fatalf("expected all statuses, got %d/%d err=%v", len(all), total, err)
+	}
+	pending, total, err := svc.ListAuthors(context.Background(), "", catalogDomain.AuthorStatusPending, 1, 20)
+	if err != nil || total != 1 || pending[0].Name != "B" {
+		t.Fatalf("expected only pending author, got %+v err=%v", pending, err)
+	}
+	if _, _, err := svc.ListAuthors(context.Background(), "", "bogus", 1, 20); !errors.Is(err, ErrInvalidAuthorStatus) {
+		t.Fatalf("expected ErrInvalidAuthorStatus, got %v", err)
 	}
 }

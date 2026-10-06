@@ -200,6 +200,7 @@ func (r *GormRepository) PickRandomBookID(ctx context.Context, f PoolFilter) (*u
 
 // calendarEventsQuery matches birth and death dates by month*100+day. An
 // author whose birth and death both match yields two rows (UNION ALL).
+// Only published authors are selected (both branches).
 const calendarEventsQuery = `WITH vis AS (
     SELECT ba.author_id, COUNT(*) AS visible_books
     FROM book_authors ba
@@ -211,6 +212,7 @@ SELECT a.id AS author_id, a.name, a.slug, a.photo_url, a.birth_date, a.death_dat
 FROM authors a
 JOIN vis ON vis.author_id = a.id
 WHERE a.birth_date IS NOT NULL
+  AND a.status = 'published'
   AND (EXTRACT(MONTH FROM a.birth_date)::int * 100 + EXTRACT(DAY FROM a.birth_date)::int) IN ?
 UNION ALL
 SELECT a.id AS author_id, a.name, a.slug, a.photo_url, a.birth_date, a.death_date,
@@ -218,6 +220,7 @@ SELECT a.id AS author_id, a.name, a.slug, a.photo_url, a.birth_date, a.death_dat
 FROM authors a
 JOIN vis ON vis.author_id = a.id
 WHERE a.death_date IS NOT NULL
+  AND a.status = 'published'
   AND (EXTRACT(MONTH FROM a.death_date)::int * 100 + EXTRACT(DAY FROM a.death_date)::int) IN ?`
 
 func (r *GormRepository) ListCalendarEvents(ctx context.Context, days []MonthDay) ([]CalendarEventRow, error) {

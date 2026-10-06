@@ -474,3 +474,113 @@ func TestBuildAuthorListQuery(t *testing.T) {
 		}
 	})
 }
+
+func TestParseAuthorPairs(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  []ExternalAuthor
+	}{
+		{
+			name:  "multiple paired authors",
+			value: "Q7243\tЛев Толстой|Q42\tДуглас Адамс",
+			want:  []ExternalAuthor{{Name: "Лев Толстой", QID: "Q7243"}, {Name: "Дуглас Адамс", QID: "Q42"}},
+		},
+		{
+			name:  "label with spaces and punctuation stays paired",
+			value: "Q1\tА. С. Пушкин, мл. (поэт)|Q2\tБ-Б",
+			want:  []ExternalAuthor{{Name: "А. С. Пушкин, мл. (поэт)", QID: "Q1"}, {Name: "Б-Б", QID: "Q2"}},
+		},
+		{
+			name:  "missing QID keeps name",
+			value: "\tБез Кода|Просто Имя",
+			want:  []ExternalAuthor{{Name: "Без Кода"}, {Name: "Просто Имя"}},
+		},
+		{
+			name:  "invalid QID dropped, name kept",
+			value: "http://x/Q1\tИмя|q5\tДругое",
+			want:  []ExternalAuthor{{Name: "Имя"}, {Name: "Другое"}},
+		},
+		{
+			name:  "empty names skipped",
+			value: "Q1\t|Q2\t  |Q3\tЕсть",
+			want:  []ExternalAuthor{{Name: "Есть", QID: "Q3"}},
+		},
+		{
+			name:  "empty aggregate",
+			value: "",
+			want:  []ExternalAuthor{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseAuthorPairs(tt.value)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("[%d] = %+v, want %+v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestWikidataQuery_PairedAuthors_PopulatesAuthorsAndRefs(t *testing.T) {
+	responder := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusOK, `{
+  "results": {"bindings": [
+    {
+      "item": {"type":"uri","value":"http://www.wikidata.org/entity/Q1"},
+      "itemLabel": {"type":"literal","value":"Двенадцать стульев"},
+      "authors": {"type":"literal","value":"Q19365\tИльф, Илья|Q312517\tЕвгений Петров"}
+    },
+    {
+      "item": {"type":"uri","value":"http://www.wikidata.org/entity/Q2"},
+      "itemLabel": {"type":"literal","value":"Без авторов"},
+      "authors": {"type":"literal","value":""}
+    }
+  ]}
+}`, nil), nil
+	})
+	client := newWikidataTestClient(t, responder)
+
+	records, err := client.Query(context.Background(), "SELECT * WHERE { ?s ?p ?o }")
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("len(records) = %d, want 2", len(records))
+	}
+	first := records[0]
+	wantRefs := []ExternalAuthor{{Name: "Ильф, Илья", QID: "Q19365"}, {Name: "Евгений Петров", QID: "Q312517"}}
+	if len(first.AuthorRefs) != 2 || first.AuthorRefs[0] != wantRefs[0] || first.AuthorRefs[1] != wantRefs[1] {
+		t.Errorf("AuthorRefs = %+v, want %+v", first.AuthorRefs, wantRefs)
+	}
+	if len(first.Authors) != 2 || first.Authors[0] != "Ильф, Илья" || first.Authors[1] != "Евгений Петров" {
+		t.Errorf("Authors = %v, want names of AuthorRefs", first.Authors)
+	}
+	if len(records[1].Authors) != 0 || len(records[1].AuthorRefs) != 0 {
+		t.Errorf("empty aggregate: Authors = %v, AuthorRefs = %v", records[1].Authors, records[1].AuthorRefs)
+	}
+}
+
+func TestQueryBuilders_UsePairedAuthorAggregate(t *testing.T) {
+	const paired = `GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?author), "/entity/"), "\t", ?authorLabel); separator="|") AS ?authors`
+	listQuery, err := BuildAuthorListQuery([]string{"Q7243"}, 10)
+	if err != nil {
+		t.Fatalf("BuildAuthorListQuery: %v", err)
+	}
+	queries := map[string]string{
+		"title+author": buildTitleAuthorQuery("Война и мир", "Толстой"),
+		"title only":   buildTitleAuthorQuery("Война и мир", ""),
+		"isbn":         buildISBNQuery("9780140447934"),
+		"author list":  listQuery,
+	}
+	for name, q := range queries {
+		if !strings.Contains(q, paired) {
+			t.Errorf("%s query lacks paired author aggregate:\n%s", name, q)
+		}
+	}
+}

@@ -88,6 +88,12 @@ type ExternalBookRecord struct {
 	Title string
 	// Authors are author display names as reported by the source.
 	Authors []string
+	// AuthorRefs are the same authors paired with their source identity
+	// (currently only a Wikidata QID). Populated by WikidataClient from the
+	// same parsed pairs as Authors (Authors == names of AuthorRefs), so the
+	// two never diverge. Open Library records leave it empty; consumers
+	// should fall back to Authors as QID-less refs in that case.
+	AuthorRefs []ExternalAuthor
 	// Genres are genre/subject names as reported by the source.
 	Genres []string
 	// ISBN is structurally normalized (trimmed, dashes/spaces stripped)
@@ -110,6 +116,14 @@ type ExternalBookRecord struct {
 	// SourceID is the source's own identifier for the record (e.g. a
 	// Wikidata QID, or an Open Library edition/work key), for traceability.
 	SourceID string
+}
+
+// ExternalAuthor is one author of an ExternalBookRecord paired with its
+// Wikidata identity. QID is a bare entity ID matching ^Q[0-9]+$ or empty
+// when the source did not report a (valid) one.
+type ExternalAuthor struct {
+	Name string
+	QID  string
 }
 
 // Client is the shared point-lookup interface implemented by both

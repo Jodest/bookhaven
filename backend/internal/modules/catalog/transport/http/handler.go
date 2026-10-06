@@ -23,11 +23,13 @@ func NewHandler(service *service.Service) *Handler {
 	return &Handler{service: service}
 }
 
-// AuthorResponse is the author shape embedded in book list items.
+// AuthorResponse is the author shape embedded in book list items. Slug is
+// null (never omitted) for a non-published author, which is then embedded
+// by name only - the signal for clients to render plain text, no link.
 type AuthorResponse struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
-	Slug      string  `json:"slug"`
+	Slug      *string `json:"slug"`
 	PhotoURL  *string `json:"photo_url,omitempty"`
 	BirthDate *string `json:"birth_date,omitempty"`
 }
@@ -119,10 +121,14 @@ func toAuthorResponse(a domain.Author) AuthorResponse {
 	if a.ID != uuid.Nil {
 		id = a.ID.String()
 	}
+	if !a.IsPublished() {
+		return AuthorResponse{ID: id, Name: a.Name}
+	}
+	slug := a.Slug
 	return AuthorResponse{
 		ID:        id,
 		Name:      a.Name,
-		Slug:      a.Slug,
+		Slug:      &slug,
 		PhotoURL:  a.PhotoURL,
 		BirthDate: formatDate(a.BirthDate),
 	}

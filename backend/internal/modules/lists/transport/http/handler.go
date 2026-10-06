@@ -43,10 +43,12 @@ type reorderBooksRequest struct {
 	BookIDs []string `json:"book_ids" validate:"required"`
 }
 
+// authorResponse: Slug is null (never omitted) for a non-published author,
+// embedded by name only (see docs/features/author-status.md).
 type authorResponse struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
-	Slug      string  `json:"slug"`
+	Slug      *string `json:"slug"`
 	PhotoURL  *string `json:"photo_url,omitempty"`
 	BirthDate *string `json:"birth_date,omitempty"`
 }
@@ -134,10 +136,14 @@ func toAuthorResponse(a catalogDomain.Author) authorResponse {
 	if a.ID != uuid.Nil {
 		id = a.ID.String()
 	}
+	if !a.IsPublished() {
+		return authorResponse{ID: id, Name: a.Name}
+	}
+	slug := a.Slug
 	return authorResponse{
 		ID:        id,
 		Name:      a.Name,
-		Slug:      a.Slug,
+		Slug:      &slug,
 		PhotoURL:  a.PhotoURL,
 		BirthDate: formatDate(a.BirthDate),
 	}

@@ -73,6 +73,16 @@ describe('BookOfTheDay', () => {
     );
   });
 
+  it('links a published author and renders a non-published one as plain text', () => {
+    const coAuthor = { ...book.authors[0], id: 'a2', name: 'Неизвестный автор', slug: null };
+    render(<BookOfTheDay data={{ book: { ...book, authors: [book.authors[0], coAuthor] }, descriptionExcerpt: null }} />);
+
+    expect(screen.getByRole('link', { name: 'Иван Тургенев' })).toHaveAttribute('href', '/authors/ivan-turgenev');
+    expect(screen.getByText('Неизвестный автор')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Неизвестный автор' })).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="/authors/null"]')).toBeNull();
+  });
+
   it('hides the rating line without ratings', () => {
     render(<BookOfTheDay data={{ book: { ...book, rating: 0, ratingsCount: 0 }, descriptionExcerpt: null }} />);
     expect(screen.queryByText(/оцен/)).not.toBeInTheDocument();

@@ -99,7 +99,7 @@ func main() {
 	// backend/cmd/worker/main.go's own zero-config construction (see
 	// docs/features/bookdata-clients.md for the accepted-risk placeholder
 	// User-Agent contact).
-	adminService := adminservice.NewService(adminRepo, adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()))
+	adminService := adminservice.NewService(adminRepo, adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()), adminservice.WithLogger(logger))
 	// wikidataClient is a second, independent bookdata client instance (same
 	// zero-config, placeholder-User-Agent caveat as above) used only for the
 	// admin harvest author-name-search endpoint (see

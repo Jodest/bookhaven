@@ -70,9 +70,11 @@ type reviewUserResponse struct {
 	AvatarURL *string `json:"avatar_url"`
 }
 
+// reviewBookAuthorResponse: Slug is null for a non-published author
+// (name only, no link).
 type reviewBookAuthorResponse struct {
-	Name string `json:"name"`
-	Slug string `json:"slug"`
+	Name string  `json:"name"`
+	Slug *string `json:"slug"`
 }
 
 type reviewBookResponse struct {
@@ -189,7 +191,7 @@ func toHomeResponse(h *service.Home) homeResponse {
 	for _, r := range h.RecentReviews {
 		authors := make([]reviewBookAuthorResponse, 0, len(r.Book.Authors))
 		for _, a := range r.Book.Authors {
-			authors = append(authors, reviewBookAuthorResponse{Name: a.Name, Slug: a.Slug})
+			authors = append(authors, toReviewBookAuthorResponse(a))
 		}
 		resp.RecentReviews = append(resp.RecentReviews, recentReviewResponse{
 			ID:         r.ID.String(),
@@ -330,4 +332,13 @@ func (h *Handler) GetMyHome(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get personal home"})
 	}
 	return c.JSON(http.StatusOK, toPersonalHomeResponse(home))
+}
+
+// toReviewBookAuthorResponse embeds a non-published author by name only.
+func toReviewBookAuthorResponse(a catalogdomain.Author) reviewBookAuthorResponse {
+	if !a.IsPublished() {
+		return reviewBookAuthorResponse{Name: a.Name}
+	}
+	slug := a.Slug
+	return reviewBookAuthorResponse{Name: a.Name, Slug: &slug}
 }

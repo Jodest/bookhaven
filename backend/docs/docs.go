@@ -38,6 +38,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "Статус: pending, published, rejected",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Номер страницы",
                         "name": "page",
@@ -55,6 +61,15 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_admin_transport_http.listAuthorsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
@@ -210,6 +225,15 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_admin_transport_http.authorResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
@@ -5277,6 +5301,12 @@ const docTemplate = `{
                 "death_date": {
                     "type": "string"
                 },
+                "external_id": {
+                    "type": "string"
+                },
+                "external_source": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -5287,6 +5317,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status is pending | published | rejected (admin payloads always\ninclude it, embedded book authors too).",
                     "type": "string"
                 }
             }
@@ -5383,6 +5417,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status (pending | published | rejected) is applied on PATCH only;\nomitted = unchanged. Ignored on POST (new authors are published).",
                     "type": "string"
                 }
             }
