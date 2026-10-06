@@ -292,6 +292,13 @@ func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich 
 		IsHidden:       true,
 		ExternalSource: &externalSource,
 		ExternalID:     &sourceID,
+		// The title comes only from the Wikidata "ru" label
+		// (FILTER(LANG(?itemLabel) = "ru") in bookdata/wikidata.go), so it is
+		// the official Russian title by definition even when written in
+		// Latin script (e.g. «S.N.U.F.F.»). Only the title-language check is
+		// lifted; the description check still applies.
+		// See docs/features/latin-book-titles.md.
+		AllowNonRussianTitle: true,
 	}
 
 	if _, err := admin.CreateBook(ctx, input); err != nil {
@@ -340,9 +347,10 @@ func enrichRecord(ctx context.Context, rec *bookdata.ExternalBookRecord, enrich 
 	// today, so a non-Russian excerpt is simply left out (rec.Description
 	// stays nil, since Wikidata's own SPARQL parsing never sets Description
 	// itself) rather than failing an otherwise-good, correctly-Russian-
-	// titled book over an optional enrichment field. This is an intentional
-	// asymmetry with Title, which is hard-rejected via validateBookInput
-	// (ErrTitleNotRussian) when it reaches CreateBook - see
+	// titled book over an optional enrichment field. Harvest titles are
+	// exempt from the title-language check altogether (processRecord sets
+	// AllowNonRussianTitle: the title is the Wikidata "ru" label by
+	// construction) - see docs/features/latin-book-titles.md and
 	// docs/features/russian-only-content.md Business Rules.
 	if rec.Description == nil && enrichedRec.Description != nil && adminservice.IsRussianText(*enrichedRec.Description) {
 		rec.Description = enrichedRec.Description

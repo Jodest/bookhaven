@@ -32,6 +32,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Password reset by email — forgot/reset endpoints with enumeration-safe responses and per-IP/per-email limits, one-time 1h links, reset also verifies the email (see [docs/features/password-reset.md](features/password-reset.md), #161, epic #181)
 - [x] Similar books, stage 2 (readers also enjoyed) — co-reading signal with a 3-reader privacy threshold blended into stage 1, precomputed nightly into `book_similarities` by the worker scheduler (see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md), #217, epic #223; merged in #226/#227)
 - [x] Home page content — book of the day, literary calendar with 7-day lookahead and book anniversaries, "Что почитать?" random pick, new/top-rated rows and fresh reviews for everyone; continue reading, challenge card, "Вам может понравиться" and a want-to-read pick for logged-in users (see [docs/features/home-page-content.md](features/home-page-content.md), #229, epic #230; merged in #235/#236 and #237/#238)
+- [x] Latin-script book titles — harvest and an admin opt-in checkbox exempt official Latin-script titles (e.g. «Empire V») from the Russian-title check; bulk import keeps it (see [docs/features/latin-book-titles.md](features/latin-book-titles.md))
 
 ## Post-MVP
 

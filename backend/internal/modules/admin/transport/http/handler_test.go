@@ -29,6 +29,7 @@ type fakeAdminService struct {
 	createBookErr  error
 	updateBookErr  error
 	lastBookFilter repository.BookFilter
+	lastBookInput  *adminService.BookInput
 
 	lookupRecord *bookdata.ExternalBookRecord
 	lookupErr    error
@@ -69,6 +70,7 @@ func (f *fakeAdminService) GetBook(ctx context.Context, id uuid.UUID) (*catalogD
 }
 
 func (f *fakeAdminService) CreateBook(ctx context.Context, input adminService.BookInput) (*catalogDomain.Book, error) {
+	f.lastBookInput = &input
 	if f.createBookErr != nil {
 		return nil, f.createBookErr
 	}
@@ -87,6 +89,7 @@ func (f *fakeAdminService) CreateBook(ctx context.Context, input adminService.Bo
 }
 
 func (f *fakeAdminService) UpdateBook(ctx context.Context, id uuid.UUID, input adminService.BookInput) (*catalogDomain.Book, error) {
+	f.lastBookInput = &input
 	if f.updateBookErr != nil {
 		return nil, f.updateBookErr
 	}
@@ -374,6 +377,67 @@ func TestCreateBook_NonRussianTitle(t *testing.T) {
 	}
 	if body["error"] != adminService.ErrTitleNotRussian.Error() {
 		t.Fatalf("unexpected error message: %q", body["error"])
+	}
+}
+
+func TestCreateBook_AllowNonRussianTitleIsPassedThrough(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"flag true", `{"title":"Empire V","language":"ru","allow_non_russian_title":true}`, true},
+		{"flag omitted", `{"title":"Empire V","language":"ru"}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, svc := setupHandler()
+			c, rec := newContext(http.MethodPost, "/api/v1/admin/books", []byte(tc.body))
+			setAdminUser(c)
+
+			if err := h.CreateBook(c); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if rec.Code != http.StatusCreated {
+				t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if svc.lastBookInput == nil || svc.lastBookInput.AllowNonRussianTitle != tc.want {
+				t.Fatalf("expected AllowNonRussianTitle=%v, got %+v", tc.want, svc.lastBookInput)
+			}
+		})
+	}
+}
+
+func TestUpdateBook_AllowNonRussianTitleIsPassedThrough(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"flag true", `{"title":"Empire V","language":"ru","allow_non_russian_title":true}`, true},
+		{"flag omitted", `{"title":"Empire V","language":"ru"}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, svc := setupHandler()
+			id := uuid.New()
+			svc.books = []catalogDomain.Book{{ID: id, Title: "Empire V", Slug: "empire-v", Language: "ru"}}
+			c, rec := newContext(http.MethodPatch, "/api/v1/admin/books/"+id.String(), []byte(tc.body))
+			c.SetPath("/api/v1/admin/books/:id")
+			c.SetParamNames("id")
+			c.SetParamValues(id.String())
+			setAdminUser(c)
+
+			if err := h.UpdateBook(c); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if svc.lastBookInput == nil || svc.lastBookInput.AllowNonRussianTitle != tc.want {
+				t.Fatalf("expected AllowNonRussianTitle=%v, got %+v", tc.want, svc.lastBookInput)
+			}
+		})
 	}
 }
 
