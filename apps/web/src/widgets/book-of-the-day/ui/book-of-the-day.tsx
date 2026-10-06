@@ -1,4 +1,5 @@
 import { HomeBookOfTheDay } from '@bookhaven/api-client';
+import { AuthorNameLink } from '@/entities/author';
 import { ShelveBookButtons } from '@/features/shelve-book';
 import { formatRatingSummary } from '@/shared/lib/format-date-ru';
 import { Star } from 'lucide-react';
@@ -63,9 +64,7 @@ export function BookOfTheDay({ data, className }: BookOfTheDayProps) {
               {book.authors.map((author, i) => (
                 <span key={author.id}>
                   {i > 0 && ', '}
-                  <Link href={`/authors/${author.slug}`} className="hover:underline">
-                    {author.name}
-                  </Link>
+                  <AuthorNameLink author={author} linkClassName="hover:underline" />
                 </span>
               ))}
               {book.publishedYear ? ` · ${book.publishedYear}` : ''}

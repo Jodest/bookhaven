@@ -57,7 +57,7 @@ func main() {
 	}
 
 	adminRepo := adminrepository.NewGormRepository(db)
-	adminService := adminservice.NewService(adminRepo)
+	adminService := adminservice.NewService(adminRepo, adminservice.WithLogger(logger))
 
 	wikidataClient := bookdata.NewWikidataClient()
 	// WithWorkDescriptionLookup is opted in here (harvest enrichment) only -

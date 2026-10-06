@@ -7,6 +7,7 @@ import (
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -25,9 +26,14 @@ var ErrCannotMergeIntoSelf = errors.New("cannot merge an author into itself")
 // Per docs/features/duplicate-author-merge.md's "No field reconciliation"
 // business rule, the canonical author's own fields (name, slug,
 // biography, photo_url, birth_date, death_date) are never modified by a
-// merge.
+// merge - with one exception (author-status feature, rule 11): when the
+// canonical author has no external identity (Wikidata QID) and the
+// duplicate has one, the identity moves to the canonical so the next
+// harvest matches it by QID instead of recreating the author. If both have
+// one, the canonical keeps its own and the duplicate's is dropped (logged).
+// Canonical status is never changed.
 //
-// Returns the canonical author (unchanged) and the number of books
+// Returns the canonical author (unchanged apart from a carried identity) and the number of books
 // reassigned in step 1 (used by the API's books_reassigned field).
 // Returns ErrCannotMergeIntoSelf if duplicateID == canonicalID, or
 // ErrAuthorNotFound if either author does not exist - in both cases
@@ -37,7 +43,8 @@ func (s *Service) MergeAuthors(ctx context.Context, duplicateID, canonicalID uui
 		return nil, 0, ErrCannotMergeIntoSelf
 	}
 
-	if _, err := s.repo.GetAuthorByID(ctx, duplicateID); err != nil {
+	duplicate, err := s.repo.GetAuthorByID(ctx, duplicateID)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, 0, ErrAuthorNotFound
 		}
@@ -52,10 +59,27 @@ func (s *Service) MergeAuthors(ctx context.Context, duplicateID, canonicalID uui
 		return nil, 0, fmt.Errorf("get canonical author: %w", err)
 	}
 
+	// Snapshot both rows before the merge deletes the duplicate.
+	dup, result := *duplicate, *canonical
+
 	booksReassigned, err := s.repo.MergeAuthors(ctx, duplicateID, canonicalID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("merge authors: %w", err)
 	}
 
-	return canonical, booksReassigned, nil
+	// Mirror the repository's in-transaction identity carry-over.
+	if dup.ExternalSource != nil && dup.ExternalID != nil {
+		if result.ExternalSource == nil {
+			result.ExternalSource = dup.ExternalSource
+			result.ExternalID = dup.ExternalID
+		} else {
+			s.log.Info("author merge dropped duplicate external id; canonical keeps its own",
+				zap.String("canonical_id", canonicalID.String()),
+				zap.String("duplicate_id", duplicateID.String()),
+				zap.String("duplicate_external_source", *dup.ExternalSource),
+				zap.String("duplicate_external_id", *dup.ExternalID))
+		}
+	}
+
+	return &result, booksReassigned, nil
 }

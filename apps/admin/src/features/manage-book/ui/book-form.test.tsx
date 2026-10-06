@@ -1,7 +1,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AdminBook, ApiError } from '@bookhaven/api-client';
+import { AdminAuthor, AdminBook, ApiError } from '@bookhaven/api-client';
 import { BookForm } from './book-form';
 
 const pushMock = vi.fn();
@@ -18,9 +18,12 @@ vi.mock('@/entities/book', () => ({
   },
 }));
 
-vi.mock('@/entities/author', () => ({
+const authorsListMock = vi.fn(() => Promise.resolve({ items: [] as AdminAuthor[], total: 0, page: 1, limit: 100 }));
+
+vi.mock('@/entities/author', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/author')>()),
   adminAuthorsApi: {
-    list: () => Promise.resolve({ items: [], total: 0, page: 1, limit: 100 }),
+    list: () => authorsListMock(),
   },
 }));
 
@@ -297,5 +300,50 @@ describe('BookForm Latin-script title opt-in', () => {
     await waitFor(() =>
       expect(screen.getByText('description must be in Russian')).toBeInTheDocument()
     );
+  });
+});
+
+describe('BookForm author picker status', () => {
+  const author = (id: string, name: string, status: AdminAuthor['status']): AdminAuthor => ({
+    id,
+    name,
+    slug: id,
+    biography: null,
+    photo_url: null,
+    birth_date: null,
+    death_date: null,
+    status,
+    external_source: null,
+    external_id: null,
+  });
+
+  afterEach(() => {
+    authorsListMock.mockReset();
+    authorsListMock.mockImplementation(() =>
+      Promise.resolve({ items: [] as AdminAuthor[], total: 0, page: 1, limit: 100 })
+    );
+  });
+
+  it('marks non-published authors in the picker and badges selected ones', async () => {
+    const pending = author('a2', 'Ожидающий Автор', 'pending');
+    authorsListMock.mockResolvedValue({
+      items: [author('a1', 'Опубликованный Автор', 'published'), pending, author('a3', 'Отклонённый Автор', 'rejected')],
+      total: 3,
+      page: 1,
+      limit: 100,
+    });
+
+    renderForm({ ...latinBook, authors: [pending] });
+
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'Ожидающий Автор · На модерации' })).toBeInTheDocument()
+    );
+    expect(screen.getByRole('option', { name: 'Опубликованный Автор' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Отклонённый Автор · Отклонён' })).toBeInTheDocument();
+
+    const selectedList = screen.getByRole('list', { name: 'Неопубликованные авторы' });
+    expect(selectedList).toHaveTextContent('На модерации');
+    expect(selectedList).toHaveTextContent('Ожидающий Автор');
+    expect(selectedList).not.toHaveTextContent('Опубликованный Автор');
   });
 });

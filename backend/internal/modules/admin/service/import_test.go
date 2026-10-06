@@ -82,8 +82,39 @@ func (f *fakeImportRepository) BookSlugExists(ctx context.Context, slug string, 
 	return false, nil
 }
 
-func (f *fakeImportRepository) ListAuthors(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Author, int64, error) {
-	return f.authors, int64(len(f.authors)), nil
+func (f *fakeImportRepository) ListAuthors(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Author, int64, error) {
+	if status == "" {
+		return f.authors, int64(len(f.authors)), nil
+	}
+	var out []catalogDomain.Author
+	for _, a := range f.authors {
+		if a.Status == status {
+			out = append(out, a)
+		}
+	}
+	return out, int64(len(out)), nil
+}
+
+func (f *fakeImportRepository) GetAuthorByExternalID(ctx context.Context, source, id string) (*catalogDomain.Author, error) {
+	for i := range f.authors {
+		a := f.authors[i]
+		if a.ExternalSource != nil && *a.ExternalSource == source && a.ExternalID != nil && *a.ExternalID == id {
+			return &f.authors[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) SetAuthorExternalID(ctx context.Context, id uuid.UUID, source, externalID string) error {
+	for i := range f.authors {
+		if f.authors[i].ID == id {
+			src, ext := source, externalID
+			f.authors[i].ExternalSource = &src
+			f.authors[i].ExternalID = &ext
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeImportRepository) GetAuthorByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error) {
@@ -265,6 +296,9 @@ func TestImportBooks(t *testing.T) {
 		}
 		if len(repo.authors) != 1 || repo.authors[0].Name != "Leo Tolstoy" {
 			t.Fatalf("expected author to be autocreated, got %+v", repo.authors)
+		}
+		if repo.authors[0].Status != catalogDomain.AuthorStatusPublished {
+			t.Fatalf("expected import-created author to be published, got %q", repo.authors[0].Status)
 		}
 		if len(repo.genres) != 1 || repo.genres[0].Name != "novel" {
 			t.Fatalf("expected genre to be autocreated with normalized casing, got %+v", repo.genres)

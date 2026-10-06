@@ -98,7 +98,7 @@ func TestGetHome_FullShapeSnakeCase(t *testing.T) {
 	excerpt := "Описание"
 	book := catalogdomain.Book{
 		ID: bookID, Title: "Книга", Slug: "kniga", CoverURL: &cover, Rating: 4.5, RatingsCount: 3,
-		Authors: []catalogdomain.Author{{ID: uuid.New(), Name: "Автор", Slug: "avtor"}},
+		Authors: []catalogdomain.Author{{ID: uuid.New(), Name: "Автор", Slug: "avtor", Status: catalogdomain.AuthorStatusPublished}},
 	}
 	birth := time.Date(1814, 10, 15, 0, 0, 0, 0, time.UTC)
 	death := time.Date(1841, 7, 27, 0, 0, 0, 0, time.UTC)

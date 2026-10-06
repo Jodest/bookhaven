@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminAuthorsApi } from '@/entities/author';
-import { AdminAuthor, AdminAuthorInput } from '@bookhaven/api-client';
+import { adminAuthorsApi, AuthorStatusBadge, AUTHOR_STATUS_LABELS } from '@/entities/author';
+import { AdminAuthor, AdminAuthorInput, AdminAuthorStatus } from '@bookhaven/api-client';
 import {
   Input,
   Button,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -19,6 +20,17 @@ import { Search } from 'lucide-react';
 import { Pagination } from '@/shared/ui';
 import { AuthorForm } from '@/features/manage-author';
 import { MergeAuthorDialog } from '@/features/merge-author';
+
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'Все статусы' },
+  { value: 'pending', label: AUTHOR_STATUS_LABELS.pending },
+  { value: 'published', label: AUTHOR_STATUS_LABELS.published },
+  { value: 'rejected', label: AUTHOR_STATUS_LABELS.rejected },
+];
+
+function parseStatus(value: string | null): AdminAuthorStatus | undefined {
+  return value === 'pending' || value === 'published' || value === 'rejected' ? value : undefined;
+}
 
 export function AuthorsView() {
   const router = useRouter();
@@ -34,15 +46,17 @@ export function AuthorsView() {
   const [mergeSuccessMessage, setMergeSuccessMessage] = useState<string | null>(null);
 
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+  const status = parseStatus(searchParams.get('status'));
   const limit = 20;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'authors', { search, page }],
+    queryKey: ['admin', 'authors', { search, page, status }],
     queryFn: () =>
       adminAuthorsApi.list({
         search: search || undefined,
         page,
         limit,
+        status,
       }),
   });
 
@@ -103,6 +117,7 @@ export function AuthorsView() {
       photo_url: author.photo_url ?? '',
       birth_date: author.birth_date ?? '',
       death_date: author.death_date ?? '',
+      status: author.status,
     });
   };
 
@@ -150,6 +165,13 @@ export function AuthorsView() {
         <Button type="submit" variant="outline">
           <Search className="h-4 w-4" />
         </Button>
+        <Select
+          aria-label="Статус"
+          options={STATUS_FILTER_OPTIONS}
+          value={status ?? ''}
+          onChange={(e) => updateParams({ status: e.target.value, page: '1' })}
+          className="w-full md:w-48"
+        />
       </form>
 
       {error && (
@@ -172,6 +194,7 @@ export function AuthorsView() {
                 <TableRow>
                   <TableHead>Имя</TableHead>
                   <TableHead>Slug</TableHead>
+                  <TableHead>Статус</TableHead>
                   <TableHead className="text-right">Действия</TableHead>
                 </TableRow>
               </TableHeader>
@@ -180,6 +203,9 @@ export function AuthorsView() {
                   <TableRow key={author.id}>
                     <TableCell className="font-medium">{author.name}</TableCell>
                     <TableCell>{author.slug}</TableCell>
+                    <TableCell>
+                      <AuthorStatusBadge status={author.status} />
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => startEdit(author)}>
                         Редактировать

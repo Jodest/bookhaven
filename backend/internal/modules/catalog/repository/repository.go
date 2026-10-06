@@ -93,8 +93,11 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]do
 	}
 
 	if filter.AuthorID != nil {
+		// Only a published author is a public filter target; a
+		// non-published author ID yields an empty result.
 		query = query.Joins("JOIN book_authors ON book_authors.book_id = books.id").
-			Where("book_authors.author_id = ?", filter.AuthorID)
+			Where("book_authors.author_id = ?", filter.AuthorID).
+			Where("EXISTS (SELECT 1 FROM authors a WHERE a.id = book_authors.author_id AND a.status = ?)", domain.AuthorStatusPublished)
 	}
 
 	if filter.RatingMin != nil {
@@ -167,7 +170,7 @@ func (r *GormRepository) GetAuthorBySlug(ctx context.Context, slug string) (*dom
 		}).
 		Preload("Books.Authors").
 		Preload("Books.Genres").
-		Where("slug = ?", slug).
+		Where("slug = ? AND status = ?", slug, domain.AuthorStatusPublished).
 		First(&author).Error; err != nil {
 		return nil, err
 	}
@@ -186,7 +189,8 @@ func (r *GormRepository) ListAuthors(ctx context.Context, search string, limit i
 	var authors []domain.Author
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&domain.Author{})
+	query := r.db.WithContext(ctx).Model(&domain.Author{}).
+		Where("status = ?", domain.AuthorStatusPublished)
 
 	if search != "" {
 		query = query.Where(
@@ -239,10 +243,12 @@ func (r *GormRepository) GetSimilarSource(ctx context.Context, bookID uuid.UUID)
 		return nil, gorm.ErrRecordNotFound
 	}
 
+	// Only published authors count as a shared-author signal.
 	src := &SimilarSource{}
 	if err := db.Table("book_authors").
-		Where("book_id = ?", bookID).
-		Pluck("author_id", &src.AuthorIDs).Error; err != nil {
+		Joins("JOIN authors ON authors.id = book_authors.author_id").
+		Where("book_authors.book_id = ? AND authors.status = ?", bookID, domain.AuthorStatusPublished).
+		Pluck("book_authors.author_id", &src.AuthorIDs).Error; err != nil {
 		return nil, err
 	}
 	if err := db.Table("book_genres").
@@ -338,7 +344,10 @@ WHERE (r.shared_authors > 0 AND r.rn <= @author_pool)
 		BookID   uuid.UUID
 		AuthorID uuid.UUID
 	}
-	if err := db.Raw("SELECT book_id, author_id FROM book_authors WHERE book_id IN ?", ids).
+	if err := db.Raw(`SELECT ba.book_id, ba.author_id
+        FROM book_authors ba
+        JOIN authors a ON a.id = ba.author_id
+        WHERE ba.book_id IN ? AND a.status = ?`, ids, domain.AuthorStatusPublished).
 		Scan(&links).Error; err != nil {
 		return nil, err
 	}

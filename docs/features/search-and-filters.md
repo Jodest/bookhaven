@@ -87,6 +87,8 @@ Response: unchanged `listBooksResponse` structure.
 
 ### New: `GET /api/v1/authors`
 
+Returns only `published` authors (list, search and `total`); see [author-status.md](author-status.md). In public book payloads a non-published author is embedded by name only with `"slug": null`.
+
 Query parameters:
 
 | Parameter | Type   | Description                     |

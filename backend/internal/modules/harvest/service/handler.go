@@ -2,8 +2,10 @@
 // decodes a HarvestPayload (a caller-supplied SPARQL query), executes it
 // against Wikidata via bookdata.WikidataClient.Query, optionally enriches
 // each returned record via an OpenLibrary-shaped bookdata.Client, resolves
-// authors/genres by name (autocreate on miss, see
-// adminservice.ResolveOrCreateAuthorIDsByNames/ResolveOrCreateGenreIDsByNames),
+// authors by Wikidata QID then name (new authors are pending; rejected
+// authors are tombstones and are skipped - see
+// adminservice.ResolveOrCreateHarvestAuthors) and genres by name (autocreate
+// on miss, adminservice.ResolveOrCreateGenreIDsByNames),
 // and creates books via adminservice.Service.CreateBook.
 //
 // Books created by this handler are always is_hidden = true: harvested data
@@ -256,7 +258,7 @@ func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich 
 		enrichRecord(ctx, &enriched, enrich)
 	}
 
-	authorIDs, err := admin.ResolveOrCreateAuthorIDsByNames(ctx, enriched.Authors)
+	authorIDs, err := admin.ResolveOrCreateHarvestAuthors(ctx, harvestAuthorRefs(enriched))
 	if err != nil {
 		return 0, fmt.Errorf("resolve authors: %w", err)
 	}
@@ -305,6 +307,24 @@ func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich 
 		return 0, fmt.Errorf("create book: %w", err)
 	}
 	return outcomeCreated, nil
+}
+
+// harvestAuthorRefs maps a record's authors to resolver refs: the paired
+// Wikidata AuthorRefs (name + QID) when present, otherwise the plain
+// Authors names as QID-less refs (e.g. records without a parsed pairing).
+func harvestAuthorRefs(rec bookdata.ExternalBookRecord) []adminservice.AuthorRef {
+	if len(rec.AuthorRefs) > 0 {
+		refs := make([]adminservice.AuthorRef, 0, len(rec.AuthorRefs))
+		for _, a := range rec.AuthorRefs {
+			refs = append(refs, adminservice.AuthorRef{Name: a.Name, QID: a.QID})
+		}
+		return refs
+	}
+	refs := make([]adminservice.AuthorRef, 0, len(rec.Authors))
+	for _, name := range rec.Authors {
+		refs = append(refs, adminservice.AuthorRef{Name: name})
+	}
+	return refs
 }
 
 // enrichRecord fills CoverURL, Description, PageCount and ISBN from enrich

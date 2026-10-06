@@ -25,7 +25,7 @@ type Service interface {
 	GetBook(ctx context.Context, id uuid.UUID) (*catalogDomain.Book, error)
 	CreateBook(ctx context.Context, input adminService.BookInput) (*catalogDomain.Book, error)
 	UpdateBook(ctx context.Context, id uuid.UUID, input adminService.BookInput) (*catalogDomain.Book, error)
-	ListAuthors(ctx context.Context, search string, page, limit int) ([]catalogDomain.Author, int64, error)
+	ListAuthors(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Author, int64, error)
 	CreateAuthor(ctx context.Context, input adminService.AuthorInput) (*catalogDomain.Author, error)
 	UpdateAuthor(ctx context.Context, id uuid.UUID, input adminService.AuthorInput) (*catalogDomain.Author, error)
 	MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (*catalogDomain.Author, int64, error)
@@ -59,6 +59,11 @@ type authorResponse struct {
 	PhotoURL  *string `json:"photo_url,omitempty"`
 	BirthDate *string `json:"birth_date,omitempty"`
 	DeathDate *string `json:"death_date,omitempty"`
+	// Status is pending | published | rejected (admin payloads always
+	// include it, embedded book authors too).
+	Status         string  `json:"status"`
+	ExternalSource *string `json:"external_source"`
+	ExternalID     *string `json:"external_id"`
 }
 
 type genreResponse struct {
@@ -142,6 +147,9 @@ type createUpdateAuthorRequest struct {
 	PhotoURL  *string `json:"photo_url,omitempty"`
 	BirthDate *string `json:"birth_date,omitempty"`
 	DeathDate *string `json:"death_date,omitempty"`
+	// Status (pending | published | rejected) is applied on PATCH only;
+	// omitted = unchanged. Ignored on POST (new authors are published).
+	Status *string `json:"status,omitempty"`
 }
 
 // mergeAuthorsRequest is the body of POST /admin/authors/:id/merge.
@@ -266,13 +274,16 @@ func toAuthorResponse(a catalogDomain.Author) authorResponse {
 		id = a.ID.String()
 	}
 	return authorResponse{
-		ID:        id,
-		Name:      a.Name,
-		Slug:      a.Slug,
-		Biography: a.Biography,
-		PhotoURL:  a.PhotoURL,
-		BirthDate: formatDate(a.BirthDate),
-		DeathDate: formatDate(a.DeathDate),
+		ID:             id,
+		Name:           a.Name,
+		Slug:           a.Slug,
+		Biography:      a.Biography,
+		PhotoURL:       a.PhotoURL,
+		BirthDate:      formatDate(a.BirthDate),
+		DeathDate:      formatDate(a.DeathDate),
+		Status:         a.Status,
+		ExternalSource: a.ExternalSource,
+		ExternalID:     a.ExternalID,
 	}
 }
 
@@ -623,9 +634,11 @@ func (h *Handler) UpdateBook(c echo.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param search query string false "Поиск"
+// @Param status query string false "Статус: pending, published, rejected"
 // @Param page query int false "Номер страницы"
 // @Param limit query int false "Размер страницы, максимум 100"
 // @Success 200 {object} listAuthorsResponse
+// @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -635,8 +648,16 @@ func (h *Handler) ListAuthors(c echo.Context) error {
 	search := c.QueryParam("search")
 	page, limit := parsePagination(c)
 
-	authors, total, err := h.service.ListAuthors(ctx, search, page, limit)
+	status := c.QueryParam("status")
+	if status != "" && !catalogDomain.IsValidAuthorStatus(status) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": adminService.ErrInvalidAuthorStatus.Error()})
+	}
+
+	authors, total, err := h.service.ListAuthors(ctx, search, status, page, limit)
 	if err != nil {
+		if errors.Is(err, adminService.ErrInvalidAuthorStatus) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list authors"})
 	}
 
@@ -710,6 +731,7 @@ func (h *Handler) CreateAuthor(c echo.Context) error {
 // @Param id path string true "ID автора"
 // @Param body body createUpdateAuthorRequest true "Данные автора"
 // @Success 200 {object} authorResponse
+// @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -737,11 +759,14 @@ func (h *Handler) UpdateAuthor(c echo.Context) error {
 		PhotoURL:  req.PhotoURL,
 		BirthDate: req.BirthDate,
 		DeathDate: req.DeathDate,
+		Status:    req.Status,
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, adminService.ErrAuthorNotFound):
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "author not found"})
+		case errors.Is(err, adminService.ErrInvalidAuthorStatus):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		case errors.Is(err, adminService.ErrInvalidAuthorName),
 			errors.Is(err, adminService.ErrInvalidSlug),
 			errors.Is(err, adminService.ErrInvalidDate):

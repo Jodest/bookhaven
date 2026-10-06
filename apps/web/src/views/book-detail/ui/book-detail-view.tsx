@@ -1,3 +1,4 @@
+import { AuthorNameLink } from '@/entities/author';
 import { booksApi } from '@/entities/book';
 import { AddToListButton } from '@/features/add-to-list';
 import { BookRating } from '@/features/rate-book';
@@ -7,7 +8,6 @@ import { SimilarBooks } from '@/widgets/similar-books';
 import { Badge } from '@bookhaven/ui';
 import { Star } from 'lucide-react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 interface BookDetailViewProps {
@@ -54,13 +54,12 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
 
           <div className="mt-4 flex flex-wrap gap-2">
             {book.authors.map((author) => (
-              <Link
+              <AuthorNameLink
                 key={author.id}
-                href={`/authors/${author.slug}`}
-                className="text-lg text-primary hover:underline"
-              >
-                {author.name}
-              </Link>
+                author={author}
+                className="text-lg"
+                linkClassName="text-primary hover:underline"
+              />
             ))}
           </div>
 

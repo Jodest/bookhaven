@@ -110,8 +110,39 @@ func (f *fakeBulkPublishRepository) BookSlugExists(ctx context.Context, slug str
 	return false, nil
 }
 
-func (f *fakeBulkPublishRepository) ListAuthors(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Author, int64, error) {
-	return f.authors, int64(len(f.authors)), nil
+func (f *fakeBulkPublishRepository) ListAuthors(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Author, int64, error) {
+	if status == "" {
+		return f.authors, int64(len(f.authors)), nil
+	}
+	var out []catalogDomain.Author
+	for _, a := range f.authors {
+		if a.Status == status {
+			out = append(out, a)
+		}
+	}
+	return out, int64(len(out)), nil
+}
+
+func (f *fakeBulkPublishRepository) GetAuthorByExternalID(ctx context.Context, source, id string) (*catalogDomain.Author, error) {
+	for i := range f.authors {
+		a := f.authors[i]
+		if a.ExternalSource != nil && *a.ExternalSource == source && a.ExternalID != nil && *a.ExternalID == id {
+			return &f.authors[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeBulkPublishRepository) SetAuthorExternalID(ctx context.Context, id uuid.UUID, source, externalID string) error {
+	for i := range f.authors {
+		if f.authors[i].ID == id {
+			src, ext := source, externalID
+			f.authors[i].ExternalSource = &src
+			f.authors[i].ExternalID = &ext
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeBulkPublishRepository) GetAuthorByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error) {

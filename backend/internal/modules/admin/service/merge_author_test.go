@@ -60,8 +60,39 @@ func (f *fakeMergeAuthorsRepository) BookSlugExists(ctx context.Context, slug st
 	return false, nil
 }
 
-func (f *fakeMergeAuthorsRepository) ListAuthors(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Author, int64, error) {
-	return f.authors, int64(len(f.authors)), nil
+func (f *fakeMergeAuthorsRepository) ListAuthors(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Author, int64, error) {
+	if status == "" {
+		return f.authors, int64(len(f.authors)), nil
+	}
+	var out []catalogDomain.Author
+	for _, a := range f.authors {
+		if a.Status == status {
+			out = append(out, a)
+		}
+	}
+	return out, int64(len(out)), nil
+}
+
+func (f *fakeMergeAuthorsRepository) GetAuthorByExternalID(ctx context.Context, source, id string) (*catalogDomain.Author, error) {
+	for i := range f.authors {
+		a := f.authors[i]
+		if a.ExternalSource != nil && *a.ExternalSource == source && a.ExternalID != nil && *a.ExternalID == id {
+			return &f.authors[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) SetAuthorExternalID(ctx context.Context, id uuid.UUID, source, externalID string) error {
+	for i := range f.authors {
+		if f.authors[i].ID == id {
+			src, ext := source, externalID
+			f.authors[i].ExternalSource = &src
+			f.authors[i].ExternalID = &ext
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeMergeAuthorsRepository) GetAuthorByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error) {
@@ -150,10 +181,22 @@ func (f *fakeMergeAuthorsRepository) MergeAuthors(ctx context.Context, duplicate
 	}
 
 	// Step 3: delete the duplicate author row.
+	var dupSource, dupExtID *string
 	for i := range f.authors {
 		if f.authors[i].ID == duplicateID {
+			dupSource, dupExtID = f.authors[i].ExternalSource, f.authors[i].ExternalID
 			f.authors = append(f.authors[:i], f.authors[i+1:]...)
 			break
+		}
+	}
+
+	// Step 4: carry the duplicate's external identity to a canonical
+	// without one.
+	if dupSource != nil && dupExtID != nil {
+		for i := range f.authors {
+			if f.authors[i].ID == canonicalID && f.authors[i].ExternalSource == nil {
+				f.authors[i].ExternalSource, f.authors[i].ExternalID = dupSource, dupExtID
+			}
 		}
 	}
 
@@ -340,6 +383,44 @@ func TestMergeAuthors(t *testing.T) {
 		}
 		if result.Name != "Канонический" || result.Slug != "canon" || result.Biography == nil || *result.Biography != bio {
 			t.Fatalf("expected canonical author's fields unchanged, got %+v", result)
+		}
+	})
+
+	t.Run("QID carries to a canonical author without one", func(t *testing.T) {
+		svc, repo := newMergeAuthorsService()
+		src, qid := "wikidata", "Q7243"
+		duplicate := catalogDomain.Author{ID: uuid.New(), Name: "Дубликат", Slug: "dup", Status: catalogDomain.AuthorStatusPending, ExternalSource: &src, ExternalID: &qid}
+		canonical := catalogDomain.Author{ID: uuid.New(), Name: "Канонический", Slug: "canon", Status: catalogDomain.AuthorStatusPublished}
+		repo.authors = []catalogDomain.Author{duplicate, canonical}
+
+		result, _, err := svc.MergeAuthors(context.Background(), duplicate.ID, canonical.ID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.ExternalID == nil || *result.ExternalID != "Q7243" || result.ExternalSource == nil || *result.ExternalSource != "wikidata" {
+			t.Fatalf("expected QID carried to canonical in result, got %+v", result)
+		}
+		if repo.authors[0].ExternalID == nil || *repo.authors[0].ExternalID != "Q7243" {
+			t.Fatalf("expected QID carried to canonical in repo, got %+v", repo.authors[0])
+		}
+		if result.Status != catalogDomain.AuthorStatusPublished {
+			t.Fatalf("canonical status must be unchanged, got %q", result.Status)
+		}
+	})
+
+	t.Run("canonical with its own QID keeps it", func(t *testing.T) {
+		svc, repo := newMergeAuthorsService()
+		src, dupQID, canonQID := "wikidata", "Q1", "Q2"
+		duplicate := catalogDomain.Author{ID: uuid.New(), Name: "Дубликат", Slug: "dup", ExternalSource: &src, ExternalID: &dupQID}
+		canonical := catalogDomain.Author{ID: uuid.New(), Name: "Канонический", Slug: "canon", ExternalSource: &src, ExternalID: &canonQID}
+		repo.authors = []catalogDomain.Author{duplicate, canonical}
+
+		result, _, err := svc.MergeAuthors(context.Background(), duplicate.ID, canonical.ID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if *result.ExternalID != "Q2" || *repo.authors[0].ExternalID != "Q2" {
+			t.Fatalf("expected canonical to keep Q2, got result=%v repo=%v", *result.ExternalID, *repo.authors[0].ExternalID)
 		}
 	})
 }

@@ -90,7 +90,12 @@ export interface Book {
 export interface Author {
   id: string;
   name: string;
-  slug: string;
+  /**
+   * null when the author is embedded in a public book payload but is not
+   * published (pending/rejected): render the name as plain text, no link.
+   * Always set for GET /authors and GET /authors/:slug (published only).
+   */
+  slug: string | null;
   biography: string | null;
   photoUrl: string | null;
   birthDate: string | null;
@@ -286,6 +291,8 @@ export interface AdminBook {
   updated_at: string;
 }
 
+export type AdminAuthorStatus = 'pending' | 'published' | 'rejected';
+
 export interface AdminAuthor {
   id: string;
   name: string;
@@ -294,6 +301,11 @@ export interface AdminAuthor {
   photo_url: string | null;
   birth_date: string | null;
   death_date: string | null;
+  status: AdminAuthorStatus;
+  /** e.g. 'wikidata'; null for manual/legacy authors. */
+  external_source: string | null;
+  /** Bare Wikidata QID (e.g. 'Q7243') when external_source is 'wikidata'. */
+  external_id: string | null;
 }
 
 export interface AdminGenre {
@@ -352,6 +364,8 @@ export interface AdminAuthorInput {
   photo_url?: string | null;
   birth_date?: string | null;
   death_date?: string | null;
+  /** Applied on update only (omitted = unchanged); ignored on create. */
+  status?: AdminAuthorStatus;
 }
 
 export interface AdminGenreInput {
@@ -878,7 +892,8 @@ export interface HomeReview {
     slug: string;
     title: string;
     coverUrl: string | null;
-    authors: { name: string; slug: string }[];
+    /** slug is null for a non-published author (plain text, no link). */
+    authors: { name: string; slug: string | null }[];
   };
 }
 
@@ -918,7 +933,7 @@ type RawHomeReview = {
     slug: string;
     title: string;
     cover_url: string | null;
-    authors: { name: string; slug: string }[] | null;
+    authors: { name: string; slug: string | null }[] | null;
   };
 };
 
@@ -1651,11 +1666,13 @@ export const api = {
         page?: number;
         limit?: number;
         search?: string;
+        status?: AdminAuthorStatus;
       }) => {
         const queryParams: Record<string, string> = {};
         if (params?.page !== undefined) queryParams.page = String(params.page);
         if (params?.limit !== undefined) queryParams.limit = String(params.limit);
         if (params?.search) queryParams.search = params.search;
+        if (params?.status) queryParams.status = params.status;
         return fetcher<PaginatedResponse<AdminAuthor>>(
           `/api/v1/admin/authors?${new URLSearchParams(queryParams)}`
         );

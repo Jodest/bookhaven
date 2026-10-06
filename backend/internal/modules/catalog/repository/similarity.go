@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -52,7 +53,8 @@ type SimilarityStore interface {
 	ListInteractions(ctx context.Context) ([]Interaction, error)
 	// ListVisibleBookStats returns ratings_count of every visible book.
 	ListVisibleBookStats(ctx context.Context) ([]BookStat, error)
-	// ListBookAuthorIDs returns all book_authors rows grouped by book.
+	// ListBookAuthorIDs returns all book_authors rows of published authors
+	// grouped by book (non-published authors are not a similarity signal).
 	ListBookAuthorIDs(ctx context.Context) (map[uuid.UUID][]uuid.UUID, error)
 	// ReplaceSimilarities atomically replaces the whole table with rows.
 	ReplaceSimilarities(ctx context.Context, rows []SimilarityRow) error
@@ -131,7 +133,10 @@ func (r *GormRepository) ListBookAuthorIDs(ctx context.Context) (map[uuid.UUID][
 		AuthorID uuid.UUID
 	}
 	if err := r.db.WithContext(ctx).
-		Raw("SELECT book_id, author_id FROM book_authors").
+		Raw(`SELECT ba.book_id, ba.author_id
+        FROM book_authors ba
+        JOIN authors a ON a.id = ba.author_id
+        WHERE a.status = ?`, domain.AuthorStatusPublished).
 		Scan(&links).Error; err != nil {
 		return nil, err
 	}
