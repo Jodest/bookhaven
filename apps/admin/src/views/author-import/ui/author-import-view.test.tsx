@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { ApiError } from '@bookhaven/api-client';
 import type { AdminAuthor, AdminAuthorImportResult, AdminHarvestAuthorCandidate } from '@bookhaven/api-client';
-import { WikidataImportPanel } from './wikidata-import-panel';
+import { AuthorImportView } from './author-import-view';
 
 const importMock = vi.fn();
 const searchMock = vi.fn();
@@ -52,14 +52,14 @@ const freshCandidate: AdminHarvestAuthorCandidate = {
   existing: null,
 };
 
-function renderPanel() {
+function renderView() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
   render(
     <QueryClientProvider client={queryClient}>
-      <WikidataImportPanel />
+      <AuthorImportView />
     </QueryClientProvider>
   );
   return { invalidateSpy };
@@ -72,7 +72,7 @@ async function searchWith(candidates: AdminHarvestAuthorCandidate[]) {
   await waitFor(() => expect(screen.getByText(candidates[0].label)).toBeInTheDocument());
 }
 
-describe('WikidataImportPanel', () => {
+describe('AuthorImportView', () => {
   let confirmSpy: MockInstance<(message?: string) => boolean>;
 
   beforeEach(() => {
@@ -86,9 +86,15 @@ describe('WikidataImportPanel', () => {
     vi.restoreAllMocks();
   });
 
+  it('renders the page heading', () => {
+    renderView();
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Импорт автора из Wikidata' })).toBeInTheDocument();
+  });
+
   it('imports only the author without triggering a harvest, then refreshes search and caches', async () => {
     importMock.mockResolvedValue(importResult());
-    const { invalidateSpy } = renderPanel();
+    const { invalidateSpy } = renderView();
     await searchWith([freshCandidate]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Импортировать автора' }));
@@ -108,7 +114,7 @@ describe('WikidataImportPanel', () => {
   it('imports with books: import first, then trigger with the stored QID', async () => {
     importMock.mockResolvedValue(importResult({ author: author({ external_id: 'Q999' }) }));
     triggerMock.mockResolvedValue({ task_id: 't1', queue: 'harvest', state: 'pending' });
-    const { invalidateSpy } = renderPanel();
+    const { invalidateSpy } = renderView();
     await searchWith([freshCandidate]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Импортировать с книгами' }));
@@ -122,7 +128,7 @@ describe('WikidataImportPanel', () => {
     await waitFor(() =>
       expect(screen.getByText(/Харвест книг запущен/)).toBeInTheDocument()
     );
-    expect(screen.getByRole('link', { name: 'К харвесту' })).toHaveAttribute('href', '/harvest');
+    expect(screen.getByRole('link', { name: 'К задачам харвеста' })).toHaveAttribute('href', '/import/jobs');
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'harvest', 'jobs'] });
   });
 
@@ -130,7 +136,7 @@ describe('WikidataImportPanel', () => {
     importMock.mockResolvedValue(
       importResult({ outcome: 'rejected', match: 'slug', author: author({ status: 'rejected' }) })
     );
-    renderPanel();
+    renderView();
     await searchWith([freshCandidate]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Импортировать с книгами' }));
@@ -151,7 +157,7 @@ describe('WikidataImportPanel', () => {
 
   it('shows the no_ru_label message and does not trigger a harvest', async () => {
     importMock.mockRejectedValue(new ApiError(422, 'Unprocessable Entity', 'no ru', '', 'no_ru_label'));
-    renderPanel();
+    renderView();
     await searchWith([freshCandidate]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Импортировать с книгами' }));
@@ -167,7 +173,7 @@ describe('WikidataImportPanel', () => {
   it('reports a harvest failure after a successful import', async () => {
     importMock.mockResolvedValue(importResult({ outcome: 'existing', match: 'qid' }));
     triggerMock.mockRejectedValue(new ApiError(500, 'Internal Server Error', 'failed to enqueue'));
-    renderPanel();
+    renderView();
     await searchWith([
       { ...freshCandidate, existing: { id: 'a1', name: 'Лев Толстой', slug: 'lev-tolstoy', status: 'pending' } },
     ]);
@@ -185,7 +191,7 @@ describe('WikidataImportPanel', () => {
   });
 
   it('existing candidates offer only "Импортировать книги"; rejected ones offer no import', async () => {
-    renderPanel();
+    renderView();
     await searchWith([
       { ...freshCandidate, existing: { id: 'a1', name: 'Лев Толстой', slug: 'lev-tolstoy', status: 'published' } },
       {
@@ -204,7 +210,7 @@ describe('WikidataImportPanel', () => {
 
   it('cancelling the confirm calls nothing', async () => {
     confirmSpy.mockReturnValue(false);
-    renderPanel();
+    renderView();
     await searchWith([freshCandidate]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Импортировать с книгами' }));

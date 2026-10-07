@@ -24,9 +24,11 @@ describe('resolveNavLocation', () => {
     ['/moderation/authors', 'moderation.authors'],
     ['/moderation/genres', 'moderation.genres'],
     ['/moderation/reviews', 'moderation.reviews'],
+    ['/import/wikidata', 'import.wikidata'],
+    ['/import/author', 'import.author'],
     ['/import/file', 'import.file'],
     ['/import/genres', 'import.genres'],
-    ['/harvest', 'import.wikidata'],
+    ['/import/jobs', 'import.jobs'],
     ['/users', 'users.list'],
   ])('%s -> %s', (pathname, tabId) => {
     expect(tabIdOf(pathname)).toBe(tabId);
@@ -54,7 +56,7 @@ describe('resolveNavLocation', () => {
     expect(catalog?.isBasePath).toBe(true);
   });
 
-  // Old (pre-#285/#286) routes were deleted and must resolve to nothing.
+  // Old (pre-#285/#286/#287) routes were deleted and must resolve to nothing.
   it.each([
     '/books',
     '/books/5/edit',
@@ -63,6 +65,9 @@ describe('resolveNavLocation', () => {
     '/authors/moderation',
     '/genres',
     '/reviews',
+    '/harvest',
+    '/import/wikidatax',
+    '/import/unknown',
     '/catalog/unknown',
     '/moderation/booksx',
     '/unknown',
@@ -99,16 +104,13 @@ describe('navigation config invariants', () => {
     expect(new Set(prefixes).size).toBe(prefixes.length);
   });
 
-  it('every match prefix lives under a section path (except allow-listed legacy routes)', () => {
-    // Remove '/harvest' in #287 when it moves to /import/wikidata.
-    const legacyAllowList = ['/harvest'];
+  it('every match prefix lives under a section path', () => {
     const sectionPrefixes = ['/moderation/', '/catalog/', '/import/'];
     for (const prefix of tabs.flatMap((t) => t.match)) {
       const ok =
         prefix === '/' ||
         prefix === '/users' ||
-        sectionPrefixes.some((p) => prefix.startsWith(p)) ||
-        legacyAllowList.includes(prefix);
+        sectionPrefixes.some((p) => prefix.startsWith(p));
       expect(ok, prefix).toBe(true);
     }
   });
@@ -162,6 +164,7 @@ describe('home and section hrefs', () => {
     expect(getSectionHref(moderation, 'admin')).toBe('/moderation/books');
     expect(getSectionHref(catalog, 'admin')).toBe('/catalog/books');
     expect(getSectionHref(catalog, 'moderator')).toBeNull();
+    expect(getSectionHref(importSection, 'admin')).toBe('/import/wikidata');
     expect(getSectionHref(importSection, 'moderator')).toBeNull();
   });
 });
