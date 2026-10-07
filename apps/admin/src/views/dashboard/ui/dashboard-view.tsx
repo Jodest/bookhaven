@@ -36,17 +36,17 @@ export function DashboardView() {
   }
 
   const cards = [
-    { label: 'Всего книг', value: data.books, href: '/books' },
-    { label: 'Скрытых книг', value: data.hidden_books, href: '/books?visibility=hidden' },
-    { label: 'Авторов', value: data.authors, href: '/authors' },
-    { label: 'Жанров', value: data.genres, href: '/genres' },
-    { label: 'Отзывов на модерации', value: data.pending_reviews, href: '/reviews?visibility=hidden' },
+    { label: 'Всего книг', value: data.books, href: '/catalog/books' },
+    { label: 'Скрытых книг', value: data.hidden_books, href: '/catalog/books?visibility=hidden' },
+    { label: 'Авторов', value: data.authors, href: '/catalog/authors' },
+    { label: 'Жанров', value: data.genres, href: '/catalog/genres' },
+    { label: 'Отзывов на модерации', value: data.pending_reviews, href: '/moderation/reviews?visibility=hidden' },
     {
       label: 'Импортировано, на проверке',
       value: data.pending_import_review,
-      href: '/books?visibility=pending_review',
+      href: '/moderation/books',
     },
-    { label: 'Авторы на модерации', value: data.pending_authors, href: '/authors/moderation' },
+    { label: 'Авторы на модерации', value: data.pending_authors, href: '/moderation/authors' },
   ];
 
   return (

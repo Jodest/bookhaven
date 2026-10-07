@@ -15,18 +15,19 @@ function tabIdOf(pathname: string): string | null | undefined {
 describe('resolveNavLocation', () => {
   it.each([
     ['/', 'overview.dashboard'],
-    ['/books', 'catalog.books'],
-    ['/books/new', 'catalog.books'],
-    ['/books/5/edit', 'catalog.books'],
-    ['/books/import', 'import.file'],
-    ['/authors', 'catalog.authors'],
-    ['/authors/moderation', 'moderation.authors'],
-    ['/genres', 'catalog.genres'],
-    ['/reviews', 'moderation.reviews'],
+    ['/catalog/books', 'catalog.books'],
+    ['/catalog/books/new', 'catalog.books'],
+    ['/catalog/books/5/edit', 'catalog.books'],
+    ['/catalog/authors', 'catalog.authors'],
+    ['/catalog/genres', 'catalog.genres'],
+    ['/moderation/books', 'moderation.books'],
+    ['/moderation/authors', 'moderation.authors'],
+    ['/moderation/genres', 'moderation.genres'],
+    ['/moderation/reviews', 'moderation.reviews'],
+    ['/import/file', 'import.file'],
+    ['/import/genres', 'import.genres'],
     ['/harvest', 'import.wikidata'],
     ['/users', 'users.list'],
-    ['/moderation/genres', 'moderation.genres'],
-    ['/import/genres', 'import.genres'],
   ])('%s -> %s', (pathname, tabId) => {
     expect(tabIdOf(pathname)).toBe(tabId);
   });
@@ -34,8 +35,8 @@ describe('resolveNavLocation', () => {
   it('resolves the owning section', () => {
     expect(resolveNavLocation('/')?.section.id).toBe('overview');
     expect(resolveNavLocation('/users')?.section.id).toBe('users');
-    expect(resolveNavLocation('/authors/moderation')?.section.id).toBe('moderation');
-    expect(resolveNavLocation('/books/import')?.section.id).toBe('import');
+    expect(resolveNavLocation('/moderation/authors')?.section.id).toBe('moderation');
+    expect(resolveNavLocation('/import/file')?.section.id).toBe('import');
   });
 
   it('resolves bare section paths as base paths', () => {
@@ -47,9 +48,26 @@ describe('resolveNavLocation', () => {
     const imp = resolveNavLocation('/import');
     expect(imp?.section.id).toBe('import');
     expect(imp?.isBasePath).toBe(true);
+
+    const catalog = resolveNavLocation('/catalog');
+    expect(catalog?.section.id).toBe('catalog');
+    expect(catalog?.isBasePath).toBe(true);
   });
 
-  it.each(['/booksx', '/unknown', '/reviewsfoo', '/moderation/unknown'])(
+  // Old (pre-#285/#286) routes were deleted and must resolve to nothing.
+  it.each([
+    '/books',
+    '/books/5/edit',
+    '/books/import',
+    '/authors',
+    '/authors/moderation',
+    '/genres',
+    '/reviews',
+    '/catalog/unknown',
+    '/moderation/booksx',
+    '/unknown',
+    '/moderation/unknown',
+  ])(
     '%s -> null',
     (pathname) => {
       expect(resolveNavLocation(pathname)).toBeNull();
@@ -57,7 +75,7 @@ describe('resolveNavLocation', () => {
   );
 
   it('ignores query strings', () => {
-    expect(tabIdOf('/books?visibility=pending_review')).toBe('catalog.books');
+    expect(tabIdOf('/catalog/books?visibility=hidden')).toBe('catalog.books');
   });
 });
 
@@ -79,6 +97,20 @@ describe('navigation config invariants', () => {
   it('no match prefix is claimed by two tabs', () => {
     const prefixes = tabs.flatMap((t) => t.match);
     expect(new Set(prefixes).size).toBe(prefixes.length);
+  });
+
+  it('every match prefix lives under a section path (except allow-listed legacy routes)', () => {
+    // Remove '/harvest' in #287 when it moves to /import/wikidata.
+    const legacyAllowList = ['/harvest'];
+    const sectionPrefixes = ['/moderation/', '/catalog/', '/import/'];
+    for (const prefix of tabs.flatMap((t) => t.match)) {
+      const ok =
+        prefix === '/' ||
+        prefix === '/users' ||
+        sectionPrefixes.some((p) => prefix.startsWith(p)) ||
+        legacyAllowList.includes(prefix);
+      expect(ok, prefix).toBe(true);
+    }
   });
 
   it('tab ids and hrefs are unique', () => {
@@ -118,15 +150,18 @@ describe('visibility', () => {
 describe('home and section hrefs', () => {
   const moderation = navSections.find((s) => s.id === 'moderation')!;
   const importSection = navSections.find((s) => s.id === 'import')!;
+  const catalog = navSections.find((s) => s.id === 'catalog')!;
 
   it('getHomeHref', () => {
     expect(getHomeHref('admin')).toBe('/');
-    expect(getHomeHref('moderator')).toBe('/reviews');
+    expect(getHomeHref('moderator')).toBe('/moderation/reviews');
   });
 
   it('getSectionHref', () => {
-    expect(getSectionHref(moderation, 'moderator')).toBe('/reviews');
-    expect(getSectionHref(moderation, 'admin')).toBe('/books?visibility=pending_review');
+    expect(getSectionHref(moderation, 'moderator')).toBe('/moderation/reviews');
+    expect(getSectionHref(moderation, 'admin')).toBe('/moderation/books');
+    expect(getSectionHref(catalog, 'admin')).toBe('/catalog/books');
+    expect(getSectionHref(catalog, 'moderator')).toBeNull();
     expect(getSectionHref(importSection, 'moderator')).toBeNull();
   });
 });

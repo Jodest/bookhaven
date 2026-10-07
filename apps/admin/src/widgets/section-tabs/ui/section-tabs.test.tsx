@@ -33,31 +33,43 @@ describe('SectionTabs', () => {
     role = 'admin';
   });
 
-  it('admin on /reviews sees moderation tabs with Отзывы active', () => {
-    renderTabs('/reviews');
+  it('admin on /moderation/reviews sees moderation tabs with Отзывы active', () => {
+    renderTabs('/moderation/reviews');
 
     const links = screen.getAllByRole('link');
     expect(links.map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
-      ['Книги', '/books?visibility=pending_review'],
-      ['Авторы', '/authors/moderation'],
+      ['Книги', '/moderation/books'],
+      ['Авторы', '/moderation/authors'],
       ['Жанры', '/moderation/genres'],
-      ['Отзывы', '/reviews'],
+      ['Отзывы', '/moderation/reviews'],
     ]);
     expect(screen.getByRole('link', { name: 'Отзывы' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Книги' })).not.toHaveAttribute('aria-current');
   });
 
-  it('admin on /books/import sees import tabs with Файл active', () => {
-    renderTabs('/books/import');
+  it('admin on /import/file sees import tabs with Файл active', () => {
+    renderTabs('/import/file');
 
     const links = screen.getAllByRole('link');
     expect(links.map((l) => l.textContent)).toEqual(['Wikidata', 'Файл', 'Жанры']);
     expect(screen.getByRole('link', { name: 'Файл' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('moderator on /reviews renders nothing', () => {
+  it('admin on /catalog/books/5/edit sees catalog tabs with Книги active', () => {
+    renderTabs('/catalog/books/5/edit');
+
+    const links = screen.getAllByRole('link');
+    expect(links.map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
+      ['Книги', '/catalog/books'],
+      ['Авторы', '/catalog/authors'],
+      ['Жанры', '/catalog/genres'],
+    ]);
+    expect(screen.getByRole('link', { name: 'Книги' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('moderator on /moderation/reviews renders nothing', () => {
     role = 'moderator';
-    const { container } = renderTabs('/reviews');
+    const { container } = renderTabs('/moderation/reviews');
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -76,14 +88,28 @@ describe('SectionIndexRedirect', () => {
     role = 'admin';
     pathnameValue = '/moderation';
     render(<SectionIndexRedirect sectionId="moderation" />);
-    expect(replaceMock).toHaveBeenCalledWith('/books?visibility=pending_review');
+    expect(replaceMock).toHaveBeenCalledWith('/moderation/books');
   });
 
   it('moderator on /moderation goes to reviews', () => {
     role = 'moderator';
     pathnameValue = '/moderation';
     render(<SectionIndexRedirect sectionId="moderation" />);
-    expect(replaceMock).toHaveBeenCalledWith('/reviews');
+    expect(replaceMock).toHaveBeenCalledWith('/moderation/reviews');
+  });
+
+  it('admin on /catalog goes to the first catalog tab', () => {
+    role = 'admin';
+    pathnameValue = '/catalog';
+    render(<SectionIndexRedirect sectionId="catalog" />);
+    expect(replaceMock).toHaveBeenCalledWith('/catalog/books');
+  });
+
+  it('moderator on /catalog is not redirected', () => {
+    role = 'moderator';
+    pathnameValue = '/catalog';
+    render(<SectionIndexRedirect sectionId="catalog" />);
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 
   it('moderator on /import is not redirected', () => {

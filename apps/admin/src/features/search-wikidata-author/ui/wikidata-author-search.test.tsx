@@ -75,7 +75,7 @@ describe('WikidataAuthorSearch', () => {
 
     expect(screen.getByText('Опубликован')).toBeInTheDocument();
     const open = screen.getByRole('link', { name: 'Открыть' });
-    expect(open).toHaveAttribute('href', '/authors/moderation?status=published&search=%D0%9B%D0%B5%D0%B2+%D0%A2%D0%BE%D0%BB%D1%81%D1%82%D0%BE%D0%B9');
+    expect(open).toHaveAttribute('href', '/moderation/authors?status=published&search=%D0%9B%D0%B5%D0%B2+%D0%A2%D0%BE%D0%BB%D1%81%D1%82%D0%BE%D0%B9');
     expect(screen.getAllByRole('link', { name: 'Открыть' })).toHaveLength(1);
 
     expect(screen.getByText('без описания')).toBeInTheDocument();

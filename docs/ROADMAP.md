@@ -37,6 +37,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Author moderation queue — `/authors/moderation` admin page for pending (and rejected/published) authors with QID link, linked-book counts and samples, display-only similar-name hints with a prefilled merge, per-row and selected-rows publish/reject/return actions, a dashboard "Авторы на модерации" tile and links from the authors list and harvest page (see [docs/features/author-moderation-queue.md](features/author-moderation-queue.md), #268/#269, epic #267 feature 2 of 4)
 - [x] Author direct import from Wikidata — "Импорт из Wikidata" panel on `/authors/moderation`: search by name, import a single author as `pending` with its QID (harvest matching rules: QID first, slug backfill, namesakes, rejected tombstones never recreated; ru label and person P31 required) or import + start the existing book harvest; "already in BookHaven" markers in the shared Wikidata search widget, also on `/harvest` (see [docs/features/author-direct-import.md](features/author-direct-import.md), #273/#274, epic #272 feature 3 of 4)
 - [x] Author enrichment from Wikidata — fill-empty-only day-precision birth/death dates (P569/P570, rank selection, Julian → Gregorian) and a free-licence Wikimedia Commons portrait (P18) with attribution: on direct import (created), at the end of a harvest job, and via per-row / bulk "Обогатить из Wikidata" on `/authors/moderation` (the backfill path); attribution line on the public author page (see [docs/features/author-wikidata-enrichment.md](features/author-wikidata-enrichment.md), #278/#279, epic #277 feature 4 of 4 — epic complete)
+- [x] Bulk publish action for pending-review harvested books — the harvest-review-queue contract explicitly deferred a bulk "publish all" action, so admins publish harvested books one row at a time [code] (proposed 2026-10-02, #114; implemented as `adminBooksApi.bulkPublish`, now on /moderation/books)
 
 ## Post-MVP
 
@@ -46,7 +47,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-- [ ] Admin navigation restructure — five sections (Обзор / Модерация / Каталог / Импорт / Пользователи) with tabs and a config-driven role guard; phases #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters, then #289 Users (separate contract, relates to #247) and #290 Genres moderation/import (needs product decision); phase 1 (#284) done (see [docs/features/admin-navigation-restructure.md](features/admin-navigation-restructure.md), epic #283)
+- [ ] Admin navigation restructure — five sections (Обзор / Модерация / Каталог / Импорт / Пользователи) with tabs and a config-driven role guard; phases #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters, then #289 Users (separate contract, relates to #247) and #290 Genres moderation/import (needs product decision); phases 1-3 (#284-#286) done (see [docs/features/admin-navigation-restructure.md](features/admin-navigation-restructure.md), epic #283)
 
 Email notifications (#121, in Proposed) can build on the mailer from #157.
 
@@ -63,7 +64,6 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [ ] Quick shelf-status actions on catalog/search book cards — user-book-shelves business analysis (OQ-004) deferred shelf buttons on listing cards pending a batch per-book shelf-status lookup, still unresolved [business-analysis] (proposed 2026-10-02, #111)
 - [ ] Personalized book recommendations based on shelf/rating history — BookHaven collects the shelves/ratings data Goodreads-style recommendation engines use, but has no recommendation surface built on it [competitive] (proposed 2026-10-02, #112)
 - [ ] Save and share favorite quotes from books — Goodreads' Quotes feature has no BookHaven equivalent; reviews are the only way to attach text to a book today [competitive] (proposed 2026-10-02, #113)
-- [ ] Bulk publish action for pending-review harvested books — the harvest-review-queue contract explicitly deferred a bulk "publish all" action, so admins publish harvested books one row at a time [code] (proposed 2026-10-02, #114)
 - [ ] Book clubs / group reading discussions — Goodreads' topic/book-centered group discussions have no BookHaven equivalent, distinct from the already-proposed 1:1 follow/friends feed (#96) [competitive] (proposed 2026-10-02, #115)
 - [ ] Reading progress tracking (page/percent updates) for in-progress books — shelves only capture coarse reading status; Goodreads/The StoryGraph let readers log incremental progress on a currently-reading book [competitive] (proposed 2026-10-02, #118)
 - [ ] Comments/replies on reviews — reviews only support likes today; Goodreads/LiveLib let readers reply in a comment thread under a review [competitive] (proposed 2026-10-02, #119)

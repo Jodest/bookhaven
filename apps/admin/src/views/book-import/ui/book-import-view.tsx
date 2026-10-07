@@ -63,7 +63,7 @@ export function BookImportView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Импорт книг</h1>
-        <Link href={'/books' as any}>
+        <Link href={'/catalog/books' as any}>
           <Button variant="outline">К списку книг</Button>
         </Link>
       </div>

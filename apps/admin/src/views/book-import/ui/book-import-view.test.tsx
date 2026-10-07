@@ -37,6 +37,15 @@ describe('BookImportView', () => {
     vi.restoreAllMocks();
   });
 
+  it('links back to the catalog books list', () => {
+    renderView();
+
+    expect(screen.getByRole('link', { name: 'К списку книг' })).toHaveAttribute(
+      'href',
+      '/catalog/books'
+    );
+  });
+
   it('requires a file to be selected before submitting', async () => {
     renderView();
 
