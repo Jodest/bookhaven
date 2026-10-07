@@ -39,6 +39,10 @@ type fakeRepository struct {
 	// writer).
 	createAuthorErrs  []error
 	onCreateAuthorErr func(f *fakeRepository)
+
+	// fillErr / fillCalls back the enrichment tests.
+	fillErr   error
+	fillCalls []repository.AuthorEnrichmentFill
 }
 
 func (f *fakeRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
@@ -938,4 +942,41 @@ func (f *fakeRepository) FindAuthorsBySurnames(ctx context.Context, surnames []s
 
 func (f *fakeRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
 	return false, nil
+}
+
+func (f *fakeRepository) GetAuthorsByIDs(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Author, error) {
+	var out []catalogDomain.Author
+	for _, id := range ids {
+		for _, a := range f.authors {
+			if a.ID == id {
+				out = append(out, a)
+			}
+		}
+	}
+	return out, nil
+}
+
+// FillAuthorEnrichment mirrors the repository's fill-empty-only semantics.
+func (f *fakeRepository) FillAuthorEnrichment(ctx context.Context, id uuid.UUID, fill repository.AuthorEnrichmentFill) error {
+	f.fillCalls = append(f.fillCalls, fill)
+	if f.fillErr != nil {
+		return f.fillErr
+	}
+	for i := range f.authors {
+		a := &f.authors[i]
+		if a.ID != id {
+			continue
+		}
+		if fill.BirthDate != nil && a.BirthDate == nil {
+			a.BirthDate = fill.BirthDate
+		}
+		if fill.DeathDate != nil && a.DeathDate == nil {
+			a.DeathDate = fill.DeathDate
+		}
+		if p := fill.Photo; p != nil && (a.PhotoURL == nil || *a.PhotoURL == "") {
+			url, license, source := p.URL, p.License, p.SourceURL
+			a.PhotoURL, a.PhotoAuthor, a.PhotoLicense, a.PhotoLicenseURL, a.PhotoSourceURL = &url, p.Author, &license, p.LicenseURL, &source
+		}
+	}
+	return nil
 }

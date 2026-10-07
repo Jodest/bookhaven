@@ -57,9 +57,13 @@ func main() {
 	}
 
 	adminRepo := adminrepository.NewGormRepository(db)
-	adminService := adminservice.NewService(adminRepo, adminservice.WithLogger(logger))
-
+	// One WikidataClient instance for the harvest query and the author
+	// enrichment (Wikidata + Commons), so both share one rate limiter
+	// (docs/features/author-wikidata-enrichment.md rule 8).
 	wikidataClient := bookdata.NewWikidataClient()
+	adminService := adminservice.NewService(adminRepo,
+		adminservice.WithAuthorEnrichmentSource(wikidataClient),
+		adminservice.WithLogger(logger))
 	// WithWorkDescriptionLookup is opted in here (harvest enrichment) only -
 	// backend/cmd/api/main.go's admin lookup-assistant client deliberately
 	// does not, to preserve its "exactly one outbound Open Library call per

@@ -15,12 +15,14 @@ vi.mock('next/navigation', () => ({
 
 const queueMock = vi.fn();
 const bulkStatusMock = vi.fn();
+const enrichMock = vi.fn();
 
 vi.mock('@/entities/author', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/author')>()),
   adminAuthorsApi: {
     moderationQueue: (...args: unknown[]) => queueMock(...args),
     bulkStatus: (...args: unknown[]) => bulkStatusMock(...args),
+    enrichWikidata: (...args: unknown[]) => enrichMock(...args),
   },
 }));
 
@@ -51,6 +53,7 @@ function makeAuthor(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
     status: 'pending',
     external_source: 'wikidata',
     external_id: 'Q7243',
+    photo_attribution: null,
     ...overrides,
   };
 }
@@ -112,6 +115,7 @@ describe('AuthorModerationView', () => {
     pushMock.mockReset();
     queueMock.mockReset();
     bulkStatusMock.mockReset();
+    enrichMock.mockReset();
     queueMock.mockResolvedValue({ items: [makeItem(), secondItem], total: 2, page: 1, limit: 20 });
   });
 
@@ -334,5 +338,70 @@ describe('AuthorModerationView', () => {
 
     fireEvent.click(toggle);
     expect(screen.queryByTestId('wikidata-import-panel')).not.toBeInTheDocument();
+  });
+
+  it('offers "Обогатить из Wikidata" only on rows with a QID and shows the result', async () => {
+    enrichMock.mockResolvedValue({
+      processed: 1,
+      enriched: 1,
+      items: [
+        {
+          author_id: 'a1',
+          name: 'Л. Н. Толстой',
+          outcome: 'enriched',
+          filled: ['birth_date', 'photo'],
+          notes: ['death_date_unusable'],
+          message: '',
+        },
+      ],
+    });
+    const { invalidateSpy } = renderView();
+    await waitFor(() => expect(rowOf('Л. Н. Толстой')).toBeInTheDocument());
+
+    expect(within(rowOf('Гомер')).queryByRole('button', { name: 'Обогатить из Wikidata' })).not.toBeInTheDocument();
+    fireEvent.click(within(rowOf('Л. Н. Толстой')).getByRole('button', { name: 'Обогатить из Wikidata' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Автор «Л. Н. Толстой»: добавлены дата рождения, фото. Примечания: дата смерти в Wikidata неточная или противоречивая — пропущена.'
+        )
+      ).toBeInTheDocument()
+    );
+    expect(enrichMock).toHaveBeenCalledWith(['a1']);
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'authors'] });
+  });
+
+  it('bulk-enriches only selected rows with a QID', async () => {
+    enrichMock.mockResolvedValue({
+      processed: 1,
+      enriched: 0,
+      items: [
+        { author_id: 'a1', name: 'Л. Н. Толстой', outcome: 'unchanged', filled: [], notes: [], message: '' },
+      ],
+    });
+    renderView();
+    await waitFor(() => expect(rowOf('Л. Н. Толстой')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Выбрать «Гомер»'));
+    expect(screen.getByRole('button', { name: 'Обогатить из Wikidata (0)' })).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText('Выбрать «Л. Н. Толстой»'));
+    fireEvent.click(screen.getByRole('button', { name: 'Обогатить из Wikidata (1)' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Обогащено 0 из 1. Без QID пропущено: 1.')).toBeInTheDocument()
+    );
+    expect(enrichMock).toHaveBeenCalledWith(['a1']);
+  });
+
+  it('shows the 502 message when Wikidata is unavailable', async () => {
+    const { ApiError } = await import('@bookhaven/api-client');
+    enrichMock.mockRejectedValue(new ApiError(502, 'Bad Gateway', 'wikidata is unavailable; retry later'));
+    renderView();
+    await waitFor(() => expect(rowOf('Л. Н. Толстой')).toBeInTheDocument());
+
+    fireEvent.click(within(rowOf('Л. Н. Толстой')).getByRole('button', { name: 'Обогатить из Wikidata' }));
+    await waitFor(() => expect(screen.getByText('Wikidata недоступна, попробуйте позже.')).toBeInTheDocument());
   });
 });

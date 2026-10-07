@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -86,8 +87,29 @@ type AuthorRef struct {
 // every ref is skipped the result is empty (the caller still creates the
 // hidden book) and an info line with the skipped QIDs is logged.
 func (s *Service) ResolveOrCreateHarvestAuthors(ctx context.Context, refs []AuthorRef) ([]string, error) {
+	res, err := s.ResolveHarvestAuthorRefs(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+	return res.IDs, nil
+}
+
+// HarvestAuthorsResolution is the result of ResolveHarvestAuthorRefs.
+type HarvestAuthorsResolution struct {
+	// IDs are the linked author IDs (see ResolveOrCreateHarvestAuthors).
+	IDs []string
+	// CreatedWithQID are the authors created by this call that carry a
+	// Wikidata QID - the harvest enriches them at the end of the job
+	// (docs/features/author-wikidata-enrichment.md rule 4b).
+	CreatedWithQID []uuid.UUID
+}
+
+// ResolveHarvestAuthorRefs is ResolveOrCreateHarvestAuthors that also
+// reports which authors it created with a QID.
+func (s *Service) ResolveHarvestAuthorRefs(ctx context.Context, refs []AuthorRef) (HarvestAuthorsResolution, error) {
 	seen := make(map[string]struct{}, len(refs))
 	ids := make([]string, 0, len(refs))
+	var created []uuid.UUID
 	var skipped []string
 
 	for _, ref := range refs {
@@ -99,13 +121,16 @@ func (s *Service) ResolveOrCreateHarvestAuthors(ctx context.Context, refs []Auth
 
 		res, err := s.resolveHarvestAuthor(ctx, name, qid)
 		if err != nil {
-			return nil, err
+			return HarvestAuthorsResolution{}, err
 		}
 		if res.Outcome == AuthorOutcomeRejected {
 			skipped = append(skipped, name+" "+qid)
 			continue
 		}
 		author := res.Author
+		if res.Outcome == AuthorOutcomeCreated && authorQID(author) != "" {
+			created = append(created, author.ID)
+		}
 
 		id := author.ID.String()
 		if _, ok := seen[id]; ok {
@@ -120,7 +145,7 @@ func (s *Service) ResolveOrCreateHarvestAuthors(ctx context.Context, refs []Auth
 			zap.Strings("authors", skipped),
 			zap.Bool("all_skipped", len(ids) == 0))
 	}
-	return ids, nil
+	return HarvestAuthorsResolution{IDs: ids, CreatedWithQID: created}, nil
 }
 
 // Author resolution outcomes shared by the harvest resolver and the direct

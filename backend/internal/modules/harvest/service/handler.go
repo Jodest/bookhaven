@@ -39,6 +39,7 @@ import (
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
+	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 )
 
@@ -82,6 +83,13 @@ type HarvestResult struct {
 	Skipped        int                    `json:"skipped_existing"`
 	Errors         []HarvestRecordError   `json:"errors"`
 	SkippedRecords []HarvestSkippedRecord `json:"skipped_records"`
+	// AuthorsEnriched / AuthorEnrichmentErrors report the end-of-job
+	// Wikidata enrichment of the authors this job created
+	// (docs/features/author-wikidata-enrichment.md rule 4b). Set only once
+	// that step ran (nil while the record loop is running, in results of
+	// older jobs, and when no enrichment source is configured).
+	AuthorsEnriched        *int `json:"authors_enriched,omitempty"`
+	AuthorEnrichmentErrors *int `json:"author_enrichment_errors,omitempty"`
 }
 
 // HarvestRecordError describes a single record's failure. It does not abort
@@ -198,8 +206,10 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progre
 	result := HarvestResult{Total: len(records), Errors: []HarvestRecordError{}, SkippedRecords: []HarvestSkippedRecord{}}
 	reportProgress(progress, result)
 
+	var createdAuthors []uuid.UUID
 	for i, rec := range records {
-		outcome, procErr := processRecord(ctx, rec, h.enrich, h.admin)
+		outcome, created, procErr := processHarvestRecord(ctx, rec, h.enrich, h.admin)
+		createdAuthors = append(createdAuthors, created...)
 		if procErr != nil {
 			result.Errors = append(result.Errors, HarvestRecordError{
 				Index:   i,
@@ -222,7 +232,36 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progre
 		reportProgress(progress, result)
 	}
 
+	if h.admin.HasAuthorEnrichmentSource() {
+		enriched, failed := enrichCreatedAuthors(ctx, h.admin, createdAuthors)
+		result.AuthorsEnriched = &enriched
+		result.AuthorEnrichmentErrors = &failed
+		reportProgress(progress, result)
+	}
+
 	return result, nil
+}
+
+// enrichCreatedAuthors enriches the authors created by this job once,
+// after the record loop. Best-effort: a failure is only counted (the admin
+// service logs it) and never changes the task's outcome.
+func enrichCreatedAuthors(ctx context.Context, admin *adminservice.Service, ids []uuid.UUID) (enriched, failed int) {
+	if len(ids) == 0 {
+		return 0, 0
+	}
+	report, err := admin.EnrichHarvestAuthors(ctx, ids)
+	if report == nil {
+		if err != nil {
+			return 0, len(ids)
+		}
+		return 0, 0
+	}
+	for _, item := range report.Items {
+		if item.Outcome == adminservice.EnrichOutcomeError {
+			failed++
+		}
+	}
+	return report.Enriched, failed
 }
 
 type recordOutcome int
@@ -240,17 +279,26 @@ const (
 // It is a package-level function (not a Handler method) so it can be unit
 // tested directly with fakes, without constructing a Handler/asynq.Task.
 func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich bookdata.Client, admin *adminservice.Service) (recordOutcome, error) {
+	outcome, _, err := processHarvestRecord(ctx, rec, enrich, admin)
+	return outcome, err
+}
+
+// processHarvestRecord is processRecord that also returns the authors
+// created with a Wikidata QID while resolving this record's authors -
+// reported even when the book creation then fails, so the job still
+// enriches them (docs/features/author-wikidata-enrichment.md rule 4b).
+func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich bookdata.Client, admin *adminservice.Service) (recordOutcome, []uuid.UUID, error) {
 	sourceID := strings.TrimSpace(rec.SourceID)
 	if sourceID == "" {
-		return 0, errors.New("record has no source id")
+		return 0, nil, errors.New("record has no source id")
 	}
 
 	_, err := admin.FindBookByExternalID(ctx, wikidataSourceName, sourceID)
 	if err == nil {
-		return outcomeSkipped, nil
+		return outcomeSkipped, nil, nil
 	}
 	if !errors.Is(err, adminservice.ErrBookNotFound) {
-		return 0, fmt.Errorf("check existing book: %w", err)
+		return 0, nil, fmt.Errorf("check existing book: %w", err)
 	}
 
 	enriched := rec
@@ -258,13 +306,14 @@ func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich 
 		enrichRecord(ctx, &enriched, enrich)
 	}
 
-	authorIDs, err := admin.ResolveOrCreateHarvestAuthors(ctx, harvestAuthorRefs(enriched))
+	resolution, err := admin.ResolveHarvestAuthorRefs(ctx, harvestAuthorRefs(enriched))
 	if err != nil {
-		return 0, fmt.Errorf("resolve authors: %w", err)
+		return 0, nil, fmt.Errorf("resolve authors: %w", err)
 	}
+	authorIDs, created := resolution.IDs, resolution.CreatedWithQID
 	genreIDs, err := admin.ResolveOrCreateGenreIDsByNames(ctx, enriched.Genres)
 	if err != nil {
-		return 0, fmt.Errorf("resolve genres: %w", err)
+		return 0, created, fmt.Errorf("resolve genres: %w", err)
 	}
 
 	// Language is required by validateBookInput (ErrInvalidLanguage on
@@ -304,9 +353,9 @@ func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich 
 	}
 
 	if _, err := admin.CreateBook(ctx, input); err != nil {
-		return 0, fmt.Errorf("create book: %w", err)
+		return 0, created, fmt.Errorf("create book: %w", err)
 	}
-	return outcomeCreated, nil
+	return outcomeCreated, created, nil
 }
 
 // harvestAuthorRefs maps a record's authors to resolver refs: the paired

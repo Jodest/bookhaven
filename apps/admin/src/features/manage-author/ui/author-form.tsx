@@ -1,6 +1,6 @@
 'use client';
 
-import { AUTHOR_STATUS_LABELS } from '@/entities/author';
+import { AUTHOR_STATUS_LABELS, PhotoAttributionText } from '@/entities/author';
 import { AdminAuthor, AdminAuthorInput, AdminAuthorStatus } from '@bookhaven/api-client';
 import { Button, Input, Label, Select } from '@bookhaven/ui';
 
@@ -32,6 +32,12 @@ export function AuthorForm({
   onDismissSuccess,
   errorMessage,
 }: AuthorFormProps) {
+  const attribution = editing?.photo_attribution ?? null;
+  // A changed photo URL drops the Commons attribution on save
+  // (docs/features/author-wikidata-enrichment.md rule 7).
+  const photoChanged =
+    !!attribution && (formData.photo_url ?? '').trim() !== (editing?.photo_url ?? '').trim();
+
   return (
     <form onSubmit={onSubmit} className="space-y-4 rounded-lg border p-4">
       <h2 className="font-semibold">
@@ -78,6 +84,10 @@ export function AuthorForm({
             value={formData.photo_url || ''}
             onChange={(e) => onFieldChange({ photo_url: e.target.value })}
           />
+          {attribution && <PhotoAttributionText attribution={attribution} />}
+          {photoChanged && (
+            <p className="text-xs text-amber-700">При смене фото атрибуция будет удалена</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="birth_date">Дата рождения</Label>

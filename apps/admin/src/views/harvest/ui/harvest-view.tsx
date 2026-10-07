@@ -88,7 +88,32 @@ function JobResultCell({ job }: { job: AdminHarvestJob }) {
       </div>
     );
   }
+  const enrichment = authorEnrichmentSummary(job);
+  if (enrichment) {
+    return (
+      <div className="space-y-1">
+        <div>{jobResultSummary(job)}</div>
+        <div className="text-xs text-muted-foreground">{enrichment}</div>
+      </div>
+    );
+  }
   return <>{jobResultSummary(job)}</>;
+}
+
+// authorEnrichmentSummary is the end-of-job Wikidata author enrichment
+// line (docs/features/author-wikidata-enrichment.md), or null when the
+// result carries no counters (older jobs, enrichment not configured).
+function authorEnrichmentSummary(job: AdminHarvestJob): string | null {
+  const enriched = job.result?.authors_enriched;
+  if (job.state !== 'completed' || enriched === undefined) {
+    return null;
+  }
+  const errors = job.result?.author_enrichment_errors ?? 0;
+  let text = `Авторов обогащено из Wikidata: ${enriched}`;
+  if (errors > 0) {
+    text += `, ошибок обогащения: ${errors}`;
+  }
+  return text;
 }
 
 // Fixed label for every skipped-record row: today there is exactly one skip

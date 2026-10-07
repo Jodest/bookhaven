@@ -36,12 +36,13 @@ function author(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
     status: 'pending',
     external_source: 'wikidata',
     external_id: 'Q7200',
+    photo_attribution: null,
     ...overrides,
   };
 }
 
 function importResult(overrides: Partial<AdminAuthorImportResult> = {}): AdminAuthorImportResult {
-  return { outcome: 'created', match: null, qid_backfilled: false, namesake_of: null, author: author(), ...overrides };
+  return { outcome: 'created', match: null, qid_backfilled: false, namesake_of: null, enrichment: null, author: author(), ...overrides };
 }
 
 const freshCandidate: AdminHarvestAuthorCandidate = {

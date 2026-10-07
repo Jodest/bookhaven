@@ -40,6 +40,7 @@ function makeAuthor(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
     status: 'published',
     external_source: null,
     external_id: null,
+    photo_attribution: null,
     ...overrides,
   };
 }

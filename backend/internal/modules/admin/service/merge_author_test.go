@@ -444,3 +444,11 @@ func (f *fakeMergeAuthorsRepository) FindAuthorsBySurnames(ctx context.Context, 
 func (f *fakeMergeAuthorsRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
 	return false, nil
 }
+
+func (f *fakeMergeAuthorsRepository) GetAuthorsByIDs(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
+func (f *fakeMergeAuthorsRepository) FillAuthorEnrichment(ctx context.Context, id uuid.UUID, fill repository.AuthorEnrichmentFill) error {
+	return nil
+}

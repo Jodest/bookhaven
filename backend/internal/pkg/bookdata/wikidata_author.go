@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // wikidataEntityMaxBytes bounds the wbgetentities response body read by
@@ -18,10 +19,8 @@ const wikidataEntityMaxBytes = 8 << 20 // 8 MiB
 // ExternalAuthorRecord is a single Wikidata author entity fetched by
 // FetchAuthor for a direct author import (docs/features/author-direct-import.md).
 //
-// Feature 4 of the "Author moderation & import" epic (enrichment) adds
-// day-precision birth/death dates, a Commons photo with attribution, a
-// biography and similar fields here; the same wbgetentities call already
-// returns the claims those need.
+// The enrichment fields (dates, PhotoFile) come from the same wbgetentities
+// response (docs/features/author-wikidata-enrichment.md).
 type ExternalAuthorRecord struct {
 	// QID is the returned entity's id - canonical after a redirect, so it
 	// may differ from the requested QID.
@@ -32,6 +31,19 @@ type ExternalAuthorRecord struct {
 	// InstanceOf lists the valid QIDs of the entity's P31 (instance of)
 	// claims; novalue/somevalue snaks are skipped.
 	InstanceOf []string
+	// BirthDate/DeathDate are the P569/P570 dates at day precision,
+	// converted to the Gregorian calendar, as UTC midnight. Nil when the
+	// entity has no usable value (see selectClaimDate).
+	BirthDate *time.Time
+	DeathDate *time.Time
+	// BirthDateUnusable/DeathDateUnusable report that P569/P570 statements
+	// exist but none yielded a usable date (imprecise, conflicting, BCE,
+	// unknown calendar, invalid, in the future, or a death before birth).
+	BirthDateUnusable bool
+	DeathDateUnusable bool
+	// PhotoFile is the Commons filename of the entity's P18 (image), ""
+	// when none.
+	PhotoFile string
 }
 
 // wbGetEntitiesResponse mirrors the relevant subset of Wikidata's
@@ -44,6 +56,9 @@ type wbGetEntitiesResponse struct {
 	Error    *struct {
 		Code string `json:"code"`
 		Info string `json:"info"`
+		// ID names the offending entity of a no-such-entity error (a
+		// batch request fails as a whole when one ID does not exist).
+		ID string `json:"id"`
 	} `json:"error"`
 }
 
@@ -59,6 +74,8 @@ type wbLabel struct {
 }
 
 type wbEntityClaim struct {
+	// Rank is preferred | normal | deprecated.
+	Rank     string `json:"rank"`
 	Mainsnak struct {
 		SnakType  string `json:"snaktype"`
 		DataValue *struct {
@@ -92,13 +109,122 @@ func (c *WikidataClient) FetchAuthor(ctx context.Context, qid string) (*External
 		return nil, ErrInvalidQuery
 	}
 
+	parsed, err := c.getEntities(ctx, []string{qid})
+	if err != nil {
+		return nil, err
+	}
+
+	if parsed.Error != nil {
+		if parsed.Error.Code == "no-such-entity" {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("%w: wikidata error %q", ErrInvalidQuery, parsed.Error.Code)
+	}
+
+	// The entities map is keyed by the requested ID even when Wikidata
+	// resolved a redirect (the entity's own "id" is then the target).
+	entity, ok := parsed.Entities[qid]
+	if !ok {
+		if len(parsed.Entities) != 1 {
+			return nil, ErrNotFound
+		}
+		for _, e := range parsed.Entities {
+			entity = e
+		}
+	}
+	record := parseAuthorEntity(entity, time.Now())
+	if record == nil {
+		return nil, ErrNotFound
+	}
+	return record, nil
+}
+
+// MaxEntitiesPerRequest is the wbgetentities / Commons imageinfo batch cap
+// (the MediaWiki API's per-request limit for anonymous clients).
+const MaxEntitiesPerRequest = 50
+
+// FetchAuthors fetches up to MaxEntitiesPerRequest Wikidata entities in one
+// wbgetentities request (ids joined by "|"), with the same parameters and
+// parser as FetchAuthor. The result is keyed by the requested QID (a
+// redirect's record carries the canonical QID). Missing entities are absent
+// from the map, without an error.
+//
+// Every QID is trimmed and must match ^Q[0-9]+$; an empty, oversized or
+// invalid list returns ErrInvalidQuery without an HTTP call. Wikidata
+// rejects a whole batch with a no-such-entity error naming one ID; that ID
+// is dropped and the rest is re-requested (each retry is one more
+// rate-limited call). Status mapping matches FetchAuthor.
+func (c *WikidataClient) FetchAuthors(ctx context.Context, qids []string) (map[string]*ExternalAuthorRecord, error) {
+	if len(qids) == 0 || len(qids) > MaxEntitiesPerRequest {
+		return nil, ErrInvalidQuery
+	}
+	remaining := make([]string, 0, len(qids))
+	seen := make(map[string]struct{}, len(qids))
+	for _, q := range qids {
+		q = strings.TrimSpace(q)
+		if !wikidataQIDPattern.MatchString(q) {
+			return nil, ErrInvalidQuery
+		}
+		if _, dup := seen[q]; dup {
+			continue
+		}
+		seen[q] = struct{}{}
+		remaining = append(remaining, q)
+	}
+
+	out := make(map[string]*ExternalAuthorRecord, len(remaining))
+	now := time.Now()
+	for len(remaining) > 0 {
+		parsed, err := c.getEntities(ctx, remaining)
+		if err != nil {
+			return nil, err
+		}
+		if parsed.Error != nil {
+			if parsed.Error.Code != "no-such-entity" {
+				return nil, fmt.Errorf("%w: wikidata error %q", ErrInvalidQuery, parsed.Error.Code)
+			}
+			idx := indexOf(remaining, parsed.Error.ID)
+			if idx < 0 {
+				// The culprit is unknown: nothing more can be resolved.
+				return out, nil
+			}
+			remaining = append(remaining[:idx:idx], remaining[idx+1:]...)
+			continue
+		}
+		for _, q := range remaining {
+			entity, ok := parsed.Entities[q]
+			if !ok {
+				continue
+			}
+			if record := parseAuthorEntity(entity, now); record != nil {
+				out[q] = record
+			}
+		}
+		break
+	}
+	return out, nil
+}
+
+func indexOf(list []string, v string) int {
+	for i, s := range list {
+		if s == v {
+			return i
+		}
+	}
+	return -1
+}
+
+// getEntities performs one wbgetentities request for ids (already
+// validated) and decodes the response. HTTP 400 → ErrInvalidQuery, other
+// >= 400 → ErrSourceUnavailable (429/5xx are handled by doRequest).
+func (c *WikidataClient) getEntities(ctx context.Context, ids []string) (*wbGetEntitiesResponse, error) {
 	u, err := url.Parse(c.cfg.searchBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("bookdata: invalid wikidata search base URL: %w", err)
 	}
 	q := u.Query()
 	q.Set("action", "wbgetentities")
-	q.Set("ids", qid)
+	q.Set("ids", strings.Join(ids, "|"))
 	q.Set("props", "labels|claims")
 	q.Set("languages", "ru")
 	q.Set("format", "json")
@@ -132,27 +258,15 @@ func (c *WikidataClient) FetchAuthor(ctx context.Context, qid string) (*External
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("bookdata: parse wikidata entity response: %w", err)
 	}
+	return &parsed, nil
+}
 
-	if parsed.Error != nil {
-		if parsed.Error.Code == "no-such-entity" {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("%w: wikidata error %q", ErrInvalidQuery, parsed.Error.Code)
-	}
-
-	// The entities map is keyed by the requested ID even when Wikidata
-	// resolved a redirect (the entity's own "id" is then the target).
-	entity, ok := parsed.Entities[qid]
-	if !ok {
-		if len(parsed.Entities) != 1 {
-			return nil, ErrNotFound
-		}
-		for _, e := range parsed.Entities {
-			entity = e
-		}
-	}
+// parseAuthorEntity maps one entity to a record, or returns nil for a
+// missing entity / invalid id. now bounds the "not in the future" date
+// rule. Malformed claims are skipped, never an error.
+func parseAuthorEntity(entity wbEntity, now time.Time) *ExternalAuthorRecord {
 	if entity.Missing != nil || !wikidataQIDPattern.MatchString(entity.ID) {
-		return nil, ErrNotFound
+		return nil
 	}
 
 	record := &ExternalAuthorRecord{QID: entity.ID}
@@ -171,5 +285,13 @@ func (c *WikidataClient) FetchAuthor(ctx context.Context, qid string) (*External
 			record.InstanceOf = append(record.InstanceOf, v.ID)
 		}
 	}
-	return record, nil
+
+	record.BirthDate, record.BirthDateUnusable = selectClaimDate(entity.Claims["P569"], now)
+	record.DeathDate, record.DeathDateUnusable = selectClaimDate(entity.Claims["P570"], now)
+	if record.BirthDate != nil && record.DeathDate != nil && record.DeathDate.Before(*record.BirthDate) {
+		record.DeathDate = nil
+		record.DeathDateUnusable = true
+	}
+	record.PhotoFile = selectClaimFile(entity.Claims["P18"])
+	return record
 }

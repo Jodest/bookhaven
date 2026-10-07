@@ -163,7 +163,7 @@ describe('BooksListView', () => {
       title: 'На проверке',
       is_hidden: true,
       external_source: 'wikidata',
-      authors: [{ id: 'a1', name: 'Автор', slug: 'a1', biography: null, photo_url: null, birth_date: null, death_date: null, status: 'published', external_source: null, external_id: null }],
+      authors: [{ id: 'a1', name: 'Автор', slug: 'a1', biography: null, photo_url: null, birth_date: null, death_date: null, status: 'published', external_source: null, external_id: null, photo_attribution: null }],
       genres: [{ id: 'g1', name: 'Жанр', slug: 'g1' }],
     });
     listMock.mockResolvedValue({ items: [book], total: 1, page: 1, limit: 20 });
