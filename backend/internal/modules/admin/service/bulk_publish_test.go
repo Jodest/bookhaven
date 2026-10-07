@@ -167,6 +167,10 @@ func (f *fakeBulkPublishRepository) UpdateAuthor(ctx context.Context, author *ca
 	return nil
 }
 
+func (f *fakeBulkPublishRepository) ListAuthorsByExternalIDs(ctx context.Context, source string, ids []string) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
 func (f *fakeBulkPublishRepository) AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
 	return false, nil
 }

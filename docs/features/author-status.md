@@ -11,7 +11,7 @@ Stop unvetted authors from leaking to the public site. Harvest currently auto-cr
 ## Out of scope (other features of the epic)
 
 - **Feature 2** — admin author moderation queue: publish / reject / merge-with-existing actions UI, similar-name hints, dashboard counter, link from the harvest report. (Feature 1 only adds the `status` field, a list badge/filter and a status select in the existing edit form.) Shipped: see [author-moderation-queue.md](author-moderation-queue.md).
-- **Feature 3** — direct author import from admin (Wikidata `SearchAuthors` → "import author" / "import author + books").
+- **Feature 3** — direct author import from admin (Wikidata `SearchAuthors` → "import author" / "import author + books"). Shipped: see [author-direct-import.md](author-direct-import.md).
 - **Feature 4** — author enrichment from Wikidata on creation (dates, Commons photo with attribution, biography).
 - Anything that changes book publication (`books.is_hidden`) based on author status.
 

@@ -259,6 +259,132 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/authors/import-wikidata": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Сначала ищет автора в БД по QID (без запроса к Wikidata), затем загружает элемент Wikidata (русское название + P31: человек / псевдоним / коллективный псевдоним) и сопоставляет по правилам харвеста: совпадение по slug без QID — QID привязывается; тёзка с другим QID — создаётся отдельный автор; иначе создаётся автор в статусе pending с QID. Отклонённые авторы повторно не создаются (outcome=rejected). Статус, имя и slug существующего автора не меняются. 201 — создан, 200 — existing / rejected. 422 содержит code: no_ru_label | not_a_person.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Импортировать автора из Wikidata по QID (админ)",
+                "parameters": [
+                    {
+                        "description": "QID элемента Wikidata",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.importWikidataAuthorRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.authorImportResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.authorImportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/authors/moderation": {
             "get": {
                 "security": [
@@ -1551,7 +1677,7 @@ const docTemplate = `{
         },
         "/admin/harvest/authors/search": {
             "get": {
-                "description": "Требуется роль admin. Синхронный, только для чтения вызов Wikidata (wbsearchentities) - не создаёт и не изменяет записи; результат - кандидаты для ручного подтверждения администратором перед запуском POST /admin/harvest. Отсутствие совпадений - не ошибка (200, items: []).",
+                "description": "Требуется роль admin. Синхронный, только для чтения вызов Wikidata (wbsearchentities) - не создаёт и не изменяет записи; результат - кандидаты для ручного подтверждения администратором перед запуском POST /admin/harvest или импортом автора. Отсутствие совпадений - не ошибка (200, items: []). У каждого кандидата поле existing - автор BookHaven с тем же QID (id, name, slug, status) или null.",
                 "produces": [
                     "application/json"
                 ],
@@ -5506,6 +5632,28 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.authorImportResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.authorResponse"
+                },
+                "match": {
+                    "description": "Match is qid | slug for existing/rejected, null for created.",
+                    "type": "string"
+                },
+                "namesake_of": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.authorResponse"
+                },
+                "outcome": {
+                    "description": "Outcome is created | existing | rejected.",
+                    "type": "string"
+                },
+                "qid_backfilled": {
+                    "type": "boolean"
+                }
+            }
+        },
         "internal_modules_admin_transport_http.authorQueueItemResponse": {
             "type": "object",
             "properties": {
@@ -5795,6 +5943,15 @@ const docTemplate = `{
                 },
                 "slug": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.importWikidataAuthorRequest": {
+            "type": "object",
+            "properties": {
+                "qid": {
+                    "type": "string",
+                    "example": "Q7200"
                 }
             }
         },
@@ -6444,10 +6601,35 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "existing": {
+                    "description": "Existing is the BookHaven author already carrying this QID, or null\n(also null when the lookup failed - see SearchAuthors).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_harvest_transport_http.existingAuthorResponse"
+                        }
+                    ]
+                },
                 "label": {
                     "type": "string"
                 },
                 "qid": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_harvest_transport_http.existingAuthorResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }

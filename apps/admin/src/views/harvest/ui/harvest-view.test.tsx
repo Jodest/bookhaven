@@ -161,6 +161,32 @@ describe('HarvestView', () => {
     expect(triggerMock.mock.calls[0][0]).toEqual({ author_qids: ['Q7200'] });
   });
 
+  it('marks candidates already in BookHaven with a status badge and an open link', async () => {
+    searchAuthorsMock.mockResolvedValue({
+      items: [
+        {
+          qid: 'Q7200',
+          label: 'Лев Толстой',
+          description: 'русский писатель',
+          existing: { id: 'a1', name: 'Лев Толстой', slug: 'lev-tolstoy', status: 'pending' },
+        },
+        { qid: 'Q171976', label: 'Алексей Николаевич Толстой', existing: null },
+      ],
+    });
+    renderView();
+
+    fireEvent.change(screen.getByLabelText('Поиск автора по имени'), {
+      target: { value: 'Толстой' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Найти' }));
+
+    await waitFor(() => expect(screen.getByText('На модерации')).toBeInTheDocument());
+    expect(screen.getAllByRole('link', { name: 'Открыть' })).toHaveLength(1);
+    // Harvest keeps its own action: no import buttons here.
+    expect(screen.getAllByRole('button', { name: 'Добавить' })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'Импортировать автора' })).not.toBeInTheDocument();
+  });
+
   it('shows the empty-state message pointing at manual QID entry when a name search has zero results', async () => {
     searchAuthorsMock.mockResolvedValue({ items: [] });
     renderView();

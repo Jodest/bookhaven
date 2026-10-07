@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strings"
 
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/hibiken/asynq"
@@ -56,17 +57,25 @@ type AuthorSearcher interface {
 	SearchAuthors(ctx context.Context, query string) ([]bookdata.AuthorCandidate, error)
 }
 
+// ExistingAuthorFinder looks up BookHaven authors by Wikidata QID, used to
+// mark search candidates that are already in the catalog (satisfied by
+// *adminservice.Service; see docs/features/author-direct-import.md).
+type ExistingAuthorFinder interface {
+	FindAuthorsByWikidataQIDs(ctx context.Context, qids []string) (map[string]catalogDomain.Author, error)
+}
+
 // Handler handles admin harvest-trigger/job-status/author-search HTTP
 // requests.
 type Handler struct {
 	enqueuer  TaskEnqueuer
 	inspector TaskInspector
 	searcher  AuthorSearcher
+	finder    ExistingAuthorFinder
 }
 
 // NewHandler builds a Handler.
-func NewHandler(enqueuer TaskEnqueuer, inspector TaskInspector, searcher AuthorSearcher) *Handler {
-	return &Handler{enqueuer: enqueuer, inspector: inspector, searcher: searcher}
+func NewHandler(enqueuer TaskEnqueuer, inspector TaskInspector, searcher AuthorSearcher, finder ExistingAuthorFinder) *Handler {
+	return &Handler{enqueuer: enqueuer, inspector: inspector, searcher: searcher, finder: finder}
 }
 
 type triggerHarvestRequest struct {
@@ -244,6 +253,18 @@ type authorCandidateResponse struct {
 	QID         string `json:"qid"`
 	Label       string `json:"label"`
 	Description string `json:"description,omitempty"`
+	// Existing is the BookHaven author already carrying this QID, or null
+	// (also null when the lookup failed - see SearchAuthors).
+	Existing *existingAuthorResponse `json:"existing"`
+}
+
+// existingAuthorResponse is the "already in BookHaven" marker of a search
+// candidate (QID match only).
+type existingAuthorResponse struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Slug   string `json:"slug"`
+	Status string `json:"status"`
 }
 
 // listAuthorCandidatesResponse is the 200 response of
@@ -254,7 +275,7 @@ type listAuthorCandidatesResponse struct {
 
 // SearchAuthors godoc
 // @Summary Поиск авторов в Wikidata по имени (для подбора QID перед харвестом)
-// @Description Требуется роль admin. Синхронный, только для чтения вызов Wikidata (wbsearchentities) - не создаёт и не изменяет записи; результат - кандидаты для ручного подтверждения администратором перед запуском POST /admin/harvest. Отсутствие совпадений - не ошибка (200, items: []).
+// @Description Требуется роль admin. Синхронный, только для чтения вызов Wikidata (wbsearchentities) - не создаёт и не изменяет записи; результат - кандидаты для ручного подтверждения администратором перед запуском POST /admin/harvest или импортом автора. Отсутствие совпадений - не ошибка (200, items: []). У каждого кандидата поле existing - автор BookHaven с тем же QID (id, name, slug, status) или null.
 // @Tags admin
 // @Produce json
 // @Param q query string true "Искомое имя автора"
@@ -287,13 +308,40 @@ func (h *Handler) SearchAuthors(c echo.Context) error {
 		}
 	}
 
+	// "Already in BookHaven" markers: one finder call for all candidate
+	// QIDs. A lookup failure must not break the search - it is logged and
+	// every candidate gets existing: null (the import endpoint does the
+	// authoritative match anyway).
+	var existing map[string]catalogDomain.Author
+	if len(candidates) > 0 && h.finder != nil {
+		qids := make([]string, 0, len(candidates))
+		for _, cand := range candidates {
+			qids = append(qids, cand.QID)
+		}
+		found, err := h.finder.FindAuthorsByWikidataQIDs(c.Request().Context(), qids)
+		if err != nil {
+			c.Logger().Errorf("harvest author search: existing author lookup failed: %v", err)
+		} else {
+			existing = found
+		}
+	}
+
 	items := make([]authorCandidateResponse, 0, len(candidates))
 	for _, cand := range candidates {
-		items = append(items, authorCandidateResponse{
+		item := authorCandidateResponse{
 			QID:         cand.QID,
 			Label:       cand.Label,
 			Description: cand.Description,
-		})
+		}
+		if a, ok := existing[cand.QID]; ok {
+			item.Existing = &existingAuthorResponse{
+				ID:     a.ID.String(),
+				Name:   a.Name,
+				Slug:   a.Slug,
+				Status: a.Status,
+			}
+		}
+		items = append(items, item)
 	}
 
 	return c.JSON(http.StatusOK, listAuthorCandidatesResponse{Items: items})

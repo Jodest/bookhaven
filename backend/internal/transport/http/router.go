@@ -130,7 +130,9 @@ func RegisterAdminRoutes(
 	admin := e.Group("/api/v1/admin", authMiddleware)
 
 	adminHandler := adminhttp.NewHandler(adminService)
-	harvestHandler := harvesthttp.NewHandler(harvestEnqueuer, harvestInspector, harvestAuthorSearcher)
+	// adminService doubles as the search's ExistingAuthorFinder ("already in
+	// BookHaven" markers, docs/features/author-direct-import.md).
+	harvestHandler := harvesthttp.NewHandler(harvestEnqueuer, harvestInspector, harvestAuthorSearcher, adminService)
 
 	adminRole := middleware.RequireRole(usersdomain.RoleAdmin)
 	adminOrModerator := middleware.RequireRole(usersdomain.RoleAdmin, usersdomain.RoleModerator)
@@ -152,6 +154,7 @@ func RegisterAdminRoutes(
 	authors.GET("", adminHandler.ListAuthors)
 	authors.GET("/moderation", adminHandler.ListAuthorModerationQueue)
 	authors.POST("/bulk-status", adminHandler.BulkSetAuthorStatus, requireBearer)
+	authors.POST("/import-wikidata", adminHandler.ImportWikidataAuthor, requireBearer)
 	authors.POST("", adminHandler.CreateAuthor, requireBearer)
 	authors.PATCH("/:id", adminHandler.UpdateAuthor, requireBearer)
 	authors.POST("/:id/merge", adminHandler.MergeAuthors, requireBearer)

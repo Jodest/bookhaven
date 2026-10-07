@@ -99,13 +99,18 @@ func main() {
 	// backend/cmd/worker/main.go's own zero-config construction (see
 	// docs/features/bookdata-clients.md for the accepted-risk placeholder
 	// User-Agent contact).
-	adminService := adminservice.NewService(adminRepo, adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()), adminservice.WithLogger(logger))
 	// wikidataClient is a second, independent bookdata client instance (same
-	// zero-config, placeholder-User-Agent caveat as above) used only for the
-	// admin harvest author-name-search endpoint (see
-	// docs/features/harvest-author-search.md) - it does not share the
-	// OpenLibraryClient's rate-limit budget, nor does it touch the same host.
+	// zero-config, placeholder-User-Agent caveat as above) used for the admin
+	// harvest author-name-search endpoint (see
+	// docs/features/harvest-author-search.md) AND the direct author import
+	// (docs/features/author-direct-import.md). The SAME instance is passed to
+	// both, so search and import share one Wikidata rate-limit budget; it
+	// does not share the OpenLibraryClient's budget, nor the same host.
 	wikidataClient := bookdata.NewWikidataClient()
+	adminService := adminservice.NewService(adminRepo,
+		adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()),
+		adminservice.WithAuthorFetcher(wikidataClient),
+		adminservice.WithLogger(logger))
 	shelvesService := shelvesservice.NewService(shelvesRepo)
 	listsService := listsservice.NewService(listsRepo)
 	ratingsService := ratingsservice.NewService(ratingsRepo)

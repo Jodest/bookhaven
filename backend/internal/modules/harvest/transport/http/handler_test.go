@@ -9,8 +9,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
+	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
 )
@@ -129,7 +131,7 @@ func newTestContext(method, path string, body []byte) (echo.Context, *httptest.R
 
 func TestTriggerHarvest_ValidAuthorQIDs_ReturnsCreated(t *testing.T) {
 	enqueuer := &fakeEnqueuer{}
-	h := NewHandler(enqueuer, &fakeInspector{}, &fakeSearcher{})
+	h := NewHandler(enqueuer, &fakeInspector{}, &fakeSearcher{}, &fakeFinder{})
 
 	body, _ := json.Marshal(triggerHarvestRequest{AuthorQIDs: []string{"Q7200", "Q1183296"}, Limit: 100})
 	c, rec := newTestContext(http.MethodPost, "/admin/harvest", body)
@@ -161,7 +163,7 @@ func TestTriggerHarvest_ValidAuthorQIDs_ReturnsCreated(t *testing.T) {
 }
 
 func TestTriggerHarvest_EmptyAuthorQIDs_ReturnsBadRequest(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{}, &fakeFinder{})
 
 	body, _ := json.Marshal(triggerHarvestRequest{AuthorQIDs: []string{}})
 	c, rec := newTestContext(http.MethodPost, "/admin/harvest", body)
@@ -178,7 +180,7 @@ func TestTriggerHarvest_EmptyAuthorQIDs_ReturnsBadRequest(t *testing.T) {
 }
 
 func TestTriggerHarvest_MalformedQID_ReturnsBadRequest(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{}, &fakeFinder{})
 
 	body, _ := json.Marshal(triggerHarvestRequest{AuthorQIDs: []string{"not-a-qid"}})
 	c, rec := newTestContext(http.MethodPost, "/admin/harvest", body)
@@ -196,7 +198,7 @@ func TestTriggerHarvest_MalformedQID_ReturnsBadRequest(t *testing.T) {
 
 func TestTriggerHarvest_EnqueueError_ReturnsBadGateway(t *testing.T) {
 	enqueuer := &fakeEnqueuer{err: errors.New("redis unavailable")}
-	h := NewHandler(enqueuer, &fakeInspector{}, &fakeSearcher{})
+	h := NewHandler(enqueuer, &fakeInspector{}, &fakeSearcher{}, &fakeFinder{})
 
 	body, _ := json.Marshal(triggerHarvestRequest{AuthorQIDs: []string{"Q7200"}})
 	c, rec := newTestContext(http.MethodPost, "/admin/harvest", body)
@@ -217,7 +219,7 @@ func TestListHarvestJobs_MergesAllStatesInDocumentedOrder(t *testing.T) {
 		completed: []*asynq.TaskInfo{{ID: "c1", State: asynq.TaskStateCompleted}},
 		archived:  []*asynq.TaskInfo{{ID: "ar1", State: asynq.TaskStateArchived}},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs", nil)
 	if err := h.ListHarvestJobs(c); err != nil {
@@ -258,7 +260,7 @@ func TestGetHarvestJob_Found_ReturnsMappedFields(t *testing.T) {
 			},
 		},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-1", nil)
 	c.SetParamNames("id")
@@ -293,7 +295,7 @@ func TestGetHarvestJob_CompletedWithMalformedResult_OmitsResultNotError(t *testi
 			},
 		},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-2", nil)
 	c.SetParamNames("id")
@@ -334,7 +336,7 @@ func TestGetHarvestJob_ActiveWithPartialResult_ResultSurfaced(t *testing.T) {
 			},
 		},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-active", nil)
 	c.SetParamNames("id")
@@ -386,7 +388,7 @@ func TestGetHarvestJob_SkippedRecordsSurfacedForActiveAndCompleted(t *testing.T)
 				id: {ID: id, Queue: harvestservice.QueueName, State: state, Result: resultBytes},
 			},
 		}
-		h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
+		h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{}, &fakeFinder{})
 
 		c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/"+id, nil)
 		c.SetParamNames("id")
@@ -423,7 +425,7 @@ func TestGetHarvestJob_SkippedRecordsSurfacedForActiveAndCompleted(t *testing.T)
 	inspector := &fakeInspector{
 		completed: []*asynq.TaskInfo{{ID: "c1", State: asynq.TaskStateCompleted, Result: resultBytes}},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs", nil)
 	if err := h.ListHarvestJobs(c); err != nil {
@@ -451,7 +453,7 @@ func TestGetHarvestJob_ActiveWithNoResultYet_ResultOmitted(t *testing.T) {
 			},
 		},
 	}
-	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, inspector, &fakeSearcher{}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/job-active-2", nil)
 	c.SetParamNames("id")
@@ -474,7 +476,7 @@ func TestGetHarvestJob_ActiveWithNoResultYet_ResultOmitted(t *testing.T) {
 }
 
 func TestGetHarvestJob_NotFound_ReturnsNotFound(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/jobs/missing", nil)
 	c.SetParamNames("id")
@@ -495,7 +497,7 @@ func TestSearchAuthors_ValidQuery_ReturnsMappedItems(t *testing.T) {
 			{QID: "Q171976", Label: "Алексей Николаевич Толстой"},
 		},
 	}
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, searcher)
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, searcher, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=%D0%A2%D0%BE%D0%BB%D1%81%D1%82%D0%BE%D0%B9", nil)
 
@@ -522,7 +524,7 @@ func TestSearchAuthors_ValidQuery_ReturnsMappedItems(t *testing.T) {
 }
 
 func TestSearchAuthors_ZeroResults_ReturnsEmptyItems(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{candidates: []bookdata.AuthorCandidate{}})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{candidates: []bookdata.AuthorCandidate{}}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=xyzzy", nil)
 
@@ -543,7 +545,7 @@ func TestSearchAuthors_ZeroResults_ReturnsEmptyItems(t *testing.T) {
 }
 
 func TestSearchAuthors_MissingQuery_ReturnsBadRequest(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search", nil)
 
@@ -556,7 +558,7 @@ func TestSearchAuthors_MissingQuery_ReturnsBadRequest(t *testing.T) {
 }
 
 func TestSearchAuthors_BlankQuery_ReturnsBadRequest(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=%20%20", nil)
 
@@ -569,7 +571,7 @@ func TestSearchAuthors_BlankQuery_ReturnsBadRequest(t *testing.T) {
 }
 
 func TestSearchAuthors_InvalidQueryFromSearcher_ReturnsBadRequest(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{err: bookdata.ErrInvalidQuery})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{err: bookdata.ErrInvalidQuery}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=bad", nil)
 
@@ -583,7 +585,7 @@ func TestSearchAuthors_InvalidQueryFromSearcher_ReturnsBadRequest(t *testing.T) 
 
 func TestSearchAuthors_RateLimitedOrUnavailable_ReturnsBadGateway(t *testing.T) {
 	for _, err := range []error{bookdata.ErrRateLimited, bookdata.ErrSourceUnavailable} {
-		h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{err: err})
+		h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{err: err}, &fakeFinder{})
 
 		c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=Толстой", nil)
 
@@ -597,7 +599,7 @@ func TestSearchAuthors_RateLimitedOrUnavailable_ReturnsBadGateway(t *testing.T) 
 }
 
 func TestSearchAuthors_UnmappedError_ReturnsInternalServerError(t *testing.T) {
-	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{err: errors.New("boom")})
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{err: errors.New("boom")}, &fakeFinder{})
 
 	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=Толстой", nil)
 
@@ -606,5 +608,96 @@ func TestSearchAuthors_UnmappedError_ReturnsInternalServerError(t *testing.T) {
 	}
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+}
+
+// fakeFinder is a hand-rolled ExistingAuthorFinder fake.
+type fakeFinder struct {
+	authors  map[string]catalogDomain.Author
+	err      error
+	calls    int
+	lastQIDs []string
+}
+
+func (f *fakeFinder) FindAuthorsByWikidataQIDs(ctx context.Context, qids []string) (map[string]catalogDomain.Author, error) {
+	f.calls++
+	f.lastQIDs = qids
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.authors, nil
+}
+
+func TestSearchAuthors_ExistingMarkers(t *testing.T) {
+	tolstoy := catalogDomain.Author{ID: uuid.New(), Name: "Лев Толстой", Slug: "lev-tolstoy", Status: "rejected"}
+	searcher := &fakeSearcher{candidates: []bookdata.AuthorCandidate{
+		{QID: "Q7200", Label: "Лев Толстой"},
+		{QID: "Q171976", Label: "Алексей Николаевич Толстой"},
+	}}
+	finder := &fakeFinder{authors: map[string]catalogDomain.Author{"Q7200": tolstoy}}
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, searcher, finder)
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=x", nil)
+	if err := h.SearchAuthors(c); err != nil {
+		t.Fatalf("SearchAuthors returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if finder.calls != 1 || len(finder.lastQIDs) != 2 || finder.lastQIDs[0] != "Q7200" || finder.lastQIDs[1] != "Q171976" {
+		t.Fatalf("finder calls=%d qids=%v, want one call with both QIDs", finder.calls, finder.lastQIDs)
+	}
+
+	var raw struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	ex, _ := raw.Items[0]["existing"].(map[string]interface{})
+	if ex["id"] != tolstoy.ID.String() || ex["name"] != "Лев Толстой" || ex["slug"] != "lev-tolstoy" || ex["status"] != "rejected" {
+		t.Fatalf("unexpected existing marker: %v", raw.Items[0])
+	}
+	if v, ok := raw.Items[1]["existing"]; !ok || v != nil {
+		t.Fatalf("expected existing:null on items[1], got %v", raw.Items[1])
+	}
+}
+
+func TestSearchAuthors_FinderError_ReturnsCandidatesWithNullExisting(t *testing.T) {
+	searcher := &fakeSearcher{candidates: []bookdata.AuthorCandidate{{QID: "Q7200", Label: "Лев Толстой"}}}
+	finder := &fakeFinder{err: errors.New("db down")}
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, searcher, finder)
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=x", nil)
+	if err := h.SearchAuthors(c); err != nil {
+		t.Fatalf("SearchAuthors returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (search must survive a lookup failure)", rec.Code)
+	}
+	var raw struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(raw.Items) != 1 {
+		t.Fatalf("items = %v", raw.Items)
+	}
+	if v, ok := raw.Items[0]["existing"]; !ok || v != nil {
+		t.Fatalf("expected existing:null, got %v", raw.Items[0])
+	}
+}
+
+func TestSearchAuthors_ZeroResults_DoesNotCallFinder(t *testing.T) {
+	finder := &fakeFinder{}
+	h := NewHandler(&fakeEnqueuer{}, &fakeInspector{}, &fakeSearcher{candidates: []bookdata.AuthorCandidate{}}, finder)
+
+	c, rec := newTestContext(http.MethodGet, "/admin/harvest/authors/search?q=xyzzy", nil)
+	if err := h.SearchAuthors(c); err != nil {
+		t.Fatalf("SearchAuthors returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK || finder.calls != 0 {
+		t.Fatalf("status=%d finder calls=%d, want 200 and 0", rec.Code, finder.calls)
 	}
 }

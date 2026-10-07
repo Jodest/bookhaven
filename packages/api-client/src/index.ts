@@ -533,6 +533,29 @@ export interface AdminHarvestAuthorCandidate {
   qid: string;
   label: string;
   description?: string;
+  // The BookHaven author already carrying this QID (QID match only), or
+  // null. Also null when the server-side lookup failed. See
+  // docs/features/author-direct-import.md.
+  existing: AdminHarvestExistingAuthor | null;
+}
+
+export interface AdminHarvestExistingAuthor {
+  id: string;
+  name: string;
+  slug: string;
+  status: AdminAuthorStatus;
+}
+
+// AdminAuthorImportResult is the response of
+// POST /api/v1/admin/authors/import-wikidata (201 created, 200 existing /
+// rejected). match is null for created. See
+// docs/features/author-direct-import.md.
+export interface AdminAuthorImportResult {
+  outcome: 'created' | 'existing' | 'rejected';
+  match: 'qid' | 'slug' | null;
+  qid_backfilled: boolean;
+  namesake_of: AdminAuthor | null;
+  author: AdminAuthor;
 }
 
 const API_URL =
@@ -1759,6 +1782,12 @@ export const api = {
         fetcher<AdminAuthorBulkStatusReport>('/api/v1/admin/authors/bulk-status', {
           method: 'POST',
           body: JSON.stringify({ ids, status }),
+        }),
+      // Errors: 422 carries ApiError.code 'no_ru_label' | 'not_a_person'.
+      importWikidata: (qid: string) =>
+        fetcher<AdminAuthorImportResult>('/api/v1/admin/authors/import-wikidata', {
+          method: 'POST',
+          body: JSON.stringify({ qid }),
         }),
     },
     genres: {

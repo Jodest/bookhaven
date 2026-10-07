@@ -51,6 +51,10 @@ type Service struct {
 	// use for the lookup assistant (backend/cmd/worker, every existing
 	// admin/service test's NewService(repo) call).
 	lookupClient bookdata.Client
+	// authorFetcher backs ImportWikidataAuthor (see author_import.go). Nil
+	// unless configured via WithAuthorFetcher - the import then returns
+	// ErrAuthorImportUnavailable whenever it needs Wikidata.
+	authorFetcher AuthorFetcher
 	// log receives informational events (harvest tombstone skips, merge
 	// QID drops). A no-op logger unless configured via WithLogger.
 	log *zap.Logger
@@ -69,6 +73,17 @@ type Option func(*Service)
 func WithLookupClient(client bookdata.Client) Option {
 	return func(s *Service) {
 		s.lookupClient = client
+	}
+}
+
+// WithAuthorFetcher wires the Wikidata entity fetcher used by
+// ImportWikidataAuthor. backend/cmd/api passes the same
+// *bookdata.WikidataClient it uses for the author search, so both share one
+// rate-limit budget. Callers without it (backend/cmd/worker, tests) get
+// ErrAuthorImportUnavailable from the import.
+func WithAuthorFetcher(fetcher AuthorFetcher) Option {
+	return func(s *Service) {
+		s.authorFetcher = fetcher
 	}
 }
 

@@ -31,6 +31,7 @@ type Service interface {
 	MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (*catalogDomain.Author, int64, error)
 	ListAuthorModerationQueue(ctx context.Context, filter repository.AuthorModerationFilter, page, limit int) ([]adminService.AuthorQueueItem, int64, error)
 	BulkSetAuthorStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.BulkStatusReport, error)
+	ImportWikidataAuthor(ctx context.Context, qid string) (*adminService.AuthorImportResult, error)
 	ListGenres(ctx context.Context, search string, page, limit int) ([]catalogDomain.Genre, int64, error)
 	CreateGenre(ctx context.Context, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error)
@@ -987,6 +988,96 @@ func (h *Handler) BulkSetAuthorStatus(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, report)
+}
+
+// importWikidataAuthorRequest is the POST /admin/authors/import-wikidata body.
+type importWikidataAuthorRequest struct {
+	QID string `json:"qid" example:"Q7200"`
+}
+
+// authorImportResponse is the POST /admin/authors/import-wikidata result.
+type authorImportResponse struct {
+	// Outcome is created | existing | rejected.
+	Outcome string `json:"outcome"`
+	// Match is qid | slug for existing/rejected, null for created.
+	Match         *string         `json:"match"`
+	QIDBackfilled bool            `json:"qid_backfilled"`
+	NamesakeOf    *authorResponse `json:"namesake_of"`
+	Author        authorResponse  `json:"author"`
+}
+
+func toAuthorImportResponse(r adminService.AuthorImportResult) authorImportResponse {
+	resp := authorImportResponse{
+		Outcome:       r.Outcome,
+		QIDBackfilled: r.QIDBackfilled,
+		Author:        toAuthorResponse(*r.Author),
+	}
+	if r.Match != "" {
+		match := r.Match
+		resp.Match = &match
+	}
+	if r.NamesakeOf != nil {
+		namesake := toAuthorResponse(*r.NamesakeOf)
+		resp.NamesakeOf = &namesake
+	}
+	return resp
+}
+
+// ImportWikidataAuthor godoc
+// @Summary Импортировать автора из Wikidata по QID (админ)
+// @Description Требуется роль admin и Bearer-токен. Сначала ищет автора в БД по QID (без запроса к Wikidata), затем загружает элемент Wikidata (русское название + P31: человек / псевдоним / коллективный псевдоним) и сопоставляет по правилам харвеста: совпадение по slug без QID — QID привязывается; тёзка с другим QID — создаётся отдельный автор; иначе создаётся автор в статусе pending с QID. Отклонённые авторы повторно не создаются (outcome=rejected). Статус, имя и slug существующего автора не меняются. 201 — создан, 200 — existing / rejected. 422 содержит code: no_ru_label | not_a_person.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body importWikidataAuthorRequest true "QID элемента Wikidata"
+// @Success 201 {object} authorImportResponse
+// @Success 200 {object} authorImportResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Failure 502 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Router /admin/authors/import-wikidata [post]
+func (h *Handler) ImportWikidataAuthor(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req importWikidataAuthorRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	result, err := h.service.ImportWikidataAuthor(ctx, req.QID)
+	if err != nil {
+		switch {
+		case errors.Is(err, adminService.ErrInvalidQID):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid qid"})
+		case errors.Is(err, adminService.ErrWikidataEntityNotFound):
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "wikidata entity not found"})
+		case errors.Is(err, adminService.ErrNoRussianLabel):
+			return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "wikidata entity has no russian label", "code": "no_ru_label"})
+		case errors.Is(err, adminService.ErrNotAPerson):
+			return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "wikidata entity is not a person or pseudonym", "code": "not_a_person"})
+		case errors.Is(err, adminService.ErrDuplicateSlug):
+			return c.JSON(http.StatusConflict, map[string]string{"error": "author was created concurrently; retry"})
+		case errors.Is(err, bookdata.ErrRateLimited), errors.Is(err, bookdata.ErrSourceUnavailable):
+			return c.JSON(http.StatusBadGateway, map[string]string{"error": "wikidata is unavailable; retry later"})
+		case errors.Is(err, adminService.ErrAuthorImportUnavailable):
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "author import is not configured"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to import author"})
+		}
+	}
+
+	status := http.StatusOK
+	if result.Outcome == adminService.AuthorOutcomeCreated {
+		status = http.StatusCreated
+	}
+	return c.JSON(status, toAuthorImportResponse(*result))
 }
 
 // ListGenres godoc
