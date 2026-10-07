@@ -23,20 +23,24 @@ const authorBookStatsJoin = `LEFT JOIN (
 // authorModerationScanRow is the flat scan target of
 // ListAuthorsForModeration (authors.* + the two counts).
 type authorModerationScanRow struct {
-	ID             uuid.UUID
-	Name           string
-	Slug           string
-	Biography      *string
-	PhotoURL       *string
-	BirthDate      *time.Time
-	DeathDate      *time.Time
-	Status         string
-	ExternalSource *string
-	ExternalID     *string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	BooksTotal     int64
-	BooksVisible   int64
+	ID              uuid.UUID
+	Name            string
+	Slug            string
+	Biography       *string
+	PhotoURL        *string
+	BirthDate       *time.Time
+	DeathDate       *time.Time
+	Status          string
+	ExternalSource  *string
+	ExternalID      *string
+	PhotoAuthor     *string
+	PhotoLicense    *string
+	PhotoLicenseURL *string `gorm:"column:photo_license_url"`
+	PhotoSourceURL  *string `gorm:"column:photo_source_url"`
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	BooksTotal      int64
+	BooksVisible    int64
 }
 
 func (r *GormRepository) ListAuthorsForModeration(ctx context.Context, filter AuthorModerationFilter) ([]AuthorModerationRow, int64, error) {
@@ -81,7 +85,9 @@ func (r *GormRepository) ListAuthorsForModeration(ctx context.Context, filter Au
 	var scanned []authorModerationScanRow
 	if err := query.
 		Select("authors.id, authors.name, authors.slug, authors.biography, authors.photo_url, authors.birth_date, authors.death_date, " +
-			"authors.status, authors.external_source, authors.external_id, authors.created_at, authors.updated_at, " +
+			"authors.status, authors.external_source, authors.external_id, " +
+			"authors.photo_author, authors.photo_license, authors.photo_license_url, authors.photo_source_url, " +
+			"authors.created_at, authors.updated_at, " +
 			"COALESCE(s.books_total, 0) AS books_total, COALESCE(s.books_visible, 0) AS books_visible").
 		Order("authors.created_at DESC, authors.name ASC").
 		Limit(limit).
@@ -94,18 +100,22 @@ func (r *GormRepository) ListAuthorsForModeration(ctx context.Context, filter Au
 	for _, s := range scanned {
 		rows = append(rows, AuthorModerationRow{
 			Author: catalogDomain.Author{
-				ID:             s.ID,
-				Name:           s.Name,
-				Slug:           s.Slug,
-				Biography:      s.Biography,
-				PhotoURL:       s.PhotoURL,
-				BirthDate:      s.BirthDate,
-				DeathDate:      s.DeathDate,
-				Status:         s.Status,
-				ExternalSource: s.ExternalSource,
-				ExternalID:     s.ExternalID,
-				CreatedAt:      s.CreatedAt,
-				UpdatedAt:      s.UpdatedAt,
+				ID:              s.ID,
+				Name:            s.Name,
+				Slug:            s.Slug,
+				Biography:       s.Biography,
+				PhotoURL:        s.PhotoURL,
+				BirthDate:       s.BirthDate,
+				DeathDate:       s.DeathDate,
+				Status:          s.Status,
+				ExternalSource:  s.ExternalSource,
+				ExternalID:      s.ExternalID,
+				PhotoAuthor:     s.PhotoAuthor,
+				PhotoLicense:    s.PhotoLicense,
+				PhotoLicenseURL: s.PhotoLicenseURL,
+				PhotoSourceURL:  s.PhotoSourceURL,
+				CreatedAt:       s.CreatedAt,
+				UpdatedAt:       s.UpdatedAt,
 			},
 			BooksTotal:   s.BooksTotal,
 			BooksVisible: s.BooksVisible,

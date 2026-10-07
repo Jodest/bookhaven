@@ -259,6 +259,99 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/authors/enrich-wikidata": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Для 1..50 авторов (любой статус, дубликаты схлопываются) с QID Wikidata заполняет только пустые поля: дату рождения и смерти (P569/P570, точность до дня, юлианские даты переводятся в григорианский календарь) и фото (P18 → Wikimedia Commons, только свободные лицензии) с атрибуцией. Заполненные значения никогда не перезаписываются. Каждый автор обрабатывается независимо: outcome = enriched | unchanged | skipped (notes: no_qid, entity_not_found) | error. 502 — только если запрос к Wikidata не удался целиком.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Обогатить авторов данными из Wikidata (админ)",
+                "parameters": [
+                    {
+                        "description": "ID авторов (1..50)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.enrichWikidataRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.AuthorEnrichmentReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/authors/import-wikidata": {
             "post": {
                 "security": [
@@ -5398,6 +5491,72 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "github_com_bookhaven_backend_internal_modules_admin_service.AuthorEnrichmentItem": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "string"
+                },
+                "filled": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "outcome": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_admin_service.AuthorEnrichmentReport": {
+            "type": "object",
+            "properties": {
+                "enriched": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.AuthorEnrichmentItem"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_admin_service.AuthorEnrichmentSummary": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "filled": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishReport": {
             "type": "object",
             "properties": {
@@ -5583,6 +5742,13 @@ const docTemplate = `{
         "github_com_bookhaven_backend_internal_modules_harvest_service.HarvestResult": {
             "type": "object",
             "properties": {
+                "author_enrichment_errors": {
+                    "type": "integer"
+                },
+                "authors_enriched": {
+                    "description": "AuthorsEnriched / AuthorEnrichmentErrors report the end-of-job\nWikidata enrichment of the authors this job created\n(docs/features/author-wikidata-enrichment.md rule 4b). Set only once\nthat step ran (nil while the record loop is running, in results of\nolder jobs, and when no enrichment source is configured).",
+                    "type": "integer"
+                },
                 "created": {
                     "type": "integer"
                 },
@@ -5637,6 +5803,14 @@ const docTemplate = `{
             "properties": {
                 "author": {
                     "$ref": "#/definitions/internal_modules_admin_transport_http.authorResponse"
+                },
+                "enrichment": {
+                    "description": "Enrichment is the Wikidata enrichment applied to a created author\n(filled fields, notes, error); null unless outcome is created.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.AuthorEnrichmentSummary"
+                        }
+                    ]
                 },
                 "match": {
                     "description": "Match is qid | slug for existing/rejected, null for created.",
@@ -5706,6 +5880,14 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "photo_attribution": {
+                    "description": "PhotoAttribution is the Wikimedia Commons attribution of a photo\nfilled by Wikidata enrichment; null for manual photos.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.photoAttributionResponse"
+                        }
+                    ]
                 },
                 "photo_url": {
                     "type": "string"
@@ -5932,6 +6114,17 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.enrichWikidataRequest": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "internal_modules_admin_transport_http.genreResponse": {
             "type": "object",
             "properties": {
@@ -6123,6 +6316,23 @@ const docTemplate = `{
             "properties": {
                 "is_hidden": {
                     "type": "boolean"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.photoAttributionResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "license": {
+                    "type": "string"
+                },
+                "license_url": {
+                    "type": "string"
+                },
+                "source_url": {
+                    "type": "string"
                 }
             }
         },
@@ -6443,6 +6653,23 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_catalog_transport_http.PhotoAttributionResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "license": {
+                    "type": "string"
+                },
+                "license_url": {
+                    "type": "string"
+                },
+                "source_url": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_catalog_transport_http.authorDetailResponse": {
             "type": "object",
             "properties": {
@@ -6466,6 +6693,14 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "photo_attribution": {
+                    "description": "PhotoAttribution is the Wikimedia Commons attribution of the photo\n(always present; null unless photo_url and the Commons source page\nare both set).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_catalog_transport_http.PhotoAttributionResponse"
+                        }
+                    ]
                 },
                 "photo_url": {
                     "type": "string"

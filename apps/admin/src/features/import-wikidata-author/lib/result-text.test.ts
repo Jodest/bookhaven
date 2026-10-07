@@ -15,6 +15,7 @@ function author(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
     status: 'pending',
     external_source: 'wikidata',
     external_id: 'Q7200',
+    photo_attribution: null,
     ...overrides,
   };
 }
@@ -25,6 +26,7 @@ function result(overrides: Partial<AdminAuthorImportResult> = {}): AdminAuthorIm
     match: null,
     qid_backfilled: false,
     namesake_of: null,
+    enrichment: null,
     author: author(),
     ...overrides,
   };
@@ -42,6 +44,26 @@ describe('importResultFeedback', () => {
       message: 'Автор «Лев Толстой» импортирован и ждёт модерации.',
       links: [],
     });
+  });
+
+  it('created with an enrichment summary', () => {
+    const fb = importResultFeedback({
+      result: result({ enrichment: { filled: ['birth_date', 'death_date', 'photo'], notes: [], error: '' } }),
+      withBooks: false,
+      harvest: notRequested,
+    });
+    expect(fb.message).toBe(
+      'Автор «Лев Толстой» импортирован и ждёт модерации. Из Wikidata добавлены: дата рождения, дата смерти, фото.'
+    );
+
+    const withNotes = importResultFeedback({
+      result: result({ enrichment: { filled: [], notes: ['photo_attribution_missing'], error: '' } }),
+      withBooks: false,
+      harvest: notRequested,
+    });
+    expect(withNotes.message).toBe(
+      'Автор «Лев Толстой» импортирован и ждёт модерации. Из Wikidata ничего не добавлено. Примечания: у фото не указан автор — пропущено.'
+    );
   });
 
   it('created with a namesake', () => {

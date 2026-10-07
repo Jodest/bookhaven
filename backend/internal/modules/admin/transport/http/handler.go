@@ -32,6 +32,7 @@ type Service interface {
 	ListAuthorModerationQueue(ctx context.Context, filter repository.AuthorModerationFilter, page, limit int) ([]adminService.AuthorQueueItem, int64, error)
 	BulkSetAuthorStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.BulkStatusReport, error)
 	ImportWikidataAuthor(ctx context.Context, qid string) (*adminService.AuthorImportResult, error)
+	EnrichAuthorsFromWikidata(ctx context.Context, ids []uuid.UUID) (*adminService.AuthorEnrichmentReport, error)
 	ListGenres(ctx context.Context, search string, page, limit int) ([]catalogDomain.Genre, int64, error)
 	CreateGenre(ctx context.Context, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error)
@@ -67,6 +68,34 @@ type authorResponse struct {
 	Status         string  `json:"status"`
 	ExternalSource *string `json:"external_source"`
 	ExternalID     *string `json:"external_id"`
+	// PhotoAttribution is the Wikimedia Commons attribution of a photo
+	// filled by Wikidata enrichment; null for manual photos.
+	PhotoAttribution *photoAttributionResponse `json:"photo_attribution"`
+}
+
+// photoAttributionResponse is the Commons attribution of an author photo.
+type photoAttributionResponse struct {
+	Author     *string `json:"author"`
+	License    string  `json:"license"`
+	LicenseURL *string `json:"license_url"`
+	SourceURL  string  `json:"source_url"`
+}
+
+// toPhotoAttributionResponse returns the attribution when the author has a
+// photo with a Commons source page, else nil.
+func toPhotoAttributionResponse(a catalogDomain.Author) *photoAttributionResponse {
+	if a.PhotoURL == nil || *a.PhotoURL == "" || a.PhotoSourceURL == nil || *a.PhotoSourceURL == "" {
+		return nil
+	}
+	resp := &photoAttributionResponse{
+		Author:     a.PhotoAuthor,
+		LicenseURL: a.PhotoLicenseURL,
+		SourceURL:  *a.PhotoSourceURL,
+	}
+	if a.PhotoLicense != nil {
+		resp.License = *a.PhotoLicense
+	}
+	return resp
 }
 
 type genreResponse struct {
@@ -321,6 +350,8 @@ func toAuthorResponse(a catalogDomain.Author) authorResponse {
 		Status:         a.Status,
 		ExternalSource: a.ExternalSource,
 		ExternalID:     a.ExternalID,
+
+		PhotoAttribution: toPhotoAttributionResponse(a),
 	}
 }
 
@@ -1004,6 +1035,9 @@ type authorImportResponse struct {
 	QIDBackfilled bool            `json:"qid_backfilled"`
 	NamesakeOf    *authorResponse `json:"namesake_of"`
 	Author        authorResponse  `json:"author"`
+	// Enrichment is the Wikidata enrichment applied to a created author
+	// (filled fields, notes, error); null unless outcome is created.
+	Enrichment *adminService.AuthorEnrichmentSummary `json:"enrichment"`
 }
 
 func toAuthorImportResponse(r adminService.AuthorImportResult) authorImportResponse {
@@ -1011,6 +1045,7 @@ func toAuthorImportResponse(r adminService.AuthorImportResult) authorImportRespo
 		Outcome:       r.Outcome,
 		QIDBackfilled: r.QIDBackfilled,
 		Author:        toAuthorResponse(*r.Author),
+		Enrichment:    r.Enrichment,
 	}
 	if r.Match != "" {
 		match := r.Match
@@ -1078,6 +1113,67 @@ func (h *Handler) ImportWikidataAuthor(c echo.Context) error {
 		status = http.StatusCreated
 	}
 	return c.JSON(status, toAuthorImportResponse(*result))
+}
+
+// enrichWikidataRequest is the POST /admin/authors/enrich-wikidata body.
+type enrichWikidataRequest struct {
+	IDs []string `json:"ids"`
+}
+
+// EnrichAuthorsFromWikidata godoc
+// @Summary Обогатить авторов данными из Wikidata (админ)
+// @Description Требуется роль admin и Bearer-токен. Для 1..50 авторов (любой статус, дубликаты схлопываются) с QID Wikidata заполняет только пустые поля: дату рождения и смерти (P569/P570, точность до дня, юлианские даты переводятся в григорианский календарь) и фото (P18 → Wikimedia Commons, только свободные лицензии) с атрибуцией. Заполненные значения никогда не перезаписываются. Каждый автор обрабатывается независимо: outcome = enriched | unchanged | skipped (notes: no_qid, entity_not_found) | error. 502 — только если запрос к Wikidata не удался целиком.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body enrichWikidataRequest true "ID авторов (1..50)"
+// @Success 200 {object} adminService.AuthorEnrichmentReport
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Failure 502 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Router /admin/authors/enrich-wikidata [post]
+func (h *Handler) EnrichAuthorsFromWikidata(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req enrichWikidataRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if len(req.IDs) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ids must not be empty"})
+	}
+	ids := make([]uuid.UUID, 0, len(req.IDs))
+	for _, raw := range req.IDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid author id: %q", raw)})
+		}
+		ids = append(ids, id)
+	}
+
+	report, err := h.service.EnrichAuthorsFromWikidata(ctx, ids)
+	if err != nil {
+		switch {
+		case errors.Is(err, adminService.ErrAuthorEnrichmentTooLarge),
+			errors.Is(err, adminService.ErrAuthorEnrichmentEmpty):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, adminService.ErrAuthorEnrichmentUnavailable):
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "author enrichment is not configured"})
+		case errors.Is(err, bookdata.ErrRateLimited), errors.Is(err, bookdata.ErrSourceUnavailable):
+			return c.JSON(http.StatusBadGateway, map[string]string{"error": "wikidata is unavailable; retry later"})
+		case report != nil:
+			// Every wbgetentities call failed for another reason (e.g.
+			// a rejected request): the per-item report says why.
+			return c.JSON(http.StatusOK, report)
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to enrich authors"})
+		}
+	}
+	return c.JSON(http.StatusOK, report)
 }
 
 // ListGenres godoc

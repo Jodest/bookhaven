@@ -8,6 +8,19 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'covers.openlibrary.org',
       },
+      // Wikimedia Commons author photos (Wikidata enrichment). Rendered
+      // `unoptimized` (see entities/author isWikimediaUrl); Commons returns
+      // thumbnails on both hosts.
+      {
+        protocol: 'https',
+        hostname: 'upload.wikimedia.org',
+        pathname: '/wikipedia/commons/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'thumb.wikimedia.org',
+        pathname: '/wikipedia/commons/**',
+      },
     ],
   },
   experimental: {

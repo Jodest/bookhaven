@@ -8,4 +8,5 @@ export const adminAuthorsApi = {
   moderationQueue: api.admin.authors.moderationQueue,
   bulkStatus: api.admin.authors.bulkStatus,
   importWikidata: api.admin.authors.importWikidata,
+  enrichWikidata: api.admin.authors.enrichWikidata,
 };

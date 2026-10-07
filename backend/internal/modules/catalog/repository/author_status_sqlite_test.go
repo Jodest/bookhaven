@@ -30,6 +30,10 @@ CREATE TABLE authors (
 	status TEXT NOT NULL DEFAULT 'published',
 	external_source TEXT,
 	external_id TEXT,
+	photo_author TEXT,
+	photo_license TEXT,
+	photo_license_url TEXT,
+	photo_source_url TEXT,
 	created_at DATETIME,
 	updated_at DATETIME
 );

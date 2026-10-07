@@ -64,6 +64,15 @@ type fakeAdminService struct {
 	importResult  *adminService.AuthorImportResult
 	importErr     error
 	lastImportQID string
+
+	enrichReport  *adminService.AuthorEnrichmentReport
+	enrichErr     error
+	lastEnrichIDs []uuid.UUID
+}
+
+func (f *fakeAdminService) EnrichAuthorsFromWikidata(ctx context.Context, ids []uuid.UUID) (*adminService.AuthorEnrichmentReport, error) {
+	f.lastEnrichIDs = ids
+	return f.enrichReport, f.enrichErr
 }
 
 func (f *fakeAdminService) ImportWikidataAuthor(ctx context.Context, qid string) (*adminService.AuthorImportResult, error) {

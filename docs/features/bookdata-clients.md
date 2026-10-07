@@ -116,6 +116,11 @@ All tests are offline (fake `http.RoundTripper`, e.g. `type roundTripFunc func(*
   - `FindByTitleAuthor` parses a canned Search API JSON fixture (picks first/best match).
   - `CoverURL` produces the expected `covers.openlibrary.org` URL for a given ISBN and size, with no network call.
 
+## Later additions
+
+- `WikidataClient.FetchAuthor` / `FetchAuthors` (`wikidata_author.go`): `wbgetentities` on `cfg.searchBaseURL` (one request for up to `MaxEntitiesPerRequest` = 50 QIDs, keyed by the requested QID; a batch `no-such-entity` error drops the named ID and re-requests the rest). Records carry day-precision Gregorian `BirthDate`/`DeathDate` (P569/P570 rank selection, Julian → Gregorian via JDN, `wikidata_dates.go`) and the P18 `PhotoFile` (see [author-wikidata-enrichment.md](author-wikidata-enrichment.md)).
+- `WikidataClient.FetchCommonsImages` (`commons.go`): Wikimedia Commons `prop=imageinfo` batch (≤ 50 files) on a new `WithCommonsBaseURL` option (default `https://commons.wikimedia.org/w/api.php`), returning `CommonsImage` with a cleaned thumbnail URL, licence allowlist classification and attribution. Commons calls go through the same `doRequest`, so the client's shared User-Agent, rate limiter and retries cover Commons too.
+
 ## Documentation
 
 - Package-level doc comment on `bookdata.go` summarizing purpose, the two clients, and the etiquette requirements (User-Agent, throttling) so future increments (`cmd/harvest`, admin lookup endpoint) know how to use it without re-reading this contract.

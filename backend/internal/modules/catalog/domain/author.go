@@ -34,9 +34,18 @@ type Author struct {
 	// (currently only Wikidata + QID). Nil for manual/seed/legacy authors.
 	ExternalSource *string
 	ExternalID     *string
-	Books          []Book `gorm:"many2many:book_authors;"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// PhotoAuthor/PhotoLicense/PhotoLicenseURL/PhotoSourceURL are the
+	// Wikimedia Commons attribution of a photo filled by Wikidata
+	// enrichment (docs/features/author-wikidata-enrichment.md). They are
+	// written only together with PhotoURL and cleared when the photo is
+	// changed manually; nil for manual photos.
+	PhotoAuthor     *string
+	PhotoLicense    *string `gorm:"type:varchar(100)"`
+	PhotoLicenseURL *string `gorm:"column:photo_license_url"`
+	PhotoSourceURL  *string `gorm:"column:photo_source_url"`
+	Books           []Book  `gorm:"many2many:book_authors;"`
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // IsPublished reports whether the author is publicly visible.

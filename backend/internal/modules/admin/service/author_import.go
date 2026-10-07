@@ -54,6 +54,9 @@ type AuthorImportResult struct {
 	QIDBackfilled bool
 	NamesakeOf    *catalogDomain.Author
 	Author        *catalogDomain.Author
+	// Enrichment reports the Wikidata enrichment applied to a created
+	// author; nil for existing/rejected outcomes.
+	Enrichment *AuthorEnrichmentSummary
 }
 
 // ImportWikidataAuthor imports one author by Wikidata QID, per
@@ -133,7 +136,14 @@ func (s *Service) ImportWikidataAuthor(ctx context.Context, qid string) (*Author
 		}
 		res, err := s.resolveAuthorBySlug(ctx, name, canonical)
 		if err == nil {
-			return s.logImport(qid, res), nil
+			result := s.logImport(qid, res)
+			if result.Outcome == AuthorOutcomeCreated {
+				// Best-effort enrichment from the already fetched
+				// record (docs/features/author-wikidata-enrichment.md
+				// rule 4a); never fails the import.
+				result.Enrichment = s.enrichImportedAuthor(ctx, result.Author, record)
+			}
+			return result, nil
 		}
 		if !errors.Is(err, ErrDuplicateSlug) || attempt >= 1 {
 			return nil, err

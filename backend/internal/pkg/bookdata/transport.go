@@ -39,10 +39,13 @@ type limiter interface {
 // WikidataClient and OpenLibraryClient. It is built by newConfig and
 // customized via functional Options.
 type config struct {
-	httpClient     *http.Client
-	userAgent      string
-	baseURL        string
-	searchBaseURL  string
+	httpClient    *http.Client
+	userAgent     string
+	baseURL       string
+	searchBaseURL string
+	// commonsBaseURL is the Wikimedia Commons action API used by
+	// WikidataClient.FetchCommonsImages (see WithCommonsBaseURL).
+	commonsBaseURL string
 	limiter        limiter
 	maxRetries     int
 	retryBaseDelay time.Duration
@@ -85,6 +88,15 @@ func WithBaseURL(baseURL string) Option {
 // httptest server.
 func WithSearchBaseURL(baseURL string) Option {
 	return func(cfg *config) { cfg.searchBaseURL = baseURL }
+}
+
+// WithCommonsBaseURL overrides WikidataClient.FetchCommonsImages' base URL
+// (default: defaultCommonsBaseURL, the Wikimedia Commons action API).
+// Commons calls go through the same doRequest, so they share the client's
+// User-Agent, rate limiter and retries. Primarily so tests can point it at
+// a local httptest server.
+func WithCommonsBaseURL(baseURL string) Option {
+	return func(cfg *config) { cfg.commonsBaseURL = baseURL }
 }
 
 // WithRateLimit overrides the outbound request rate limiter (default: ~1

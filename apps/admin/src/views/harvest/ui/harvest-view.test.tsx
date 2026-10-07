@@ -258,6 +258,67 @@ describe('HarvestView', () => {
     authorLinks.forEach((link) => expect(link).toHaveAttribute('href', '/authors/moderation'));
   });
 
+  it('shows the author enrichment counters of a completed job when present', async () => {
+    listJobsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'job-enriched',
+          queue: 'harvest',
+          state: 'completed',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          result: {
+            processed: 4,
+            total: 4,
+            created: 4,
+            skipped_existing: 0,
+            errors: [],
+            skipped_records: [],
+            authors_enriched: 3,
+            author_enrichment_errors: 1,
+          },
+        },
+        {
+          id: 'job-old',
+          queue: 'harvest',
+          state: 'completed',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          result: { processed: 1, total: 1, created: 0, skipped_existing: 1, errors: [], skipped_records: [] },
+        },
+        {
+          id: 'job-zero',
+          queue: 'harvest',
+          state: 'completed',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          result: {
+            processed: 1,
+            total: 1,
+            created: 1,
+            skipped_existing: 0,
+            errors: [],
+            skipped_records: [],
+            authors_enriched: 0,
+            author_enrichment_errors: 0,
+          },
+        },
+      ],
+    });
+
+    renderView();
+
+    await waitFor(() =>
+      expect(screen.getByText('Авторов обогащено из Wikidata: 3, ошибок обогащения: 1')).toBeInTheDocument()
+    );
+    expect(screen.getByText('Авторов обогащено из Wikidata: 0')).toBeInTheDocument();
+    expect(screen.getAllByText(/Авторов обогащено из Wikidata/)).toHaveLength(2);
+    expect(screen.getByText('создано 4, пропущено 0, ошибок 0')).toBeInTheDocument();
+  });
+
   it('renders a progress bar with N / M (P%) text for an active job with a partial result', async () => {
     listJobsMock.mockResolvedValue({
       items: [

@@ -481,3 +481,11 @@ func (f *fakeImportRepository) FindAuthorsBySurnames(ctx context.Context, surnam
 func (f *fakeImportRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
 	return false, nil
 }
+
+func (f *fakeImportRepository) GetAuthorsByIDs(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
+func (f *fakeImportRepository) FillAuthorEnrichment(ctx context.Context, id uuid.UUID, fill repository.AuthorEnrichmentFill) error {
+	return nil
+}

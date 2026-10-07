@@ -78,6 +78,16 @@ type Repository interface {
 	// found is false when no author has that id.
 	SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (found bool, err error)
 
+	// Author enrichment (docs/features/author-wikidata-enrichment.md).
+	// GetAuthorsByIDs returns the authors (any status) with the given ids
+	// in one query; unknown ids are absent. Empty ids → empty result.
+	GetAuthorsByIDs(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Author, error)
+	// FillAuthorEnrichment writes only the non-nil parts of fill, each
+	// only where the column is still empty (atomic per column in one
+	// UPDATE); the photo attribution columns follow the photo_url
+	// condition. A fill with no parts is a no-op.
+	FillAuthorEnrichment(ctx context.Context, id uuid.UUID, fill AuthorEnrichmentFill) error
+
 	// Genres.
 	ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error)
 	GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error)
