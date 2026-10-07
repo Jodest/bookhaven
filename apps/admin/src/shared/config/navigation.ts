@@ -4,8 +4,8 @@ import { BookOpen, Download, LayoutDashboard, ShieldCheck, Users, type LucideIco
  * Single source of truth for admin navigation: sidebar sections, section tabs
  * and the client-side route guard all read from this config.
  *
- * Phase 1 (#284) is transitional: tabs point to wherever the content lives
- * today; later phases only edit `href`/`match` of the tabs they move.
+ * Phases 1-3 (#284-#286) applied; Импорт is still transitional until #287
+ * (`/harvest` legacy route, Автор/Задания tabs omitted).
  * See docs/features/admin-navigation-restructure.md.
  *
  * The frontend guard is UX only — backend role checks remain authoritative.
@@ -61,15 +61,15 @@ export const navSections: NavSection[] = [
       {
         id: 'moderation.books',
         label: 'Книги',
-        href: '/books?visibility=pending_review',
-        match: [],
+        href: '/moderation/books',
+        match: ['/moderation/books'],
         roles: ['admin'],
       },
       {
         id: 'moderation.authors',
         label: 'Авторы',
-        href: '/authors/moderation',
-        match: ['/authors/moderation'],
+        href: '/moderation/authors',
+        match: ['/moderation/authors'],
         roles: ['admin'],
       },
       {
@@ -82,8 +82,8 @@ export const navSections: NavSection[] = [
       {
         id: 'moderation.reviews',
         label: 'Отзывы',
-        href: '/reviews',
-        match: ['/reviews'],
+        href: '/moderation/reviews',
+        match: ['/moderation/reviews'],
         roles: ['admin', 'moderator'],
         homeLabel: 'К отзывам',
       },
@@ -93,10 +93,29 @@ export const navSections: NavSection[] = [
     id: 'catalog',
     label: 'Каталог',
     icon: BookOpen,
+    basePath: '/catalog',
     tabs: [
-      { id: 'catalog.books', label: 'Книги', href: '/books', match: ['/books'], roles: ['admin'] },
-      { id: 'catalog.authors', label: 'Авторы', href: '/authors', match: ['/authors'], roles: ['admin'] },
-      { id: 'catalog.genres', label: 'Жанры', href: '/genres', match: ['/genres'], roles: ['admin'] },
+      {
+        id: 'catalog.books',
+        label: 'Книги',
+        href: '/catalog/books',
+        match: ['/catalog/books'],
+        roles: ['admin'],
+      },
+      {
+        id: 'catalog.authors',
+        label: 'Авторы',
+        href: '/catalog/authors',
+        match: ['/catalog/authors'],
+        roles: ['admin'],
+      },
+      {
+        id: 'catalog.genres',
+        label: 'Жанры',
+        href: '/catalog/genres',
+        match: ['/catalog/genres'],
+        roles: ['admin'],
+      },
     ],
   },
   {
@@ -105,8 +124,9 @@ export const navSections: NavSection[] = [
     icon: Download,
     basePath: '/import',
     tabs: [
+      // Legacy route until #287 (/import/wikidata).
       { id: 'import.wikidata', label: 'Wikidata', href: '/harvest', match: ['/harvest'], roles: ['admin'] },
-      { id: 'import.file', label: 'Файл', href: '/books/import', match: ['/books/import'], roles: ['admin'] },
+      { id: 'import.file', label: 'Файл', href: '/import/file', match: ['/import/file'], roles: ['admin'] },
       {
         id: 'import.genres',
         label: 'Жанры',

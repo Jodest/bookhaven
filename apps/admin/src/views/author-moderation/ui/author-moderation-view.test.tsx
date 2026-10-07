@@ -9,7 +9,7 @@ let searchParamsValue = new URLSearchParams();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
-  usePathname: () => '/authors/moderation',
+  usePathname: () => '/moderation/authors',
   useSearchParams: () => searchParamsValue,
 }));
 
@@ -140,7 +140,7 @@ describe('AuthorModerationView', () => {
     expect(within(row).getByText('3 (видимых 1)')).toBeInTheDocument();
     expect(within(row).getByRole('link', { name: 'Война и мир' })).toHaveAttribute(
       'href',
-      '/books/b1/edit'
+      '/catalog/books/b1/edit'
     );
     expect(within(row).getByText('(скрыта)')).toBeInTheDocument();
 
@@ -276,20 +276,20 @@ describe('AuthorModerationView', () => {
     expect(screen.getByRole('button', { name: 'Отклонить выбранные (1)' })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('QID'), { target: { value: 'without' } });
-    expect(pushMock).toHaveBeenCalledWith('/authors/moderation?qid=without');
+    expect(pushMock).toHaveBeenCalledWith('/moderation/authors?qid=without');
     expect(screen.getByLabelText('Выбрать «Гомер»')).not.toBeChecked();
     expect(screen.queryByRole('button', { name: /выбранные/ })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Книги'), { target: { value: 'none' } });
-    expect(pushMock).toHaveBeenLastCalledWith('/authors/moderation?books=none');
+    expect(pushMock).toHaveBeenLastCalledWith('/moderation/authors?books=none');
 
     fireEvent.click(screen.getByRole('button', { name: 'Отклонённые' }));
-    expect(pushMock).toHaveBeenLastCalledWith('/authors/moderation?status=rejected');
+    expect(pushMock).toHaveBeenLastCalledWith('/moderation/authors?status=rejected');
 
     fireEvent.change(screen.getByLabelText('Поиск'), { target: { value: 'Толстой' } });
     fireEvent.click(screen.getByRole('button', { name: 'Найти' }));
     expect(pushMock).toHaveBeenLastCalledWith(
-      `/authors/moderation?search=${encodeURIComponent('Толстой')}`
+      `/moderation/authors?search=${encodeURIComponent('Толстой')}`
     );
   });
 
@@ -329,6 +329,7 @@ describe('AuthorModerationView', () => {
     await waitFor(() => expect(screen.getByText('Война и мир')).toBeInTheDocument());
 
     const toggle = screen.getByRole('button', { name: 'Импорт из Wikidata' });
+    expect(screen.queryByRole('link', { name: 'Все авторы' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('wikidata-import-panel')).not.toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 

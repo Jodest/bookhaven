@@ -5,5 +5,5 @@ import type { AdminAuthorStatus } from '@bookhaven/api-client';
  * search (the queue has no per-author route).
  */
 export function authorModerationHref(author: { name: string; status: AdminAuthorStatus }): string {
-  return `/authors/moderation?${new URLSearchParams({ status: author.status, search: author.name })}`;
+  return `/moderation/authors?${new URLSearchParams({ status: author.status, search: author.name })}`;
 }

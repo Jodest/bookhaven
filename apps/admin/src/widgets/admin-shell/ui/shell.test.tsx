@@ -63,8 +63,8 @@ describe('Shell', () => {
     const links = sidebarLinks();
     expect(links.map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
       ['Обзор', '/'],
-      ['Модерация', '/books?visibility=pending_review'],
-      ['Каталог', '/books'],
+      ['Модерация', '/moderation/books'],
+      ['Каталог', '/catalog/books'],
       ['Импорт', '/harvest'],
       ['Пользователи', '/users'],
     ]);
@@ -73,52 +73,55 @@ describe('Shell', () => {
     expect(screen.getByText('page content')).toBeInTheDocument();
   });
 
-  it('admin on /authors/moderation highlights Модерация', () => {
+  it.each(['/moderation/authors', '/moderation/books'])('admin on %s highlights Модерация', (pathname) => {
     setUser('admin');
-    renderShell('/authors/moderation');
+    renderShell(pathname);
 
     const active = sidebarLinks().filter((l) => l.getAttribute('aria-current') === 'page');
     expect(active.map((l) => l.textContent)).toEqual(['Модерация']);
   });
 
-  it('admin on /books/123/edit highlights Каталог; /books/import highlights Импорт', () => {
+  it('admin on /catalog/books/123/edit highlights Каталог; /import/file highlights Импорт', () => {
     setUser('admin');
-    const { unmount } = renderShell('/books/123/edit');
+    const { unmount } = renderShell('/catalog/books/123/edit');
     expect(screen.getByRole('link', { name: 'Каталог' })).toHaveAttribute('aria-current', 'page');
     unmount();
 
-    renderShell('/books/import');
+    renderShell('/import/file');
     expect(screen.getByRole('link', { name: 'Импорт' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('moderator on /reviews sees only Модерация and the page', () => {
+  it('moderator on /moderation/reviews sees only Модерация and the page', () => {
     setUser('moderator');
-    renderShell('/reviews');
+    renderShell('/moderation/reviews');
 
     const links = sidebarLinks();
     expect(links).toHaveLength(1);
     expect(links[0]).toHaveTextContent('Модерация');
-    expect(links[0]).toHaveAttribute('href', '/reviews');
+    expect(links[0]).toHaveAttribute('href', '/moderation/reviews');
     expect(screen.getByText('page content')).toBeInTheDocument();
   });
 
-  it('moderator on / is redirected to /reviews without AccessDenied', () => {
+  it('moderator on / is redirected to /moderation/reviews without AccessDenied', () => {
     setUser('moderator');
     renderShell('/');
 
-    expect(replaceMock).toHaveBeenCalledWith('/reviews');
+    expect(replaceMock).toHaveBeenCalledWith('/moderation/reviews');
     expect(screen.queryByText('page content')).not.toBeInTheDocument();
     expect(screen.queryByText('Доступ запрещен')).not.toBeInTheDocument();
   });
 
-  it.each(['/books', '/users', '/unknown', '/import'])(
+  it.each(['/catalog/books', '/moderation/books', '/users', '/unknown', '/import', '/catalog'])(
     'moderator on %s sees admin-only AccessDenied with a link home',
     (pathname) => {
       setUser('moderator');
       renderShell(pathname);
 
       expect(screen.getByText(ADMIN_ONLY_MESSAGE)).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: 'К отзывам' })).toHaveAttribute('href', '/reviews');
+      expect(screen.getByRole('link', { name: 'К отзывам' })).toHaveAttribute(
+        'href',
+        '/moderation/reviews'
+      );
       expect(screen.queryByText('page content')).not.toBeInTheDocument();
       expect(replaceMock).not.toHaveBeenCalled();
     }
@@ -152,7 +155,7 @@ describe('Shell', () => {
 
   it('redirects to login when there is no user', () => {
     setUser(null);
-    renderShell('/books');
+    renderShell('/catalog/books');
 
     expect(pushMock).toHaveBeenCalledTimes(1);
     const url = new URL(pushMock.mock.calls[0][0] as string);
@@ -170,14 +173,17 @@ describe('Shell', () => {
 
   it('server-forbidden screen links the moderator home', () => {
     setUser('moderator');
-    authState.forbiddenPath = '/reviews';
-    renderShell('/reviews');
+    authState.forbiddenPath = '/moderation/reviews';
+    renderShell('/moderation/reviews');
 
     expect(
       screen.getByText(
         'Сервер отклонил запрос: у вас недостаточно прав для выполнения этого действия.'
       )
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'К отзывам' })).toHaveAttribute('href', '/reviews');
+    expect(screen.getByRole('link', { name: 'К отзывам' })).toHaveAttribute(
+      'href',
+      '/moderation/reviews'
+    );
   });
 });

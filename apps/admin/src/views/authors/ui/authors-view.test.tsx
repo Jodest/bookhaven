@@ -9,7 +9,7 @@ let searchParamsValue = new URLSearchParams();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
-  usePathname: () => '/authors',
+  usePathname: () => '/catalog/authors',
   useSearchParams: () => searchParamsValue,
 }));
 
@@ -96,7 +96,7 @@ describe('AuthorsView status', () => {
     expect(filter.value).toBe('pending');
 
     fireEvent.change(filter, { target: { value: 'rejected' } });
-    expect(pushMock).toHaveBeenCalledWith('/authors?status=rejected&page=1');
+    expect(pushMock).toHaveBeenCalledWith('/catalog/authors?status=rejected&page=1');
   });
 
   it('sends status on edit only, never on create', async () => {
@@ -125,13 +125,12 @@ describe('AuthorsView status', () => {
     );
   });
 
-  it('links to the author moderation queue from the header', async () => {
+  it('has no "Очередь модерации" link in the header', async () => {
     listMock.mockResolvedValue({ items: [makeAuthor()], total: 1, page: 1, limit: 20 });
 
     renderView();
 
-    const link = screen.getByRole('link', { name: 'Очередь модерации' });
-    expect(link).toHaveAttribute('href', '/authors/moderation');
     await waitFor(() => expect(listMock).toHaveBeenCalled());
+    expect(screen.queryByRole('link', { name: 'Очередь модерации' })).not.toBeInTheDocument();
   });
 });
