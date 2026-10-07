@@ -56,4 +56,36 @@ describe('authorsApi.get', () => {
     expect(book?.publishedYear).toBe(1969);
     expect(book?.authors[0].photoUrl).toBe('https://example.com/photo.jpg');
   });
+
+  it('normalizes photo_attribution to camelCase (null when absent)', async () => {
+    const raw = {
+      id: 'a1',
+      name: 'Лев Толстой',
+      slug: 'lev-tolstoy',
+      biography: null,
+      photo_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/T.jpg/500px-T.jpg',
+      birth_date: null,
+      death_date: null,
+      photo_attribution: {
+        author: null,
+        license: 'Public domain',
+        license_url: null,
+        source_url: 'https://commons.wikimedia.org/wiki/File:T.jpg',
+      },
+      books: [],
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => raw }));
+
+    const author = await authorsApi.get('lev-tolstoy');
+    expect(author.photoAttribution).toEqual({
+      author: null,
+      license: 'Public domain',
+      licenseUrl: null,
+      sourceUrl: 'https://commons.wikimedia.org/wiki/File:T.jpg',
+    });
+    expect(author).not.toHaveProperty('photo_attribution');
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...raw, photo_attribution: null }) }));
+    expect((await authorsApi.get('lev-tolstoy')).photoAttribution).toBeNull();
+  });
 });

@@ -73,14 +73,42 @@ type bookResponse struct {
 }
 
 type authorDetailResponse struct {
-	ID        string                 `json:"id"`
-	Name      string                 `json:"name"`
-	Slug      string                 `json:"slug"`
-	Biography *string                `json:"biography,omitempty"`
-	PhotoURL  *string                `json:"photo_url,omitempty"`
-	BirthDate *string                `json:"birth_date,omitempty"`
-	DeathDate *string                `json:"death_date,omitempty"`
-	Books     []BookListItemResponse `json:"books"`
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Slug      string  `json:"slug"`
+	Biography *string `json:"biography,omitempty"`
+	PhotoURL  *string `json:"photo_url,omitempty"`
+	BirthDate *string `json:"birth_date,omitempty"`
+	DeathDate *string `json:"death_date,omitempty"`
+	// PhotoAttribution is the Wikimedia Commons attribution of the photo
+	// (always present; null unless photo_url and the Commons source page
+	// are both set).
+	PhotoAttribution *PhotoAttributionResponse `json:"photo_attribution"`
+	Books            []BookListItemResponse    `json:"books"`
+}
+
+// PhotoAttributionResponse is the Commons attribution of an author photo
+// (docs/features/author-wikidata-enrichment.md).
+type PhotoAttributionResponse struct {
+	Author     *string `json:"author"`
+	License    string  `json:"license"`
+	LicenseURL *string `json:"license_url"`
+	SourceURL  string  `json:"source_url"`
+}
+
+func toPhotoAttributionResponse(a domain.Author) *PhotoAttributionResponse {
+	if a.PhotoURL == nil || *a.PhotoURL == "" || a.PhotoSourceURL == nil || *a.PhotoSourceURL == "" {
+		return nil
+	}
+	resp := &PhotoAttributionResponse{
+		Author:     a.PhotoAuthor,
+		LicenseURL: a.PhotoLicenseURL,
+		SourceURL:  *a.PhotoSourceURL,
+	}
+	if a.PhotoLicense != nil {
+		resp.License = *a.PhotoLicense
+	}
+	return resp
 }
 
 type listBooksResponse struct {
@@ -220,6 +248,8 @@ func toAuthorDetailResponse(a domain.Author) authorDetailResponse {
 		BirthDate: formatDate(a.BirthDate),
 		DeathDate: formatDate(a.DeathDate),
 		Books:     books,
+
+		PhotoAttribution: toPhotoAttributionResponse(a),
 	}
 }
 

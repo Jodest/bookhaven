@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   AdminAuthor,
   AdminAuthorBulkStatusReport,
+  AdminAuthorEnrichmentReport,
   AdminAuthorHint,
   AdminAuthorQueueItem,
   AdminAuthorQueueParams,
@@ -26,6 +27,13 @@ import {
 } from '@bookhaven/ui';
 import { Search } from 'lucide-react';
 import { adminAuthorsApi, AuthorStatusBadge } from '@/entities/author';
+import {
+  bulkEnrichSummary,
+  enrichErrorMessage,
+  enrichItemText,
+  enrichReportHasErrors,
+  useEnrichAuthors,
+} from '@/features/enrich-author';
 import { MergeAuthorDialog } from '@/features/merge-author';
 import {
   authorStatusConfirmText,
@@ -138,6 +146,7 @@ export function AuthorModerationView() {
   });
 
   const statusMutation = useAuthorStatusMutation();
+  const enrichMutation = useEnrichAuthors();
 
   const items = data?.items ?? [];
   const totalPages = data ? Math.ceil(data.total / LIMIT) : 0;
@@ -206,6 +215,44 @@ export function AuthorModerationView() {
     );
   };
 
+  const handleRowEnrich = (item: AdminAuthorQueueItem) => {
+    setFeedback(null);
+    enrichMutation.mutate([item.author.id], {
+      onSuccess: (report: AdminAuthorEnrichmentReport) => {
+        const result = report.items[0];
+        if (!result) return;
+        setFeedback({
+          type: result.outcome === 'error' ? 'error' : 'success',
+          message: enrichItemText(result, item.author.name),
+        });
+      },
+      onError: (err) => setFeedback({ type: 'error', message: enrichErrorMessage(err) }),
+    });
+  };
+
+  // Only rows with a Wikidata QID are sent; the rest are reported as skipped.
+  const selectedWithQid = selectedItems.filter((i) => !!i.author.external_id);
+
+  const handleBulkEnrich = () => {
+    setFeedback(null);
+    if (selectedWithQid.length === 0) return;
+    const skippedWithoutQid = selectedItems.length - selectedWithQid.length;
+    const names = Object.fromEntries(selectedWithQid.map((i) => [i.author.id, i.author.name]));
+    enrichMutation.mutate(
+      selectedWithQid.map((i) => i.author.id),
+      {
+        onSuccess: (report: AdminAuthorEnrichmentReport) => {
+          setSelected(new Set());
+          setFeedback({
+            type: enrichReportHasErrors(report) ? 'error' : 'success',
+            message: bulkEnrichSummary(report, skippedWithoutQid, names),
+          });
+        },
+        onError: (err) => setFeedback({ type: 'error', message: enrichErrorMessage(err) }),
+      }
+    );
+  };
+
   const toggleRow = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -232,6 +279,7 @@ export function AuthorModerationView() {
   const emptyText =
     status === 'pending' && !hasExtraFilters ? 'Нет авторов на модерации' : 'Авторы не найдены';
   const pending = statusMutation.isPending;
+  const enrichPending = enrichMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -346,6 +394,14 @@ export function AuthorModerationView() {
               </Button>
             </>
           )}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={enrichPending || selectedWithQid.length === 0}
+            onClick={handleBulkEnrich}
+          >
+            Обогатить из Wikidata ({selectedWithQid.length})
+          </Button>
         </div>
       )}
 
@@ -391,6 +447,8 @@ export function AuthorModerationView() {
                     item={item}
                     selected={selected.has(item.author.id)}
                     pending={pending}
+                    enrichPending={enrichPending}
+                    onEnrich={() => handleRowEnrich(item)}
                     onToggle={() => toggleRow(item.author.id)}
                     onStatus={(next) => handleRowStatus(item, next)}
                     onMerge={(canonical) => openMerge(item.author, canonical)}
@@ -431,12 +489,14 @@ interface QueueRowProps {
   item: AdminAuthorQueueItem;
   selected: boolean;
   pending: boolean;
+  enrichPending: boolean;
+  onEnrich: () => void;
   onToggle: () => void;
   onStatus: (status: AdminAuthorStatus) => void;
   onMerge: (canonical?: AdminAuthor) => void;
 }
 
-function QueueRow({ item, selected, pending, onToggle, onStatus, onMerge }: QueueRowProps) {
+function QueueRow({ item, selected, pending, enrichPending, onEnrich, onToggle, onStatus, onMerge }: QueueRowProps) {
   const { author } = item;
   const ownQid = author.external_id;
 
@@ -545,6 +605,11 @@ function QueueRow({ item, selected, pending, onToggle, onStatus, onMerge }: Queu
                 Слить
               </Button>
             </>
+          )}
+          {ownQid && (
+            <Button variant="outline" size="sm" disabled={enrichPending} onClick={onEnrich}>
+              Обогатить из Wikidata
+            </Button>
           )}
         </div>
       </TableCell>

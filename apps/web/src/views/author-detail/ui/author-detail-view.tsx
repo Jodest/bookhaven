@@ -1,4 +1,4 @@
-import { authorsApi } from '@/entities/author';
+import { authorsApi, isWikimediaUrl, PhotoAttribution } from '@/entities/author';
 import { BookCard } from '@/entities/book';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
@@ -17,20 +17,26 @@ export async function AuthorDetailView({ slug }: AuthorDetailViewProps) {
   return (
     <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
       <div className="grid grid-cols-1 gap-8 md:grid-cols-[200px_1fr]">
-        <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
-          {author.photoUrl ? (
-            <Image
-              src={author.photoUrl}
-              alt={author.name}
-              fill
-              className="object-cover"
-              sizes="(max-width: 768px) 100vw, 200px"
-              priority
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-              Нет фото
-            </div>
+        <div>
+          <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
+            {author.photoUrl ? (
+              <Image
+                src={author.photoUrl}
+                alt={author.name}
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, 200px"
+                priority
+                unoptimized={isWikimediaUrl(author.photoUrl)}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                Нет фото
+              </div>
+            )}
+          </div>
+          {author.photoUrl && author.photoAttribution && (
+            <PhotoAttribution attribution={author.photoAttribution} className="mt-2" />
           )}
         </div>
 

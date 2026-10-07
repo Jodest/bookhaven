@@ -55,6 +55,10 @@ type Service struct {
 	// unless configured via WithAuthorFetcher - the import then returns
 	// ErrAuthorImportUnavailable whenever it needs Wikidata.
 	authorFetcher AuthorFetcher
+	// enrichmentSource backs Wikidata author enrichment (see
+	// author_enrich.go). Nil unless configured via
+	// WithAuthorEnrichmentSource.
+	enrichmentSource AuthorEnrichmentSource
 	// log receives informational events (harvest tombstone skips, merge
 	// QID drops). A no-op logger unless configured via WithLogger.
 	log *zap.Logger
@@ -532,7 +536,16 @@ func (s *Service) UpdateAuthor(ctx context.Context, id uuid.UUID, input AuthorIn
 	author.Name = strings.TrimSpace(input.Name)
 	author.Slug = slug
 	author.Biography = normalizeOptionalString(input.Biography)
-	author.PhotoURL = normalizeOptionalURL(input.PhotoURL)
+	newPhoto := normalizeOptionalURL(input.PhotoURL)
+	if !sameOptionalString(author.PhotoURL, newPhoto) {
+		// A manual photo change invalidates the Commons attribution
+		// (docs/features/author-wikidata-enrichment.md rule 7).
+		author.PhotoAuthor = nil
+		author.PhotoLicense = nil
+		author.PhotoLicenseURL = nil
+		author.PhotoSourceURL = nil
+	}
+	author.PhotoURL = newPhoto
 	if input.Status != nil {
 		author.Status = *input.Status
 	}
@@ -563,6 +576,19 @@ func (s *Service) UpdateAuthor(ctx context.Context, id uuid.UUID, input AuthorIn
 	}
 
 	return author, nil
+}
+
+// sameOptionalString compares two optional strings (nil and "" differ
+// only in representation: both mean "no value").
+func sameOptionalString(a, b *string) bool {
+	av, bv := "", ""
+	if a != nil {
+		av = strings.TrimSpace(*a)
+	}
+	if b != nil {
+		bv = strings.TrimSpace(*b)
+	}
+	return av == bv
 }
 
 func validateAuthorInput(input AuthorInput) error {

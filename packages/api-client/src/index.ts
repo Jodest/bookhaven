@@ -103,6 +103,30 @@ export interface Author {
   createdAt: string;
   updatedAt: string;
   books?: Book[];
+  /**
+   * Wikimedia Commons attribution of the photo. Set (object or null) only
+   * by GET /authors/:slug; undefined on list items and book embeds.
+   */
+  photoAttribution?: PhotoAttribution | null;
+}
+
+// AuthorPhotoAttribution is the raw (snake_case) Commons attribution of an
+// author photo filled by Wikidata enrichment
+// (docs/features/author-wikidata-enrichment.md). author may be null
+// (public domain / CC0 without a known author).
+export interface AuthorPhotoAttribution {
+  author: string | null;
+  license: string;
+  license_url: string | null;
+  source_url: string;
+}
+
+// PhotoAttribution is AuthorPhotoAttribution normalized to camelCase.
+export interface PhotoAttribution {
+  author: string | null;
+  license: string;
+  licenseUrl: string | null;
+  sourceUrl: string;
 }
 
 export interface Genre {
@@ -308,6 +332,8 @@ export interface AdminAuthor {
   external_source: string | null;
   /** Bare Wikidata QID (e.g. 'Q7243') when external_source is 'wikidata'. */
   external_id: string | null;
+  /** Commons attribution of a Wikidata-enriched photo; null otherwise. */
+  photo_attribution: AuthorPhotoAttribution | null;
 }
 
 export interface AdminGenre {
@@ -372,6 +398,38 @@ export interface AdminAuthorBulkStatusReport {
   processed: number;
   updated: number;
   errors: AdminAuthorBulkStatusRowError[];
+}
+
+/** Fields enrichment can fill. */
+export type AdminAuthorEnrichmentField = 'birth_date' | 'death_date' | 'photo';
+
+// One author of POST /api/v1/admin/authors/enrich-wikidata. notes are codes
+// such as 'no_qid', 'entity_not_found', 'birth_date_unusable',
+// 'death_date_unusable', 'photo_unavailable', 'photo_license_not_free',
+// 'photo_attribution_missing', 'wikidata_unavailable', 'commons_unavailable'.
+export interface AdminAuthorEnrichmentItem {
+  author_id: string;
+  name: string;
+  outcome: 'enriched' | 'unchanged' | 'skipped' | 'error';
+  filled: AdminAuthorEnrichmentField[];
+  notes: string[];
+  message: string;
+}
+
+// Response of POST /api/v1/admin/authors/enrich-wikidata (HTTP 200
+// regardless of per-item outcomes). See
+// docs/features/author-wikidata-enrichment.md.
+export interface AdminAuthorEnrichmentReport {
+  processed: number;
+  enriched: number;
+  items: AdminAuthorEnrichmentItem[];
+}
+
+/** Enrichment applied to an author created by a direct import. */
+export interface AdminAuthorImportEnrichment {
+  filled: AdminAuthorEnrichmentField[];
+  notes: string[];
+  error: string;
 }
 
 export interface AdminReview {
@@ -522,6 +580,11 @@ export interface AdminHarvestJob {
     // on external_source/external_id), so the frontend renders a fixed
     // label rather than a per-record backend-supplied reason.
     skipped_records: { index: number; title: string }[];
+    // End-of-job Wikidata enrichment of the authors the job created
+    // (docs/features/author-wikidata-enrichment.md). Absent while the job
+    // runs, in older job results and when enrichment is not configured.
+    authors_enriched?: number;
+    author_enrichment_errors?: number;
   };
 }
 
@@ -556,6 +619,8 @@ export interface AdminAuthorImportResult {
   qid_backfilled: boolean;
   namesake_of: AdminAuthor | null;
   author: AdminAuthor;
+  /** Enrichment of a created author; null for existing / rejected. */
+  enrichment: AdminAuthorImportEnrichment | null;
 }
 
 const API_URL =
@@ -843,6 +908,7 @@ type RawBookListItem = {
 
 type RawAuthorDetail = Omit<RawAuthor, 'books'> & {
   books: RawBookListItem[];
+  photo_attribution?: AuthorPhotoAttribution | null;
 };
 
 type RawList = List & {
@@ -1114,11 +1180,22 @@ function normalizePersonalHome(raw: RawPersonalHome): PersonalHome {
   };
 }
 
+function normalizePhotoAttribution(raw: AuthorPhotoAttribution | null | undefined): PhotoAttribution | null {
+  if (!raw) return null;
+  return {
+    author: raw.author ?? null,
+    license: raw.license,
+    licenseUrl: raw.license_url ?? null,
+    sourceUrl: raw.source_url,
+  };
+}
+
 function normalizeAuthorDetail(raw: RawAuthorDetail): Author {
-  const { books, ...authorFields } = raw;
+  const { books, photo_attribution, ...authorFields } = raw;
   return {
     ...normalizeAuthor(authorFields),
     books: books.map(normalizeBookListItem),
+    photoAttribution: normalizePhotoAttribution(photo_attribution),
   };
 }
 
@@ -1788,6 +1865,13 @@ export const api = {
         fetcher<AdminAuthorImportResult>('/api/v1/admin/authors/import-wikidata', {
           method: 'POST',
           body: JSON.stringify({ qid }),
+        }),
+      // Fill-empty-only enrichment of 1..50 authors. Errors: 502 Wikidata
+      // unavailable, 503 not configured.
+      enrichWikidata: (ids: string[]) =>
+        fetcher<AdminAuthorEnrichmentReport>('/api/v1/admin/authors/enrich-wikidata', {
+          method: 'POST',
+          body: JSON.stringify({ ids }),
         }),
     },
     genres: {

@@ -1,5 +1,5 @@
 import { ApiError } from '@bookhaven/api-client';
-import { AUTHOR_STATUS_LABELS, authorModerationHref } from '@/entities/author';
+import { AUTHOR_STATUS_LABELS, authorModerationHref, importEnrichmentSuffix } from '@/entities/author';
 import type { WikidataImportOutcome } from '../model/use-import-wikidata-author';
 
 export interface ImportFeedbackLink {
@@ -46,6 +46,7 @@ export function importResultFeedback({ result, withBooks, harvest }: WikidataImp
     if (result.namesake_of) {
       message += ` В каталоге уже есть тёзка «${result.namesake_of.name}» с другим QID — создан отдельный автор.`;
     }
+    message += importEnrichmentSuffix(result.enrichment ?? null);
   } else if (result.match === 'slug' && result.qid_backfilled) {
     message = `Найден автор «${author.name}» без QID — QID ${author.external_id ?? ''} привязан к нему.`;
     links.push(open);

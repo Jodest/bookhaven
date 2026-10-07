@@ -402,3 +402,11 @@ func (f *fakeBulkPublishRepository) FindAuthorsBySurnames(ctx context.Context, s
 func (f *fakeBulkPublishRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
 	return false, nil
 }
+
+func (f *fakeBulkPublishRepository) GetAuthorsByIDs(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
+func (f *fakeBulkPublishRepository) FillAuthorEnrichment(ctx context.Context, id uuid.UUID, fill repository.AuthorEnrichmentFill) error {
+	return nil
+}

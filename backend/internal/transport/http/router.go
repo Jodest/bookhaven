@@ -155,6 +155,7 @@ func RegisterAdminRoutes(
 	authors.GET("/moderation", adminHandler.ListAuthorModerationQueue)
 	authors.POST("/bulk-status", adminHandler.BulkSetAuthorStatus, requireBearer)
 	authors.POST("/import-wikidata", adminHandler.ImportWikidataAuthor, requireBearer)
+	authors.POST("/enrich-wikidata", adminHandler.EnrichAuthorsFromWikidata, requireBearer)
 	authors.POST("", adminHandler.CreateAuthor, requireBearer)
 	authors.PATCH("/:id", adminHandler.UpdateAuthor, requireBearer)
 	authors.POST("/:id/merge", adminHandler.MergeAuthors, requireBearer)

@@ -2,7 +2,7 @@
 
 Status: done
 
-Epic: "Author moderation & import" — feature 1 of 4.
+Epic: "Author moderation & import" — feature 1 of 4. Feature 4 ([author-wikidata-enrichment.md](author-wikidata-enrichment.md)) shipped: harvest-created QID authors are enriched with dates and a Commons photo at the end of the job.
 
 ## Goal
 
