@@ -123,6 +123,10 @@ func (f *fakeMergeAuthorsRepository) UpdateAuthor(ctx context.Context, author *c
 	return errors.New("record not found")
 }
 
+func (f *fakeMergeAuthorsRepository) ListAuthorsByExternalIDs(ctx context.Context, source string, ids []string) ([]catalogDomain.Author, error) {
+	return nil, nil
+}
+
 func (f *fakeMergeAuthorsRepository) AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
 	return false, nil
 }

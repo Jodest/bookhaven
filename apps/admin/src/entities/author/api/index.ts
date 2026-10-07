@@ -7,4 +7,5 @@ export const adminAuthorsApi = {
   merge: api.admin.authors.merge,
   moderationQueue: api.admin.authors.moderationQueue,
   bulkStatus: api.admin.authors.bulkStatus,
+  importWikidata: api.admin.authors.importWikidata,
 };

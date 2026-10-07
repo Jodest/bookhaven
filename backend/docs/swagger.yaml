@@ -152,6 +152,21 @@ definitions:
         description: Match is exact_name | surname_initial | surname.
         type: string
     type: object
+  internal_modules_admin_transport_http.authorImportResponse:
+    properties:
+      author:
+        $ref: '#/definitions/internal_modules_admin_transport_http.authorResponse'
+      match:
+        description: Match is qid | slug for existing/rejected, null for created.
+        type: string
+      namesake_of:
+        $ref: '#/definitions/internal_modules_admin_transport_http.authorResponse'
+      outcome:
+        description: Outcome is created | existing | rejected.
+        type: string
+      qid_backfilled:
+        type: boolean
+    type: object
   internal_modules_admin_transport_http.authorQueueItemResponse:
     properties:
       author:
@@ -348,6 +363,12 @@ definitions:
       name:
         type: string
       slug:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.importWikidataAuthorRequest:
+    properties:
+      qid:
+        example: Q7200
         type: string
     type: object
   internal_modules_admin_transport_http.listAuthorQueueResponse:
@@ -774,9 +795,26 @@ definitions:
     properties:
       description:
         type: string
+      existing:
+        allOf:
+        - $ref: '#/definitions/internal_modules_harvest_transport_http.existingAuthorResponse'
+        description: |-
+          Existing is the BookHaven author already carrying this QID, or null
+          (also null when the lookup failed - see SearchAuthors).
       label:
         type: string
       qid:
+        type: string
+    type: object
+  internal_modules_harvest_transport_http.existingAuthorResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+      status:
         type: string
     type: object
   internal_modules_harvest_transport_http.harvestJobResponse:
@@ -1876,6 +1914,95 @@ paths:
       summary: Сменить статус выбранных авторов (админ)
       tags:
       - admin
+  /admin/authors/import-wikidata:
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Сначала ищет автора в БД
+        по QID (без запроса к Wikidata), затем загружает элемент Wikidata (русское
+        название + P31: человек / псевдоним / коллективный псевдоним) и сопоставляет
+        по правилам харвеста: совпадение по slug без QID — QID привязывается; тёзка
+        с другим QID — создаётся отдельный автор; иначе создаётся автор в статусе
+        pending с QID. Отклонённые авторы повторно не создаются (outcome=rejected).
+        Статус, имя и slug существующего автора не меняются. 201 — создан, 200 — existing
+        / rejected. 422 содержит code: no_ru_label | not_a_person.'
+      parameters:
+      - description: QID элемента Wikidata
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.importWikidataAuthorRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.authorImportResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.authorImportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Импортировать автора из Wikidata по QID (админ)
+      tags:
+      - admin
   /admin/authors/moderation:
     get:
       description: Требуется роль admin. Авторы с заданным статусом (по умолчанию
@@ -2601,8 +2728,10 @@ paths:
     get:
       description: 'Требуется роль admin. Синхронный, только для чтения вызов Wikidata
         (wbsearchentities) - не создаёт и не изменяет записи; результат - кандидаты
-        для ручного подтверждения администратором перед запуском POST /admin/harvest.
-        Отсутствие совпадений - не ошибка (200, items: []).'
+        для ручного подтверждения администратором перед запуском POST /admin/harvest
+        или импортом автора. Отсутствие совпадений - не ошибка (200, items: []). У
+        каждого кандидата поле existing - автор BookHaven с тем же QID (id, name,
+        slug, status) или null.'
       parameters:
       - description: Искомое имя автора
         in: query

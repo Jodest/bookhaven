@@ -28,6 +28,17 @@ type fakeRepository struct {
 	duplicateBookErr bool
 	authorLookupErr  error
 	genreLookupErr   error
+
+	// listByExternalIDsErr / listByExternalIDsCalls back the
+	// FindAuthorsByWikidataQIDs tests.
+	listByExternalIDsErr   error
+	listByExternalIDsCalls int
+	// createAuthorErrs, when non-empty, are returned (in order, one per
+	// call) by CreateAuthor before falling back to appending; onCreateAuthorErr
+	// runs right before such an error is returned (simulates a concurrent
+	// writer).
+	createAuthorErrs  []error
+	onCreateAuthorErr func(f *fakeRepository)
 }
 
 func (f *fakeRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
@@ -161,6 +172,14 @@ func (f *fakeRepository) GetAuthorBySlug(ctx context.Context, slug string) (*cat
 }
 
 func (f *fakeRepository) CreateAuthor(ctx context.Context, author *catalogDomain.Author) error {
+	if len(f.createAuthorErrs) > 0 {
+		err := f.createAuthorErrs[0]
+		f.createAuthorErrs = f.createAuthorErrs[1:]
+		if f.onCreateAuthorErr != nil {
+			f.onCreateAuthorErr(f)
+		}
+		return err
+	}
 	f.authors = append(f.authors, *author)
 	return nil
 }
@@ -173,6 +192,26 @@ func (f *fakeRepository) UpdateAuthor(ctx context.Context, author *catalogDomain
 		}
 	}
 	return errors.New("record not found")
+}
+
+func (f *fakeRepository) ListAuthorsByExternalIDs(ctx context.Context, source string, ids []string) ([]catalogDomain.Author, error) {
+	if f.listByExternalIDsErr != nil {
+		return nil, f.listByExternalIDsErr
+	}
+	f.listByExternalIDsCalls++
+	var out []catalogDomain.Author
+	for _, a := range f.authors {
+		if a.ExternalSource == nil || *a.ExternalSource != source || a.ExternalID == nil {
+			continue
+		}
+		for _, id := range ids {
+			if *a.ExternalID == id {
+				out = append(out, a)
+				break
+			}
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeRepository) AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {

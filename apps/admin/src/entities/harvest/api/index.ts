@@ -6,3 +6,6 @@ export const adminHarvestApi = {
   getJob: api.admin.harvest.jobs.get,
   searchAuthors: api.admin.harvest.authors.search,
 };
+
+// Query key of the harvest jobs list (GET /admin/harvest/jobs).
+export const HARVEST_JOBS_QUERY_KEY = ['admin', 'harvest', 'jobs'];

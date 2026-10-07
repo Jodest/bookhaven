@@ -97,14 +97,15 @@ func (s *Service) ResolveOrCreateHarvestAuthors(ctx context.Context, refs []Auth
 		}
 		qid := strings.TrimSpace(ref.QID)
 
-		author, err := s.resolveHarvestAuthor(ctx, name, qid)
+		res, err := s.resolveHarvestAuthor(ctx, name, qid)
 		if err != nil {
 			return nil, err
 		}
-		if author == nil {
+		if res.Outcome == AuthorOutcomeRejected {
 			skipped = append(skipped, name+" "+qid)
 			continue
 		}
+		author := res.Author
 
 		id := author.ID.String()
 		if _, ok := seen[id]; ok {
@@ -122,51 +123,116 @@ func (s *Service) ResolveOrCreateHarvestAuthors(ctx context.Context, refs []Auth
 	return ids, nil
 }
 
+// Author resolution outcomes shared by the harvest resolver and the direct
+// Wikidata import (docs/features/author-direct-import.md).
+const (
+	AuthorOutcomeCreated  = "created"
+	AuthorOutcomeExisting = "existing"
+	AuthorOutcomeRejected = "rejected"
+)
+
+// Author resolution match kinds ("" for a created author).
+const (
+	AuthorMatchQID  = "qid"
+	AuthorMatchSlug = "slug"
+)
+
+// AuthorResolution is the result of resolving one name/QID with the
+// harvest rules (author-status.md rule 4).
+type AuthorResolution struct {
+	// Author is the matched or created author. For a rejected outcome it
+	// is the rejected (tombstone) author.
+	Author *catalogDomain.Author
+	// Outcome is AuthorOutcomeCreated, AuthorOutcomeExisting or
+	// AuthorOutcomeRejected.
+	Outcome string
+	// Match is AuthorMatchQID or AuthorMatchSlug for an existing/rejected
+	// match, "" for a created author.
+	Match string
+	// QIDBackfilled reports that the QID was written to a slug-matched
+	// author that had none.
+	QIDBackfilled bool
+	// NamesakeOf is the slug-matched author with a different QID when a
+	// separate namesake author was created.
+	NamesakeOf *catalogDomain.Author
+}
+
 // resolveHarvestAuthor applies rule 4 to a single (trimmed, non-empty)
-// name/QID. A nil author with a nil error means "skip" (tombstone).
-func (s *Service) resolveHarvestAuthor(ctx context.Context, name, qid string) (*catalogDomain.Author, error) {
+// name/QID. A rejected outcome means "skip" (tombstone).
+func (s *Service) resolveHarvestAuthor(ctx context.Context, name, qid string) (*AuthorResolution, error) {
 	if qid != "" {
-		author, err := s.repo.GetAuthorByExternalID(ctx, catalogDomain.AuthorExternalSourceWikidata, qid)
-		switch {
-		case err == nil:
-			if author.Status == catalogDomain.AuthorStatusRejected {
-				return nil, nil
-			}
-			return author, nil
-		case !errors.Is(err, gorm.ErrRecordNotFound):
-			return nil, fmt.Errorf("lookup author by qid %q: %w", qid, err)
+		res, err := s.resolveAuthorByQID(ctx, qid)
+		if err != nil {
+			return nil, err
+		}
+		if res != nil {
+			return res, nil
 		}
 	}
+	return s.resolveAuthorBySlug(ctx, name, qid)
+}
 
+// resolveAuthorByQID is rule 4 step 1: match by (wikidata, qid). It returns
+// a nil resolution (and nil error) when no author carries the QID.
+func (s *Service) resolveAuthorByQID(ctx context.Context, qid string) (*AuthorResolution, error) {
+	author, err := s.repo.GetAuthorByExternalID(ctx, catalogDomain.AuthorExternalSourceWikidata, qid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("lookup author by qid %q: %w", qid, err)
+	}
+	outcome := AuthorOutcomeExisting
+	if author.Status == catalogDomain.AuthorStatusRejected {
+		outcome = AuthorOutcomeRejected
+	}
+	return &AuthorResolution{Author: author, Outcome: outcome, Match: AuthorMatchQID}, nil
+}
+
+// resolveAuthorBySlug is rule 4 from the slug step on (the QID, when given,
+// is known not to match any author yet).
+func (s *Service) resolveAuthorBySlug(ctx context.Context, name, qid string) (*AuthorResolution, error) {
 	slug := slugify(name)
 	author, err := s.repo.GetAuthorBySlug(ctx, slug)
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("lookup author %q: %w", name, err)
 		}
-		return s.createHarvestAuthor(ctx, name, "", qid)
+		created, err := s.createHarvestAuthor(ctx, name, "", qid)
+		if err != nil {
+			return nil, err
+		}
+		return &AuthorResolution{Author: created, Outcome: AuthorOutcomeCreated}, nil
 	}
 
+	res := &AuthorResolution{Author: author, Outcome: AuthorOutcomeExisting, Match: AuthorMatchSlug}
 	hasQID := author.ExternalSource != nil && author.ExternalID != nil
 	if qid != "" && !hasQID {
 		if err := s.repo.SetAuthorExternalID(ctx, author.ID, catalogDomain.AuthorExternalSourceWikidata, qid); err != nil {
 			return nil, fmt.Errorf("backfill author %q qid %q: %w", name, qid, err)
 		}
 		source := catalogDomain.AuthorExternalSourceWikidata
+		backfilled := qid
 		author.ExternalSource = &source
-		author.ExternalID = &qid
+		author.ExternalID = &backfilled
 		hasQID = true
+		res.QIDBackfilled = true
 	}
 
 	if author.Status == catalogDomain.AuthorStatusRejected {
-		return nil, nil
+		res.Outcome = AuthorOutcomeRejected
+		return res, nil
 	}
 
 	if qid != "" && hasQID && (*author.ExternalSource != catalogDomain.AuthorExternalSourceWikidata || *author.ExternalID != qid) {
 		// Namesake: a different entity already owns this slug.
-		return s.createHarvestAuthor(ctx, name, slug+"-"+strings.ToLower(qid), qid)
+		created, err := s.createHarvestAuthor(ctx, name, slug+"-"+strings.ToLower(qid), qid)
+		if err != nil {
+			return nil, err
+		}
+		return &AuthorResolution{Author: created, Outcome: AuthorOutcomeCreated, NamesakeOf: author}, nil
 	}
-	return author, nil
+	return res, nil
 }
 
 // createHarvestAuthor creates a pending author (slug "" = derived from the
