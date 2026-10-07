@@ -24,7 +24,7 @@ interface WikidataAuthorSearchProps {
  * states and candidate cards (label, description, QID link, "already in
  * BookHaven" marker). Actions per candidate are supplied by the parent.
  *
- * No <form> here: on /harvest the widget is nested in the harvest form, and
+ * No <form> here: on /import/wikidata the widget is nested in the harvest form, and
  * nested forms are invalid HTML - Enter-to-search is wired via onKeyDown.
  */
 export function WikidataAuthorSearch({

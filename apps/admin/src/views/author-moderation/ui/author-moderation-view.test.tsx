@@ -37,10 +37,6 @@ vi.mock('@/features/merge-author', () => ({
   ),
 }));
 
-vi.mock('./wikidata-import-panel', () => ({
-  WikidataImportPanel: () => <div data-testid="wikidata-import-panel" />,
-}));
-
 function makeAuthor(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
   return {
     id: 'a1',
@@ -324,21 +320,13 @@ describe('AuthorModerationView', () => {
       expect.objectContaining({ status: 'published', books: 'none' })
     );
   });
-  it('toggles the Wikidata import panel from the header button', async () => {
+  it('has no "Импорт из Wikidata" button and no import panel (moved to /import/author)', async () => {
     renderView();
     await waitFor(() => expect(screen.getByText('Война и мир')).toBeInTheDocument());
 
-    const toggle = screen.getByRole('button', { name: 'Импорт из Wikidata' });
+    expect(screen.queryByRole('button', { name: 'Импорт из Wikidata' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Имя автора в Wikidata')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Все авторы' })).not.toBeInTheDocument();
-    expect(screen.queryByTestId('wikidata-import-panel')).not.toBeInTheDocument();
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-
-    fireEvent.click(toggle);
-    expect(screen.getByTestId('wikidata-import-panel')).toBeInTheDocument();
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-
-    fireEvent.click(toggle);
-    expect(screen.queryByTestId('wikidata-import-panel')).not.toBeInTheDocument();
   });
 
   it('offers "Обогатить из Wikidata" only on rows with a QID and shows the result', async () => {

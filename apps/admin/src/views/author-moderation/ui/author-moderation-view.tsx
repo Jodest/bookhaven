@@ -42,7 +42,6 @@ import {
   useAuthorStatusMutation,
 } from '@/features/moderate-author';
 import { Pagination } from '@/shared/ui';
-import { WikidataImportPanel } from './wikidata-import-panel';
 
 const LIMIT = 20;
 
@@ -123,7 +122,6 @@ export function AuthorModerationView() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [mergeTarget, setMergeTarget] = useState<MergeTarget | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
 
   const paramsKey = searchParams.toString();
   // Selection belongs to the current page and filters only.
@@ -283,19 +281,7 @@ export function AuthorModerationView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Модерация авторов</h1>
-        <Button
-          type="button"
-          variant={importOpen ? 'default' : 'outline'}
-          aria-expanded={importOpen}
-          onClick={() => setImportOpen((open) => !open)}
-        >
-          Импорт из Wikidata
-        </Button>
-      </div>
-
-      {importOpen && <WikidataImportPanel />}
+      <h1 className="text-3xl font-bold tracking-tight">Модерация авторов</h1>
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Статус">
         {STATUS_TABS.map((tab) => (

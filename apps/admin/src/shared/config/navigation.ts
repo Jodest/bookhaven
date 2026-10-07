@@ -4,8 +4,7 @@ import { BookOpen, Download, LayoutDashboard, ShieldCheck, Users, type LucideIco
  * Single source of truth for admin navigation: sidebar sections, section tabs
  * and the client-side route guard all read from this config.
  *
- * Phases 1-3 (#284-#286) applied; Импорт is still transitional until #287
- * (`/harvest` legacy route, Автор/Задания tabs omitted).
+ * Phases 1-4 (#284-#287) applied; no legacy routes remain.
  * See docs/features/admin-navigation-restructure.md.
  *
  * The frontend guard is UX only — backend role checks remain authoritative.
@@ -124,8 +123,14 @@ export const navSections: NavSection[] = [
     icon: Download,
     basePath: '/import',
     tabs: [
-      // Legacy route until #287 (/import/wikidata).
-      { id: 'import.wikidata', label: 'Wikidata', href: '/harvest', match: ['/harvest'], roles: ['admin'] },
+      {
+        id: 'import.wikidata',
+        label: 'Wikidata',
+        href: '/import/wikidata',
+        match: ['/import/wikidata'],
+        roles: ['admin'],
+      },
+      { id: 'import.author', label: 'Автор', href: '/import/author', match: ['/import/author'], roles: ['admin'] },
       { id: 'import.file', label: 'Файл', href: '/import/file', match: ['/import/file'], roles: ['admin'] },
       {
         id: 'import.genres',
@@ -134,6 +139,7 @@ export const navSections: NavSection[] = [
         match: ['/import/genres'],
         roles: ['admin'],
       },
+      { id: 'import.jobs', label: 'Задачи', href: '/import/jobs', match: ['/import/jobs'], roles: ['admin'] },
     ],
   },
   {
