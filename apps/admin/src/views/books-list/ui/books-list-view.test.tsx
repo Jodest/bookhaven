@@ -9,21 +9,17 @@ let searchParamsValue = new URLSearchParams();
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
-  usePathname: () => '/books',
+  usePathname: () => '/catalog/books',
   useSearchParams: () => searchParamsValue,
 }));
 
 const listMock = vi.fn();
-const updateMock = vi.fn();
-const bulkPublishMock = vi.fn();
 const genresListMock = vi.fn();
 const authorsListMock = vi.fn();
 
 vi.mock('@/entities/book', () => ({
   adminBooksApi: {
     list: (...args: unknown[]) => listMock(...args),
-    update: (...args: unknown[]) => updateMock(...args),
-    bulkPublish: (...args: unknown[]) => bulkPublishMock(...args),
   },
 }));
 
@@ -79,13 +75,9 @@ describe('BooksListView', () => {
     searchParamsValue = new URLSearchParams();
     pushMock.mockReset();
     listMock.mockReset();
-    updateMock.mockReset();
-    bulkPublishMock.mockReset();
     genresListMock.mockReset();
     authorsListMock.mockReset();
     listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
-    updateMock.mockResolvedValue(makeBook());
-    bulkPublishMock.mockResolvedValue({ processed: 0, published: 0, errors: [] });
     genresListMock.mockResolvedValue({
       items: [{ id: 'g1', name: 'Фантастика', slug: 'fantastika' }],
       total: 1,
@@ -115,24 +107,42 @@ describe('BooksListView', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the pending_review filter option and updates the URL when selected', async () => {
+  it('visibility options are exactly Все / Видимые / Скрытые', async () => {
+    renderView();
+
+    const option = await screen.findByRole('option', { name: 'Видимые' });
+    const select = option.closest('select') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      'Все',
+      'Видимые',
+      'Скрытые',
+    ]);
+
+    fireEvent.change(select, { target: { value: 'hidden' } });
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('visibility=hidden'))
+    );
+  });
+
+  it('legacy visibility=pending_review is not sent to the API and the select shows "Все"', async () => {
+    searchParamsValue = new URLSearchParams('visibility=pending_review');
     renderView();
 
     await waitFor(() => expect(listMock).toHaveBeenCalled());
+    expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ visibility: '' }));
+    const option = screen.getByRole('option', { name: 'Видимые' });
+    expect((option.closest('select') as HTMLSelectElement).value).toBe('');
+  });
 
-    const option = screen.getByRole('option', {
-      name: 'Импортировано (на проверке)',
-    });
-    expect(option).toBeInTheDocument();
-    const select = option.closest('select') as HTMLSelectElement;
+  it('header has "Добавить книгу" to the catalog and no "Импортировать" link', async () => {
+    renderView();
 
-    fireEvent.change(select, { target: { value: 'pending_review' } });
-
-    await waitFor(() =>
-      expect(pushMock).toHaveBeenCalledWith(
-        expect.stringContaining('visibility=pending_review')
-      )
+    await waitFor(() => expect(listMock).toHaveBeenCalled());
+    expect(screen.getByRole('link', { name: 'Добавить книгу' })).toHaveAttribute(
+      'href',
+      '/catalog/books/new'
     );
+    expect(screen.queryByRole('link', { name: 'Импортировать' })).not.toBeInTheDocument();
   });
 
   it('shows an "Импортировано" badge when external_source is present', async () => {
@@ -156,53 +166,21 @@ describe('BooksListView', () => {
     expect(screen.getByText('Импортировано', { selector: 'span' })).toBeInTheDocument();
   });
 
-  it('publishes a hidden imported book after confirmation, reusing full-replace update with is_hidden: false', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const book = makeBook({
-      id: 'imported-2',
-      title: 'На проверке',
-      is_hidden: true,
-      external_source: 'wikidata',
-      authors: [{ id: 'a1', name: 'Автор', slug: 'a1', biography: null, photo_url: null, birth_date: null, death_date: null, status: 'published', external_source: null, external_id: null, photo_attribution: null }],
-      genres: [{ id: 'g1', name: 'Жанр', slug: 'g1' }],
+  it('has no publish actions, even for a hidden imported row; edit links to the catalog', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        makeBook({ id: 'imported-2', title: 'На проверке', is_hidden: true, external_source: 'wikidata' }),
+      ],
+      total: 1,
+      page: 1,
+      limit: 20,
     });
-    listMock.mockResolvedValue({ items: [book], total: 1, page: 1, limit: 20 });
 
     renderView();
 
-    const publishButton = await screen.findByRole('button', { name: 'Опубликовать' });
-    fireEvent.click(publishButton);
-
-    expect(confirmSpy).toHaveBeenCalled();
-
-    await waitFor(() =>
-      expect(updateMock).toHaveBeenCalledWith(
-        'imported-2',
-        expect.objectContaining({
-          is_hidden: false,
-          author_ids: ['a1'],
-          genre_ids: ['g1'],
-        })
-      )
-    );
-  });
-
-  it('does not publish when the confirmation is cancelled', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const book = makeBook({
-      id: 'imported-3',
-      title: 'Отменить публикацию',
-      is_hidden: true,
-      external_source: 'wikidata',
-    });
-    listMock.mockResolvedValue({ items: [book], total: 1, page: 1, limit: 20 });
-
-    renderView();
-
-    const publishButton = await screen.findByRole('button', { name: 'Опубликовать' });
-    fireEvent.click(publishButton);
-
-    expect(updateMock).not.toHaveBeenCalled();
+    const edit = await screen.findByRole('link', { name: 'Редактировать' });
+    expect(edit).toHaveAttribute('href', '/catalog/books/imported-2/edit');
+    expect(screen.queryByRole('button', { name: /Опубликовать/ })).not.toBeInTheDocument();
   });
 
   describe('genre/author/source filters', () => {
@@ -277,128 +255,6 @@ describe('BooksListView', () => {
       await waitFor(() => expect(pushMock).toHaveBeenCalled());
       const lastCall = pushMock.mock.calls[pushMock.mock.calls.length - 1][0] as string;
       expect(lastCall).not.toContain('genre_id');
-    });
-  });
-
-  describe('bulk publish', () => {
-    it('does not render the "Опубликовать все" button when the pending_review filter is not active, even with a nonzero total', async () => {
-      listMock.mockResolvedValue({
-        items: [makeBook()],
-        total: 5,
-        page: 1,
-        limit: 20,
-      });
-
-      renderView();
-
-      await waitFor(() => expect(listMock).toHaveBeenCalled());
-      expect(
-        screen.queryByRole('button', { name: /Опубликовать все/ })
-      ).not.toBeInTheDocument();
-    });
-
-    it('does not render the button when pending_review is active but the total is zero', async () => {
-      searchParamsValue = new URLSearchParams('visibility=pending_review');
-      listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
-
-      renderView();
-
-      await waitFor(() => expect(listMock).toHaveBeenCalled());
-      expect(
-        screen.queryByRole('button', { name: /Опубликовать все/ })
-      ).not.toBeInTheDocument();
-    });
-
-    it('renders "Опубликовать все (N)" with the already-fetched total when pending_review is active and total > 0', async () => {
-      searchParamsValue = new URLSearchParams('visibility=pending_review');
-      listMock.mockResolvedValue({
-        items: [
-          makeBook({ id: 'p1', is_hidden: true, external_source: 'wikidata' }),
-        ],
-        total: 7,
-        page: 1,
-        limit: 20,
-      });
-
-      renderView();
-
-      expect(
-        await screen.findByRole('button', { name: 'Опубликовать все (7)' })
-      ).toBeInTheDocument();
-    });
-
-    it('confirms, then calls bulkPublish with the current search value, then shows a success summary', async () => {
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-      searchParamsValue = new URLSearchParams('visibility=pending_review&search=Толстой');
-      listMock.mockResolvedValue({
-        items: [
-          makeBook({ id: 'p1', is_hidden: true, external_source: 'wikidata' }),
-        ],
-        total: 3,
-        page: 1,
-        limit: 20,
-      });
-      bulkPublishMock.mockResolvedValue({ processed: 3, published: 3, errors: [] });
-
-      renderView();
-
-      const button = await screen.findByRole('button', { name: 'Опубликовать все (3)' });
-      fireEvent.click(button);
-
-      expect(confirmSpy).toHaveBeenCalled();
-      await waitFor(() =>
-        expect(bulkPublishMock).toHaveBeenCalledWith({ search: 'Толстой' })
-      );
-      await waitFor(() =>
-        expect(screen.getByText('Опубликовано 3 из 3.')).toBeInTheDocument()
-      );
-    });
-
-    it('does not call bulkPublish when the confirmation is cancelled', async () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(false);
-      searchParamsValue = new URLSearchParams('visibility=pending_review');
-      listMock.mockResolvedValue({
-        items: [
-          makeBook({ id: 'p1', is_hidden: true, external_source: 'wikidata' }),
-        ],
-        total: 2,
-        page: 1,
-        limit: 20,
-      });
-
-      renderView();
-
-      const button = await screen.findByRole('button', { name: 'Опубликовать все (2)' });
-      fireEvent.click(button);
-
-      expect(bulkPublishMock).not.toHaveBeenCalled();
-    });
-
-    it('shows an error summary with a sample of row errors when the report contains failures', async () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
-      searchParamsValue = new URLSearchParams('visibility=pending_review');
-      listMock.mockResolvedValue({
-        items: [
-          makeBook({ id: 'p1', is_hidden: true, external_source: 'wikidata' }),
-        ],
-        total: 2,
-        page: 1,
-        limit: 20,
-      });
-      bulkPublishMock.mockResolvedValue({
-        processed: 2,
-        published: 1,
-        errors: [{ book_id: 'p2', title: 'Плохая книга', message: 'slug already exists' }],
-      });
-
-      renderView();
-
-      const button = await screen.findByRole('button', { name: 'Опубликовать все (2)' });
-      fireEvent.click(button);
-
-      await waitFor(() =>
-        expect(screen.getByText(/Опубликовано 1 из 2\. Ошибок: 1/)).toBeInTheDocument()
-      );
     });
   });
 });

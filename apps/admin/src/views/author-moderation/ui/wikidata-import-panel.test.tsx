@@ -145,7 +145,7 @@ describe('WikidataImportPanel', () => {
     expect(triggerMock).not.toHaveBeenCalled();
     expect(screen.getByRole('link', { name: 'Открыть' })).toHaveAttribute(
       'href',
-      `/authors/moderation?${new URLSearchParams({ status: 'rejected', search: 'Лев Толстой' })}`
+      `/moderation/authors?${new URLSearchParams({ status: 'rejected', search: 'Лев Толстой' })}`
     );
   });
 

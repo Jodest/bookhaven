@@ -157,7 +157,7 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
 
     try {
       await onSubmit(data);
-      router.push('/books' as any);
+      router.push('/catalog/books' as any);
     } catch (error) {
       let message = 'Не удалось сохранить книгу. Проверьте введенные данные.';
       if (error instanceof ApiError) {
@@ -320,7 +320,7 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Сохранение...' : initial ? 'Сохранить' : 'Создать'}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push('/books' as any)}>
+        <Button type="button" variant="outline" onClick={() => router.push('/catalog/books' as any)}>
           Отмена
         </Button>
       </div>

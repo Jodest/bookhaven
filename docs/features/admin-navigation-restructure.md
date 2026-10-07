@@ -1,10 +1,10 @@
 # Admin Navigation Restructure
 
-Status: in progress (phase 1 done)
+Status: in progress (phases 1-3 done)
 
 Epic: #283. Phases (existing sub-issues): #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters -> #289 Users (separate contract) -> #290 Genres moderation/import (needs product decision).
 
-Phases 1-5 are frontend-only (`apps/admin`). The phase 1 section (#284) is the implementable part of this contract; later phases are outlined so that phase 1 does not paint them into a corner.
+Phases 1-5 are frontend-only (`apps/admin`). Phase 1 (#284) is done. Phases 2+3 (#285 + #286) are specified at implementation level below and ship **together in one branch/PR** (human decision: avoids a window where pending-review books have no page). Phases 4-7 stay outlines.
 
 ## Goal
 
@@ -33,7 +33,7 @@ Target structure:
 - Roles: `admin` can access everything; `moderator` can access only review moderation. `user`/other roles see the existing "У вас недостаточно прав..." screen (unchanged).
 - Authorization is per tab: each tab lists the roles allowed (`roles: ('admin' | 'moderator')[]`), compared against `user.role` exactly. Do NOT use `isModerator()` for config checks (it returns true for admins; an explicit roles list is clearer). A section is visible iff at least one of its tabs is visible to the user.
 - Guard fails closed: a path that matches no config entry is admin-only (moderators get AccessDenied). Backend remains the real authority (admin endpoints are already role-checked); the frontend guard is UX only.
-- A user's home = href of the first visible tab of the first visible section (admin: `/`; moderator: the reviews tab href — `/reviews` in phases 1-2, `/moderation/reviews` from #286).
+- A user's home = href of the first visible tab of the first visible section (admin: `/`; moderator: the reviews tab href — `/reviews` in phase 1, `/moderation/reviews` from #285+#286).
 
 ---
 
@@ -117,7 +117,7 @@ Decision: tabs point to wherever the content lives **today**; each later phase o
 | Импорт | Задания | — omitted (job history lives on `/harvest`) | | admin | `/import/jobs` (#287) |
 | Пользователи | Пользователи | `/users` | `['/users']` | admin | same (placeholder until #289) |
 
-Known transitional quirk (accepted, ends with #286): Модерация/Книги links to the filtered books list, which by pathname belongs to Каталог, so after clicking it the sidebar highlights Каталог and the Каталог tabs show. Do not add search-param-aware matching to work around it (`useSearchParams` in the root-layout Shell would force a Suspense boundary for every page).
+Known transitional quirk (accepted; removed by #285+#286, see the phase 2+3 table): Модерация/Книги links to the filtered books list, which by pathname belongs to Каталог, so after clicking it the sidebar highlights Каталог and the Каталог tabs show. Do not add search-param-aware matching to work around it (`useSearchParams` in the root-layout Shell would force a Suspense boundary for every page).
 
 Tab order follows the target structure (Книги first), so the admin's Модерация sidebar link goes to `/books?visibility=pending_review` in phase 1. Accepted; do not reorder tabs to work around it.
 
@@ -180,27 +180,161 @@ Vitest + Testing Library, mocking `next/navigation` like `views/authors/ui/autho
 
 ---
 
-## Phase 2 — #285 Catalog (outline)
+## Phases 2+3 — #285 Catalog + #286 Moderation (one PR)
 
-- Add `app/catalog/layout.tsx`, `app/catalog/books/page.tsx`, `books/new`, `books/[id]/edit`, `app/catalog/authors/page.tsx`, `app/catalog/genres/page.tsx` reusing existing views. Update the three Каталог tabs (`href`/`match`) in the config.
-- Delete `app/books/page.tsx`, `app/books/new`, `app/books/[id]/edit`, `app/authors/page.tsx`, `app/genres/` (+ their legacy layouts). **Keep** `app/books/import` (moves in #287) and `app/authors/moderation` (moves in #286) and the `app/books/layout.tsx`/`app/authors/layout.tsx` legacy layouts while those children exist.
-- Update internal links: `book-form.tsx` (`router.push('/books')` x2), `books-list-view.tsx` (`/books/new`, `/books/${id}/edit`), `author-moderation-view.tsx` (`/books/${id}/edit`, back link `/authors`), `book-import-view.tsx` (`/books`). Grep for `'/books`, `'/authors`, `'/genres` before finishing.
-- Remove cross-section buttons: "Импорт" (`/books/import`) on the books list, "Модерация" (`/authors/moderation`) on the authors list.
-- Drop `pending_review` from the books-list visibility filter. **Ordering risk:** Модерация/Книги still links to `/books?visibility=pending_review` until #286. Either land #286 first, or drop the filter option in the same PR that creates `/moderation/books`. Do not leave pending books unreachable.
+Frontend only (`apps/admin`). Backend, `packages/api-client`, `middleware.ts`, `login-form.tsx` unchanged. Branch closes both issues (remember: GitHub auto-closes only the first `Closes #` — close the second manually after merge).
 
-## Phase 3 — #286 Moderation (outline)
+### Decisions
 
-- `/moderation/books`: new view listing `visibility=pending_review` books (reuse `bookApi` list with the visibility param) with row selection and bulk publish via the existing `bookApi.bulkPublish` (`entities/book/api`). Check whether this closes ROADMAP item #114.
-- `/moderation/authors`: move `author-moderation` view, removing `WikidataImportPanel` (it moves to `/import/author` in #287 — if #287 lands later, keep the panel until then so it stays reachable).
-- `/moderation/reviews`: move the reviews view; moderator home becomes `/moderation/reviews` automatically via config.
-- Add `app/moderation/*` pages; delete `app/reviews/`, `app/authors/moderation/` and legacy layouts no longer needed. Update `entities/author/lib/moderation-href.ts`, dashboard tile hrefs (`/reviews?visibility=hidden`, `/books?visibility=pending_review`, `/authors/moderation`), harvest-view links.
-- Shell/config tests updated for new paths (moderator home).
+- **No redirects** from old routes; old pages are deleted (404 afterwards). Accepted: admin is internal, bookmarks break.
+- **`/books/import` moves early to `/import/file`** (was planned for #287). Rationale — least churn: after this PR the `books` segment would otherwise contain only `import`, forcing us to keep `app/books/layout.tsx` and a `/books/import` match for one more phase while `/books` itself 404s. Moving it now is one thin page + one config edit, deletes the whole `app/books` segment, and #287 no longer touches it. `BookImportView` itself is unchanged except its back link.
+- **Wikidata single-author import panel stays on `/moderation/authors`** (toggle button "Импортировать из Wikidata" + `WikidataImportPanel` inside `views/author-moderation`). It moves to `/import/author` in #287. Removing it here would make it unreachable. Импорт/Автор tab stays omitted.
+- **`/harvest` stays** (with its legacy layout) until #287; only its outbound links are updated.
+- **Publish actions leave the catalog.** The per-row "Опубликовать" button in the catalog list is shown only for `is_hidden && external_source`, i.e. exactly the `pending_review` set, so both per-row publish and "Опубликовать все (N)" move (not copy) to `/moderation/books`. Catalog books become pure CRUD + filters. Hidden harvested books still appear under catalog `visibility=hidden` and can be unhidden through the edit form.
+- **No row selection for books.** `adminBooksApi.bulkPublish({ search })` publishes everything matching the server-side `pending_review` predicate (+ search); there is no ids-based endpoint and the backend is out of scope. The moderation view therefore exposes **only the search filter**, so the bulk scope always equals the displayed list.
+- Cross-section header buttons are removed: "Импортировать" (books list), "Очередь модерации" (authors list), "Все авторы" (author moderation header). Sidebar + tabs replace them. Buttons that point into the *same task flow* stay and are repointed: harvest "К очереди на проверку"/"К авторам на модерации", book import "К списку книг".
+- After saving a book opened from `/moderation/books`, `BookForm` still returns to `/catalog/books` (accepted; no `returnTo` param in this PR).
+
+### Acceptance Criteria
+
+Catalog (#285):
+
+- [x] `/catalog/books`, `/catalog/books/new`, `/catalog/books/[id]/edit`, `/catalog/authors`, `/catalog/genres` render the existing views (`BooksListView`, `BookNewView`, `BookEditView`, `AuthorsView`, `GenresView`) with Каталог highlighted and Каталог tabs (Книги / Авторы / Жанры) shown; the correct tab is active, including on `/new` and `/[id]/edit` (Книги).
+- [x] Bare `/catalog` redirects (`router.replace`) to the first visible tab (`/catalog/books` for admin); a moderator on `/catalog` gets AccessDenied.
+- [x] Old routes `/books`, `/books/new`, `/books/[id]/edit`, `/authors`, `/genres` are deleted (404). Moderator on any of them: AccessDenied (unknown path = admin-only), as before.
+- [x] Book create/update success and the form "Отмена" button navigate to `/catalog/books`.
+- [x] Books list: "Добавить книгу" -> `/catalog/books/new`; row "Редактировать" -> `/catalog/books/{id}/edit`; filter/pagination URLs stay on `/catalog/books` (built from `usePathname()` — no change needed).
+- [x] Books list header has no "Импортировать" button; authors list header has no "Очередь модерации" button.
+- [x] Books list visibility filter options are exactly Все / Видимые / Скрытые; any other `visibility` URL value (e.g. legacy `pending_review`) is treated as `''` (not sent to the API, select shows "Все").
+- [x] Books list has no "Опубликовать" row button and no "Опубликовать все" button.
+
+Moderation (#286):
+
+- [x] `/moderation/books` (admin only): title "Книги на проверке"; lists `adminBooksApi.list({ visibility: 'pending_review', search, page, limit: 20 })`; columns Название / Авторы / Жанры / Действия; search form (`?search=`), pagination (`?page=`) via URL params on the current pathname; empty state "Нет книг на проверке."; error state "Не удалось загрузить книги.".
+- [x] Each row: "Опубликовать" (confirm `Опубликовать книгу «{title}»?`, same full-payload `adminBooksApi.update(..., is_hidden: false)` as today) and "Редактировать" -> `/catalog/books/{id}/edit`.
+- [x] "Опубликовать все (N)" is shown when `total > 0`; confirm `Опубликовать все книги на проверке (N)?`; calls `adminBooksApi.bulkPublish({ search: search || undefined })`; feedback text identical to today (`Опубликовано X из Y.` / errors sample). Both mutations invalidate `['admin','books']` and `['admin','dashboard']`.
+- [x] `/moderation/authors` (admin only) renders `AuthorModerationView` unchanged in behaviour, **including** the "Импортировать из Wikidata" toggle and `WikidataImportPanel`; status/filter URL pushes stay on `/moderation/authors` (built from `usePathname()`); author-books links -> `/catalog/books/{id}/edit`; "Все авторы" button removed.
+- [x] `/moderation/reviews` (admin + moderator) renders `ReviewsView` unchanged in behaviour.
+- [x] Moderator: sidebar Модерация links to `/moderation/reviews`; login / `/` / `/moderation` land on `/moderation/reviews`; AccessDenied and forbidden-screen buttons ("К отзывам") link to `/moderation/reviews`; `/moderation/books` and `/moderation/authors` give AccessDenied.
+- [x] Admin: sidebar Модерация and bare `/moderation` go to `/moderation/books`; on any `/moderation/*` page the sidebar highlights Модерация and tabs Книги / Авторы / Жанры / Отзывы show with the right one active (the phase-1 "Модерация/Книги highlights Каталог" quirk is gone).
+- [x] Old routes `/reviews`, `/authors/moderation` are deleted.
+- [x] `/import/file` renders `BookImportView` with Импорт highlighted and tab Файл active; `/books/import` is deleted.
+
+Links and cleanup:
+
+- [x] Every internal link listed in "Link inventory" points to the new routes; a grep of `apps/admin/src` (code and tests) for string/template literals starting with `/books`, `/authors`, `/genres` or `/reviews` returns no hits (only `/harvest` legacy links remain, by design; `shared/lib/redirect.test.ts` sample paths are arbitrary inputs and are exempt).
+- [x] Legacy layouts `app/books/layout.tsx`, `app/authors/layout.tsx`, `app/genres/layout.tsx`, `app/reviews/layout.tsx` are deleted with their segments; only `app/harvest/layout.tsx` remains.
+- [x] Tests listed below pass; existing admin tests pass; CI frontend build (typedRoutes) passes (verified by CI, no native `next build`).
+
+Implementation notes (phases 2+3):
+
+- `BookModerationView` reads `search` for the query and for `bulkPublish` from the URL (`?search=`), not from the input state, so the bulk scope always equals the displayed list; row publish now also invalidates `['admin','dashboard']` (it previously invalidated only books).
+- The author moderation toggle keeps its existing label "Импорт из Wikidata".
+- `shared/config/navigation.test.ts` intentionally keeps the deleted old routes (`/books`, `/authors/moderation`, ...) as null-resolution cases (required by the test list); they are inputs, not links, and are exempt from the grep criterion like `redirect.test.ts`.
+- `tsc --noEmit` may report stale `.next/types/app/{books,authors,genres,reviews}` artifacts from a previous local build; they disappear on the next `next build`/`next dev` (CI starts clean).
+
+### Route moves
+
+| New file | Content | Deleted file |
+|---|---|---|
+| `app/catalog/layout.tsx` | `SectionLayout` (copy `app/moderation/layout.tsx`) | — |
+| `app/catalog/page.tsx` | `<SectionIndexView sectionId="catalog" />` | — |
+| `app/catalog/books/page.tsx` | `BooksListView` | `app/books/page.tsx` |
+| `app/catalog/books/new/page.tsx` | `BookNewView` | `app/books/new/page.tsx` |
+| `app/catalog/books/[id]/edit/page.tsx` | `BookEditView` | `app/books/[id]/edit/page.tsx` |
+| `app/catalog/authors/page.tsx` | `AuthorsView` | `app/authors/page.tsx` |
+| `app/catalog/genres/page.tsx` | `GenresView` | `app/genres/page.tsx` |
+| `app/moderation/books/page.tsx` | `BookModerationView` (new) | — |
+| `app/moderation/authors/page.tsx` | `AuthorModerationView` | `app/authors/moderation/page.tsx` |
+| `app/moderation/reviews/page.tsx` | `ReviewsView` | `app/reviews/page.tsx` |
+| `app/import/file/page.tsx` | `BookImportView` | `app/books/import/page.tsx` |
+| — | — | `app/books/layout.tsx`, `app/authors/layout.tsx`, `app/genres/layout.tsx`, `app/reviews/layout.tsx` (whole `app/books`, `app/authors`, `app/genres`, `app/reviews` dirs gone) |
+
+`app/moderation/layout.tsx`, `app/import/layout.tsx`, `app/moderation/page.tsx`, `app/import/page.tsx` already exist and need no change. Pages stay thin (`app` imports only `views`/`shared`). Use `git mv` for moved page files.
+
+### Config (phase 2+3 state)
+
+Edit `apps/admin/src/shared/config/navigation.ts` (also update the header comment: phase 1 transitional -> "phases 2+3 applied; Импорт still transitional until #287"):
+
+| Section | Tab | href | match | roles |
+|---|---|---|---|---|
+| Обзор | Обзор | `/` | `['/']` | admin |
+| Модерация | Книги | `/moderation/books` | `['/moderation/books']` | admin |
+| Модерация | Авторы | `/moderation/authors` | `['/moderation/authors']` | admin |
+| Модерация | Жанры | `/moderation/genres` | `['/moderation/genres']` | admin |
+| Модерация | Отзывы (`homeLabel: 'К отзывам'`) | `/moderation/reviews` | `['/moderation/reviews']` | admin, moderator |
+| Каталог (add `basePath: '/catalog'`) | Книги | `/catalog/books` | `['/catalog/books']` | admin |
+| Каталог | Авторы | `/catalog/authors` | `['/catalog/authors']` | admin |
+| Каталог | Жанры | `/catalog/genres` | `['/catalog/genres']` | admin |
+| Импорт | Wikidata | `/harvest` | `['/harvest']` | admin — still legacy until #287 |
+| Импорт | Автор | — omitted (panel lives on `/moderation/authors`) | | admin — `/import/author` in #287 |
+| Импорт | Файл | `/import/file` | `['/import/file']` | admin — final |
+| Импорт | Жанры | `/import/genres` | `['/import/genres']` | admin |
+| Импорт | Задания | — omitted (job history on `/harvest`) | | admin — `/import/jobs` in #287 |
+| Пользователи | Пользователи | `/users` | `['/users']` | admin |
+
+Known quirks after this PR: none from phase 1 (Модерация/Книги now owns a real path). Remaining transitional bits: `/harvest` legacy route/layout, and the Wikidata author import panel living under Модерация/Авторы until #287.
+
+### Link inventory (grep result on `main` after #284; update all)
+
+| File | Current | New |
+|---|---|---|
+| `features/manage-book/ui/book-form.tsx` (post-save push, "Отмена") | `/books` x2 | `/catalog/books` |
+| `views/books-list/ui/books-list-view.tsx` | `/books/import` button | remove |
+| same | `/books/new` | `/catalog/books/new` |
+| same | `/books/${id}/edit` | `/catalog/books/${id}/edit` |
+| same | `pending_review` select option, publish/bulk-publish mutations and buttons | remove (moved to `views/book-moderation`) |
+| `views/authors/ui/authors-view.tsx` | `/authors/moderation` "Очередь модерации" | remove |
+| `views/author-moderation/ui/author-moderation-view.tsx` | `/authors` "Все авторы" | remove |
+| same | `/books/${b.id}/edit` | `/catalog/books/${b.id}/edit` |
+| `views/book-import/ui/book-import-view.tsx` | `/books` "К списку книг" | `/catalog/books` |
+| `views/dashboard/ui/dashboard-view.tsx` | `/books`, `/books?visibility=hidden`, `/authors`, `/genres` | `/catalog/books`, `/catalog/books?visibility=hidden`, `/catalog/authors`, `/catalog/genres` |
+| same | `/reviews?visibility=hidden`, `/books?visibility=pending_review`, `/authors/moderation` | `/moderation/reviews?visibility=hidden`, `/moderation/books`, `/moderation/authors` |
+| `views/harvest/ui/harvest-view.tsx` (header + completed-job row, 2 each) | `/books?visibility=pending_review`, `/authors/moderation` | `/moderation/books`, `/moderation/authors` |
+| `entities/author/lib/moderation-href.ts` | `/authors/moderation?status=…&search=…` | `/moderation/authors?…` (used by Wikidata search feature and import-result feedback) |
+| `features/import-wikidata-author/lib/result-text.ts` | `/harvest` "К харвесту" | unchanged until #287 |
+| `shared/config/navigation.ts` | see Config table | |
+
+Views that build URLs from `usePathname()` (`books-list`, `authors`, `genres`, `reviews`, `author-moderation`) need no change; only their tests' mocked pathname should be updated for realism.
+
+### New view `views/book-moderation`
+
+- `apps/admin/src/views/book-moderation/{index.ts, ui/book-moderation-view.tsx, ui/book-moderation-view.test.tsx}`, export `BookModerationView`.
+- Move (cut, not duplicate) from `BooksListView`: `publishMutation` + `handlePublish`, `bulkPublishMutation` + `handleBulkPublish`, feedback banner. Query key: `['admin', 'books', 'pending_review', { search, page }]` (still under `['admin','books']` so existing invalidations hit it). Header: `<h1>Книги на проверке</h1>` + "Опубликовать все (N)" button on the right when `total > 0` (disabled while pending).
+- Imports allowed: `entities/book`, `@bookhaven/api-client` types, `@bookhaven/ui`, `shared/ui` (`Pagination`). No new abstraction / shared hook; if the publish payload builder is needed twice it is not — catalog no longer publishes.
+- Badges: none needed (every row is hidden + imported); optionally show `external_source` as a small muted text. Keep it minimal.
+
+### Tests (phases 2+3)
+
+Update:
+
+- `shared/config/navigation.test.ts`: resolution table -> `/catalog/books`, `/catalog/books/new`, `/catalog/books/5/edit` -> `catalog.books`; `/catalog/authors`, `/catalog/genres`; `/moderation/books`, `/moderation/authors`, `/moderation/reviews`, `/moderation/genres`; `/import/file` -> `import.file`; `/harvest` -> `import.wikidata`. Section asserts: `/moderation/authors` -> moderation, `/import/file` -> import. Base paths: add `/catalog`. Null cases: add old routes `/books`, `/books/5/edit`, `/authors`, `/authors/moderation`, `/genres`, `/reviews`, `/books/import`, plus `/catalog/unknown`, `/moderation/booksx`. Query test: `/catalog/books?visibility=hidden` -> `catalog.books`. Home: `getHomeHref('moderator') === '/moderation/reviews'`; `getSectionHref(moderation, 'admin') === '/moderation/books'`, moderator -> `/moderation/reviews`; `getSectionHref(catalog, 'admin') === '/catalog/books'`. New invariant: every non-placeholder match prefix starts with `/moderation/`, `/catalog/`, `/import/`, `/users` or is `/`, **except** the allow-listed legacy `/harvest` (comment: remove in #287).
+- `widgets/admin-shell/ui/shell.test.tsx`: admin sidebar hrefs `Модерация -> /moderation/books`, `Каталог -> /catalog/books`, `Импорт -> /harvest`; active-section cases `/moderation/authors` -> Модерация, `/catalog/books/123/edit` -> Каталог, `/import/file` -> Импорт, **new** `/moderation/books` -> Модерация; moderator on `/moderation/reviews` sees only Модерация (href `/moderation/reviews`) and children; moderator on `/` -> `replace('/moderation/reviews')`; moderator AccessDenied paths `['/catalog/books', '/moderation/books', '/users', '/unknown', '/import', '/catalog']` with "К отзывам" -> `/moderation/reviews`; forbidden-screen case on `/moderation/reviews`; admin non-moderator path case `/books` -> use `/catalog/books`.
+- `widgets/section-tabs/ui/section-tabs.test.tsx`: admin on `/moderation/reviews` -> tabs Книги `/moderation/books`, Авторы `/moderation/authors`, Жанры `/moderation/genres`, Отзывы `/moderation/reviews` (active); admin on `/import/file` -> Wikidata, Файл (active), Жанры; **new** admin on `/catalog/books/5/edit` -> Каталог tabs, Книги active; moderator on `/moderation/reviews` -> nothing; `SectionIndexRedirect` moderation: admin -> `/moderation/books`, moderator -> `/moderation/reviews`; **new** catalog: admin -> `/catalog/books`, moderator -> no `replace`.
+- `views/books-list/ui/books-list-view.test.tsx`: pathname mock `/catalog/books`; replace the "renders the pending_review filter option" test with "visibility options are Все/Видимые/Скрытые" + "legacy `visibility=pending_review` is not sent to the API"; move the per-row publish tests (~L160-210) and the whole "Опубликовать все" describe (~L284-400) to the new view test; add asserts: no "Импортировать" link, "Добавить книгу" href `/catalog/books/new`, row edit href `/catalog/books/{id}/edit`, no "Опубликовать" button even for a hidden imported row.
+- `views/authors/ui/authors-view.test.tsx`: pathname `/catalog/authors`; the "Очередь модерации" link test (~L130-135) becomes "no 'Очередь модерации' link"; push expectation `'/catalog/authors?status=rejected&page=1'`.
+- `views/author-moderation/ui/author-moderation-view.test.tsx`: pathname `/moderation/authors`; book link `'/catalog/books/b1/edit'`; push expectations `/moderation/authors?...` (L279-292); assert "Все авторы" absent and the "Импортировать из Wikidata" toggle still present.
+- `views/author-moderation/ui/wikidata-import-panel.test.tsx` (L148), `features/import-wikidata-author/lib/result-text.test.ts` (L37), `features/search-wikidata-author/ui/wikidata-author-search.test.tsx` (L78): `/moderation/authors?…` (follows `moderation-href.ts`); "К харвесту" `/harvest` unchanged.
+- `views/dashboard/ui/dashboard-view.test.tsx`: pending import tile -> `/moderation/books`, pending authors tile -> `/moderation/authors`; add one catalog tile assertion (`Всего книг` -> `/catalog/books`) and reviews tile (`/moderation/reviews?visibility=hidden`).
+- `views/harvest/ui/harvest-view.test.tsx` (~L252-258): "К авторам на модерации" -> `/moderation/authors`; add "К очереди на проверку" -> `/moderation/books`.
+- `views/book-import/ui/book-import-view.test.tsx`: add "К списку книг" href `/catalog/books` (if not asserted already).
+- A `book-form` test, if one exists, for the post-save push -> `/catalog/books`; otherwise covered by grep criterion (no new test required).
+
+Add:
+
+- `views/book-moderation/ui/book-moderation-view.test.tsx` (moved + new): calls list with `visibility: 'pending_review'`; search submit pushes `?search=…&page=1` on the mocked pathname `/moderation/books`; row publish (confirm text, payload `is_hidden: false`, success feedback "Книга опубликована."); bulk button hidden when total 0, shown as "Опубликовать все (N)" otherwise, passes `search`, report/error feedback; edit link `/catalog/books/{id}/edit`; empty state text.
+
+### Documentation (phases 2+3)
+
+- This contract: tick phase 2+3 criteria, `Status: in progress (phases 1-3 done)`; phase 4 outline already reflects the early `/import/file` move.
+- `docs/ROADMAP.md`: #114 (bulk publish for pending-review books) — bulk publish already exists in code (`adminBooksApi.bulkPublish`); verify the issue state and tick/close it in this PR if it is still open.
+- PR body: `Closes #285` and `Closes #286`; close the second issue manually after merge.
 
 ## Phase 4 — #287 Import (outline)
 
-- Split `views/harvest` into `/import/wikidata` (harvest trigger form) and `/import/jobs` (job history/report). `/import/author`: `WikidataImportPanel` moved out of `views/author-moderation` into its own view (or feature-level widget). `/import/file`: `book-import` view.
-- Add Импорт/Автор and Импорт/Задания tabs to the config; update Wikidata/Файл tabs. Delete `app/harvest/`, `app/books/import/` and remaining legacy layouts (`app/books/layout.tsx`, `app/authors/layout.tsx` if empty).
-- Harvest-view links to pending books/authors point to `/moderation/books` / `/moderation/authors`. After this phase no legacy route or layout remains; add a config test asserting no `match` prefix outside `/`, `/moderation`, `/catalog`, `/import`, `/users`.
+- Split `views/harvest` into `/import/wikidata` (harvest trigger form) and `/import/jobs` (job history/report). `/import/author`: `WikidataImportPanel` + its toggle moved out of `views/author-moderation` (still there after #285+#286) into its own view (or feature-level widget). `/import/file` already done in #285+#286.
+- Add Импорт/Автор and Импорт/Задания tabs to the config; update the Wikidata tab. Delete `app/harvest/` and its legacy layout (the last one). Update `result-text.ts` "К харвесту" link.
+- Harvest links to `/moderation/books` / `/moderation/authors` were already updated in #285+#286. After this phase no legacy route or layout remains; drop the `/harvest` allow-list entry from the config invariant test.
 
 ## Phase 5 — #288 Overview + sidebar counters (outline)
 
@@ -223,11 +357,17 @@ Genres have only Name/Slug/CreatedAt — no status or source. Moderation/import 
 - Roles: `isAdmin`/`isModerator`/`useAuthStore` in `apps/admin/src/entities/session/model/auth-store.ts` (`user.role`).
 - `next/navigation` mocking in tests: `apps/admin/src/views/authors/ui/authors-view.test.tsx`.
 - `as any` casts for typedRoutes hrefs (project-wide convention).
+- Pending-review list + publish/bulk publish (source for `views/book-moderation`): `apps/admin/src/views/books-list/ui/books-list-view.tsx` and its test.
+- Thin section pages: `apps/admin/src/app/moderation/{layout,page}.tsx` (`SectionLayout`, `SectionIndexView`).
 
 ## Risks
 
 - Hooks ordering in `Shell`: the new redirect effect must be declared before the early returns.
 - typedRoutes: `tsc` does not catch route errors; the CI frontend build is the gate (do not run a native `next build` on Windows).
-- Legacy layouts stack with nested routes (`app/books/layout.tsx` wraps `/books/import`); correctness relies on `SectionTabs` resolving by pathname, not on the layout's location. Remove legacy layouts in the phase that empties their segment.
-- Phase ordering: #285 dropping `pending_review` before #286 exists, or #286 removing the Wikidata panel before #287, would make content unreachable.
+- Legacy layouts stack with nested routes (`app/books/layout.tsx` wraps `/books/import`); correctness relies on `SectionTabs` resolving by pathname, not on the layout's location. Remove legacy layouts in the phase that empties their segment (after #285+#286 only `app/harvest/layout.tsx` remains).
+- Phase ordering: resolved for #285/#286 by shipping them in one PR. The Wikidata author import panel must NOT be removed from `/moderation/authors` until #287 creates `/import/author`.
+- Missed links (phases 2+3): a stale `/books…`/`/authors…`/`/reviews` href becomes a 404 (no redirects). Mitigation: link inventory + the grep acceptance criterion; template-literal hrefs (`` `/books/${id}/edit` ``) are easy to miss.
+- Moving publish out of `BooksListView`: the existing publish/bulk tests must be moved, not deleted, so coverage of the publish payload and bulk report handling is preserved.
+- Bulk publish scope: `bulkPublish` ignores any filter except `search`; adding genre/author filters to `/moderation/books` later would make "Опубликовать все" publish more than is displayed. Keep search-only unless the backend endpoint gains filters.
+- Moderator bookmarks of `/reviews` break (404 -> AccessDenied for unknown path, with a "К отзывам" button to the new home) — acceptable, no redirects by design.
 - Frontend guard is UX only; backend role checks remain authoritative (reviews endpoints admin+moderator, everything else admin).

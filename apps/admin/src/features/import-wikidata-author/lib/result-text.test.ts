@@ -34,7 +34,7 @@ function result(overrides: Partial<AdminAuthorImportResult> = {}): AdminAuthorIm
 
 const notRequested: HarvestStep = { state: 'not_requested' };
 const openHref = (status: string) =>
-  `/authors/moderation?${new URLSearchParams({ status, search: 'Лев Толстой' })}`;
+  `/moderation/authors?${new URLSearchParams({ status, search: 'Лев Толстой' })}`;
 
 describe('importResultFeedback', () => {
   it('created', () => {

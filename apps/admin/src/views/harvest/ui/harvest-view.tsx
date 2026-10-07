@@ -292,10 +292,10 @@ export function HarvestView() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Харвестер</h1>
         <div className="flex gap-2">
-          <Link href={'/books?visibility=pending_review' as any}>
+          <Link href={'/moderation/books' as any}>
             <Button variant="outline">К очереди на проверку</Button>
           </Link>
-          <Link href={'/authors/moderation' as any}>
+          <Link href={'/moderation/authors' as any}>
             <Button variant="outline">К авторам на модерации</Button>
           </Link>
         </div>
@@ -405,12 +405,12 @@ export function HarvestView() {
                       <TableCell className="space-x-2">
                         {job.state === 'completed' && job.result && job.result.created > 0 && (
                           <>
-                            <Link href={'/books?visibility=pending_review' as any}>
+                            <Link href={'/moderation/books' as any}>
                               <Button variant="outline" size="sm">
                                 К очереди на проверку
                               </Button>
                             </Link>
-                            <Link href={'/authors/moderation' as any}>
+                            <Link href={'/moderation/authors' as any}>
                               <Button variant="outline" size="sm">
                                 К авторам на модерации
                               </Button>

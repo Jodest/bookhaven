@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAuthorsApi, AuthorStatusBadge, AUTHOR_STATUS_LABELS } from '@/entities/author';
 import { AdminAuthor, AdminAuthorInput, AdminAuthorStatus } from '@bookhaven/api-client';
@@ -128,9 +127,6 @@ export function AuthorsView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Авторы</h1>
-        <Link href={'/authors/moderation' as any}>
-          <Button variant="outline">Очередь модерации</Button>
-        </Link>
       </div>
 
       {mergeSuccessMessage && (

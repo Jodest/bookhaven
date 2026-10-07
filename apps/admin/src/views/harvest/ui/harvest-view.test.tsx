@@ -249,13 +249,13 @@ describe('HarvestView', () => {
     await waitFor(() => expect(screen.getByText('completed')).toBeInTheDocument());
     expect(screen.getByText('active')).toBeInTheDocument();
     expect(screen.getByText('создано 2, пропущено 3, ошибок 0')).toBeInTheDocument();
-    expect(
-      screen.getAllByRole('link', { name: 'К очереди на проверку' }).length
-    ).toBeGreaterThan(0);
-    // Header + the completed job: both link to the author moderation queue.
+    // Header + the completed job: both link to the moderation queues.
+    const bookLinks = screen.getAllByRole('link', { name: 'К очереди на проверку' });
+    expect(bookLinks).toHaveLength(2);
+    bookLinks.forEach((link) => expect(link).toHaveAttribute('href', '/moderation/books'));
     const authorLinks = screen.getAllByRole('link', { name: 'К авторам на модерации' });
     expect(authorLinks).toHaveLength(2);
-    authorLinks.forEach((link) => expect(link).toHaveAttribute('href', '/authors/moderation'));
+    authorLinks.forEach((link) => expect(link).toHaveAttribute('href', '/moderation/authors'));
   });
 
   it('shows the author enrichment counters of a completed job when present', async () => {

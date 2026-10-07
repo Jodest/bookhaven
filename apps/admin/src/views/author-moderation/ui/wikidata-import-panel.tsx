@@ -14,7 +14,7 @@ import {
 import { useWikidataAuthorSearch, WikidataAuthorSearch } from '@/features/search-wikidata-author';
 
 /**
- * "Импорт из Wikidata" panel of /authors/moderation
+ * "Импорт из Wikidata" panel of /moderation/authors
  * (docs/features/author-direct-import.md): the shared Wikidata author search
  * with per-candidate import actions and a result banner. After every
  * successful import the last search is re-run so the "already in BookHaven"

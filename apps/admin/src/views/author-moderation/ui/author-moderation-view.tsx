@@ -285,19 +285,14 @@ export function AuthorModerationView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Модерация авторов</h1>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant={importOpen ? 'default' : 'outline'}
-            aria-expanded={importOpen}
-            onClick={() => setImportOpen((open) => !open)}
-          >
-            Импорт из Wikidata
-          </Button>
-          <Link href={'/authors' as any}>
-            <Button variant="outline">Все авторы</Button>
-          </Link>
-        </div>
+        <Button
+          type="button"
+          variant={importOpen ? 'default' : 'outline'}
+          aria-expanded={importOpen}
+          onClick={() => setImportOpen((open) => !open)}
+        >
+          Импорт из Wikidata
+        </Button>
       </div>
 
       {importOpen && <WikidataImportPanel />}
@@ -532,7 +527,7 @@ function QueueRow({ item, selected, pending, enrichPending, onEnrich, onToggle, 
           <ul className="mt-1 space-y-0.5">
             {item.sample_books.map((b) => (
               <li key={b.id}>
-                <Link href={`/books/${b.id}/edit` as any} className="text-primary underline">
+                <Link href={`/catalog/books/${b.id}/edit` as any} className="text-primary underline">
                   {b.title}
                 </Link>
                 {b.is_hidden && <span className="ml-1 text-xs text-muted-foreground">(скрыта)</span>}
