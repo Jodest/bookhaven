@@ -1,25 +1,22 @@
 'use client';
 
 import { useAuthStore, isAdmin, isModerator } from '@/entities/session';
+import {
+  getHomeHref,
+  getHomeTab,
+  getSectionHref,
+  getVisibleSections,
+  getVisibleTabs,
+  canAccessTab,
+  resolveNavLocation,
+} from '@/shared/config';
 import { isSafeInternalRedirect } from '@/shared/lib';
 import { AccessDenied } from './access-denied';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { BookOpen, Users, Tag, MessageSquare, LayoutDashboard, LogOut, Sparkles } from 'lucide-react';
-
-const adminNav = [
-  { href: '/', label: 'Обзор', icon: LayoutDashboard },
-  { href: '/books', label: 'Книги', icon: BookOpen },
-  { href: '/authors', label: 'Авторы', icon: Users },
-  { href: '/genres', label: 'Жанры', icon: Tag },
-  { href: '/harvest', label: 'Харвестер', icon: Sparkles },
-];
-
-const moderatorNav = [
-  { href: '/reviews', label: 'Отзывы', icon: MessageSquare },
-];
+import { LogOut } from 'lucide-react';
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { user, logout, isLoading, forbiddenPath, clearForbiddenPath } = useAuthStore();
@@ -28,6 +25,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   const canAccessAdmin = isAdmin(user);
   const canAccessModerator = isModerator(user);
+
+  // Config-driven guard. Computed before any early return so the redirect
+  // effect below is always registered (hooks order).
+  const role = user?.role;
+  const loc = resolveNavLocation(pathname);
+  const isAllowed = loc
+    ? loc.tab
+      ? canAccessTab(loc.tab, role)
+      : getVisibleTabs(loc.section, role).length > 0
+    : canAccessAdmin;
+  const homeHref = getHomeHref(role);
+  // A staff user whose home is not `/` (moderator) is sent home from `/`.
+  const shouldRedirectHome =
+    !!user && canAccessModerator && pathname === '/' && !isAllowed && homeHref !== '/';
 
   useEffect(() => {
     if (pathname === '/login') return;
@@ -49,6 +60,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
       clearForbiddenPath();
     }
   }, [forbiddenPath, pathname, clearForbiddenPath]);
+
+  useEffect(() => {
+    if (shouldRedirectHome) {
+      router.replace(homeHref as any);
+    }
+  }, [shouldRedirectHome, homeHref, router]);
 
   const handleLogout = async () => {
     await logout();
@@ -81,33 +98,37 @@ export function Shell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const homeLabel = getHomeTab(role)?.homeLabel ?? 'На главную';
+
   if (forbiddenPath === pathname) {
     return (
       <AccessDenied message="Сервер отклонил запрос: у вас недостаточно прав для выполнения этого действия.">
-        <Link href={"/" as any}>
-          <Button variant="outline">На главную</Button>
+        <Link href={homeHref as any}>
+          <Button variant="outline">{homeLabel}</Button>
         </Link>
       </AccessDenied>
     );
   }
 
-  const navItems = [
-    ...(canAccessAdmin ? adminNav : []),
-    ...(canAccessModerator ? moderatorNav : []),
-  ];
-
-  // Admin-only route guard: if a moderator navigates to an admin-only path, show forbidden.
-  const adminOnlyPaths = ['/books', '/authors', '/genres', '/harvest'];
-  const isAdminOnlyPath = pathname === '/' || adminOnlyPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-  if (isAdminOnlyPath && !canAccessAdmin) {
+  if (shouldRedirectHome) {
     return (
-      <AccessDenied message="Этот раздел доступен только администраторам. Модераторы могут работать только с отзывами.">
-        <Link href={"/reviews" as any}>
-          <Button variant="outline">К отзывам</Button>
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground">Перенаправление...</p>
+      </div>
+    );
+  }
+
+  if (!isAllowed) {
+    return (
+      <AccessDenied message="Этот раздел доступен только администраторам.">
+        <Link href={homeHref as any}>
+          <Button variant="outline">{homeLabel}</Button>
         </Link>
       </AccessDenied>
     );
   }
+
+  const sections = getVisibleSections(role);
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -116,13 +137,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
           BookHaven Admin
         </div>
         <nav className="space-y-1 p-4">
-          {navItems.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
+          {sections.map((section) => {
+            const href = getSectionHref(section, role) ?? '/';
+            const active = loc?.section.id === section.id;
+            const Icon = section.icon;
             return (
               <Link
-                key={item.href}
-                href={item.href as any}
+                key={section.id}
+                href={href as any}
+                aria-current={active ? 'page' : undefined}
                 className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                   active
                     ? 'bg-primary text-primary-foreground'
@@ -130,7 +153,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 <Icon className="h-4 w-4" />
-                {item.label}
+                {section.label}
               </Link>
             );
           })}

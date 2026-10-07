@@ -46,7 +46,9 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-Nothing queued — pick the next item from Proposed via `/backlog-next`. Email notifications (#121, in Proposed) can build on the mailer from #157.
+- [ ] Admin navigation restructure — five sections (Обзор / Модерация / Каталог / Импорт / Пользователи) with tabs and a config-driven role guard; phases #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters, then #289 Users (separate contract, relates to #247) and #290 Genres moderation/import (needs product decision); phase 1 (#284) done (see [docs/features/admin-navigation-restructure.md](features/admin-navigation-restructure.md), epic #283)
+
+Email notifications (#121, in Proposed) can build on the mailer from #157.
 
 ## Proposed (awaiting prioritization)
 
