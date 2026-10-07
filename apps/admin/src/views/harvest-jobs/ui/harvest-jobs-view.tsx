@@ -1,15 +1,13 @@
 'use client';
 
 import { Fragment, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { adminHarvestApi } from '@/entities/harvest';
-import { ApiError, AdminHarvestJob } from '@bookhaven/api-client';
+import { adminHarvestApi, HARVEST_JOBS_QUERY_KEY } from '@/entities/harvest';
+import { AdminHarvestJob } from '@bookhaven/api-client';
 import {
   Badge,
   Button,
-  Input,
-  Label,
   Progress,
   Table,
   TableBody,
@@ -17,29 +15,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  Textarea,
 } from '@bookhaven/ui';
-import { AuthorNameSearch, SelectedAuthor } from './author-name-search';
-
-type AuthorInputMode = 'search' | 'manual';
-
-const JOBS_QUERY_KEY = ['admin', 'harvest', 'jobs'];
-
-// Parses the free-text QID field: one per line or comma-separated (both
-// accepted), trimmed, blanks dropped, deduped client-side. Format
-// (^Q[0-9]+$) validation itself happens server-side in
-// bookdata.BuildAuthorListQuery - this is just splitting.
-function parseAuthorQIDs(value: string): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const raw of value.split(/[,\n]/)) {
-    const qid = raw.trim();
-    if (!qid || seen.has(qid)) continue;
-    seen.add(qid);
-    result.push(qid);
-  }
-  return result;
-}
 
 function stateBadgeVariant(state: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (state) {
@@ -189,14 +165,13 @@ function JobReportRow({ job }: { job: AdminHarvestJob }) {
   );
 }
 
-export function HarvestView() {
-  const [mode, setMode] = useState<AuthorInputMode>('search');
-  const [selectedAuthors, setSelectedAuthors] = useState<SelectedAuthor[]>([]);
-  const [qidsText, setQidsText] = useState('');
-  const [limitText, setLimitText] = useState('');
-  const [error, setError] = useState<string | null>(null);
+/**
+ * Harvest jobs page (/import/jobs, docs/features/admin-navigation-restructure.md
+ * phase 4): recent asynq harvest jobs, polled every 5 s. Job results feed the
+ * book and author moderation queues, hence the header links.
+ */
+export function HarvestJobsView() {
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
-  const queryClient = useQueryClient();
 
   const toggleJobExpanded = (id: string) => {
     setExpandedJobIds((prev) => {
@@ -210,87 +185,18 @@ export function HarvestView() {
     });
   };
 
-  // Switching modes discards the *other* mode's in-progress input, per
-  // docs/features/harvest-author-search.md Business Rules - the two modes
-  // are mutually exclusive per submit, never merged.
-  const handleModeChange = (nextMode: AuthorInputMode) => {
-    if (nextMode === mode) return;
-    if (nextMode === 'manual') {
-      setSelectedAuthors([]);
-    } else {
-      setQidsText('');
-    }
-    setMode(nextMode);
-    setError(null);
-  };
-
-  const handleAddAuthor = (author: SelectedAuthor) => {
-    setSelectedAuthors((prev) => (prev.some((a) => a.qid === author.qid) ? prev : [...prev, author]));
-  };
-
-  const handleRemoveAuthor = (qid: string) => {
-    setSelectedAuthors((prev) => prev.filter((a) => a.qid !== qid));
-  };
-
   const jobsQuery = useQuery({
-    queryKey: JOBS_QUERY_KEY,
+    queryKey: HARVEST_JOBS_QUERY_KEY,
     queryFn: adminHarvestApi.listJobs,
     refetchInterval: 5000,
   });
-
-  const triggerMutation = useMutation({
-    mutationFn: adminHarvestApi.trigger,
-    onSuccess: () => {
-      setError(null);
-      setQidsText('');
-      setSelectedAuthors([]);
-      setLimitText('');
-      queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY });
-    },
-    onError: (err) => {
-      let message = 'Не удалось запустить харвест. Попробуйте снова.';
-      if (err instanceof ApiError && err.message) {
-        message = err.message;
-      }
-      setError(message);
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // The two modes are mutually exclusive per submit - author_qids comes
-    // from exactly one of selectedAuthors or the parsed QID textarea, never
-    // a merge of both.
-    let authorQids: string[];
-    if (mode === 'search') {
-      authorQids = selectedAuthors.map((a) => a.qid);
-      if (authorQids.length === 0) {
-        setError('Выберите хотя бы одного автора.');
-        return;
-      }
-    } else {
-      authorQids = parseAuthorQIDs(qidsText);
-      if (authorQids.length === 0) {
-        setError('Введите хотя бы один QID автора.');
-        return;
-      }
-    }
-    setError(null);
-
-    const limit = limitText.trim() === '' ? undefined : Number(limitText);
-    triggerMutation.mutate({
-      author_qids: authorQids,
-      ...(limit !== undefined && !Number.isNaN(limit) ? { limit } : {}),
-    });
-  };
 
   const jobs = jobsQuery.data?.items ?? [];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Харвестер</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Задачи харвеста</h1>
         <div className="flex gap-2">
           <Link href={'/moderation/books' as any}>
             <Button variant="outline">К очереди на проверку</Button>
@@ -301,70 +207,7 @@ export function HarvestView() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-xl space-y-4 rounded-lg border p-6">
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant={mode === 'search' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => handleModeChange('search')}
-          >
-            Поиск по имени
-          </Button>
-          <Button
-            type="button"
-            variant={mode === 'manual' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => handleModeChange('manual')}
-          >
-            Ввести QID вручную
-          </Button>
-        </div>
-
-        {mode === 'search' ? (
-          <AuthorNameSearch
-            selectedAuthors={selectedAuthors}
-            onAdd={handleAddAuthor}
-            onRemove={handleRemoveAuthor}
-          />
-        ) : (
-          <div className="space-y-2">
-            <Label htmlFor="harvest-qids">QID авторов Wikidata</Label>
-            <Textarea
-              id="harvest-qids"
-              value={qidsText}
-              onChange={(e) => setQidsText(e.target.value)}
-              placeholder={'Q7200\nQ1183296'}
-              rows={5}
-            />
-            <p className="text-xs text-muted-foreground">
-              Один QID на строку или через запятую, например Q7200
-            </p>
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <Label htmlFor="harvest-limit">Лимит (необязательно)</Label>
-          <Input
-            id="harvest-limit"
-            type="number"
-            placeholder="500"
-            value={limitText}
-            onChange={(e) => setLimitText(e.target.value)}
-          />
-        </div>
-
-        <Button type="submit" disabled={triggerMutation.isPending}>
-          {triggerMutation.isPending ? 'Запуск...' : 'Запустить харвест'}
-        </Button>
-      </form>
-
-      {error && (
-        <div className="rounded-md bg-destructive/10 p-4 text-sm text-destructive">{error}</div>
-      )}
-
       <div className="space-y-2">
-        <h2 className="text-xl font-semibold">Недавние задачи</h2>
         <p className="text-xs text-muted-foreground">
           Список ограничен состоянием очереди asynq/Redis (до 50 задач на состояние); задачи,
           вышедшие за пределы хранения Redis, здесь больше не отображаются.

@@ -14,13 +14,13 @@ import {
 import { useWikidataAuthorSearch, WikidataAuthorSearch } from '@/features/search-wikidata-author';
 
 /**
- * "Импорт из Wikidata" panel of /moderation/authors
- * (docs/features/author-direct-import.md): the shared Wikidata author search
- * with per-candidate import actions and a result banner. After every
- * successful import the last search is re-run so the "already in BookHaven"
- * markers refresh.
+ * Author import page (/import/author, docs/features/author-direct-import.md,
+ * docs/features/admin-navigation-restructure.md phase 4): the shared Wikidata
+ * author search with per-candidate import actions and a result banner. After
+ * every successful import the last search is re-run so the "already in
+ * BookHaven" markers refresh.
  */
-export function WikidataImportPanel() {
+export function AuthorImportView() {
   const search = useWikidataAuthorSearch();
   const { importAuthor, importWithBooks, pendingQid } = useImportWikidataAuthor();
   const [feedback, setFeedback] = useState<ImportFeedback | null>(null);
@@ -71,45 +71,53 @@ export function WikidataImportPanel() {
   };
 
   return (
-    <Card>
-      <CardContent className="space-y-4 p-4">
-        <h2 className="text-lg font-semibold">Импорт из Wikidata</h2>
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-3xl font-bold tracking-tight">Импорт автора из Wikidata</h1>
+        <p className="text-sm text-muted-foreground">
+          Найдите автора в Wikidata и импортируйте его (с книгами или без). Импортированные авторы
+          ждут модерации.
+        </p>
+      </div>
 
-        {feedback && (
-          <div
-            role="status"
-            className={`flex items-start justify-between gap-4 rounded-md p-3 text-sm ${
-              feedback.type === 'success'
-                ? 'bg-green-100 text-green-900'
-                : 'bg-destructive/10 text-destructive'
-            }`}
-          >
-            <div className="space-y-1">
-              <div>{feedback.message}</div>
-              {feedback.links.length > 0 && (
-                <div className="flex gap-3">
-                  {feedback.links.map((link) => (
-                    <Link key={link.href} href={link.href as any} className="underline">
-                      {link.label}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button type="button" onClick={() => setFeedback(null)} className="underline">
-              Скрыть
-            </button>
+      {feedback && (
+        <div
+          role="status"
+          className={`flex items-start justify-between gap-4 rounded-md p-3 text-sm ${
+            feedback.type === 'success'
+              ? 'bg-green-100 text-green-900'
+              : 'bg-destructive/10 text-destructive'
+          }`}
+        >
+          <div className="space-y-1">
+            <div>{feedback.message}</div>
+            {feedback.links.length > 0 && (
+              <div className="flex gap-3">
+                {feedback.links.map((link) => (
+                  <Link key={link.href} href={link.href as any} className="underline">
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+          <button type="button" onClick={() => setFeedback(null)} className="underline">
+            Скрыть
+          </button>
+        </div>
+      )}
 
-        <WikidataAuthorSearch
-          search={search}
-          inputId="wikidata-import-search"
-          label="Имя автора в Wikidata"
-          emptyHint="Совпадений не найдено. Проверьте написание или создайте автора вручную."
-          renderActions={renderActions}
-        />
-      </CardContent>
-    </Card>
+      <Card>
+        <CardContent className="p-4">
+          <WikidataAuthorSearch
+            search={search}
+            inputId="wikidata-import-search"
+            label="Имя автора в Wikidata"
+            emptyHint="Совпадений не найдено. Проверьте написание или создайте автора вручную."
+            renderActions={renderActions}
+          />
+        </CardContent>
+      </Card>
+    </div>
   );
 }

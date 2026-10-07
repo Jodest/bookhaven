@@ -65,7 +65,7 @@ describe('Shell', () => {
       ['Обзор', '/'],
       ['Модерация', '/moderation/books'],
       ['Каталог', '/catalog/books'],
-      ['Импорт', '/harvest'],
+      ['Импорт', '/import/wikidata'],
       ['Пользователи', '/users'],
     ]);
     expect(links[0]).toHaveAttribute('aria-current', 'page');
@@ -91,6 +91,14 @@ describe('Shell', () => {
     expect(screen.getByRole('link', { name: 'Импорт' })).toHaveAttribute('aria-current', 'page');
   });
 
+  it('admin on /import/jobs highlights Импорт', () => {
+    setUser('admin');
+    renderShell('/import/jobs');
+
+    const active = sidebarLinks().filter((l) => l.getAttribute('aria-current') === 'page');
+    expect(active.map((l) => l.textContent)).toEqual(['Импорт']);
+  });
+
   it('moderator on /moderation/reviews sees only Модерация and the page', () => {
     setUser('moderator');
     renderShell('/moderation/reviews');
@@ -111,7 +119,7 @@ describe('Shell', () => {
     expect(screen.queryByText('Доступ запрещен')).not.toBeInTheDocument();
   });
 
-  it.each(['/catalog/books', '/moderation/books', '/users', '/unknown', '/import', '/catalog'])(
+  it.each(['/catalog/books', '/moderation/books', '/users', '/unknown', '/import', '/import/wikidata', '/catalog'])(
     'moderator on %s sees admin-only AccessDenied with a link home',
     (pathname) => {
       setUser('moderator');

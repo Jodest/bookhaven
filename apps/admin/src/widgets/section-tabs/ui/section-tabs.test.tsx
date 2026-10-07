@@ -51,8 +51,21 @@ describe('SectionTabs', () => {
     renderTabs('/import/file');
 
     const links = screen.getAllByRole('link');
-    expect(links.map((l) => l.textContent)).toEqual(['Wikidata', 'Файл', 'Жанры']);
+    expect(links.map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
+      ['Wikidata', '/import/wikidata'],
+      ['Автор', '/import/author'],
+      ['Файл', '/import/file'],
+      ['Жанры', '/import/genres'],
+      ['Задачи', '/import/jobs'],
+    ]);
     expect(screen.getByRole('link', { name: 'Файл' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('admin on /import/jobs sees import tabs with Задачи active', () => {
+    renderTabs('/import/jobs');
+
+    expect(screen.getByRole('link', { name: 'Задачи' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Wikidata' })).not.toHaveAttribute('aria-current');
   });
 
   it('admin on /catalog/books/5/edit sees catalog tabs with Книги active', () => {
@@ -110,6 +123,13 @@ describe('SectionIndexRedirect', () => {
     pathnameValue = '/catalog';
     render(<SectionIndexRedirect sectionId="catalog" />);
     expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it('admin on /import goes to /import/wikidata', () => {
+    role = 'admin';
+    pathnameValue = '/import';
+    render(<SectionIndexRedirect sectionId="import" />);
+    expect(replaceMock).toHaveBeenCalledWith('/import/wikidata');
   });
 
   it('moderator on /import is not redirected', () => {

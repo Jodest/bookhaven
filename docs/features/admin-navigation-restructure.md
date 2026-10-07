@@ -1,10 +1,10 @@
 # Admin Navigation Restructure
 
-Status: in progress (phases 1-3 done)
+Status: in progress (phases 1-4 done)
 
 Epic: #283. Phases (existing sub-issues): #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters -> #289 Users (separate contract) -> #290 Genres moderation/import (needs product decision).
 
-Phases 1-5 are frontend-only (`apps/admin`). Phase 1 (#284) is done. Phases 2+3 (#285 + #286) are specified at implementation level below and ship **together in one branch/PR** (human decision: avoids a window where pending-review books have no page). Phases 4-7 stay outlines.
+Phases 1-5 are frontend-only (`apps/admin`). Phase 1 (#284) is done. Phases 2+3 (#285 + #286) shipped **together in one branch/PR** (human decision: avoids a window where pending-review books have no page) and are done. Phase 4 (#287) is done. Phases 5-7 stay outlines.
 
 ## Goal
 
@@ -330,15 +330,116 @@ Add:
 - `docs/ROADMAP.md`: #114 (bulk publish for pending-review books) — bulk publish already exists in code (`adminBooksApi.bulkPublish`); verify the issue state and tick/close it in this PR if it is still open.
 - PR body: `Closes #285` and `Closes #286`; close the second issue manually after merge.
 
-## Phase 4 — #287 Import (outline)
+## Phase 4 — #287 Import
 
-- Split `views/harvest` into `/import/wikidata` (harvest trigger form) and `/import/jobs` (job history/report). `/import/author`: `WikidataImportPanel` + its toggle moved out of `views/author-moderation` (still there after #285+#286) into its own view (or feature-level widget). `/import/file` already done in #285+#286.
-- Add Импорт/Автор and Импорт/Задания tabs to the config; update the Wikidata tab. Delete `app/harvest/` and its legacy layout (the last one). Update `result-text.ts` "К харвесту" link.
-- Harvest links to `/moderation/books` / `/moderation/authors` were already updated in #285+#286. After this phase no legacy route or layout remains; drop the `/harvest` allow-list entry from the config invariant test.
+Frontend only (`apps/admin`). Backend, `packages/api-client`, `entities/*`, `features/*` logic, `middleware.ts`, `login-form.tsx` unchanged. One branch/PR, `Closes #287`.
+
+### Decisions
+
+- **Three new view slices, `views/harvest` deleted.** `views/harvest-trigger` (`/import/wikidata`), `views/harvest-jobs` (`/import/jobs`), `views/author-import` (`/import/author`). ESLint `boundaries` forbids a view importing a sibling view slice, and the trigger form and the job table share no code (only `HARVEST_JOBS_QUERY_KEY`, already in `entities/harvest`), so one slice per page is the cleanest split — no new widget/entity needed. `app` pages stay thin (import only `views`).
+- **After a successful trigger: inline confirmation banner with a link, no redirect, no jobs preview.** `/import/wikidata` shows `Харвест запущен (задача {task_id.slice(0, 12)}). Ход выполнения — на вкладке «Задачи».` with a link "К задачам" -> `/import/jobs` (success style, `role="status"`, "Скрыть" button). Rationale: no auto-navigation (the admin may queue several harvests in a row; an unexpected page change is more surprising than a banner), and a recent-jobs preview would duplicate the jobs table across two view slices (would force moving it to a widget) for little value — the Задачи tab is one click away. The form is cleared on success as today. The banner is cleared on the next submit and on mode switch; the error banner behaves as today.
+- **Tab order: Wikidata, Автор, Файл, Жанры, Задачи.** Sources first, ordered by expected use: bulk Wikidata harvest (primary; section home `/import/wikidata`), single Wikidata author (same source, adjacent), file upload, genres (placeholder). Задачи last: it is the monitoring/output view shared by the two Wikidata sources (bulk harvest and "Импортировать с книгами"), not a source. Tab label "Задачи" (was "Задания" in the outline; matches the existing heading "Недавние задачи" and the user wording).
+- **Header buttons.** `/import/jobs` keeps "К очереди на проверку" (`/moderation/books`) and "К авторам на модерации" (`/moderation/authors`) in its header and the same buttons on completed rows with `created > 0` — job results feed those queues (same task flow, see phases 2+3 rule). `/import/wikidata` has no header buttons (tabs + the confirmation link cover it).
+- **Author import page = the panel promoted to a page.** The `WikidataImportPanel` component is moved (`git mv`) and renamed to `AuthorImportView`; the `Card` wrapper's inner `<h2>Импорт из Wikidata</h2>` becomes the page `<h1>`. Behaviour (search, per-candidate actions, confirm, result banner, refresh after import) is unchanged. `/moderation/authors` loses the toggle button and the panel; nothing else there changes.
+- **Harvest link in the author-import result banner** (`features/import-wikidata-author/lib/result-text.ts` `HARVEST_LINK`): `{ href: '/harvest', label: 'К харвесту' }` -> `{ href: '/import/jobs', label: 'К задачам харвеста' }` — after "Импортировать с книгами" the user wants to watch the started job, not start another. "Открыть" links (`authorModerationHref` -> `/moderation/authors?…`) are already correct.
+- **No redirects** from `/harvest` (404 afterwards; admin is internal), consistent with phases 2+3.
+
+### Acceptance Criteria
+
+- [x] `/import/wikidata` (admin only): title "Харвест из Wikidata"; the trigger form exactly as on today's `/harvest` (modes "Поиск по имени" / "Ввести QID вручную", author name search with "Добавить", selected-author chips, QID textarea parsing, "Лимит (необязательно)", validation messages, "Запустить харвест" / "Запуск...", ApiError message on failure). It does not fetch the jobs list.
+- [x] On trigger success: form cleared, `HARVEST_JOBS_QUERY_KEY` invalidated, confirmation banner with task id prefix and a "К задачам" link to `/import/jobs`; the banner disappears on "Скрыть", on the next submit and on mode switch.
+- [x] `/import/jobs` (admin only): title "Задачи харвеста"; the asynq retention note; the jobs table exactly as today (ID / Статус / Результат / actions; polling every 5 s via `HARVEST_JOBS_QUERY_KEY`; progress bar for active jobs; enrichment counters; "Подробнее"/"Скрыть" expansion with Ошибки/Пропущено tables; row links to `/moderation/books` and `/moderation/authors` for completed jobs with created books; "Нет задач" empty state); header buttons "К очереди на проверку" / "К авторам на модерации".
+- [x] `/import/author` (admin only): title "Импорт автора из Wikidata"; the Wikidata author search with per-candidate actions ("Импортировать автора", "Импортировать с книгами", "Импортировать книги", "Отклонён ранее"), confirm before harvest, result banner — behaviour identical to the former panel. After "Импортировать с книгами" the banner links "К задачам харвеста" -> `/import/jobs`.
+- [x] `/moderation/authors` has no "Импорт из Wikidata" button and no import panel; everything else unchanged.
+- [x] Импорт tabs for admin: Wikidata `/import/wikidata`, Автор `/import/author`, Файл `/import/file`, Жанры `/import/genres`, Задачи `/import/jobs`, in this order, correct tab active on each page. Sidebar Импорт and bare `/import` go to `/import/wikidata`. Moderator: AccessDenied on all `/import/*` and `/import` (unchanged).
+- [x] `/harvest` route and `app/harvest/layout.tsx` (the last legacy layout) are deleted; `/harvest` resolves to `null` in the nav config (moderator -> AccessDenied, admin -> Next 404).
+- [x] `rg -P "(?<![\w])/harvest" apps/admin/src` returns no hits (catches `'/harvest'`, template strings and prose like "on /harvest"; `/admin/harvest/...` API paths and `cmd/harvest` are not matched). Exempt: `/harvest` as a null-resolution input in `shared/config/navigation.test.ts`.
+- [x] No legacy route or layout remains: the nav-config invariant test has no allow-list; every match prefix is `/`, `/users` or under `/moderation/`, `/catalog/`, `/import/`.
+- [x] Tests listed below pass; existing admin tests pass; ESLint (boundaries) passes; CI frontend build (typedRoutes) passes (verified by CI, no native `next build`).
+
+Implementation notes (phase 4):
+
+- The PCRE grep also matches the relative module specifiers `'./harvest-trigger-view'` / `'./harvest-jobs-view'` in the two view tests (`.` is not `\w`); they are import paths following the project's `./<name>-view` test convention, not routes, and are exempt like the `navigation.test.ts` null-resolution input.
+- The trigger confirmation banner is cleared at the start of every submit (including one that fails client-side validation), on mode switch and on "Скрыть".
+- `AuthorImportView` keeps the `Card` around the search widget; the feedback banner sits above it, under the page heading and description.
+
+### Route moves
+
+| New file | Content | Deleted file |
+|---|---|---|
+| `app/import/wikidata/page.tsx` | `HarvestTriggerView` from `@/views/harvest-trigger` (`git mv` of `app/harvest/page.tsx`) | `app/harvest/page.tsx` |
+| `app/import/jobs/page.tsx` | `HarvestJobsView` from `@/views/harvest-jobs` | — |
+| `app/import/author/page.tsx` | `AuthorImportView` from `@/views/author-import` | — |
+| — | — | `app/harvest/layout.tsx` (whole `app/harvest` dir gone) |
+
+`app/import/{layout,page}.tsx`, `app/import/file/page.tsx`, `app/import/genres/page.tsx` already exist, no change.
+
+### View slices
+
+| Slice | Files | Source |
+|---|---|---|
+| `views/harvest-trigger` | `index.ts` (export `HarvestTriggerView`), `ui/harvest-trigger-view.tsx`, `ui/author-name-search.tsx`, `ui/harvest-trigger-view.test.tsx` | From `views/harvest/ui/harvest-view.tsx`: `AuthorInputMode`, `parseAuthorQIDs`, mode/selected/qids/limit/error state, `handleModeChange`/`handleAddAuthor`/`handleRemoveAuthor`, `triggerMutation`, `handleSubmit`, the form JSX and error banner. Add `success` state (`{ taskId: string } \| null`) set in `onSuccess(res)` from `res.task_id`. Replace the local `JOBS_QUERY_KEY` with `HARVEST_JOBS_QUERY_KEY` from `@/entities/harvest`. `git mv` `author-name-search.tsx` unchanged. |
+| `views/harvest-jobs` | `index.ts` (export `HarvestJobsView`), `ui/harvest-jobs-view.tsx`, `ui/harvest-jobs-view.test.tsx` | From `harvest-view.tsx`: `stateBadgeVariant`, `jobResultSummary`, `JobResultCell`, `authorEnrichmentSummary`, `SKIPPED_RECORD_REASON`, `JobReportRow`, `expandedJobIds` + `toggleJobExpanded`, `jobsQuery` (key `HARVEST_JOBS_QUERY_KEY`, `refetchInterval: 5000`), header buttons, the "Недавние задачи" block (heading may become the page `<h1>`; keep the retention note). Suggest `git mv harvest-view.tsx -> harvest-jobs-view.tsx` and strip the form part, so history follows the larger half. |
+| `views/author-import` | `index.ts` (export `AuthorImportView`), `ui/author-import-view.tsx`, `ui/author-import-view.test.tsx` | `git mv views/author-moderation/ui/wikidata-import-panel{,.test}.tsx` -> `views/author-import/ui/author-import-view{,.test}.tsx`; rename component; page layout `<div className="space-y-6"><h1 …>Импорт автора из Wikidata</h1><p muted>Найдите автора в Wikidata и импортируйте его (с книгами или без). Импортированные авторы ждут модерации.</p>{feedback}{search (may keep Card)}</div>`; update the doc comment (no longer "panel of /moderation/authors"). |
+| `views/harvest` | — | deleted (`index.ts`, `ui/harvest-view.tsx`, `ui/harvest-view.test.tsx` moved/split) |
+
+`views/author-moderation/ui/author-moderation-view.tsx`: remove `WikidataImportPanel` import, `importOpen` state, the toggle `Button` and `{importOpen && <WikidataImportPanel />}`; the header becomes just the `<h1>`.
+
+Imports stay within boundaries: `harvest-trigger` -> `entities/harvest`, `features/search-wikidata-author`, `@bookhaven/*`; `harvest-jobs` -> `entities/harvest`, `@bookhaven/*`; `author-import` -> `features/import-wikidata-author`, `features/search-wikidata-author`, `@bookhaven/*`.
+
+### Config (phase 4 state, final)
+
+Edit `apps/admin/src/shared/config/navigation.ts` Импорт tabs (and header comment: "Phases 1-4 applied; no legacy routes remain"):
+
+| Tab id | Label | href | match | roles |
+|---|---|---|---|---|
+| `import.wikidata` | Wikidata | `/import/wikidata` | `['/import/wikidata']` | admin |
+| `import.author` | Автор | `/import/author` | `['/import/author']` | admin |
+| `import.file` | Файл | `/import/file` | `['/import/file']` | admin |
+| `import.genres` | Жанры | `/import/genres` | `['/import/genres']` | admin |
+| `import.jobs` | Задачи | `/import/jobs` | `['/import/jobs']` | admin |
+
+Other sections unchanged.
+
+### Link inventory (grep on `main` after #285+#286; update all)
+
+| File | Current | New |
+|---|---|---|
+| `shared/config/navigation.ts` | `import.wikidata` -> `/harvest`; legacy comment | see Config table |
+| `features/import-wikidata-author/lib/result-text.ts` | `HARVEST_LINK` `/harvest` "К харвесту" | `/import/jobs` "К задачам харвеста" |
+| `features/search-wikidata-author/ui/wikidata-author-search.tsx` (doc comment L27) | "on /harvest the widget is nested in the harvest form" | "on /import/wikidata …" |
+| `views/harvest/ui/harvest-view.tsx` | `/moderation/books`, `/moderation/authors` (header + row) | unchanged hrefs, now in `views/harvest-jobs` |
+| `views/author-moderation/ui/author-moderation-view.tsx` | toggle + panel | removed |
+| `views/dashboard` | no `/harvest` or import links | no change (phase 5 may add) |
+
+### Tests (phase 4)
+
+Move/split:
+
+- `views/harvest/ui/harvest-view.test.tsx` ->
+  - `views/harvest-trigger/ui/harvest-trigger-view.test.tsx`: the form/search cases (default mode + toggle; "select at least one author"; "at least one QID"; QID parsing; 400 ApiError message; search -> add -> submit qid; existing-candidate badge + open link; empty-state hint; 502 search error). Replace "refetches the jobs list after a successful trigger" with: on success invalidates `['admin','harvest','jobs']`, clears the form, shows "Харвест запущен (задача …)" and a "К задачам" link with href `/import/jobs`. Add: `listJobs` is not called; banner hidden after "Скрыть" and after switching mode. The `@/entities/harvest` mock must now also export `HARVEST_JOBS_QUERY_KEY`.
+  - `views/harvest-jobs/ui/harvest-jobs-view.test.tsx`: the job cases (state badges + pending-review link and "К авторам на модерации" -> `/moderation/authors`, "К очереди на проверку" -> `/moderation/books`; enrichment counters; active progress bar; "Выполняется…"; retry without stale bar; no "Подробнее" with empty report; expand/collapse errors/skipped; active job toggle). Add: header buttons hrefs; "Нет задач" empty state.
+- `views/author-moderation/ui/wikidata-import-panel.test.tsx` -> `views/author-import/ui/author-import-view.test.tsx` (render `AuthorImportView`); "К харвесту" `/harvest` assertion (L125) -> link "К задачам харвеста" href `/import/jobs`; add: page heading "Импорт автора из Wikidata".
+
+Update:
+
+- `views/author-moderation/ui/author-moderation-view.test.tsx`: drop the `WikidataImportPanel` mock (L41); replace the toggle test (~L331-338) with "no 'Импорт из Wikidata' button and no import panel".
+- `features/import-wikidata-author/lib/result-text.test.ts` (L120): `[{ href: '/import/jobs', label: 'К задачам харвеста' }]`.
+- `shared/config/navigation.test.ts`: resolution add `/import/wikidata` -> `import.wikidata`, `/import/author` -> `import.author`, `/import/jobs` -> `import.jobs`, remove `['/harvest', 'import.wikidata']`; null cases add `/harvest`, `/import/wikidatax`, `/import/unknown`; invariant test: remove `legacyAllowList` and its comment; `getSectionHref(importSection, 'admin') === '/import/wikidata'`.
+- `widgets/admin-shell/ui/shell.test.tsx` (L68): `['Импорт', '/import/wikidata']`; active-section case add `/import/jobs` -> Импорт; moderator AccessDenied paths add `/import/wikidata`.
+- `widgets/section-tabs/ui/section-tabs.test.tsx`: `/import/file` case -> `[['Wikidata','/import/wikidata'],['Автор','/import/author'],['Файл','/import/file'],['Жанры','/import/genres'],['Задачи','/import/jobs']]`, Файл active; add `/import/jobs` -> Задачи active; `SectionIndexRedirect` add "admin on /import goes to `/import/wikidata`".
+
+No test changes needed: `features/search-wikidata-author` tests (`/moderation/authors?…` already), `views/book-import` tests.
+
+### Documentation (phase 4)
+
+- This contract: tick phase 4 criteria, `Status: in progress (phases 1-4 done)`.
+- Done feature contracts (`admin-harvest-trigger.md`, `harvest-*.md`, `author-direct-import.md`, `author-moderation-queue.md`, …) and completed ROADMAP entries mention `/harvest` / `/authors/moderation` as historical facts — leave them; do not rewrite history.
+- `tsc --noEmit` may show stale `.next/types/app/harvest` artifacts locally (same note as phases 2+3).
 
 ## Phase 5 — #288 Overview + sidebar counters (outline)
 
-- Dashboard tiles link to the new routes; content regrouped by section.
+- Dashboard tiles link to the new routes (already done for moderation/catalog tiles in #285+#286; the dashboard has no import links — optionally add an Импорт entry pointing to `/import/wikidata` / `/import/jobs`); content regrouped by section.
 - Sidebar badges on Модерация (and its tabs) from `GET /api/v1/admin/dashboard` (`pending_import_review`, `pending_authors`, `pending_reviews`). The endpoint is admin-only: the query must be `enabled` only for admins; moderators get no badge and no request (otherwise a 403 sets `forbiddenPath`). Share the TanStack Query key with the dashboard view; invalidate after moderation mutations.
 
 ## Phase 6 — #289 Users management (outline, separate contract)
@@ -359,13 +460,17 @@ Genres have only Name/Slug/CreatedAt — no status or source. Moderation/import 
 - `as any` casts for typedRoutes hrefs (project-wide convention).
 - Pending-review list + publish/bulk publish (source for `views/book-moderation`): `apps/admin/src/views/books-list/ui/books-list-view.tsx` and its test.
 - Thin section pages: `apps/admin/src/app/moderation/{layout,page}.tsx` (`SectionLayout`, `SectionIndexView`).
+- Phase 4 sources: `apps/admin/src/views/harvest/ui/{harvest-view,author-name-search}.tsx`, `apps/admin/src/views/author-moderation/ui/wikidata-import-panel.tsx`, `HARVEST_JOBS_QUERY_KEY` in `apps/admin/src/entities/harvest/api/index.ts`; result banner with links: `features/import-wikidata-author/lib/result-text.ts`.
 
 ## Risks
 
 - Hooks ordering in `Shell`: the new redirect effect must be declared before the early returns.
 - typedRoutes: `tsc` does not catch route errors; the CI frontend build is the gate (do not run a native `next build` on Windows).
 - Legacy layouts stack with nested routes (`app/books/layout.tsx` wraps `/books/import`); correctness relies on `SectionTabs` resolving by pathname, not on the layout's location. Remove legacy layouts in the phase that empties their segment (after #285+#286 only `app/harvest/layout.tsx` remains).
-- Phase ordering: resolved for #285/#286 by shipping them in one PR. The Wikidata author import panel must NOT be removed from `/moderation/authors` until #287 creates `/import/author`.
+- Phase ordering: resolved for #285/#286 by shipping them in one PR. In #287 the author import panel is removed from `/moderation/authors` in the same PR that creates `/import/author` (never one without the other).
+- Splitting `harvest-view.test.tsx` (phase 4): every existing case must land in exactly one of the two new test files (moved, not dropped) — coverage of QID parsing, progress bar and the job report is the regression net for the split.
+- Harvest trigger + jobs on separate pages (phase 4): the trigger page no longer shows that a job appeared; the confirmation banner with the task id and the "К задачам" link is the mitigation. Invalidate `HARVEST_JOBS_QUERY_KEY` (not a local copy of the key) so `/import/jobs` and the author-import harvest step stay in sync.
+- `/harvest` mentions in comments/prose: the PCRE grep criterion (`(?<![\w])/harvest`) avoids false positives on `/admin/harvest/...` API paths and `cmd/harvest`; a plain `rg /harvest` will look noisy.
 - Missed links (phases 2+3): a stale `/books…`/`/authors…`/`/reviews` href becomes a 404 (no redirects). Mitigation: link inventory + the grep acceptance criterion; template-literal hrefs (`` `/books/${id}/edit` ``) are easy to miss.
 - Moving publish out of `BooksListView`: the existing publish/bulk tests must be moved, not deleted, so coverage of the publish payload and bulk report handling is preserved.
 - Bulk publish scope: `bulkPublish` ignores any filter except `search`; adding genre/author filters to `/moderation/books` later would make "Опубликовать все" publish more than is displayed. Keep search-only unless the backend endpoint gains filters.

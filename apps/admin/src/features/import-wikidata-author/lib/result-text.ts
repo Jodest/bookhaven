@@ -13,7 +13,7 @@ export interface ImportFeedback {
   links: ImportFeedbackLink[];
 }
 
-const HARVEST_LINK: ImportFeedbackLink = { href: '/harvest', label: 'К харвесту' };
+const HARVEST_LINK: ImportFeedbackLink = { href: '/import/jobs', label: 'К задачам харвеста' };
 
 /** confirm() text before "Импортировать с книгами" / "Импортировать книги". */
 export function harvestConfirmText(name: string): string {

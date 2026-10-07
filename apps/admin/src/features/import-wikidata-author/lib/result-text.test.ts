@@ -117,7 +117,7 @@ describe('importResultFeedback', () => {
     expect(fb.message).toBe(
       'Автор «Лев Толстой» импортирован и ждёт модерации. Харвест книг запущен — книги появятся скрытыми в очереди на проверку.'
     );
-    expect(fb.links).toEqual([{ href: '/harvest', label: 'К харвесту' }]);
+    expect(fb.links).toEqual([{ href: '/import/jobs', label: 'К задачам харвеста' }]);
   });
 
   it('harvest failed after import', () => {
