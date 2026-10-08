@@ -96,6 +96,11 @@ type ExternalBookRecord struct {
 	AuthorRefs []ExternalAuthor
 	// Genres are genre/subject names as reported by the source.
 	Genres []string
+	// GenreRefs are the same genres paired with their Wikidata QID.
+	// Populated by WikidataClient from the same parsed pairs as Genres
+	// (Genres == names of GenreRefs). Open Library records leave it empty
+	// (their subjects are never used as genres by harvest).
+	GenreRefs []ExternalGenre
 	// ISBN is structurally normalized (trimmed, dashes/spaces stripped)
 	// but not checksum-validated. Nil if the source did not report one.
 	ISBN *string
@@ -122,6 +127,14 @@ type ExternalBookRecord struct {
 // Wikidata identity. QID is a bare entity ID matching ^Q[0-9]+$ or empty
 // when the source did not report a (valid) one.
 type ExternalAuthor struct {
+	Name string
+	QID  string
+}
+
+// ExternalGenre is one genre of an ExternalBookRecord paired with its
+// Wikidata identity. QID is a bare entity ID matching ^Q[0-9]+$ or empty
+// when the source did not report a (valid) one.
+type ExternalGenre struct {
 	Name string
 	QID  string
 }

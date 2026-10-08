@@ -31,6 +31,8 @@ var (
 	ErrInvalidAuthorName     = errors.New("author name is required")
 	ErrInvalidAuthorStatus   = errors.New("author status is invalid")
 	ErrInvalidGenreName      = errors.New("genre name is required")
+	ErrInvalidGenreStatus    = errors.New("genre status is invalid")
+	ErrDuplicateGenreQID     = errors.New("genre wikidata qid already exists")
 	ErrInvalidSlug           = errors.New("slug is not URL safe")
 	ErrDuplicateSlug         = errors.New("slug already exists")
 	ErrInvalidISBN           = errors.New("isbn is invalid")
@@ -602,12 +604,43 @@ func validateAuthorInput(input AuthorInput) error {
 type GenreInput struct {
 	Name string
 	Slug string
+	// Status is applied by UpdateGenre only (nil = unchanged); CreateGenre
+	// ignores it and always creates a published genre.
+	Status *string
+	// WikidataQID: nil = unchanged (on create: none), "" = clear, otherwise
+	// a QID normalized by trim+uppercase that must match ^Q[0-9]+$
+	// (ErrInvalidQID) and be unused by another genre (ErrDuplicateGenreQID).
+	WikidataQID *string
 }
 
-// CreateGenre creates a new genre.
+// genreIdentity is the creation-time status and optional Wikidata QID used
+// by the shared createGenre helper.
+type genreIdentity struct {
+	status string
+	qid    *string
+}
+
+// CreateGenre creates a new published genre (admin manual input). Any
+// input.Status is ignored; input.WikidataQID is validated and checked for
+// uniqueness.
 func (s *Service) CreateGenre(ctx context.Context, input GenreInput) (*catalogDomain.Genre, error) {
+	qid, _, err := normalizeGenreQIDInput(input.WikidataQID)
+	if err != nil {
+		return nil, err
+	}
+	return s.createGenre(ctx, input, genreIdentity{status: catalogDomain.GenreStatusPublished, qid: qid})
+}
+
+// createGenre is the shared create path (validation, slug derivation,
+// name casing and uniqueness) for every genre creation: admin manual
+// (published) and file import / harvest (pending, harvest with a QID).
+// identity.qid must already be normalized.
+func (s *Service) createGenre(ctx context.Context, input GenreInput, identity genreIdentity) (*catalogDomain.Genre, error) {
 	if err := validateGenreInput(input); err != nil {
 		return nil, err
+	}
+	if !catalogDomain.IsValidGenreStatus(identity.status) {
+		return nil, ErrInvalidGenreStatus
 	}
 
 	slug := strings.TrimSpace(input.Slug)
@@ -625,16 +658,23 @@ func (s *Service) CreateGenre(ctx context.Context, input GenreInput) (*catalogDo
 	if exists {
 		return nil, ErrDuplicateSlug
 	}
+	if identity.qid != nil {
+		if err := s.ensureGenreQIDFree(ctx, *identity.qid, nil); err != nil {
+			return nil, err
+		}
+	}
 
 	genre := &catalogDomain.Genre{
-		ID:   uuid.New(),
-		Name: lowercaseFirstRune(strings.TrimSpace(input.Name)),
-		Slug: slug,
+		ID:          uuid.New(),
+		Name:        lowercaseFirstRune(strings.TrimSpace(input.Name)),
+		Slug:        slug,
+		Status:      identity.status,
+		WikidataQID: identity.qid,
 	}
 
 	if err := s.repo.CreateGenre(ctx, genre); err != nil {
 		if isDuplicateKeyError(err) {
-			return nil, ErrDuplicateSlug
+			return nil, genreDuplicateKeyError(err)
 		}
 		return nil, fmt.Errorf("create genre: %w", err)
 	}
@@ -642,7 +682,8 @@ func (s *Service) CreateGenre(ctx context.Context, input GenreInput) (*catalogDo
 	return genre, nil
 }
 
-// UpdateGenre updates an existing genre.
+// UpdateGenre updates an existing genre. input.Status (nil = unchanged)
+// may move the genre to any status; input.WikidataQID follows GenreInput.
 func (s *Service) UpdateGenre(ctx context.Context, id uuid.UUID, input GenreInput) (*catalogDomain.Genre, error) {
 	genre, err := s.repo.GetGenreByID(ctx, id)
 	if err != nil {
@@ -653,6 +694,13 @@ func (s *Service) UpdateGenre(ctx context.Context, id uuid.UUID, input GenreInpu
 	}
 
 	if err := validateGenreInput(input); err != nil {
+		return nil, err
+	}
+	if input.Status != nil && !catalogDomain.IsValidGenreStatus(*input.Status) {
+		return nil, ErrInvalidGenreStatus
+	}
+	qid, qidSet, err := normalizeGenreQIDInput(input.WikidataQID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -673,18 +721,73 @@ func (s *Service) UpdateGenre(ctx context.Context, id uuid.UUID, input GenreInpu
 			return nil, ErrDuplicateSlug
 		}
 	}
+	if qidSet && qid != nil {
+		if err := s.ensureGenreQIDFree(ctx, *qid, &id); err != nil {
+			return nil, err
+		}
+	}
 
 	genre.Name = strings.TrimSpace(input.Name)
 	genre.Slug = slug
+	if input.Status != nil {
+		genre.Status = *input.Status
+	}
+	if qidSet {
+		genre.WikidataQID = qid
+	}
 
 	if err := s.repo.UpdateGenre(ctx, genre); err != nil {
 		if isDuplicateKeyError(err) {
-			return nil, ErrDuplicateSlug
+			return nil, genreDuplicateKeyError(err)
 		}
 		return nil, fmt.Errorf("update genre: %w", err)
 	}
 
 	return genre, nil
+}
+
+// normalizeGenreQIDInput interprets an optional QID input: nil = not set
+// (set=false); "" (after trim) = clear (set=true, qid=nil); otherwise the
+// trimmed, uppercased QID, which must match ^Q[0-9]+$ (ErrInvalidQID).
+func normalizeGenreQIDInput(in *string) (qid *string, set bool, err error) {
+	if in == nil {
+		return nil, false, nil
+	}
+	v := strings.ToUpper(strings.TrimSpace(*in))
+	if v == "" {
+		return nil, true, nil
+	}
+	if !importQIDPattern.MatchString(v) {
+		return nil, true, ErrInvalidQID
+	}
+	return &v, true, nil
+}
+
+// ensureGenreQIDFree returns ErrDuplicateGenreQID when a genre other than
+// excludeID already owns qid.
+func (s *Service) ensureGenreQIDFree(ctx context.Context, qid string, excludeID *uuid.UUID) error {
+	owner, err := s.repo.GetGenreByQID(ctx, qid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return fmt.Errorf("check genre qid: %w", err)
+	}
+	if excludeID != nil && owner.ID == *excludeID {
+		return nil
+	}
+	return ErrDuplicateGenreQID
+}
+
+// genreDuplicateKeyError maps a unique violation on genres to the right
+// sentinel: the wikidata_qid partial index means ErrDuplicateGenreQID,
+// anything else (the slug index) ErrDuplicateSlug.
+func genreDuplicateKeyError(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && strings.Contains(pgErr.ConstraintName, "wikidata_qid") {
+		return ErrDuplicateGenreQID
+	}
+	return ErrDuplicateSlug
 }
 
 func validateGenreInput(input GenreInput) error {
@@ -714,8 +817,13 @@ func (s *Service) ListAuthors(ctx context.Context, search, status string, page, 
 	return s.repo.ListAuthors(ctx, search, status, limit, offset)
 }
 
-// ListGenres returns a paginated list of genres for admin.
-func (s *Service) ListGenres(ctx context.Context, search string, page, limit int) ([]catalogDomain.Genre, int64, error) {
+// ListGenres returns a paginated list of genres (every status) for admin.
+// status, when non-empty, must be a valid genre status
+// (ErrInvalidGenreStatus otherwise) and filters the list to it.
+func (s *Service) ListGenres(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Genre, int64, error) {
+	if status != "" && !catalogDomain.IsValidGenreStatus(status) {
+		return nil, 0, ErrInvalidGenreStatus
+	}
 	if page <= 0 {
 		page = 1
 	}
@@ -726,7 +834,7 @@ func (s *Service) ListGenres(ctx context.Context, search string, page, limit int
 		limit = 100
 	}
 	offset := (page - 1) * limit
-	return s.repo.ListGenres(ctx, search, limit, offset)
+	return s.repo.ListGenres(ctx, search, status, limit, offset)
 }
 
 // ListReviews returns paginated reviews for moderation.

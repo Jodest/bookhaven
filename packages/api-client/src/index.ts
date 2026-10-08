@@ -294,6 +294,8 @@ export interface AdminDashboard {
   pending_import_review: number;
   /** Authors with status 'pending' (the author moderation queue). */
   pending_authors: number;
+  /** Genres with status 'pending' (docs/features/genre-status.md). */
+  pending_genres: number;
 }
 
 export interface AdminBook {
@@ -336,10 +338,16 @@ export interface AdminAuthor {
   photo_attribution: AuthorPhotoAttribution | null;
 }
 
+export type AdminGenreStatus = 'pending' | 'published' | 'rejected';
+
 export interface AdminGenre {
   id: string;
   name: string;
   slug: string;
+  /** Only 'published' genres are visible on the public site. */
+  status: AdminGenreStatus;
+  /** Bare Wikidata QID (e.g. 'Q8261'); null when none. */
+  wikidata_qid: string | null;
 }
 
 // Admin users management (docs/features/admin-users.md).
@@ -496,6 +504,13 @@ export interface AdminAuthorInput {
 export interface AdminGenreInput {
   name: string;
   slug?: string;
+  /** Applied on update only (omitted = unchanged); ignored on create (published). */
+  status?: AdminGenreStatus;
+  /**
+   * Omitted/null = unchanged, "" = clear, otherwise a bare QID (^Q[0-9]+$).
+   * Errors: 400 invalid QID, 409 QID already used by another genre.
+   */
+  wikidata_qid?: string | null;
 }
 
 // LookupRecord is the normalized record returned by
@@ -1895,11 +1910,13 @@ export const api = {
         page?: number;
         limit?: number;
         search?: string;
+        status?: AdminGenreStatus;
       }) => {
         const queryParams: Record<string, string> = {};
         if (params?.page !== undefined) queryParams.page = String(params.page);
         if (params?.limit !== undefined) queryParams.limit = String(params.limit);
         if (params?.search) queryParams.search = params.search;
+        if (params?.status) queryParams.status = params.status;
         return fetcher<PaginatedResponse<AdminGenre>>(
           `/api/v1/admin/genres?${new URLSearchParams(queryParams)}`
         );

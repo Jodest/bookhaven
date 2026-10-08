@@ -88,8 +88,11 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]do
 	}
 
 	if len(filter.GenreID) > 0 {
+		// Only published genres are public filter targets; non-published
+		// genre IDs match nothing (empty result when none is published).
 		query = query.Joins("JOIN book_genres ON book_genres.book_id = books.id").
-			Where("book_genres.genre_id IN ?", filter.GenreID)
+			Where("book_genres.genre_id IN ?", filter.GenreID).
+			Where("EXISTS (SELECT 1 FROM genres g WHERE g.id = book_genres.genre_id AND g.status = ?)", domain.GenreStatusPublished)
 	}
 
 	if filter.AuthorID != nil {
@@ -177,9 +180,12 @@ func (r *GormRepository) GetAuthorBySlug(ctx context.Context, slug string) (*dom
 	return &author, nil
 }
 
+// ListGenres returns the published genres only (public read).
 func (r *GormRepository) ListGenres(ctx context.Context) ([]domain.Genre, error) {
 	var genres []domain.Genre
-	if err := r.db.WithContext(ctx).Order("name ASC").Find(&genres).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Where("status = ?", domain.GenreStatusPublished).
+		Order("name ASC").Find(&genres).Error; err != nil {
 		return nil, err
 	}
 	return genres, nil
@@ -251,9 +257,11 @@ func (r *GormRepository) GetSimilarSource(ctx context.Context, bookID uuid.UUID)
 		Pluck("book_authors.author_id", &src.AuthorIDs).Error; err != nil {
 		return nil, err
 	}
+	// Likewise only published genres count as a shared-genre signal.
 	if err := db.Table("book_genres").
-		Where("book_id = ?", bookID).
-		Pluck("genre_id", &src.GenreIDs).Error; err != nil {
+		Joins("JOIN genres ON genres.id = book_genres.genre_id").
+		Where("book_genres.book_id = ? AND genres.status = ?", bookID, domain.GenreStatusPublished).
+		Pluck("book_genres.genre_id", &src.GenreIDs).Error; err != nil {
 		return nil, err
 	}
 	return src, nil
@@ -282,6 +290,9 @@ func (r *GormRepository) ListSimilarCandidates(ctx context.Context, bookID uuid.
 		"book_id":     bookID,
 		"author_pool": authorPool,
 		"genre_pool":  genrePool,
+		// Only published genres count toward a candidate's genre_count
+		// (docs/features/genre-status.md rule 8).
+		"published_genre": domain.GenreStatusPublished,
 	}
 	// Build the matches CTE only from non-empty branches so no empty IN ()
 	// is ever sent.
@@ -322,7 +333,9 @@ ranked AS (
     WHERE b.is_hidden = FALSE
 )
 SELECT r.book_id, r.shared_authors, r.shared_genres, r.rating, r.ratings_count,
-       (SELECT COUNT(*) FROM book_genres g WHERE g.book_id = r.book_id) AS genre_count
+       (SELECT COUNT(*) FROM book_genres g
+        JOIN genres gn ON gn.id = g.genre_id
+        WHERE g.book_id = r.book_id AND gn.status = @published_genre) AS genre_count
 FROM ranked r
 WHERE (r.shared_authors > 0 AND r.rn <= @author_pool)
    OR (r.shared_authors = 0 AND r.rn <= @genre_pool)`

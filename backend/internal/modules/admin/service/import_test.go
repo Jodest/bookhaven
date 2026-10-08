@@ -176,7 +176,7 @@ func (f *fakeImportRepository) MergeAuthors(ctx context.Context, duplicateID, ca
 	return 0, nil
 }
 
-func (f *fakeImportRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
+func (f *fakeImportRepository) ListGenres(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
 	return f.genres, int64(len(f.genres)), nil
 }
 
@@ -196,6 +196,26 @@ func (f *fakeImportRepository) GetGenreBySlug(ctx context.Context, slug string) 
 		}
 	}
 	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) GetGenreByQID(ctx context.Context, qid string) (*catalogDomain.Genre, error) {
+	for i := range f.genres {
+		if f.genres[i].WikidataQID != nil && *f.genres[i].WikidataQID == qid {
+			return &f.genres[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeImportRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {
+	for i := range f.genres {
+		if f.genres[i].ID == id {
+			q := qid
+			f.genres[i].WikidataQID = &q
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeImportRepository) CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error {

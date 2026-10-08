@@ -34,7 +34,7 @@ type Service interface {
 	BulkSetAuthorStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.BulkStatusReport, error)
 	ImportWikidataAuthor(ctx context.Context, qid string) (*adminService.AuthorImportResult, error)
 	EnrichAuthorsFromWikidata(ctx context.Context, ids []uuid.UUID) (*adminService.AuthorEnrichmentReport, error)
-	ListGenres(ctx context.Context, search string, page, limit int) ([]catalogDomain.Genre, int64, error)
+	ListGenres(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Genre, int64, error)
 	CreateGenre(ctx context.Context, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	ListReviews(ctx context.Context, filter repository.ReviewFilter) ([]reviewsDomain.Review, int64, error)
@@ -105,6 +105,10 @@ type genreResponse struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Slug string `json:"slug"`
+	// Status is pending | published | rejected (docs/features/genre-status.md).
+	Status string `json:"status"`
+	// WikidataQID is the bare Wikidata QID, null when none.
+	WikidataQID *string `json:"wikidata_qid"`
 }
 
 type bookResponse struct {
@@ -157,6 +161,7 @@ type dashboardResponse struct {
 	PendingReviews      int64 `json:"pending_reviews"`
 	PendingImportReview int64 `json:"pending_import_review"`
 	PendingAuthors      int64 `json:"pending_authors"`
+	PendingGenres       int64 `json:"pending_genres"`
 }
 
 type authorSampleBookResponse struct {
@@ -240,6 +245,12 @@ type mergeAuthorsResponse struct {
 type createUpdateGenreRequest struct {
 	Name string `json:"name"`
 	Slug string `json:"slug"`
+	// Status (pending | published | rejected) is applied on PATCH only;
+	// omitted = unchanged. Ignored on POST (new genres are published).
+	Status *string `json:"status,omitempty"`
+	// WikidataQID: omitted/null = unchanged, "" = clear, otherwise a bare
+	// QID (^Q[0-9]+$ after trim/uppercase; 400 invalid, 409 taken).
+	WikidataQID *string `json:"wikidata_qid,omitempty"`
 }
 
 type moderateReviewRequest struct {
@@ -364,9 +375,11 @@ func toGenreResponse(g catalogDomain.Genre) genreResponse {
 		id = g.ID.String()
 	}
 	return genreResponse{
-		ID:   id,
-		Name: g.Name,
-		Slug: g.Slug,
+		ID:          id,
+		Name:        g.Name,
+		Slug:        g.Slug,
+		Status:      g.Status,
+		WikidataQID: g.WikidataQID,
 	}
 }
 
@@ -472,6 +485,7 @@ func (h *Handler) Dashboard(c echo.Context) error {
 		PendingReviews:      stats.PendingReviews,
 		PendingImportReview: stats.PendingImportReview,
 		PendingAuthors:      stats.PendingAuthors,
+		PendingGenres:       stats.PendingGenres,
 	})
 }
 
@@ -1186,9 +1200,11 @@ func (h *Handler) EnrichAuthorsFromWikidata(c echo.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param search query string false "Поиск"
+// @Param status query string false "Статус: pending, published, rejected"
 // @Param page query int false "Номер страницы"
 // @Param limit query int false "Размер страницы, максимум 100"
 // @Success 200 {object} listGenresResponse
+// @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -1198,8 +1214,16 @@ func (h *Handler) ListGenres(c echo.Context) error {
 	search := c.QueryParam("search")
 	page, limit := parsePagination(c)
 
-	genres, total, err := h.service.ListGenres(ctx, search, page, limit)
+	status := c.QueryParam("status")
+	if status != "" && !catalogDomain.IsValidGenreStatus(status) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": adminService.ErrInvalidGenreStatus.Error()})
+	}
+
+	genres, total, err := h.service.ListGenres(ctx, search, status, page, limit)
 	if err != nil {
+		if errors.Is(err, adminService.ErrInvalidGenreStatus) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list genres"})
 	}
 
@@ -1225,6 +1249,7 @@ func (h *Handler) ListGenres(c echo.Context) error {
 // @Security BearerAuth
 // @Param body body createUpdateGenreRequest true "Данные жанра"
 // @Success 201 {object} genreResponse
+// @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 409 {object} map[string]string
@@ -1240,11 +1265,16 @@ func (h *Handler) CreateGenre(c echo.Context) error {
 	}
 
 	genre, err := h.service.CreateGenre(ctx, adminService.GenreInput{
-		Name: req.Name,
-		Slug: req.Slug,
+		Name:        req.Name,
+		Slug:        req.Slug,
+		WikidataQID: req.WikidataQID,
 	})
 	if err != nil {
 		switch {
+		case errors.Is(err, adminService.ErrInvalidQID):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, adminService.ErrDuplicateGenreQID):
+			return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
 		case errors.Is(err, adminService.ErrInvalidGenreName),
 			errors.Is(err, adminService.ErrInvalidSlug):
 			return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
@@ -1268,6 +1298,7 @@ func (h *Handler) CreateGenre(c echo.Context) error {
 // @Param id path string true "ID жанра"
 // @Param body body createUpdateGenreRequest true "Данные жанра"
 // @Success 200 {object} genreResponse
+// @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -1289,13 +1320,20 @@ func (h *Handler) UpdateGenre(c echo.Context) error {
 	}
 
 	genre, err := h.service.UpdateGenre(ctx, id, adminService.GenreInput{
-		Name: req.Name,
-		Slug: req.Slug,
+		Name:        req.Name,
+		Slug:        req.Slug,
+		Status:      req.Status,
+		WikidataQID: req.WikidataQID,
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, adminService.ErrGenreNotFound):
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "genre not found"})
+		case errors.Is(err, adminService.ErrInvalidGenreStatus),
+			errors.Is(err, adminService.ErrInvalidQID):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, adminService.ErrDuplicateGenreQID):
+			return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
 		case errors.Is(err, adminService.ErrInvalidGenreName),
 			errors.Is(err, adminService.ErrInvalidSlug):
 			return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})

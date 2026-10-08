@@ -188,7 +188,7 @@ func (f *fakeBulkPublishRepository) MergeAuthors(ctx context.Context, duplicateI
 	return 0, nil
 }
 
-func (f *fakeBulkPublishRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
+func (f *fakeBulkPublishRepository) ListGenres(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
 	return f.genres, int64(len(f.genres)), nil
 }
 
@@ -203,6 +203,26 @@ func (f *fakeBulkPublishRepository) GetGenreByID(ctx context.Context, id uuid.UU
 
 func (f *fakeBulkPublishRepository) GetGenreBySlug(ctx context.Context, slug string) (*catalogDomain.Genre, error) {
 	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeBulkPublishRepository) GetGenreByQID(ctx context.Context, qid string) (*catalogDomain.Genre, error) {
+	for i := range f.genres {
+		if f.genres[i].WikidataQID != nil && *f.genres[i].WikidataQID == qid {
+			return &f.genres[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeBulkPublishRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {
+	for i := range f.genres {
+		if f.genres[i].ID == id {
+			q := qid
+			f.genres[i].WikidataQID = &q
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeBulkPublishRepository) CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error {

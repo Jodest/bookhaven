@@ -52,6 +52,7 @@ describe('useNavCounters', () => {
       pending_reviews: 9,
       pending_import_review: 4,
       pending_authors: 7,
+      pending_genres: 6,
     });
     listJobsMock.mockResolvedValue({
       items: [

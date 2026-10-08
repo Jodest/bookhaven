@@ -132,3 +132,7 @@ Optional, not required for correctness: a partial index `CREATE INDEX ON books(i
 ## Update: author status (2026-10-06)
 
 Harvested authors are no longer public on creation: the harvest worker resolves authors by Wikidata QID first (then by name slug) and creates missing ones as `pending`; authors an admin `rejected` act as tombstones and are never re-created or re-linked by later harvests. Public pages show only `published` authors; a published book still shows a non-published author's name as plain text. See [author-status.md](author-status.md).
+
+## Update: genre status (2026-10-08)
+
+Harvested genres are no longer public on creation either: the three Wikidata query builders return each genre's QID paired with its ru label, and the harvest worker resolves genres by Wikidata QID first (then by name slug) and creates missing ones as `pending`; genres an admin `rejected` are tombstones and are never re-created or re-linked by later harvests. A slug match with a different QID links the existing genre (no `-q…` twin). Public pages show only `published` genres. See [genre-status.md](genre-status.md).

@@ -12,6 +12,7 @@ describe('pendingModerationTotal', () => {
         pending_reviews: 99,
         pending_import_review: 4,
         pending_authors: 7,
+        pending_genres: 6,
       })
     ).toBe(11);
   });
@@ -26,6 +27,7 @@ describe('pendingModerationTotal', () => {
         pending_reviews: 3,
         pending_import_review: 0,
         pending_authors: 0,
+        pending_genres: 0,
       })
     ).toBe(0);
   });

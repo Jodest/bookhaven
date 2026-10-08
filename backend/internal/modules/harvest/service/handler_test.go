@@ -27,6 +27,9 @@ type fakeAdminRepository struct {
 	// bookAuthorIDs records the author IDs passed to each CreateBook call,
 	// parallel to books.
 	bookAuthorIDs [][]uuid.UUID
+	// bookGenreIDs records the genre IDs passed to each CreateBook call,
+	// parallel to books.
+	bookGenreIDs [][]uuid.UUID
 }
 
 var _ adminrepository.Repository = (*fakeAdminRepository)(nil)
@@ -61,6 +64,7 @@ func (f *fakeAdminRepository) GetBookByExternalID(ctx context.Context, source, i
 func (f *fakeAdminRepository) CreateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error {
 	f.books = append(f.books, *book)
 	f.bookAuthorIDs = append(f.bookAuthorIDs, authorIDs)
+	f.bookGenreIDs = append(f.bookGenreIDs, genreIDs)
 	return nil
 }
 
@@ -176,7 +180,7 @@ func (f *fakeAdminRepository) MergeAuthors(ctx context.Context, duplicateID, can
 	return 0, nil
 }
 
-func (f *fakeAdminRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
+func (f *fakeAdminRepository) ListGenres(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
 	return f.genres, int64(len(f.genres)), nil
 }
 
@@ -196,6 +200,26 @@ func (f *fakeAdminRepository) GetGenreBySlug(ctx context.Context, slug string) (
 		}
 	}
 	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeAdminRepository) GetGenreByQID(ctx context.Context, qid string) (*catalogDomain.Genre, error) {
+	for i := range f.genres {
+		if f.genres[i].WikidataQID != nil && *f.genres[i].WikidataQID == qid {
+			return &f.genres[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeAdminRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {
+	for i := range f.genres {
+		if f.genres[i].ID == id {
+			q := qid
+			f.genres[i].WikidataQID = &q
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeAdminRepository) CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error {

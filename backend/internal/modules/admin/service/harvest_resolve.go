@@ -282,6 +282,12 @@ func (s *Service) createHarvestAuthor(ctx context.Context, name, slug, qid strin
 // exists. Empty/whitespace-only names are skipped. Duplicates (by resolved
 // ID) are collapsed. See ResolveOrCreateAuthorIDsByNames for the matching
 // policy this mirrors.
+//
+// This is the admin JSON/CSV file import's genre strategy
+// (docs/features/genre-status.md rule 6): slug-only matching, missing
+// genres are created as pending (free-text labels need review), and a
+// slug-matched genre is linked whatever its status, rejected included.
+// Harvest uses ResolveOrCreateHarvestGenres instead.
 func (s *Service) ResolveOrCreateGenreIDsByNames(ctx context.Context, names []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(names))
 	ids := make([]string, 0, len(names))
@@ -298,7 +304,7 @@ func (s *Service) ResolveOrCreateGenreIDsByNames(ctx context.Context, names []st
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, fmt.Errorf("lookup genre %q: %w", name, err)
 			}
-			created, createErr := s.CreateGenre(ctx, GenreInput{Name: name})
+			created, createErr := s.createGenre(ctx, GenreInput{Name: name}, genreIdentity{status: catalogDomain.GenreStatusPending})
 			if createErr != nil {
 				return nil, fmt.Errorf("create genre %q: %w", name, createErr)
 			}
@@ -314,4 +320,170 @@ func (s *Service) ResolveOrCreateGenreIDsByNames(ctx context.Context, names []st
 	}
 
 	return ids, nil
+}
+
+// GenreRef is one harvested genre reference: a display name plus an
+// optional bare Wikidata QID (empty when the source reported none).
+type GenreRef struct {
+	Name string
+	QID  string
+}
+
+// Genre resolution outcomes shared by the harvest resolver and the future
+// Wikidata genre import (#303).
+const (
+	GenreOutcomeCreated  = "created"
+	GenreOutcomeExisting = "existing"
+	GenreOutcomeRejected = "rejected"
+)
+
+// Genre resolution match kinds ("" for a created genre).
+const (
+	GenreMatchQID  = "qid"
+	GenreMatchSlug = "slug"
+)
+
+// GenreResolution is the result of resolving one name/QID with the harvest
+// rules (genre-status.md rule 5).
+type GenreResolution struct {
+	// Genre is the matched or created genre. For a rejected outcome it is
+	// the rejected (tombstone) genre.
+	Genre *catalogDomain.Genre
+	// Outcome is GenreOutcomeCreated, GenreOutcomeExisting or
+	// GenreOutcomeRejected.
+	Outcome string
+	// Match is GenreMatchQID or GenreMatchSlug for an existing/rejected
+	// match, "" for a created genre.
+	Match string
+	// QIDBackfilled reports that the QID was written to a slug-matched
+	// genre that had none.
+	QIDBackfilled bool
+}
+
+// ResolveOrCreateHarvestGenres resolves harvested genre refs to genre IDs
+// per docs/features/genre-status.md rule 5:
+//
+//  1. QID present -> match by wikidata_qid. A rejected match is a
+//     tombstone: the ref is skipped (no link, nothing created). A
+//     pending/published match is linked (a pending genre is reused).
+//  2. Otherwise / no QID match -> match by slugify(name).
+//     - no QID on the genre, QID given -> QID backfilled (status
+//     unchanged; a unique violation skips the backfill) and linked.
+//     - rejected -> skipped (after the backfill above).
+//     - a different QID -> the existing genre is linked untouched; no
+//     namesake genre is created (an info line logs both QIDs).
+//     - same QID or no QID given -> linked.
+//  3. No match -> a new pending genre (with the QID, if any) is created
+//     and linked.
+//
+// Empty names are skipped; duplicates (by resolved ID) are collapsed. When
+// refs are skipped one info line lists them; the caller still creates the
+// hidden book even when every genre was skipped.
+func (s *Service) ResolveOrCreateHarvestGenres(ctx context.Context, refs []GenreRef) ([]string, error) {
+	seen := make(map[string]struct{}, len(refs))
+	ids := make([]string, 0, len(refs))
+	var skipped []string
+
+	for _, ref := range refs {
+		name := strings.TrimSpace(ref.Name)
+		if name == "" {
+			continue
+		}
+		qid := strings.TrimSpace(ref.QID)
+
+		res, err := s.resolveHarvestGenre(ctx, name, qid)
+		if err != nil {
+			return nil, err
+		}
+		if res.Outcome == GenreOutcomeRejected {
+			skipped = append(skipped, strings.TrimSpace(name+" "+qid))
+			continue
+		}
+
+		id := res.Genre.ID.String()
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	if len(skipped) > 0 {
+		s.log.Info("harvest skipped rejected (tombstoned) genres",
+			zap.Strings("genres", skipped),
+			zap.Bool("all_skipped", len(ids) == 0))
+	}
+	return ids, nil
+}
+
+// resolveHarvestGenre applies rule 5 to a single (trimmed, non-empty)
+// name/QID. A rejected outcome means "skip" (tombstone).
+func (s *Service) resolveHarvestGenre(ctx context.Context, name, qid string) (*GenreResolution, error) {
+	if qid != "" {
+		genre, err := s.repo.GetGenreByQID(ctx, qid)
+		switch {
+		case err == nil:
+			outcome := GenreOutcomeExisting
+			if genre.Status == catalogDomain.GenreStatusRejected {
+				outcome = GenreOutcomeRejected
+			}
+			return &GenreResolution{Genre: genre, Outcome: outcome, Match: GenreMatchQID}, nil
+		case !errors.Is(err, gorm.ErrRecordNotFound):
+			return nil, fmt.Errorf("lookup genre by qid %q: %w", qid, err)
+		}
+	}
+	return s.resolveGenreBySlug(ctx, name, qid)
+}
+
+// resolveGenreBySlug is rule 5 from the slug step on (the QID, when given,
+// is known not to match any genre yet).
+func (s *Service) resolveGenreBySlug(ctx context.Context, name, qid string) (*GenreResolution, error) {
+	genre, err := s.repo.GetGenreBySlug(ctx, slugify(name))
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("lookup genre %q: %w", name, err)
+		}
+		identity := genreIdentity{status: catalogDomain.GenreStatusPending}
+		if qid != "" {
+			q := qid
+			identity.qid = &q
+		}
+		created, err := s.createGenre(ctx, GenreInput{Name: name}, identity)
+		if err != nil {
+			return nil, fmt.Errorf("create genre %q: %w", name, err)
+		}
+		return &GenreResolution{Genre: created, Outcome: GenreOutcomeCreated}, nil
+	}
+
+	res := &GenreResolution{Genre: genre, Outcome: GenreOutcomeExisting, Match: GenreMatchSlug}
+	if qid != "" && genre.WikidataQID == nil {
+		if err := s.repo.SetGenreQID(ctx, genre.ID, qid); err != nil {
+			if !isDuplicateKeyError(err) {
+				return nil, fmt.Errorf("backfill genre %q qid %q: %w", name, qid, err)
+			}
+			// Another genre took the QID concurrently: skip the backfill,
+			// still link (rule 5.2).
+			s.log.Info("harvest genre qid backfill skipped: qid already owned",
+				zap.String("genre", genre.Slug), zap.String("qid", qid))
+		} else {
+			backfilled := qid
+			genre.WikidataQID = &backfilled
+			res.QIDBackfilled = true
+		}
+	}
+
+	if genre.Status == catalogDomain.GenreStatusRejected {
+		res.Outcome = GenreOutcomeRejected
+		return res, nil
+	}
+
+	if qid != "" && genre.WikidataQID != nil && *genre.WikidataQID != qid {
+		// Same ru label, different Wikidata item: link the existing genre
+		// untouched (no namesake twin; #302 merge resolves near-duplicates).
+		s.log.Info("harvest genre slug match with a different qid",
+			zap.String("genre", genre.Slug),
+			zap.String("genre_qid", *genre.WikidataQID),
+			zap.String("ref_qid", qid))
+	}
+	return res, nil
 }

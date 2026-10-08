@@ -30,6 +30,11 @@ type fakeRepository struct {
 	authorLookupErr  error
 	genreLookupErr   error
 
+	// setGenreQIDErr / setGenreQIDCalls back the harvest genre QID
+	// backfill tests.
+	setGenreQIDErr   error
+	setGenreQIDCalls int
+
 	// listByExternalIDsErr / listByExternalIDsCalls back the
 	// FindAuthorsByWikidataQIDs tests.
 	listByExternalIDsErr   error
@@ -67,6 +72,11 @@ func (f *fakeRepository) DashboardCounts(ctx context.Context) (repository.Dashbo
 		}
 	}
 	st.Genres = int64(len(f.genres))
+	for _, g := range f.genres {
+		if g.Status == catalogDomain.GenreStatusPending {
+			st.PendingGenres++
+		}
+	}
 	for _, r := range f.reviews {
 		if r.IsHidden {
 			st.PendingReviews++
@@ -237,8 +247,17 @@ func (f *fakeRepository) MergeAuthors(ctx context.Context, duplicateID, canonica
 	return 0, nil
 }
 
-func (f *fakeRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
-	return f.genres, int64(len(f.genres)), nil
+func (f *fakeRepository) ListGenres(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
+	if status == "" {
+		return f.genres, int64(len(f.genres)), nil
+	}
+	var out []catalogDomain.Genre
+	for _, g := range f.genres {
+		if g.Status == status {
+			out = append(out, g)
+		}
+	}
+	return out, int64(len(out)), nil
 }
 
 func (f *fakeRepository) GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error) {
@@ -260,6 +279,30 @@ func (f *fakeRepository) GetGenreBySlug(ctx context.Context, slug string) (*cata
 		}
 	}
 	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeRepository) GetGenreByQID(ctx context.Context, qid string) (*catalogDomain.Genre, error) {
+	for i := range f.genres {
+		if f.genres[i].WikidataQID != nil && *f.genres[i].WikidataQID == qid {
+			return &f.genres[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {
+	f.setGenreQIDCalls++
+	if f.setGenreQIDErr != nil {
+		return f.setGenreQIDErr
+	}
+	for i := range f.genres {
+		if f.genres[i].ID == id {
+			q := qid
+			f.genres[i].WikidataQID = &q
+			return nil
+		}
+	}
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeRepository) CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error {
