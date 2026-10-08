@@ -69,6 +69,7 @@ describe('DashboardView', () => {
       pending_reviews: 2,
       pending_import_review: 4,
       pending_authors: 7,
+      pending_genres: 6,
     });
     listJobsMock.mockResolvedValue({ items: [] });
   });
@@ -106,6 +107,18 @@ describe('DashboardView', () => {
     expect(within(moderation).getByText('Авторы на модерации').closest('a')).toHaveAttribute(
       'href',
       '/moderation/authors'
+    );
+  });
+
+  it('renders a card for pending genres linking to the pending-filtered genre catalog', async () => {
+    renderView();
+
+    await waitFor(() => expect(screen.getByText('Жанры на модерации')).toBeInTheDocument());
+    const moderation = group('Модерация');
+    expect(within(moderation).getByText('6')).toBeInTheDocument();
+    expect(within(moderation).getByText('Жанры на модерации').closest('a')).toHaveAttribute(
+      'href',
+      '/catalog/genres?status=pending'
     );
   });
 

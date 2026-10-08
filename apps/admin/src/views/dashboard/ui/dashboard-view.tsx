@@ -160,7 +160,7 @@ export function DashboardView() {
     counters = (
       <>
         <DashboardGroup id="moderation" title="Модерация">
-          <SkeletonGrid count={3} />
+          <SkeletonGrid count={4} />
         </DashboardGroup>
         <DashboardGroup id="catalog" title="Каталог">
           <SkeletonGrid count={4} />
@@ -181,6 +181,13 @@ export function DashboardView() {
         href: '/moderation/books',
       },
       { label: 'Авторы на модерации', value: data.pending_authors, href: '/moderation/authors' },
+      {
+        // Until the genre moderation queue (#302) exists, the tile opens the
+        // catalog list filtered to pending genres.
+        label: 'Жанры на модерации',
+        value: data.pending_genres,
+        href: '/catalog/genres?status=pending',
+      },
       {
         label: 'Скрытых отзывов',
         value: data.pending_reviews,

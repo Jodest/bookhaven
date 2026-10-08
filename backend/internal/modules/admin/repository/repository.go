@@ -89,9 +89,17 @@ type Repository interface {
 	FillAuthorEnrichment(ctx context.Context, id uuid.UUID, fill AuthorEnrichmentFill) error
 
 	// Genres.
-	ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error)
+	// ListGenres lists genres of every status; status, when non-empty,
+	// restricts the result to that status.
+	ListGenres(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Genre, int64, error)
 	GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error)
 	GetGenreBySlug(ctx context.Context, slug string) (*catalogDomain.Genre, error)
+	// GetGenreByQID returns the genre with the given Wikidata QID, any
+	// status. Returns gorm.ErrRecordNotFound when none exists.
+	GetGenreByQID(ctx context.Context, qid string) (*catalogDomain.Genre, error)
+	// SetGenreQID sets a genre's wikidata_qid without touching any other
+	// column (status included).
+	SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error
 	CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error
 	UpdateGenre(ctx context.Context, genre *catalogDomain.Genre) error
 	GenreSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
@@ -144,6 +152,7 @@ type DashboardStats struct {
 	PendingReviews      int64
 	PendingImportReview int64
 	PendingAuthors      int64
+	PendingGenres       int64
 }
 
 // AuthorModerationFilter defines filtering options for the author
@@ -217,6 +226,9 @@ func (r *GormRepository) DashboardCounts(ctx context.Context) (DashboardStats, e
 		return DashboardStats{}, err
 	}
 	if err := db.Model(&catalogDomain.Author{}).Where("status = ?", catalogDomain.AuthorStatusPending).Count(&st.PendingAuthors).Error; err != nil {
+		return DashboardStats{}, err
+	}
+	if err := db.Model(&catalogDomain.Genre{}).Where("status = ?", catalogDomain.GenreStatusPending).Count(&st.PendingGenres).Error; err != nil {
 		return DashboardStats{}, err
 	}
 
@@ -552,7 +564,7 @@ func (r *GormRepository) MergeAuthors(ctx context.Context, duplicateID, canonica
 	return booksReassigned, nil
 }
 
-func (r *GormRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
+func (r *GormRepository) ListGenres(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
 	var genres []catalogDomain.Genre
 	var total int64
 
@@ -560,6 +572,9 @@ func (r *GormRepository) ListGenres(ctx context.Context, search string, limit, o
 
 	if search != "" {
 		query = query.Where("name ILIKE ?", "%"+search+"%")
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
 	}
 
 	if err := query.Count(&total).Error; err != nil {
@@ -600,6 +615,20 @@ func (r *GormRepository) GetGenreBySlug(ctx context.Context, slug string) (*cata
 		return nil, err
 	}
 	return &genre, nil
+}
+
+func (r *GormRepository) GetGenreByQID(ctx context.Context, qid string) (*catalogDomain.Genre, error) {
+	var genre catalogDomain.Genre
+	if err := r.db.WithContext(ctx).First(&genre, "wikidata_qid = ?", qid).Error; err != nil {
+		return nil, err
+	}
+	return &genre, nil
+}
+
+func (r *GormRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {
+	return r.db.WithContext(ctx).Model(&catalogDomain.Genre{}).
+		Where("id = ?", id).
+		Update("wikidata_qid", qid).Error
 }
 
 func (r *GormRepository) CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error {

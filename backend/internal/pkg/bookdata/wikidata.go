@@ -56,7 +56,8 @@ func (c *WikidataClient) SourceName() string { return "wikidata" }
 // following result variables, matching what buildTitleAuthorQuery and
 // buildISBNQuery produce: item, itemLabel, authors (pipe-separated
 // "<QID>\t<label>" pairs; a bare label without a tab is accepted as a
-// QID-less name), genres (pipe-separated), isbn, published (a date literal), language (an English
+// QID-less name), genres (same pipe-separated "<QID>\t<label>" pairing as
+// authors), isbn, published (a date literal), language (an English
 // language name label). Missing optional variables simply leave the
 // corresponding ExternalBookRecord field unset.
 func (c *WikidataClient) Query(ctx context.Context, sparql string) ([]ExternalBookRecord, error) {
@@ -161,7 +162,7 @@ func buildTitleAuthorQuery(title, author string) string {
 
 	return fmt.Sprintf(`SELECT ?item ?itemLabel
   (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?author), "/entity/"), "\t", ?authorLabel); separator="|") AS ?authors)
-  (GROUP_CONCAT(DISTINCT ?genreLabel; separator="|") AS ?genres)
+  (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?genre), "/entity/"), "\t", ?genreLabel); separator="|") AS ?genres)
   (SAMPLE(?isbn13) AS ?isbn)
   (SAMPLE(?pubDate) AS ?published)
   (SAMPLE(?languageLabel) AS ?language)
@@ -199,7 +200,7 @@ func buildISBNQuery(isbn string) string {
 	escaped := escapeSPARQLString(isbn)
 	return fmt.Sprintf(`SELECT ?item ?itemLabel
   (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?author), "/entity/"), "\t", ?authorLabel); separator="|") AS ?authors)
-  (GROUP_CONCAT(DISTINCT ?genreLabel; separator="|") AS ?genres)
+  (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?genre), "/entity/"), "\t", ?genreLabel); separator="|") AS ?genres)
   (SAMPLE(?isbn13) AS ?isbn)
   (SAMPLE(?pubDate) AS ?published)
   (SAMPLE(?languageLabel) AS ?language)
@@ -295,7 +296,7 @@ func BuildAuthorListQuery(authorQIDs []string, limit int) (string, error) {
 
 	return fmt.Sprintf(`SELECT ?item ?itemLabel
   (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?author), "/entity/"), "\t", ?authorLabel); separator="|") AS ?authors)
-  (GROUP_CONCAT(DISTINCT ?genreLabel; separator="|") AS ?genres)
+  (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?genre), "/entity/"), "\t", ?genreLabel); separator="|") AS ?genres)
   (SAMPLE(?isbn13) AS ?isbn)
   (SAMPLE(?pubDate) AS ?published)
   (SAMPLE(?languageLabel) AS ?language)
@@ -393,7 +394,11 @@ func parseSparqlBindings(bindings []map[string]sparqlValue) []ExternalBookRecord
 			}
 		}
 		if v, ok := binding["genres"]; ok && v.Value != "" {
-			record.Genres = splitConcat(v.Value)
+			record.GenreRefs = parseGenrePairs(v.Value)
+			record.Genres = make([]string, 0, len(record.GenreRefs))
+			for _, ref := range record.GenreRefs {
+				record.Genres = append(record.Genres, ref.Name)
+			}
 		}
 		if v, ok := binding["isbn"]; ok && v.Value != "" {
 			isbn := normalizeISBNStructural(v.Value)
@@ -426,15 +431,21 @@ func extractWikidataID(uri string) string {
 	return uri
 }
 
-// parseAuthorPairs parses the paired author aggregate produced by the query
-// builders: entries separated by "|", each entry "<QID>	<label>". Each
-// entry is split on its first tab only, so a label can never shift into
-// another author's QID. An entry with no tab is treated as a bare name
-// (QID empty); a malformed QID is dropped while the name is kept; entries
-// with an empty name are skipped.
-func parseAuthorPairs(value string) []ExternalAuthor {
+// qidPair is one entry of a paired "<QID>\t<label>" aggregate.
+type qidPair struct {
+	QID  string
+	Name string
+}
+
+// parseQIDPairs parses a paired aggregate produced by the query builders
+// (authors and genres): entries separated by "|", each entry
+// "<QID>\t<label>". Each entry is split on its first tab only, so a label
+// can never shift into another entry's QID. An entry with no tab is treated
+// as a bare name (QID empty); a malformed QID is dropped while the name is
+// kept; entries with an empty name are skipped.
+func parseQIDPairs(value string) []qidPair {
 	parts := strings.Split(value, "|")
-	out := make([]ExternalAuthor, 0, len(parts))
+	out := make([]qidPair, 0, len(parts))
 	for _, p := range parts {
 		qid, name := "", p
 		if i := strings.Index(p, "\t"); i >= 0 {
@@ -447,21 +458,27 @@ func parseAuthorPairs(value string) []ExternalAuthor {
 		if !wikidataQIDPattern.MatchString(qid) {
 			qid = ""
 		}
-		out = append(out, ExternalAuthor{Name: name, QID: qid})
+		out = append(out, qidPair{QID: qid, Name: name})
 	}
 	return out
 }
 
-// splitConcat splits a GROUP_CONCAT(... ; separator="|") value back into its
-// individual, non-empty parts.
-func splitConcat(value string) []string {
-	parts := strings.Split(value, "|")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
+// parseAuthorPairs parses the paired author aggregate (see parseQIDPairs).
+func parseAuthorPairs(value string) []ExternalAuthor {
+	pairs := parseQIDPairs(value)
+	out := make([]ExternalAuthor, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, ExternalAuthor{Name: p.Name, QID: p.QID})
+	}
+	return out
+}
+
+// parseGenrePairs parses the paired genre aggregate (see parseQIDPairs).
+func parseGenrePairs(value string) []ExternalGenre {
+	pairs := parseQIDPairs(value)
+	out := make([]ExternalGenre, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, ExternalGenre{Name: p.Name, QID: p.QID})
 	}
 	return out
 }

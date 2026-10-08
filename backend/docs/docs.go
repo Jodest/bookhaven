@@ -1462,6 +1462,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "string",
+                        "description": "Статус: pending, published, rejected",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Номер страницы",
                         "name": "page",
@@ -1479,6 +1485,15 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_admin_transport_http.listGenresResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
@@ -1543,6 +1558,15 @@ const docTemplate = `{
                         "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_admin_transport_http.genreResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
@@ -1634,6 +1658,15 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_admin_transport_http.genreResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
@@ -6310,6 +6343,14 @@ const docTemplate = `{
                 },
                 "slug": {
                     "type": "string"
+                },
+                "status": {
+                    "description": "Status (pending | published | rejected) is applied on PATCH only;\nomitted = unchanged. Ignored on POST (new genres are published).",
+                    "type": "string"
+                },
+                "wikidata_qid": {
+                    "description": "WikidataQID: omitted/null = unchanged, \"\" = clear, otherwise a bare\nQID (^Q[0-9]+$ after trim/uppercase; 400 invalid, 409 taken).",
+                    "type": "string"
                 }
             }
         },
@@ -6329,6 +6370,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "pending_authors": {
+                    "type": "integer"
+                },
+                "pending_genres": {
                     "type": "integer"
                 },
                 "pending_import_review": {
@@ -6360,6 +6404,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status is pending | published | rejected (docs/features/genre-status.md).",
+                    "type": "string"
+                },
+                "wikidata_qid": {
+                    "description": "WikidataQID is the bare Wikidata QID, null when none.",
                     "type": "string"
                 }
             }

@@ -167,8 +167,10 @@ func toBookListItemResponse(b catalogDomain.Book) bookListItemResponse {
 		authors = append(authors, toAuthorResponse(a))
 	}
 
-	genres := make([]genreResponse, 0, len(b.Genres))
-	for _, g := range b.Genres {
+	// Only published genres are public (docs/features/genre-status.md).
+	publishedGenres := catalogDomain.PublishedGenres(b.Genres)
+	genres := make([]genreResponse, 0, len(publishedGenres))
+	for _, g := range publishedGenres {
 		genres = append(genres, toGenreResponse(g))
 	}
 

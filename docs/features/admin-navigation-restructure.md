@@ -547,9 +547,14 @@ Update:
 
 Implemented in its own contract: [admin-users.md](admin-users.md); covers the list/change-role part of ROADMAP #247 (blocking accounts deferred). Backend (admin module): `GET /api/v1/admin/users` (paginated, search by email/name, role filter), `PATCH /api/v1/admin/users/:id/role` (admin + bearer; forbid changing own role; forbid demoting the last admin, checked in a transaction that row-locks the admin set). Frontend: `/users` placeholder replaced by `views/users` + `features/change-user-role` + `entities/user`.
 
-## Phase 7 — #290 Genres moderation/import (proposal)
+## Phase 7 — #290 Genres moderation and Wikidata import (epic)
 
-Genres have only Name/Slug/CreatedAt — no status or source. Moderation/import requires a product decision (status lifecycle, import source, harvest behaviour) and a schema migration; plan a separate contract once decided. Placeholders stay until then.
+Product decision taken; split into three features with their own contracts:
+1. #301 Genre status & Wikidata identity — `status` (pending/published/rejected, all existing genres -> pending) + `wikidata_qid`, public published-only filtering, harvest QID-first matching with rejected tombstones, admin badge/filter/edit, `pending_genres` dashboard tile: [genre-status.md](genre-status.md).
+2. #302 Genre moderation queue with merge — replaces the `/moderation/genres` placeholder; adds `pending_genres` to the sidebar moderation badge and the Модерация/Жанры tab badge (contract TBD).
+3. #303 Wikidata genre import — replaces the `/import/genres` placeholder (contract TBD).
+
+Placeholders stay until #302/#303.
 
 ---
 
