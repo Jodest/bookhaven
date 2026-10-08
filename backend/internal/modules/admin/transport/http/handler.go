@@ -13,6 +13,7 @@ import (
 	adminService "github.com/bookhaven/backend/internal/modules/admin/service"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
+	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -41,6 +42,8 @@ type Service interface {
 	LookupBook(ctx context.Context, isbn, query, author string) (*bookdata.ExternalBookRecord, error)
 	ImportBooks(ctx context.Context, rows []adminService.ImportRowInput, defaultHidden bool) adminService.ImportReport
 	BulkPublishBooks(ctx context.Context, search string) (adminService.BulkPublishReport, error)
+	ListUsers(ctx context.Context, search, role string, page, limit int) ([]usersDomain.User, int64, error)
+	ChangeUserRole(ctx context.Context, actorID, targetID uuid.UUID, role string) (*usersDomain.User, error)
 }
 
 // Handler handles admin HTTP requests.

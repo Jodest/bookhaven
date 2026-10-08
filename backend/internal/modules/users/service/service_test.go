@@ -14,6 +14,10 @@ import (
 
 type fakeRepository struct {
 	users map[uuid.UUID]*domain.User
+	// updateProfileCalls counts UpdateProfile calls; beforeUpdate, when set,
+	// runs at the start of UpdateProfile (simulates a concurrent writer).
+	updateProfileCalls int
+	beforeUpdate       func()
 }
 
 func newFakeRepository() *fakeRepository {
@@ -47,13 +51,21 @@ func (f *fakeRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeRepository) Update(ctx context.Context, user *domain.User) error {
-	if _, ok := f.users[user.ID]; !ok {
+// UpdateProfile mirrors the repository: only the profile columns of the
+// stored row are overwritten (role, email, etc. are left untouched).
+func (f *fakeRepository) UpdateProfile(ctx context.Context, user *domain.User) error {
+	f.updateProfileCalls++
+	if f.beforeUpdate != nil {
+		f.beforeUpdate()
+	}
+	stored, ok := f.users[user.ID]
+	if !ok {
 		return gorm.ErrRecordNotFound
 	}
-	copy := *user
-	copy.UpdatedAt = time.Now()
-	f.users[user.ID] = &copy
+	stored.Name = user.Name
+	stored.AvatarURL = user.AvatarURL
+	stored.ProfileType = user.ProfileType
+	stored.UpdatedAt = time.Now()
 	return nil
 }
 
@@ -260,5 +272,31 @@ func TestUpdateMe_NotFound(t *testing.T) {
 	_, err := svc.UpdateMe(ctx, uuid.New(), &name, nil, nil)
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+// TestUpdateMe_DoesNotTouchRole: a role change committed between UpdateMe's
+// read and its write must survive (no whole-row Save).
+func TestUpdateMe_DoesNotTouchRole(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := setupTestService()
+
+	user := &domain.User{ID: uuid.New(), Email: "role@example.com", Role: domain.RoleUser, ProfileType: domain.ProfileTypeReader}
+	repo.users[user.ID] = user
+	repo.beforeUpdate = func() { repo.users[user.ID].Role = domain.RoleModerator }
+
+	name := "Новое имя"
+	if _, err := svc.UpdateMe(ctx, user.ID, &name, nil, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.updateProfileCalls != 1 {
+		t.Fatalf("expected 1 UpdateProfile call, got %d", repo.updateProfileCalls)
+	}
+	stored := repo.users[user.ID]
+	if stored.Role != domain.RoleModerator {
+		t.Fatalf("role was overwritten: got %q", stored.Role)
+	}
+	if stored.Name == nil || *stored.Name != name {
+		t.Fatalf("name not updated: %v", stored.Name)
 	}
 }

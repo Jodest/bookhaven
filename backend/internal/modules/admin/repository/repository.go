@@ -103,6 +103,14 @@ type Repository interface {
 	// reviews_count in the same transaction. It is idempotent.
 	ModerateReview(ctx context.Context, id uuid.UUID, isHidden bool) (*reviewsDomain.Review, error)
 
+	// Users (docs/features/admin-users.md).
+	// ListUsers lists users matching filter, newest first.
+	ListUsers(ctx context.Context, filter UserFilter) ([]usersDomain.User, int64, error)
+	// ChangeUserRole runs the locked role-change transaction (see users.go);
+	// decide owns the business rules. Returns the user after the change and
+	// its previous role.
+	ChangeUserRole(ctx context.Context, targetID uuid.UUID, decide RoleDecider) (*usersDomain.User, usersDomain.Role, error)
+
 	// Relationship validation helpers.
 	AuthorsExist(ctx context.Context, ids []uuid.UUID) (bool, error)
 	GenresExist(ctx context.Context, ids []uuid.UUID) (bool, error)

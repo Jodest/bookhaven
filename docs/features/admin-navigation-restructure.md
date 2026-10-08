@@ -1,6 +1,6 @@
 # Admin Navigation Restructure
 
-Status: in progress (phases 1-5 done)
+Status: in progress (phases 1-6 done)
 
 Epic: #283. Phases (existing sub-issues): #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters -> #289 Users (separate contract) -> #290 Genres moderation/import (needs product decision).
 
@@ -115,7 +115,7 @@ Decision: tabs point to wherever the content lives **today**; each later phase o
 | Импорт | Файл | `/books/import` | `['/books/import']` | admin | `/import/file` (#287) |
 | Импорт | Жанры | `/import/genres` | `['/import/genres']` | admin | same (placeholder) |
 | Импорт | Задания | — omitted (job history lives on `/harvest`) | | admin | `/import/jobs` (#287) |
-| Пользователи | Пользователи | `/users` | `['/users']` | admin | same (placeholder until #289) |
+| Пользователи | Пользователи | `/users` | `['/users']` | admin | same (`UsersView` since #289) |
 
 Known transitional quirk (accepted; removed by #285+#286, see the phase 2+3 table): Модерация/Книги links to the filtered books list, which by pathname belongs to Каталог, so after clicking it the sidebar highlights Каталог and the Каталог tabs show. Do not add search-param-aware matching to work around it (`useSearchParams` in the root-layout Shell would force a Suspense boundary for every page).
 
@@ -545,7 +545,7 @@ Update:
 
 ## Phase 6 — #289 Users management (outline, separate contract)
 
-Needs its own contract (`docs/features/admin-user-management.md`); relates to ROADMAP #247. Backend: `GET /api/v1/admin/users` (paginated, search, role filter), `PATCH /api/v1/admin/users/:id/role` (admin-only; forbid changing own role; forbid demoting the last admin, checked transactionally). Frontend: replace `/users` placeholder.
+Implemented in its own contract: [admin-users.md](admin-users.md); covers the list/change-role part of ROADMAP #247 (blocking accounts deferred). Backend (admin module): `GET /api/v1/admin/users` (paginated, search by email/name, role filter), `PATCH /api/v1/admin/users/:id/role` (admin + bearer; forbid changing own role; forbid demoting the last admin, checked in a transaction that row-locks the admin set). Frontend: `/users` placeholder replaced by `views/users` + `features/change-user-role` + `entities/user`.
 
 ## Phase 7 — #290 Genres moderation/import (proposal)
 

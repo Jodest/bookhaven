@@ -165,6 +165,10 @@ func RegisterAdminRoutes(
 	genres.POST("", adminHandler.CreateGenre, requireBearer)
 	genres.PATCH("/:id", adminHandler.UpdateGenre, requireBearer)
 
+	users := admin.Group("/users", adminRole)
+	users.GET("", adminHandler.ListUsers)
+	users.PATCH("/:id/role", adminHandler.ChangeUserRole, requireBearer)
+
 	reviews := admin.Group("/reviews", adminOrModerator)
 	reviews.GET("", adminHandler.ListReviews)
 	reviews.PATCH("/:id", adminHandler.ModerateReview, requireBearer)
