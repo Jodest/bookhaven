@@ -8,6 +8,7 @@ import (
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
+	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
@@ -979,4 +980,12 @@ func (f *fakeRepository) FillAuthorEnrichment(ctx context.Context, id uuid.UUID,
 		}
 	}
 	return nil
+}
+
+func (f *fakeRepository) ListUsers(ctx context.Context, filter repository.UserFilter) ([]usersDomain.User, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeRepository) ChangeUserRole(ctx context.Context, targetID uuid.UUID, decide repository.RoleDecider) (*usersDomain.User, usersDomain.Role, error) {
+	return nil, "", nil
 }

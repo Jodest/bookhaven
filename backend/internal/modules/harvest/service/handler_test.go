@@ -10,6 +10,7 @@ import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
+	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
@@ -1090,4 +1091,12 @@ func (f *fakeAdminRepository) FillAuthorEnrichment(ctx context.Context, id uuid.
 		}
 	}
 	return nil
+}
+
+func (f *fakeAdminRepository) ListUsers(ctx context.Context, filter adminrepository.UserFilter) ([]usersDomain.User, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeAdminRepository) ChangeUserRole(ctx context.Context, targetID uuid.UUID, decide adminrepository.RoleDecider) (*usersDomain.User, usersDomain.Role, error) {
+	return nil, "", nil
 }

@@ -342,6 +342,22 @@ export interface AdminGenre {
   slug: string;
 }
 
+// Admin users management (docs/features/admin-users.md).
+export type AdminUserRole = User['role'];
+
+// AdminUser is an item of GET /api/v1/admin/users and the response of
+// PATCH /api/v1/admin/users/:id/role. Never carries the password hash.
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string | null;
+  avatar_url: string | null;
+  role: AdminUserRole;
+  profile_type: User['profileType'];
+  email_verified_at: string | null;
+  created_at: string;
+}
+
 // AdminAuthorMergeResult is the response of
 // POST /api/v1/admin/authors/:id/merge. author is the canonical author
 // (fields unchanged by the merge); books_reassigned is how many books
@@ -1897,6 +1913,32 @@ export const api = {
         fetcher<AdminGenre>(`/api/v1/admin/genres/${id}`, {
           method: 'PATCH',
           body: JSON.stringify(data),
+        }),
+    },
+    users: {
+      // Errors: 400 ApiError.code 'invalid_role' (bad role filter).
+      list: async (params?: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        role?: AdminUserRole | '';
+      }) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        if (params?.search) queryParams.search = params.search;
+        if (params?.role) queryParams.role = params.role;
+        return fetcher<PaginatedResponse<AdminUser>>(
+          `/api/v1/admin/users?${new URLSearchParams(queryParams)}`
+        );
+      },
+      // Errors: 400 'invalid_role', 404 'user_not_found', 409
+      // 'cannot_change_own_role' | 'last_admin' (ApiError.code); 403 only
+      // when the acting admin lost the admin role.
+      changeRole: (id: string, role: AdminUserRole) =>
+        fetcher<AdminUser>(`/api/v1/admin/users/${id}/role`, {
+          method: 'PATCH',
+          body: JSON.stringify({ role }),
         }),
     },
     reviews: {

@@ -49,7 +49,7 @@ func (f *fakeUsersRepository) GetByEmail(ctx context.Context, email string) (*us
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeUsersRepository) Update(ctx context.Context, user *usersDomain.User) error {
+func (f *fakeUsersRepository) UpdateProfile(ctx context.Context, user *usersDomain.User) error {
 	if _, ok := f.users[user.ID]; !ok {
 		return gorm.ErrRecordNotFound
 	}

@@ -26,8 +26,8 @@ type stubUsersRepo struct {
 	user *domain.User
 }
 
-func (r *stubUsersRepo) Create(ctx context.Context, user *domain.User) error { return nil }
-func (r *stubUsersRepo) Update(ctx context.Context, user *domain.User) error { return nil }
+func (r *stubUsersRepo) Create(ctx context.Context, user *domain.User) error        { return nil }
+func (r *stubUsersRepo) UpdateProfile(ctx context.Context, user *domain.User) error { return nil }
 func (r *stubUsersRepo) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	return nil, gorm.ErrRecordNotFound
 }

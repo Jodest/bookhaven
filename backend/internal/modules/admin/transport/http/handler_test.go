@@ -68,6 +68,36 @@ type fakeAdminService struct {
 	enrichReport  *adminService.AuthorEnrichmentReport
 	enrichErr     error
 	lastEnrichIDs []uuid.UUID
+
+	users          []usersDomain.User
+	listUsersErr   error
+	lastUserSearch string
+	lastUserRole   string
+	lastUserPage   int
+	lastUserLimit  int
+	changeRoleUser *usersDomain.User
+	changeRoleErr  error
+	changeRoleCall bool
+	lastActorID    uuid.UUID
+	lastTargetID   uuid.UUID
+	lastNewRole    string
+}
+
+func (f *fakeAdminService) ListUsers(ctx context.Context, search, role string, page, limit int) ([]usersDomain.User, int64, error) {
+	f.lastUserSearch, f.lastUserRole, f.lastUserPage, f.lastUserLimit = search, role, page, limit
+	if f.listUsersErr != nil {
+		return nil, 0, f.listUsersErr
+	}
+	return f.users, int64(len(f.users)), nil
+}
+
+func (f *fakeAdminService) ChangeUserRole(ctx context.Context, actorID, targetID uuid.UUID, role string) (*usersDomain.User, error) {
+	f.changeRoleCall = true
+	f.lastActorID, f.lastTargetID, f.lastNewRole = actorID, targetID, role
+	if f.changeRoleErr != nil {
+		return nil, f.changeRoleErr
+	}
+	return f.changeRoleUser, nil
 }
 
 func (f *fakeAdminService) EnrichAuthorsFromWikidata(ctx context.Context, ids []uuid.UUID) (*adminService.AuthorEnrichmentReport, error) {
