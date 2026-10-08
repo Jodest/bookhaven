@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminReviewsApi } from '@/entities/review';
+import { DASHBOARD_QUERY_KEY } from '@/entities/dashboard';
 import { AdminReview, ApiError } from '@bookhaven/api-client';
 import {
   Badge,
@@ -48,6 +49,8 @@ export function ReviewsView() {
       adminReviewsApi.moderate(id, isHidden),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'reviews'] });
+      // "Скрытых отзывов" dashboard tile.
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY });
       setFeedback({
         type: 'success',
         message: variables.isHidden

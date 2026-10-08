@@ -1,9 +1,8 @@
 'use client';
 
 import { Fragment, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { adminHarvestApi, HARVEST_JOBS_QUERY_KEY } from '@/entities/harvest';
+import { harvestJobStateBadgeVariant, useHarvestJobs } from '@/entities/harvest';
 import { AdminHarvestJob } from '@bookhaven/api-client';
 import {
   Badge,
@@ -16,22 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from '@bookhaven/ui';
-
-function stateBadgeVariant(state: string): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (state) {
-    case 'active':
-      return 'default';
-    case 'pending':
-    case 'retry':
-      return 'secondary';
-    case 'archived':
-      return 'destructive';
-    case 'completed':
-      return 'outline';
-    default:
-      return 'secondary';
-  }
-}
 
 function jobResultSummary(job: AdminHarvestJob): string {
   if (job.state === 'completed' && job.result) {
@@ -185,11 +168,7 @@ export function HarvestJobsView() {
     });
   };
 
-  const jobsQuery = useQuery({
-    queryKey: HARVEST_JOBS_QUERY_KEY,
-    queryFn: adminHarvestApi.listJobs,
-    refetchInterval: 5000,
-  });
+  const jobsQuery = useHarvestJobs({ refetchInterval: 5000 });
 
   const jobs = jobsQuery.data?.items ?? [];
 
@@ -240,7 +219,7 @@ export function HarvestJobsView() {
                     <TableRow>
                       <TableCell className="font-mono text-xs">{job.id.slice(0, 12)}</TableCell>
                       <TableCell>
-                        <Badge variant={stateBadgeVariant(job.state)}>{job.state}</Badge>
+                        <Badge variant={harvestJobStateBadgeVariant(job.state)}>{job.state}</Badge>
                       </TableCell>
                       <TableCell>
                         <JobResultCell job={job} />

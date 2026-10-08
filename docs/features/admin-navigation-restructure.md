@@ -1,10 +1,10 @@
 # Admin Navigation Restructure
 
-Status: in progress (phases 1-4 done)
+Status: in progress (phases 1-5 done)
 
 Epic: #283. Phases (existing sub-issues): #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters -> #289 Users (separate contract) -> #290 Genres moderation/import (needs product decision).
 
-Phases 1-5 are frontend-only (`apps/admin`). Phase 1 (#284) is done. Phases 2+3 (#285 + #286) shipped **together in one branch/PR** (human decision: avoids a window where pending-review books have no page) and are done. Phase 4 (#287) is done. Phases 5-7 stay outlines.
+Phases 1-5 are frontend-only (`apps/admin`). Phase 1 (#284) is done. Phases 2+3 (#285 + #286) shipped **together in one branch/PR** (human decision: avoids a window where pending-review books have no page) and are done. Phase 4 (#287) is done. Phase 5 (#288) is done; phases 6-7 stay outlines.
 
 ## Goal
 
@@ -437,10 +437,111 @@ No test changes needed: `features/search-wikidata-author` tests (`/moderation/au
 - Done feature contracts (`admin-harvest-trigger.md`, `harvest-*.md`, `author-direct-import.md`, `author-moderation-queue.md`, …) and completed ROADMAP entries mention `/harvest` / `/authors/moderation` as historical facts — leave them; do not rewrite history.
 - `tsc --noEmit` may show stale `.next/types/app/harvest` artifacts locally (same note as phases 2+3).
 
-## Phase 5 — #288 Overview + sidebar counters (outline)
+## Phase 5 — #288 Overview + sidebar counters
 
-- Dashboard tiles link to the new routes (already done for moderation/catalog tiles in #285+#286; the dashboard has no import links — optionally add an Импорт entry pointing to `/import/wikidata` / `/import/jobs`); content regrouped by section.
-- Sidebar badges on Модерация (and its tabs) from `GET /api/v1/admin/dashboard` (`pending_import_review`, `pending_authors`, `pending_reviews`). The endpoint is admin-only: the query must be `enabled` only for admins; moderators get no badge and no request (otherwise a 403 sets `forbiddenPath`). Share the TanStack Query key with the dashboard view; invalidate after moderation mutations.
+Frontend only (`apps/admin`). Backend and `packages/api-client` unchanged. `middleware.ts`, `login-form.tsx`, navigation config hrefs/matches unchanged. One branch/PR, `Closes #288`.
+
+### Facts this phase relies on (verified on `main`)
+
+- `GET /api/v1/admin/dashboard` (admin-only) -> `AdminDashboard { books, hidden_books, authors, genres, pending_reviews, pending_import_review, pending_authors }`. Backend predicates (`backend/internal/modules/admin/repository/repository.go`): `pending_import_review` = books `is_hidden AND external_source IS NOT NULL`; `pending_authors` = authors `status = 'pending'`; **`pending_reviews` = reviews `is_hidden = true`**. Reviews are created visible (`is_hidden` default false) and hidden by a moderator, so `pending_reviews` is the count of *already hidden* reviews, not a work queue — it grows when moderators act.
+- `GET /api/v1/admin/harvest/jobs` (admin-only) -> `{ items: AdminHarvestJob[] }`, at most 50 per state, fixed server order **active -> retry -> pending -> completed -> archived**; no timestamps, no global chronology. `state` values: `active`, `retry`, `pending`, `completed`, `archived`.
+- Query keys: dashboard `['admin','dashboard']` (literal, `views/dashboard`; invalidated by book moderation, author status mutation, author merge, Wikidata author import); jobs `HARVEST_JOBS_QUERY_KEY = ['admin','harvest','jobs']` (`entities/harvest`; polled every 5 s by `views/harvest-jobs`; invalidated by harvest trigger and author import).
+- 403 handling: `entities/session/lib/query-client.ts` — any query/mutation error with `status === 403` on a `/api/v1/admin*` path calls `setForbiddenPath(window.location.pathname)`, and `Shell` renders the "Сервер отклонил запрос" screen for that pathname. Hence any 403 from a background badge request would replace whatever page the user is on. A query with `enabled: false` never calls its `queryFn`, so gating by role prevents it. Global defaults: `staleTime: 60s`, `refetchOnWindowFocus: false`, no retry on 401/403.
+- `Shell` is rendered inside `Providers` (`app/layout.tsx`), so widgets may use TanStack Query. During session loading `user` is null.
+
+### Decisions
+
+- **Moderation badge = `pending_import_review + pending_authors`. `pending_reviews` is excluded** (deviation from the #288 wording, justified above: it counts hidden reviews, not pending ones; including it would make a badge that never clears and that grows when moderators do their job). Reviews get no badge anywhere. The dashboard reviews tile is relabelled "Скрытых отзывов" (it already links to `?visibility=hidden`). If a real review-reports queue appears later, add it then.
+- **Import badge = number of jobs with `state` in `active | retry | pending`** ("в работе": running, queued or waiting to retry). `completed`/`archived` don't count.
+- **Per-tab badges too** (in `SectionTabs`): Модерация/Книги = `pending_import_review`, Модерация/Авторы = `pending_authors`, Импорт/Задачи = in-flight jobs. Rationale: the sidebar total says "something waits", the tab says where; it costs zero extra requests (same query keys, deduped by TanStack). No badges on other tabs.
+- **Badges are admin-only.** Both endpoints are admin-only; for any non-admin (moderator, loading, no user) both queries are `enabled: false` -> no request, no 403, no badge. Moderators have one visible tab, so SectionTabs doesn't render for them anyway.
+- **Badge visibility:** hidden when the count is 0, `undefined` (loading/disabled) or the query errored (silent — no error UI in navigation). Visual text = `n` (or `99+` when `n > 99`), `aria-hidden="true"`; plus `<span className="sr-only">` with the exact count: Модерация / moderation tabs `, ожидают проверки: {n}`; Импорт / Задачи `, задач в работе: {n}` (number-last phrasing avoids Russian plural forms). Link accessible name becomes e.g. "Модерация, ожидают проверки: 11". Style: `@bookhaven/ui` `Badge` (variant `secondary`; on the active sidebar item keep contrast, e.g. `variant="outline"` with `border-primary-foreground text-primary-foreground` — implementer's choice), `ml-auto` in the sidebar, `ml-2` in tabs.
+- **Polling / staleness (one cache entry per key, shared with the dashboard and `/import/jobs`):**
+  - Dashboard stats (`['admin','dashboard']`): `refetchInterval: 60_000`, `refetchOnWindowFocus: true` (only refetches if stale, i.e. >60 s), background polling off (TanStack default `refetchIntervalInBackground: false`). Immediate freshness after actions comes from existing invalidations.
+  - Harvest jobs (`HARVEST_JOBS_QUERY_KEY`): sidebar observer `refetchInterval: (query) => inFlightCount(query.state.data) > 0 ? 10_000 : 60_000`, `refetchOnWindowFocus: true`. On `/import/jobs` the existing 5 s observer wins (TanStack uses the smallest interval among observers) — no change to that view. The job list is Redis-backed (asynq inspector), cheap enough at these rates.
+  - Same `queryKey` must always map to the same `queryFn`/data shape: everything goes through the hooks below, never a second ad-hoc `useQuery` with these keys.
+- **Add one invalidation:** `views/reviews` moderate `onSuccess` also invalidates `['admin','dashboard']` (the "Скрытых отзывов" tile). Harmless for moderators: invalidating a key with no enabled observer fetches nothing. Catalog book edits that unhide a harvested book are not wired (rare; 60 s polling covers it).
+- **Dashboard "recent jobs" is a compact list, not the table:** the first 5 items in server order (in-flight first, then completed, then failed) — heading "Задачи харвеста", not "последние" (the API has no chronology). Each row: `id.slice(0, 12)` (mono), state `Badge` (same variants as `/import/jobs`), and a one-line status: active with `result.total > 0` -> `{processed} / {total}`; active otherwise -> `Выполняется…`; completed with result -> `создано {created}`; `last_error` (truncated, `title` = full text) for retry/archived; else `—`. No expansion, no report, no row actions. Footer link "Все задачи →" -> `/import/jobs`; plus a link "Запустить харвест" -> `/import/wikidata`. Empty: "Нет задач". The block shows "в работе: {n}" next to its heading when n > 0.
+
+### FSD placement (ESLint `boundaries`)
+
+Constraints: entities may not import sibling entities (so an entity cannot read `entities/session`); widgets may not import sibling widgets (so `admin-shell` and `section-tabs` cannot share a hook defined in either). The role-aware hook therefore lives in **`features/nav-counters`** (features may import any entity), consumed by both widgets.
+
+| Location | Contents |
+|---|---|
+| `entities/dashboard/` (new slice) | `api/index.ts`: `adminDashboardApi = { get: api.admin.dashboard }`, `DASHBOARD_QUERY_KEY = ['admin','dashboard']`. `model/use-dashboard-stats.ts`: `useDashboardStats({ enabled = true }: { enabled?: boolean } = {})` -> `useQuery({ queryKey: DASHBOARD_QUERY_KEY, queryFn: adminDashboardApi.get, enabled, refetchInterval: 60_000, refetchOnWindowFocus: true })`. `lib/pending-moderation.ts`: `pendingModerationTotal(stats) = stats.pending_import_review + stats.pending_authors`. `index.ts` exports all. |
+| `entities/harvest/` (extend) | `lib/job-state.ts`: `IN_FLIGHT_JOB_STATES = ['active','retry','pending']`, `isHarvestJobInFlight(job)`, `countInFlightHarvestJobs(items?: AdminHarvestJob[]): number` (0 for undefined), `harvestJobStateBadgeVariant(state)` (**moved** from `views/harvest-jobs` `stateBadgeVariant`, which then imports it). `model/use-harvest-jobs.ts`: `useHarvestJobs({ enabled = true, refetchInterval }: { enabled?: boolean; refetchInterval?: number \| ((query) => number \| false) } = {})` -> `useQuery({ queryKey: HARVEST_JOBS_QUERY_KEY, queryFn: adminHarvestApi.listJobs, enabled, refetchInterval, refetchOnWindowFocus: true })`. `views/harvest-jobs` switches to `useHarvestJobs({ refetchInterval: 5000 })` (behaviour unchanged). Export from `index.ts`. |
+| `features/nav-counters/` (new slice) | `lib/build-nav-counters.ts`: pure `buildNavCounters(stats?: AdminDashboard, jobs?: AdminHarvestJob[]) -> { sections: Partial<Record<NavSectionId, number>>; tabs: Partial<Record<string, number>> }` — `sections.moderation = pendingModerationTotal(stats)`, `tabs['moderation.books'] = pending_import_review`, `tabs['moderation.authors'] = pending_authors`, `sections.import = tabs['import.jobs'] = countInFlightHarvestJobs(jobs)`; keys omitted when the source is undefined. `model/use-nav-counters.ts`: `useNavCounters()` reads `useAuthStore().user`, `enabled = isAdmin(user)`, calls `useDashboardStats({ enabled })` and `useHarvestJobs({ enabled, refetchInterval: (q) => countInFlightHarvestJobs(q.state.data?.items) > 0 ? 10_000 : 60_000 })`, returns `buildNavCounters(statsQuery.data, jobsQuery.data?.items)` — when `!enabled` return `{ sections: {}, tabs: {} }` without touching data. `ui/nav-badge.tsx`: `NavBadge({ count, srLabel, className? })` — returns null for `!count`; renders the visual (`99+` cap, `aria-hidden`) + `sr-only` text. `index.ts` exports `useNavCounters`, `NavBadge`, `buildNavCounters`. Tab ids are referenced as string literals that exist in `shared/config/navigation.ts`. |
+| `widgets/admin-shell/ui/shell.tsx` | `const counters = useNavCounters()` — called **unconditionally at the top with the other hooks** (before early returns). Sidebar link: `{section.label}<NavBadge count={counters.sections[section.id]} srLabel={…} className="ml-auto" />`; `srLabel` by section: moderation `ожидают проверки`, import `задач в работе`. |
+| `widgets/section-tabs/ui/section-tabs.tsx` | `const counters = useNavCounters()` before the early returns; after each tab label `<NavBadge count={counters.tabs[tab.id]} … className="ml-2" />` (moderation tabs `ожидают проверки`, `import.jobs` `задач в работе`). |
+| `views/dashboard/ui/dashboard-view.tsx` | Replaces its inline `useQuery` with `useDashboardStats()` and adds `useHarvestJobs()` with no interval (the Shell's nav-counters observer, always mounted for admins, already polls the same key). The compact jobs list is a local component in the view file (`RecentHarvestJobs`). |
+
+Optional cleanup (not required): replace literal `['admin','dashboard']` invalidations in `features/*` and `views/*` with `DASHBOARD_QUERY_KEY` — values are identical, so behaviour is unaffected either way.
+
+### Dashboard layout (`/`)
+
+```
+<h1>Обзор</h1>
+<section aria-labelledby> <h2>Модерация</h2>   grid of tiles
+   Импортировано, на проверке  pending_import_review  -> /moderation/books
+   Авторы на модерации         pending_authors        -> /moderation/authors
+   Скрытых отзывов             pending_reviews        -> /moderation/reviews?visibility=hidden
+<section> <h2>Каталог</h2>
+   Всего книг   books        -> /catalog/books
+   Скрытых книг hidden_books -> /catalog/books?visibility=hidden
+   Авторов      authors      -> /catalog/authors
+   Жанров       genres       -> /catalog/genres
+<section> <h2>Импорт</h2>
+   Card "Задачи харвеста" [в работе: n]  compact list (<= 5)  "Все задачи →" /import/jobs   "Запустить харвест" /import/wikidata
+```
+
+Tile markup unchanged (Link > Card, value in `CardTitle`). Stats loading: skeleton tiles inside Модерация/Каталог; stats error: the existing "Не удалось загрузить данные панели управления." replaces the two counter sections only — the Импорт block renders independently (own loading text "Загрузка…", own error "Не удалось загрузить задачи харвеста."). A jobs error must not hide the counters, and vice versa.
+
+### Acceptance Criteria
+
+- [x] Dashboard shows three headed groups Модерация / Каталог / Импорт in that order with the tiles and links listed in "Dashboard layout"; the reviews tile is labelled "Скрытых отзывов".
+- [x] Импорт group shows at most 5 jobs in server order with id prefix, state badge and one-line status; "Все задачи" links to `/import/jobs`, "Запустить харвест" to `/import/wikidata`; "Нет задач" when empty; "в работе: n" only when n > 0.
+- [x] Stats error and jobs error are independent (each shows its own message, the other part still renders).
+- [x] Admin sidebar: Модерация shows a badge with `pending_import_review + pending_authors`; Импорт shows a badge with the number of `active|retry|pending` jobs; accessible names "Модерация, ожидают проверки: N" / "Импорт, задач в работе: N"; badge absent when the count is 0, while loading and on query error; visual `99+` above 99.
+- [x] Admin section tabs: Модерация/Книги and Модерация/Авторы show their own counts, Импорт/Задачи shows in-flight jobs; no badge on other tabs; hidden at 0.
+- [x] Moderator (and any non-admin, and the loading state): no badges and **no request** to `/api/v1/admin/dashboard` or `/api/v1/admin/harvest/jobs` from any component (so `forbiddenPath` is never set by them).
+- [x] Dashboard stats and harvest jobs each have exactly one cache entry shared by the dashboard, the sidebar, the tabs and `/import/jobs` (same key + same queryFn via the entity hooks); after book/author moderation actions the badges update without reload (existing invalidations); hiding/restoring a review invalidates `['admin','dashboard']`.
+- [x] Polling: dashboard stats every 60 s, jobs every 60 s idle / 10 s while any job is in flight (5 s on `/import/jobs` as before); refetch on window focus when stale; no polling in background tabs.
+- [x] `/import/jobs` behaviour unchanged (state badge variants now come from `entities/harvest`).
+- [x] ESLint (boundaries) passes; tests below pass; existing admin tests pass; CI frontend build (typedRoutes) passes (CI, no native `next build`).
+
+Implementation notes (phase 5):
+
+- `pendingModerationTotal` takes the full `AdminDashboard`; `useHarvestJobs`/`useDashboardStats` wrap the API call in an arrow (`() => api()`) so every observer of a key shares the identical `queryFn`.
+- `NavBadge` takes an optional `variant`; the active sidebar item uses `outline` with `border-primary-foreground text-primary-foreground`, other items and tabs use `secondary`. The sr-only text is `, {srLabel}: {n}`.
+- The reviews invalidation uses `DASHBOARD_QUERY_KEY`; the other literal `['admin','dashboard']` invalidations were left as is (optional cleanup not done).
+- `views/harvest-jobs` test now mocks `@bookhaven/api-client` (`api.admin.harvest.jobs.list`) instead of `@/entities/harvest`, so the real entity hook and badge helper are exercised. `views/reviews/ui/reviews-view.test.tsx` did not exist and was created.
+- The dashboard compact list is a `<ul aria-label="Задачи харвеста">`; groups are `<section aria-labelledby>` regions (tests query them with `getByRole('region', { name })`).
+- The "CI frontend build (typedRoutes) passes" criterion is verified by CI on the PR (no native `next build` on Windows).
+
+### Tests (phase 5)
+
+Add:
+
+- `entities/harvest/lib/job-state.test.ts`: `isHarvestJobInFlight` true for active/retry/pending, false for completed/archived/unknown; `countInFlightHarvestJobs(undefined) === 0`, mixed list; `harvestJobStateBadgeVariant` mapping (moved cases).
+- `entities/dashboard/lib/pending-moderation.test.ts`: sum excludes `pending_reviews`.
+- `features/nav-counters/lib/build-nav-counters.test.ts`: full mapping (sections.moderation, sections.import, tabs `moderation.books`, `moderation.authors`, `import.jobs`); undefined inputs -> keys absent; `pending_reviews` ignored; tab ids used exist in `navSections` (guards against config renames).
+- `features/nav-counters/model/use-nav-counters.test.tsx` (`renderHook` + real `QueryClientProvider`, mock `@bookhaven/api-client` — the mock must provide `api.admin.dashboard` and the full `api.admin.harvest` shape `{ trigger, jobs: { list, get }, authors: { search } }` because `entities/harvest/api` reads them at import; mock `@/entities/session` `useAuthStore`): admin -> dashboard and jobs list each called once, counters returned; **moderator -> neither called**, `{ sections: {}, tabs: {} }`; `user: null` (loading) -> neither called.
+- `features/nav-counters/ui/nav-badge.test.tsx`: null for 0/undefined; `7` visible + sr text; `150` -> visible `99+`, sr text with `150`.
+
+Update:
+
+- `widgets/admin-shell/ui/shell.test.tsx`: mock `@/features/nav-counters` (`useNavCounters` returns a mutable `countersValue`, default `{ sections: {}, tabs: {} }`; keep the real `NavBadge` via `importOriginal`) so existing cases are untouched (no QueryClientProvider needed). New: admin with `{ moderation: 11, import: 2 }` -> link names "Модерация, ожидают проверки: 11" and "Импорт, задач в работе: 2"; `{ moderation: 0 }` -> link name exactly "Модерация"; moderator on `/moderation/reviews` -> sidebar link name exactly "Модерация" (the gating itself is covered by the hook test).
+- `widgets/section-tabs/ui/section-tabs.test.tsx`: same mock. New: admin on `/moderation/reviews` with tabs `{ 'moderation.books': 4, 'moderation.authors': 0 }` -> Книги has "ожидают проверки: 4", Авторы and Отзывы have no badge; admin on `/import/file` with `{ 'import.jobs': 3 }` -> Задачи "задач в работе: 3". Existing `textContent` assertions stay valid because the default mock has no counts.
+- `views/dashboard/ui/dashboard-view.test.tsx`: extend the api mock with `harvest.jobs.list` (+ the rest of the harvest shape); group headings Модерация/Каталог/Импорт; tiles asserted `within` their group section (existing href assertions kept; "Отзывов на модерации" -> "Скрытых отзывов"); jobs list: 7 jobs -> 5 rows, id prefix + state text, active with progress `3 / 10`; "Все задачи" -> `/import/jobs`, "Запустить харвест" -> `/import/wikidata`; "в работе: 2"; empty -> "Нет задач"; jobs list rejects -> "Не удалось загрузить задачи харвеста." while tiles still render; dashboard rejects -> stats error while the jobs block still renders.
+- `views/reviews/ui/reviews-view.test.tsx`: moderate success invalidates `['admin','reviews']` and `['admin','dashboard']`.
+- `views/harvest-jobs/ui/harvest-jobs-view.test.tsx`: should pass unchanged; if it mocks `@/entities/harvest`, the mock must now also export `useHarvestJobs`/`harvestJobStateBadgeVariant` (prefer `importOriginal` + mocking only `adminHarvestApi`).
+
+### Documentation (phase 5)
+
+- This contract: tick phase 5 criteria, `Status: in progress (phases 1-5 done)`.
+- `docs/ROADMAP.md`: per phase 1 note, the navigation epic (#284-#288) moves from "Up Next" to Completed when this PR merges (#289/#290 tracked separately).
+- PR body: `Closes #288`; mention the `pending_reviews` exclusion decision.
 
 ## Phase 6 — #289 Users management (outline, separate contract)
 
@@ -462,7 +563,16 @@ Genres have only Name/Slug/CreatedAt — no status or source. Moderation/import 
 - Thin section pages: `apps/admin/src/app/moderation/{layout,page}.tsx` (`SectionLayout`, `SectionIndexView`).
 - Phase 4 sources: `apps/admin/src/views/harvest/ui/{harvest-view,author-name-search}.tsx`, `apps/admin/src/views/author-moderation/ui/wikidata-import-panel.tsx`, `HARVEST_JOBS_QUERY_KEY` in `apps/admin/src/entities/harvest/api/index.ts`; result banner with links: `features/import-wikidata-author/lib/result-text.ts`.
 
+- Phase 5: dashboard query `views/dashboard/ui/dashboard-view.tsx`; 403 -> `forbiddenPath` in `entities/session/lib/query-client.ts`; jobs polling and state badges in `views/harvest-jobs/ui/harvest-jobs-view.tsx`; existing `['admin','dashboard']` invalidations in `features/moderate-author`, `features/merge-author`, `features/import-wikidata-author`, `views/book-moderation`.
+
 ## Risks
+
+- Phase 5 — 403 from a badge request: any admin-path 403 sets `forbiddenPath` to the current page and replaces it with the forbidden screen. Role gating (`enabled: isAdmin(user)`) prevents this for moderators; the residual case (session says admin, server already demoted the user) shows the forbidden screen on whatever page is open — acceptable, the server is authoritative.
+- Phase 5 — query-key collisions: two `useQuery` calls with the same key but different `queryFn`/shape corrupt the shared cache. All consumers must use `useDashboardStats` / `useHarvestJobs`.
+- Phase 5 — hooks order: `useNavCounters()` in `Shell` and `SectionTabs` must be called before their early returns.
+- Phase 5 — accessible-name change: a badge changes the link name ("Модерация, ожидают проверки: 11"); existing tests that query by exact name stay green only because the widget tests mock counters to `{}` by default.
+- Phase 5 — job counts are capped by the API (50 per state) and the jobs list has no chronology; the dashboard block is labelled "Задачи харвеста", not "последние", and shows in-flight jobs first by server order.
+- Phase 5 — `pending_reviews` exclusion deviates from the #288 text; flag it in the PR so the human can veto (alternative would need a real review-reports queue in the backend).
 
 - Hooks ordering in `Shell`: the new redirect effect must be declared before the early returns.
 - typedRoutes: `tsc` does not catch route errors; the CI frontend build is the gate (do not run a native `next build` on Windows).

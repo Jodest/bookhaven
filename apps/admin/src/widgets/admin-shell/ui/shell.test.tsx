@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NavCounters } from '@/features/nav-counters';
 import { Shell } from './shell';
 
 const pushMock = vi.fn();
@@ -29,6 +30,13 @@ vi.mock('@/entities/session', async (importOriginal) => ({
   }),
 }));
 
+let countersValue: NavCounters = { sections: {}, tabs: {} };
+
+vi.mock('@/features/nav-counters', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/nav-counters')>()),
+  useNavCounters: () => countersValue,
+}));
+
 function setUser(role: string | null) {
   authState.user = role ? { id: 'u1', email: 'staff@example.com', role } : null;
 }
@@ -54,6 +62,7 @@ describe('Shell', () => {
     replaceMock.mockReset();
     clearForbiddenPathMock.mockReset();
     authState = { user: null, isLoading: false, forbiddenPath: null };
+    countersValue = { sections: {}, tabs: {} };
   });
 
   it('admin on / sees five sections, Обзор active, and the page', () => {
@@ -193,5 +202,50 @@ describe('Shell', () => {
       'href',
       '/moderation/reviews'
     );
+  });
+
+  describe('sidebar counters', () => {
+    it('admin sees moderation and import badges in the link names', () => {
+      setUser('admin');
+      countersValue = { sections: { moderation: 11, import: 2 }, tabs: {} };
+      renderShell('/');
+
+      expect(
+        screen.getByRole('link', { name: 'Модерация, ожидают проверки: 11' })
+      ).toHaveAttribute('href', '/moderation/books');
+      expect(screen.getByRole('link', { name: 'Импорт, задач в работе: 2' })).toHaveAttribute(
+        'href',
+        '/import/wikidata'
+      );
+      expect(screen.getByRole('link', { name: 'Каталог' })).toBeInTheDocument();
+    });
+
+    it('a zero count renders no badge', () => {
+      setUser('admin');
+      countersValue = { sections: { moderation: 0 }, tabs: {} };
+      renderShell('/');
+
+      const link = screen.getByRole('link', { name: 'Модерация' });
+      expect(link).toHaveAccessibleName('Модерация');
+      expect(link.textContent).toBe('Модерация');
+    });
+
+    it('caps the visual value at 99+', () => {
+      setUser('admin');
+      countersValue = { sections: { moderation: 150 }, tabs: {} };
+      renderShell('/');
+
+      const link = screen.getByRole('link', { name: 'Модерация, ожидают проверки: 150' });
+      expect(link.querySelector('[aria-hidden="true"]')).toHaveTextContent('99+');
+    });
+
+    it('moderator sidebar link name is exactly Модерация', () => {
+      setUser('moderator');
+      renderShell('/moderation/reviews');
+
+      const links = sidebarLinks();
+      expect(links).toHaveLength(1);
+      expect(links[0]).toHaveAccessibleName('Модерация');
+    });
   });
 });

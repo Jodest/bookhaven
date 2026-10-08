@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuthStore, isAdmin, isModerator } from '@/entities/session';
+import { NavBadge, useNavCounters } from '@/features/nav-counters';
 import {
   getHomeHref,
   getHomeTab,
@@ -17,11 +18,21 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { LogOut } from 'lucide-react';
+import type { NavSectionId } from '@/shared/config';
+
+// Screen-reader label of the sidebar badge per section (sections without a
+// counter have no entry).
+const SECTION_BADGE_SR_LABELS: Partial<Record<NavSectionId, string>> = {
+  moderation: 'ожидают проверки',
+  import: 'задач в работе',
+};
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { user, logout, isLoading, forbiddenPath, clearForbiddenPath } = useAuthStore();
   const pathname = usePathname();
   const router = useRouter();
+  // Admin-only badge counts; called before any early return (hooks order).
+  const counters = useNavCounters();
 
   const canAccessAdmin = isAdmin(user);
   const canAccessModerator = isModerator(user);
@@ -154,6 +165,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
               >
                 <Icon className="h-4 w-4" />
                 {section.label}
+                <NavBadge
+                  count={counters.sections[section.id]}
+                  srLabel={SECTION_BADGE_SR_LABELS[section.id] ?? ''}
+                  variant={active ? 'outline' : 'secondary'}
+                  className={
+                    active ? 'ml-auto border-primary-foreground text-primary-foreground' : 'ml-auto'
+                  }
+                />
               </Link>
             );
           })}
