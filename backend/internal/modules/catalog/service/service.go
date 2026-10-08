@@ -83,7 +83,7 @@ func (s *Service) GetAuthorBySlug(ctx context.Context, slug string) (*domain.Aut
 	return author, nil
 }
 
-// ListGenres returns all genres.
+// ListGenres returns the published genres (public read).
 func (s *Service) ListGenres(ctx context.Context) ([]domain.Genre, error) {
 	genres, err := s.repo.ListGenres(ctx)
 	if err != nil {

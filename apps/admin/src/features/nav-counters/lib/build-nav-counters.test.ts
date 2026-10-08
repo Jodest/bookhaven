@@ -11,6 +11,7 @@ const stats: AdminDashboard = {
   pending_reviews: 42,
   pending_import_review: 4,
   pending_authors: 7,
+  pending_genres: 6,
 };
 
 function job(id: string, state: string): AdminHarvestJob {

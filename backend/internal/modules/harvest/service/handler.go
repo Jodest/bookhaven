@@ -4,9 +4,11 @@
 // each returned record via an OpenLibrary-shaped bookdata.Client, resolves
 // authors by Wikidata QID then name (new authors are pending; rejected
 // authors are tombstones and are skipped - see
-// adminservice.ResolveOrCreateHarvestAuthors) and genres by name (autocreate
-// on miss, adminservice.ResolveOrCreateGenreIDsByNames),
-// and creates books via adminservice.Service.CreateBook.
+// adminservice.ResolveOrCreateHarvestAuthors) and genres the same way
+// (Wikidata QID first, then name; new genres are pending; rejected genres
+// are tombstones and are skipped - see
+// adminservice.ResolveOrCreateHarvestGenres and
+// docs/features/genre-status.md), and creates books via adminservice.Service.CreateBook.
 //
 // Books created by this handler are always is_hidden = true: harvested data
 // is crowdsourced (Wikidata/Open Library) and needs human review before it
@@ -311,7 +313,7 @@ func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, 
 		return 0, nil, fmt.Errorf("resolve authors: %w", err)
 	}
 	authorIDs, created := resolution.IDs, resolution.CreatedWithQID
-	genreIDs, err := admin.ResolveOrCreateGenreIDsByNames(ctx, enriched.Genres)
+	genreIDs, err := admin.ResolveOrCreateHarvestGenres(ctx, harvestGenreRefs(enriched))
 	if err != nil {
 		return 0, created, fmt.Errorf("resolve genres: %w", err)
 	}
@@ -372,6 +374,24 @@ func harvestAuthorRefs(rec bookdata.ExternalBookRecord) []adminservice.AuthorRef
 	refs := make([]adminservice.AuthorRef, 0, len(rec.Authors))
 	for _, name := range rec.Authors {
 		refs = append(refs, adminservice.AuthorRef{Name: name})
+	}
+	return refs
+}
+
+// harvestGenreRefs maps a record's genres to resolver refs: the paired
+// Wikidata GenreRefs (name + QID) when present, otherwise the plain Genres
+// names as QID-less refs. Enrichment never touches genres.
+func harvestGenreRefs(rec bookdata.ExternalBookRecord) []adminservice.GenreRef {
+	if len(rec.GenreRefs) > 0 {
+		refs := make([]adminservice.GenreRef, 0, len(rec.GenreRefs))
+		for _, g := range rec.GenreRefs {
+			refs = append(refs, adminservice.GenreRef{Name: g.Name, QID: g.QID})
+		}
+		return refs
+	}
+	refs := make([]adminservice.GenreRef, 0, len(rec.Genres))
+	for _, name := range rec.Genres {
+		refs = append(refs, adminservice.GenreRef{Name: name})
 	}
 	return refs
 }

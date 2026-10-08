@@ -49,7 +49,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-- [ ] Admin navigation, remaining phase — #290 Genres moderation/import (needs product decision); phases #284-#289 are done (see [docs/features/admin-navigation-restructure.md](features/admin-navigation-restructure.md), epic #283)
+- [ ] Admin navigation, remaining phase — epic #290 Genres moderation and Wikidata import: #301 genre status & Wikidata identity (done, see [docs/features/genre-status.md](features/genre-status.md)), then #302 moderation queue with merge, #303 Wikidata genre import; phases #284-#289 are done (see [docs/features/admin-navigation-restructure.md](features/admin-navigation-restructure.md), epic #283)
 
 Email notifications (#121, in Proposed) can build on the mailer from #157.
 

@@ -208,7 +208,7 @@ func (f *fakeMergeAuthorsRepository) MergeAuthors(ctx context.Context, duplicate
 	return reassigned, nil
 }
 
-func (f *fakeMergeAuthorsRepository) ListGenres(ctx context.Context, search string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
+func (f *fakeMergeAuthorsRepository) ListGenres(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
 	return nil, 0, nil
 }
 
@@ -218,6 +218,14 @@ func (f *fakeMergeAuthorsRepository) GetGenreByID(ctx context.Context, id uuid.U
 
 func (f *fakeMergeAuthorsRepository) GetGenreBySlug(ctx context.Context, slug string) (*catalogDomain.Genre, error) {
 	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) GetGenreByQID(ctx context.Context, qid string) (*catalogDomain.Genre, error) {
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeMergeAuthorsRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {
+	return nil
 }
 
 func (f *fakeMergeAuthorsRepository) CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error {

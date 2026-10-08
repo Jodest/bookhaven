@@ -170,13 +170,13 @@ func seedAccounts(db *gorm.DB) error {
 // seedCatalog creates the fixed dev/demo genres, authors, and ~19 classic
 // books. Skipped when -accounts-only is passed.
 func seedCatalog(db *gorm.DB) error {
-	// Create genres
+	// Create genres (published explicitly: the DB default is pending).
 	genres := []catalogDomain.Genre{
-		{Name: "Классика", Slug: "classics"},
-		{Name: "Роман", Slug: "novel"},
-		{Name: "Фантастика", Slug: "fiction"},
-		{Name: "Фэнтези", Slug: "fantasy"},
-		{Name: "Детектив", Slug: "detective"},
+		{Name: "Классика", Slug: "classics", Status: catalogDomain.GenreStatusPublished},
+		{Name: "Роман", Slug: "novel", Status: catalogDomain.GenreStatusPublished},
+		{Name: "Фантастика", Slug: "fiction", Status: catalogDomain.GenreStatusPublished},
+		{Name: "Фэнтези", Slug: "fantasy", Status: catalogDomain.GenreStatusPublished},
+		{Name: "Детектив", Slug: "detective", Status: catalogDomain.GenreStatusPublished},
 	}
 	for _, g := range genres {
 		if err := db.FirstOrCreate(&g, catalogDomain.Genre{Slug: g.Slug}).Error; err != nil {

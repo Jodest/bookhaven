@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminGenresApi } from '@/entities/genre';
-import { AdminGenre, AdminGenreInput } from '@bookhaven/api-client';
+import { adminGenresApi, GenreStatusBadge, GENRE_STATUS_LABELS } from '@/entities/genre';
+import { AdminGenre, AdminGenreInput, AdminGenreStatus } from '@bookhaven/api-client';
 import {
   Input,
   Button,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -18,6 +19,17 @@ import {
 import { Search } from 'lucide-react';
 import { Pagination } from '@/shared/ui';
 import { GenreForm } from '@/features/manage-genre';
+
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'Все статусы' },
+  { value: 'pending', label: GENRE_STATUS_LABELS.pending },
+  { value: 'published', label: GENRE_STATUS_LABELS.published },
+  { value: 'rejected', label: GENRE_STATUS_LABELS.rejected },
+];
+
+function parseStatus(value: string | null): AdminGenreStatus | undefined {
+  return value === 'pending' || value === 'published' || value === 'rejected' ? value : undefined;
+}
 
 export function GenresView() {
   const router = useRouter();
@@ -31,15 +43,17 @@ export function GenresView() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+  const status = parseStatus(searchParams.get('status'));
   const limit = 20;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'genres', { search, page }],
+    queryKey: ['admin', 'genres', { search, page, status }],
     queryFn: () =>
       adminGenresApi.list({
         search: search || undefined,
         page,
         limit,
+        status,
       }),
   });
 
@@ -48,6 +62,7 @@ export function GenresView() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'genres'] });
       setFormData({ name: '' });
+      // Manually created genres are published right away.
       setSuccessMessage('Жанр создан');
     },
   });
@@ -93,7 +108,12 @@ export function GenresView() {
   const startEdit = (genre: AdminGenre) => {
     setSuccessMessage(null);
     setEditing(genre);
-    setFormData({ name: genre.name, slug: genre.slug });
+    setFormData({
+      name: genre.name,
+      slug: genre.slug,
+      status: genre.status,
+      wikidata_qid: genre.wikidata_qid ?? '',
+    });
   };
 
   const totalPages = data ? Math.ceil(data.total / limit) : 0;
@@ -142,6 +162,13 @@ export function GenresView() {
         <Button type="submit" variant="outline">
           <Search className="h-4 w-4" />
         </Button>
+        <Select
+          aria-label="Статус"
+          options={STATUS_FILTER_OPTIONS}
+          value={status ?? ''}
+          onChange={(e) => updateParams({ status: e.target.value, page: '1' })}
+          className="w-full md:w-48"
+        />
       </form>
 
       {error && (
@@ -164,6 +191,8 @@ export function GenresView() {
                 <TableRow>
                   <TableHead>Название</TableHead>
                   <TableHead>Slug</TableHead>
+                  <TableHead>Статус</TableHead>
+                  <TableHead>QID</TableHead>
                   <TableHead className="text-right">Действия</TableHead>
                 </TableRow>
               </TableHeader>
@@ -172,6 +201,23 @@ export function GenresView() {
                   <TableRow key={genre.id}>
                     <TableCell className="font-medium">{genre.name}</TableCell>
                     <TableCell>{genre.slug}</TableCell>
+                    <TableCell>
+                      <GenreStatusBadge status={genre.status} />
+                    </TableCell>
+                    <TableCell>
+                      {genre.wikidata_qid ? (
+                        <a
+                          href={`https://www.wikidata.org/wiki/${genre.wikidata_qid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline-offset-4 hover:underline"
+                        >
+                          {genre.wikidata_qid}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => startEdit(genre)}>
                         Редактировать

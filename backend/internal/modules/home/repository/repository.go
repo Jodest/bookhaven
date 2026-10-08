@@ -3,10 +3,11 @@
 //
 // The home module owns no tables. GormRepository reads these tables owned
 // by other modules in raw SQL and returns IDs and scalars only:
-// books, authors, book_authors, book_genres, reviews, users, shelves,
+// books, authors, book_authors, book_genres, genres, reviews, users, shelves,
 // shelf_items, ratings, book_similarities.
 // If those schemas change (visibility flags, rating columns, review fields,
-// shelf types, similarity columns), update the queries below.
+// shelf types, similarity columns, genre status), update the queries
+// below.
 package repository
 
 import (
@@ -155,6 +156,10 @@ func ids(rows []idRow) []uuid.UUID {
 	return result
 }
 
+// poolGenreFilter restricts the pool to books linked to the given genre,
+// counting only a published genre.
+const poolGenreFilter = "EXISTS (SELECT 1 FROM book_genres bg JOIN genres g ON g.id = bg.genre_id WHERE bg.book_id = books.id AND bg.genre_id = ? AND g.status = 'published')"
+
 // poolQuery builds the shared visible-books filter.
 func (r *GormRepository) poolQuery(ctx context.Context, f PoolFilter) *gorm.DB {
 	q := r.db.WithContext(ctx).Table("books").Select("books.id").Where("books.is_hidden = FALSE")
@@ -168,7 +173,9 @@ func (r *GormRepository) poolQuery(ctx context.Context, f PoolFilter) *gorm.DB {
 		q = q.Where("books.ratings_count >= ?", f.MinRatingsCount)
 	}
 	if f.GenreID != nil {
-		q = q.Where("EXISTS (SELECT 1 FROM book_genres bg WHERE bg.book_id = books.id AND bg.genre_id = ?)", *f.GenreID)
+		// Only a published genre is a public filter target
+		// (docs/features/genre-status.md): a non-published ID matches nothing.
+		q = q.Where(poolGenreFilter, *f.GenreID)
 	}
 	if f.ExcludeID != nil {
 		q = q.Where("books.id <> ?", *f.ExcludeID)

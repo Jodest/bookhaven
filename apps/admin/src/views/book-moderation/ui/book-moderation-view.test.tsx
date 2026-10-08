@@ -153,7 +153,7 @@ describe('BookModerationView', () => {
             photo_attribution: null,
           },
         ],
-        genres: [{ id: 'g1', name: 'Жанр', slug: 'g1' }],
+        genres: [{ id: 'g1', name: 'Жанр', slug: 'g1', status: 'published', wikidata_qid: null }],
       });
       listMock.mockResolvedValue({ items: [book], total: 1, page: 1, limit: 20 });
 

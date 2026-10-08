@@ -3,9 +3,16 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminAuthorsApi, AuthorStatusBadge, AUTHOR_STATUS_LABELS } from '@/entities/author';
-import { adminGenresApi } from '@/entities/genre';
+import { adminGenresApi, GenreStatusBadge, GENRE_STATUS_LABELS } from '@/entities/genre';
 import { adminBooksApi } from '@/entities/book';
-import { AdminAuthor, AdminBook, AdminBookInput, ApiError, LookupRecord } from '@bookhaven/api-client';
+import {
+  AdminAuthor,
+  AdminBook,
+  AdminBookInput,
+  AdminGenre,
+  ApiError,
+  LookupRecord,
+} from '@bookhaven/api-client';
 import {
   Button,
   Input,
@@ -88,8 +95,19 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
   const selectedNonPublishedAuthors = (authorIds || [])
     .map((id) => knownAuthors.get(id))
     .filter((a): a is AdminAuthor => !!a && !!a.status && a.status !== 'published');
+  // Non-published genres are marked the same way (they stay linkable but
+  // are hidden on the public site, docs/features/genre-status.md).
   const genreOptions =
-    genresData?.items.map((g) => ({ value: g.id, label: g.name })) || [];
+    genresData?.items.map((g) => ({
+      value: g.id,
+      label: g.status && g.status !== 'published' ? `${g.name} · ${GENRE_STATUS_LABELS[g.status]}` : g.name,
+    })) || [];
+  const knownGenres = new Map<string, AdminGenre>(
+    [...(initial?.genres ?? []), ...(genresData?.items ?? [])].map((g) => [g.id, g])
+  );
+  const selectedNonPublishedGenres = (genreIds || [])
+    .map((id) => knownGenres.get(id))
+    .filter((g): g is AdminGenre => !!g && !!g.status && g.status !== 'published');
 
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -295,6 +313,16 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
             value={genreIds || []}
             onChange={(v) => setValue('genre_ids', v)}
           />
+          {selectedNonPublishedGenres.length > 0 && (
+            <ul className="space-y-1 text-xs" aria-label="Неопубликованные жанры">
+              {selectedNonPublishedGenres.map((g) => (
+                <li key={g.id} className="flex items-center gap-2">
+                  <GenreStatusBadge status={g.status} />
+                  <span>{g.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           {lookupResult && (lookupResult.genres?.length ?? 0) > 0 && (
             <p className="text-xs text-muted-foreground">
               Из результата поиска (выберите вручную): {lookupResult.genres.join(', ')}

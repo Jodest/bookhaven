@@ -428,6 +428,16 @@ definitions:
         type: string
       slug:
         type: string
+      status:
+        description: |-
+          Status (pending | published | rejected) is applied on PATCH only;
+          omitted = unchanged. Ignored on POST (new genres are published).
+        type: string
+      wikidata_qid:
+        description: |-
+          WikidataQID: omitted/null = unchanged, "" = clear, otherwise a bare
+          QID (^Q[0-9]+$ after trim/uppercase; 400 invalid, 409 taken).
+        type: string
     type: object
   internal_modules_admin_transport_http.dashboardResponse:
     properties:
@@ -440,6 +450,8 @@ definitions:
       hidden_books:
         type: integer
       pending_authors:
+        type: integer
+      pending_genres:
         type: integer
       pending_import_review:
         type: integer
@@ -460,6 +472,12 @@ definitions:
       name:
         type: string
       slug:
+        type: string
+      status:
+        description: Status is pending | published | rejected (docs/features/genre-status.md).
+        type: string
+      wikidata_qid:
+        description: WikidataQID is the bare Wikidata QID, null when none.
         type: string
     type: object
   internal_modules_admin_transport_http.importWikidataAuthorRequest:
@@ -2724,6 +2742,10 @@ paths:
         in: query
         name: search
         type: string
+      - description: 'Статус: pending, published, rejected'
+        in: query
+        name: status
+        type: string
       - description: Номер страницы
         in: query
         name: page
@@ -2739,6 +2761,12 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/internal_modules_admin_transport_http.listGenresResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:
@@ -2780,6 +2808,12 @@ paths:
           description: Created
           schema:
             $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:
@@ -2839,6 +2873,12 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:

@@ -50,6 +50,10 @@ type fakeAdminService struct {
 	lastAuthorStatusFilter string
 	lastAuthorInput        *adminService.AuthorInput
 
+	lastGenreStatusFilter string
+	lastGenreInput        *adminService.GenreInput
+	genreErr              error
+
 	queueItems       []adminService.AuthorQueueItem
 	queueErr         error
 	lastQueueFilter  repository.AuthorModerationFilter
@@ -141,7 +145,7 @@ func (f *fakeAdminService) DashboardCounts(ctx context.Context) (repository.Dash
 		return repository.DashboardStats{}, f.dashboardErr
 	}
 	return repository.DashboardStats{
-		Books: 10, HiddenBooks: 2, Authors: 5, Genres: 4, PendingReviews: 3, PendingImportReview: 1, PendingAuthors: 7,
+		Books: 10, HiddenBooks: 2, Authors: 5, Genres: 4, PendingReviews: 3, PendingImportReview: 1, PendingAuthors: 7, PendingGenres: 6,
 	}, nil
 }
 
@@ -233,20 +237,36 @@ func (f *fakeAdminService) UpdateAuthor(ctx context.Context, id uuid.UUID, input
 	return nil, adminService.ErrAuthorNotFound
 }
 
-func (f *fakeAdminService) ListGenres(ctx context.Context, search string, page, limit int) ([]catalogDomain.Genre, int64, error) {
+func (f *fakeAdminService) ListGenres(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Genre, int64, error) {
+	f.lastGenreStatusFilter = status
 	return f.genres, int64(len(f.genres)), nil
 }
 
 func (f *fakeAdminService) CreateGenre(ctx context.Context, input adminService.GenreInput) (*catalogDomain.Genre, error) {
-	genre := catalogDomain.Genre{ID: uuid.New(), Name: input.Name, Slug: "genre"}
+	f.lastGenreInput = &input
+	if f.genreErr != nil {
+		return nil, f.genreErr
+	}
+	genre := catalogDomain.Genre{ID: uuid.New(), Name: input.Name, Slug: "genre", Status: catalogDomain.GenreStatusPublished, WikidataQID: input.WikidataQID}
 	f.genres = append(f.genres, genre)
 	return &genre, nil
 }
 
 func (f *fakeAdminService) UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error) {
+	f.lastGenreInput = &input
+	if f.genreErr != nil {
+		return nil, f.genreErr
+	}
 	for i := range f.genres {
 		if f.genres[i].ID == id {
 			f.genres[i].Name = input.Name
+			if input.Status != nil {
+				f.genres[i].Status = *input.Status
+			}
+			if input.WikidataQID != nil {
+				q := *input.WikidataQID
+				f.genres[i].WikidataQID = &q
+			}
 			return &f.genres[i], nil
 		}
 	}
@@ -346,7 +366,7 @@ func TestDashboard_Admin(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
-	if body.Books != 10 || body.HiddenBooks != 2 || body.PendingReviews != 3 || body.PendingImportReview != 1 || body.PendingAuthors != 7 {
+	if body.Books != 10 || body.HiddenBooks != 2 || body.PendingReviews != 3 || body.PendingImportReview != 1 || body.PendingAuthors != 7 || body.PendingGenres != 6 {
 		t.Fatalf("unexpected dashboard counts: %+v", body)
 	}
 }

@@ -1,7 +1,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AdminAuthor, AdminBook, ApiError } from '@bookhaven/api-client';
+import { AdminAuthor, AdminBook, AdminGenre, ApiError } from '@bookhaven/api-client';
 import { BookForm } from './book-form';
 
 const pushMock = vi.fn();
@@ -27,9 +27,12 @@ vi.mock('@/entities/author', async (importOriginal) => ({
   },
 }));
 
-vi.mock('@/entities/genre', () => ({
+const genresListMock = vi.fn(() => Promise.resolve({ items: [] as AdminGenre[], total: 0, page: 1, limit: 100 }));
+
+vi.mock('@/entities/genre', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/genre')>()),
   adminGenresApi: {
-    list: () => Promise.resolve({ items: [], total: 0, page: 1, limit: 100 }),
+    list: () => genresListMock(),
   },
 }));
 
@@ -346,5 +349,45 @@ describe('BookForm author picker status', () => {
     expect(selectedList).toHaveTextContent('На модерации');
     expect(selectedList).toHaveTextContent('Ожидающий Автор');
     expect(selectedList).not.toHaveTextContent('Опубликованный Автор');
+  });
+});
+
+describe('BookForm genre picker status', () => {
+  const genre = (id: string, name: string, status: AdminGenre['status']): AdminGenre => ({
+    id,
+    name,
+    slug: id,
+    status,
+    wikidata_qid: null,
+  });
+
+  afterEach(() => {
+    genresListMock.mockReset();
+    genresListMock.mockImplementation(() =>
+      Promise.resolve({ items: [] as AdminGenre[], total: 0, page: 1, limit: 100 })
+    );
+  });
+
+  it('marks non-published genres in the picker and badges selected ones', async () => {
+    const pending = genre('g2', 'ожидающий жанр', 'pending');
+    genresListMock.mockResolvedValue({
+      items: [genre('g1', 'опубликованный жанр', 'published'), pending, genre('g3', 'отклонённый жанр', 'rejected')],
+      total: 3,
+      page: 1,
+      limit: 100,
+    });
+
+    renderForm({ ...latinBook, genres: [pending] });
+
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'ожидающий жанр · На модерации' })).toBeInTheDocument()
+    );
+    expect(screen.getByRole('option', { name: 'опубликованный жанр' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'отклонённый жанр · Отклонён' })).toBeInTheDocument();
+
+    const selectedList = screen.getByRole('list', { name: 'Неопубликованные жанры' });
+    expect(selectedList).toHaveTextContent('На модерации');
+    expect(selectedList).toHaveTextContent('ожидающий жанр');
+    expect(selectedList).not.toHaveTextContent('опубликованный жанр');
   });
 });
