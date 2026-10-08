@@ -424,6 +424,59 @@ export interface AdminAuthorBulkStatusReport {
   errors: AdminAuthorBulkStatusRowError[];
 }
 
+// Genre moderation queue (GET /api/v1/admin/genres/moderation,
+// docs/features/genre-moderation-queue.md). Merged genres (aliases) are
+// never returned.
+export type AdminGenreSampleBook = AdminAuthorSampleBook;
+
+/** Display-only "possibly the same genre" suggestion. */
+export interface AdminGenreHint {
+  genre: AdminGenre;
+  match: 'exact_name' | 'same_stem' | 'shared_word';
+}
+
+export interface AdminGenreQueueItem {
+  genre: AdminGenre;
+  created_at: string;
+  /** All linked books. */
+  books_total: number;
+  /** Linked books with is_hidden = false. */
+  books_visible: number;
+  /** Up to 3 linked books, ordered by title. */
+  sample_books: AdminGenreSampleBook[];
+  similar: AdminGenreHint[];
+}
+
+export interface AdminGenreQueueParams {
+  /** Defaults to 'pending' on the server. */
+  status?: AdminGenreStatus;
+  qid?: 'with' | 'without';
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface AdminGenreBulkStatusRowError {
+  genre_id: string;
+  name: string;
+  message: string;
+}
+
+// Response of POST /api/v1/admin/genres/bulk-status (HTTP 200 regardless
+// of per-row outcomes).
+export interface AdminGenreBulkStatusReport {
+  processed: number;
+  updated: number;
+  errors: AdminGenreBulkStatusRowError[];
+}
+
+// Response of POST /api/v1/admin/genres/:id/merge. genre is the target
+// (with a carried QID); books_reassigned is how many books moved to it.
+export interface AdminGenreMergeResult {
+  genre: AdminGenre;
+  books_reassigned: number;
+}
+
 /** Fields enrichment can fill. */
 export type AdminAuthorEnrichmentField = 'birth_date' | 'death_date' | 'photo';
 
@@ -1930,6 +1983,30 @@ export const api = {
         fetcher<AdminGenre>(`/api/v1/admin/genres/${id}`, {
           method: 'PATCH',
           body: JSON.stringify(data),
+        }),
+      moderationQueue: (params?: AdminGenreQueueParams) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        if (params?.status) queryParams.status = params.status;
+        if (params?.qid) queryParams.qid = params.qid;
+        if (params?.search) queryParams.search = params.search;
+        return fetcher<PaginatedResponse<AdminGenreQueueItem>>(
+          `/api/v1/admin/genres/moderation?${new URLSearchParams(queryParams)}`
+        );
+      },
+      // At most 100 ids; unknown or merged ids are row errors.
+      bulkStatus: (ids: string[], status: AdminGenreStatus) =>
+        fetcher<AdminGenreBulkStatusReport>('/api/v1/admin/genres/bulk-status', {
+          method: 'POST',
+          body: JSON.stringify({ ids, status }),
+        }),
+      // Irreversible: sourceId becomes an alias of canonicalId. Errors: 400
+      // self-merge, 404 missing or already merged genre.
+      merge: (sourceId: string, canonicalId: string) =>
+        fetcher<AdminGenreMergeResult>(`/api/v1/admin/genres/${sourceId}/merge`, {
+          method: 'POST',
+          body: JSON.stringify({ canonical_id: canonicalId }),
         }),
     },
     users: {

@@ -49,6 +49,19 @@ type fakeRepository struct {
 	// fillErr / fillCalls back the enrichment tests.
 	fillErr   error
 	fillCalls []repository.AuthorEnrichmentFill
+
+	// Genre moderation (genre_moderation_test.go): genreModRows backs
+	// ListGenresForModeration, genreSamples ListGenreSampleBooks;
+	// candidate, status and merge calls work on genres in memory.
+	genreModRows       []repository.GenreModerationRow
+	lastGenreModFilter repository.GenreModerationFilter
+	genreSamples       map[uuid.UUID][]repository.SampleBook
+	genreSampleCalls   int
+	genreHintCalls     int
+	setGenreStatusErr  map[uuid.UUID]error
+	mergeGenresErr     error
+	mergeGenresCalls   int
+	mergeGenresBooks   int64
 }
 
 func (f *fakeRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
@@ -71,8 +84,10 @@ func (f *fakeRepository) DashboardCounts(ctx context.Context) (repository.Dashbo
 			st.PendingAuthors++
 		}
 	}
-	st.Genres = int64(len(f.genres))
 	for _, g := range f.genres {
+		if !g.IsAlias() {
+			st.Genres++
+		}
 		if g.Status == catalogDomain.GenreStatusPending {
 			st.PendingGenres++
 		}
@@ -248,12 +263,12 @@ func (f *fakeRepository) MergeAuthors(ctx context.Context, duplicateID, canonica
 }
 
 func (f *fakeRepository) ListGenres(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Genre, int64, error) {
-	if status == "" {
-		return f.genres, int64(len(f.genres)), nil
-	}
 	var out []catalogDomain.Genre
 	for _, g := range f.genres {
-		if g.Status == status {
+		if g.IsAlias() {
+			continue
+		}
+		if status == "" || g.Status == status {
 			out = append(out, g)
 		}
 	}
@@ -261,8 +276,9 @@ func (f *fakeRepository) ListGenres(ctx context.Context, search, status string, 
 }
 
 func (f *fakeRepository) GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error) {
+	// Mirrors the repository: alias rows are not found by id.
 	for i := range f.genres {
-		if f.genres[i].ID == id {
+		if f.genres[i].ID == id && !f.genres[i].IsAlias() {
 			return &f.genres[i], nil
 		}
 	}
@@ -317,7 +333,7 @@ func (f *fakeRepository) UpdateGenre(ctx context.Context, genre *catalogDomain.G
 			return nil
 		}
 	}
-	return errors.New("record not found")
+	return gorm.ErrRecordNotFound
 }
 
 func (f *fakeRepository) GenreSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
@@ -1031,4 +1047,79 @@ func (f *fakeRepository) ListUsers(ctx context.Context, filter repository.UserFi
 
 func (f *fakeRepository) ChangeUserRole(ctx context.Context, targetID uuid.UUID, decide repository.RoleDecider) (*usersDomain.User, usersDomain.Role, error) {
 	return nil, "", nil
+}
+
+func (f *fakeRepository) ListGenresForModeration(ctx context.Context, filter repository.GenreModerationFilter) ([]repository.GenreModerationRow, int64, error) {
+	f.lastGenreModFilter = filter
+	return f.genreModRows, int64(len(f.genreModRows)), nil
+}
+
+func (f *fakeRepository) ListGenreSampleBooks(ctx context.Context, genreIDs []uuid.UUID) (map[uuid.UUID][]repository.SampleBook, error) {
+	f.genreSampleCalls++
+	if f.genreSamples == nil {
+		return map[uuid.UUID][]repository.SampleBook{}, nil
+	}
+	return f.genreSamples, nil
+}
+
+// ListGenreHintCandidates mirrors the repository filter: non-rejected,
+// non-alias genres.
+func (f *fakeRepository) ListGenreHintCandidates(ctx context.Context) ([]catalogDomain.Genre, error) {
+	f.genreHintCalls++
+	var out []catalogDomain.Genre
+	for _, g := range f.genres {
+		if g.Status != catalogDomain.GenreStatusRejected && !g.IsAlias() {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+
+// SetGenreStatus mirrors the repository: alias rows are not found.
+func (f *fakeRepository) SetGenreStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	if err := f.setGenreStatusErr[id]; err != nil {
+		return false, err
+	}
+	for i := range f.genres {
+		if f.genres[i].ID == id && !f.genres[i].IsAlias() {
+			f.genres[i].Status = status
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// MergeGenres mirrors the repository's alias semantics on the in-memory
+// genres (book links are not modeled; mergeGenresBooks is returned).
+func (f *fakeRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (int64, error) {
+	f.mergeGenresCalls++
+	if f.mergeGenresErr != nil {
+		return 0, f.mergeGenresErr
+	}
+	var source, target *catalogDomain.Genre
+	for i := range f.genres {
+		switch {
+		case f.genres[i].IsAlias():
+		case f.genres[i].ID == sourceID:
+			source = &f.genres[i]
+		case f.genres[i].ID == targetID:
+			target = &f.genres[i]
+		}
+	}
+	if source == nil || target == nil {
+		return 0, gorm.ErrRecordNotFound
+	}
+	for i := range f.genres {
+		if f.genres[i].MergedIntoID != nil && *f.genres[i].MergedIntoID == sourceID {
+			t := targetID
+			f.genres[i].MergedIntoID = &t
+		}
+	}
+	if source.WikidataQID != nil && target.WikidataQID == nil {
+		target.WikidataQID, source.WikidataQID = source.WikidataQID, nil
+	}
+	t := targetID
+	source.MergedIntoID = &t
+	source.Status = catalogDomain.GenreStatusRejected
+	return f.mergeGenresBooks, nil
 }

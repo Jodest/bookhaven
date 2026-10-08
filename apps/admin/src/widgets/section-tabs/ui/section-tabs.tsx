@@ -11,6 +11,7 @@ import { usePathname } from 'next/navigation';
 const TAB_BADGE_SR_LABELS: Partial<Record<string, string>> = {
   'moderation.books': 'ожидают проверки',
   'moderation.authors': 'ожидают проверки',
+  'moderation.genres': 'ожидают проверки',
   'import.jobs': 'задач в работе',
 };
 

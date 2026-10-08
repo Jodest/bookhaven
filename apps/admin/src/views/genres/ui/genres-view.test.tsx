@@ -1,7 +1,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AdminGenre } from '@bookhaven/api-client';
+import { ApiError, type AdminGenre } from '@bookhaven/api-client';
 import { GenresView } from './genres-view';
 
 const pushMock = vi.fn();
@@ -137,5 +137,32 @@ describe('GenresView status and QID', () => {
         expect.objectContaining({ status: 'published', wikidata_qid: '' })
       )
     );
+  });
+
+  it('links to the genre moderation queue from the header', async () => {
+    listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+    renderView();
+    expect(screen.getByRole('link', { name: 'Очередь модерации' })).toHaveAttribute(
+      'href',
+      '/moderation/genres'
+    );
+  });
+
+  it('extends a 409 QID conflict with a merged-genre hint and keeps other messages', async () => {
+    listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+    createMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'genre wikidata qid already exists'));
+    renderView();
+
+    fireEvent.change(screen.getByLabelText('Название *'), { target: { value: 'повесть' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText('genre wikidata qid already exists (возможно, у слитого жанра)')
+      ).toBeInTheDocument()
+    );
+
+    createMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'slug already exists'));
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    await waitFor(() => expect(screen.getByText('slug already exists')).toBeInTheDocument());
   });
 });

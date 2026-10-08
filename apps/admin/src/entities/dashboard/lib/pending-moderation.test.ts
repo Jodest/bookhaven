@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { pendingModerationTotal } from './pending-moderation';
 
 describe('pendingModerationTotal', () => {
-  it('sums pending import review and pending authors, excluding pending_reviews', () => {
+  it('sums pending import review, pending authors and pending genres, excluding pending_reviews', () => {
     expect(
       pendingModerationTotal({
         books: 100,
@@ -14,10 +14,10 @@ describe('pendingModerationTotal', () => {
         pending_authors: 7,
         pending_genres: 6,
       })
-    ).toBe(11);
+    ).toBe(17);
   });
 
-  it('is 0 when both queues are empty', () => {
+  it('is 0 when all queues are empty', () => {
     expect(
       pendingModerationTotal({
         books: 1,

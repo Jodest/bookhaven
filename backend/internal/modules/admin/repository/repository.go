@@ -88,21 +88,51 @@ type Repository interface {
 	// condition. A fill with no parts is a no-op.
 	FillAuthorEnrichment(ctx context.Context, id uuid.UUID, fill AuthorEnrichmentFill) error
 
-	// Genres.
+	// Genres. Alias rows (merged_into_id set, see
+	// docs/features/genre-moderation-queue.md) are hidden from ListGenres,
+	// GetGenreByID, GenresExist and the dashboard count, but GetGenreBySlug,
+	// GetGenreByQID and GenreSlugExists still return them, so resolvers can
+	// follow an alias and its slug/QID stay reserved.
 	// ListGenres lists genres of every status; status, when non-empty,
 	// restricts the result to that status.
 	ListGenres(ctx context.Context, search, status string, limit, offset int) ([]catalogDomain.Genre, int64, error)
+	// GetGenreByID returns a non-alias genre; an alias id gives
+	// gorm.ErrRecordNotFound.
 	GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error)
+	// GetGenreBySlug returns the genre with the slug, alias rows included.
 	GetGenreBySlug(ctx context.Context, slug string) (*catalogDomain.Genre, error)
 	// GetGenreByQID returns the genre with the given Wikidata QID, any
-	// status. Returns gorm.ErrRecordNotFound when none exists.
+	// status, alias rows included. Returns gorm.ErrRecordNotFound when none
+	// exists.
 	GetGenreByQID(ctx context.Context, qid string) (*catalogDomain.Genre, error)
 	// SetGenreQID sets a genre's wikidata_qid without touching any other
 	// column (status included).
 	SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error
 	CreateGenre(ctx context.Context, genre *catalogDomain.Genre) error
+	// UpdateGenre persists only the PATCH-editable columns (name, slug,
+	// status, wikidata_qid) of a non-alias genre. It never writes
+	// merged_into_id, so a PATCH racing a merge cannot resurrect the alias.
+	// Returns gorm.ErrRecordNotFound when no non-alias row has genre.ID.
 	UpdateGenre(ctx context.Context, genre *catalogDomain.Genre) error
 	GenreSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
+
+	// Genre moderation queue (docs/features/genre-moderation-queue.md).
+	// ListGenresForModeration lists non-alias genres matching filter,
+	// newest first, each with its linked-books counts.
+	ListGenresForModeration(ctx context.Context, filter GenreModerationFilter) ([]GenreModerationRow, int64, error)
+	// ListGenreSampleBooks returns up to sampleBooksPerAuthor linked books
+	// (ordered by title) per genre, for all genreIDs in one query.
+	ListGenreSampleBooks(ctx context.Context, genreIDs []uuid.UUID) (map[uuid.UUID][]SampleBook, error)
+	// ListGenreHintCandidates returns every non-rejected, non-alias genre
+	// (the similar-name hint pool) in one query.
+	ListGenreHintCandidates(ctx context.Context) ([]catalogDomain.Genre, error)
+	// SetGenreStatus updates only the status of one non-alias genre. found
+	// is false when no such genre exists (unknown id or alias).
+	SetGenreStatus(ctx context.Context, id uuid.UUID, status string) (found bool, err error)
+	// MergeGenres turns sourceID into an alias of targetID in one
+	// transaction (see genre_moderation.go). Returns gorm.ErrRecordNotFound,
+	// changing nothing, when either genre is missing or already an alias.
+	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (booksReassigned int64, err error)
 
 	// Reviews moderation.
 	ListReviews(ctx context.Context, filter ReviewFilter) ([]reviewsDomain.Review, int64, error)
@@ -216,7 +246,8 @@ func (r *GormRepository) DashboardCounts(ctx context.Context) (DashboardStats, e
 	if err := db.Model(&catalogDomain.Author{}).Count(&st.Authors).Error; err != nil {
 		return DashboardStats{}, err
 	}
-	if err := db.Model(&catalogDomain.Genre{}).Count(&st.Genres).Error; err != nil {
+	// Alias rows (merged genres) are not genres of their own.
+	if err := db.Model(&catalogDomain.Genre{}).Where("merged_into_id IS NULL").Count(&st.Genres).Error; err != nil {
 		return DashboardStats{}, err
 	}
 	if err := db.Model(&reviewsDomain.Review{}).Where("is_hidden = ?", true).Count(&st.PendingReviews).Error; err != nil {
@@ -568,7 +599,8 @@ func (r *GormRepository) ListGenres(ctx context.Context, search, status string, 
 	var genres []catalogDomain.Genre
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&catalogDomain.Genre{})
+	// Alias rows (merged genres) never appear in admin lists.
+	query := r.db.WithContext(ctx).Model(&catalogDomain.Genre{}).Where("merged_into_id IS NULL")
 
 	if search != "" {
 		query = query.Where("name ILIKE ?", "%"+search+"%")
@@ -603,7 +635,7 @@ func (r *GormRepository) ListGenres(ctx context.Context, search, status string, 
 
 func (r *GormRepository) GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error) {
 	var genre catalogDomain.Genre
-	if err := r.db.WithContext(ctx).First(&genre, "id = ?", id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&genre, "id = ? AND merged_into_id IS NULL", id).Error; err != nil {
 		return nil, err
 	}
 	return &genre, nil
@@ -636,7 +668,21 @@ func (r *GormRepository) CreateGenre(ctx context.Context, genre *catalogDomain.G
 }
 
 func (r *GormRepository) UpdateGenre(ctx context.Context, genre *catalogDomain.Genre) error {
-	return r.db.WithContext(ctx).Save(genre).Error
+	res := r.db.WithContext(ctx).Model(&catalogDomain.Genre{}).
+		Where("id = ? AND merged_into_id IS NULL", genre.ID).
+		Updates(map[string]any{
+			"name":         genre.Name,
+			"slug":         genre.Slug,
+			"status":       genre.Status,
+			"wikidata_qid": genre.WikidataQID,
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *GormRepository) GenreSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
@@ -802,7 +848,8 @@ func (r *GormRepository) GenresExist(ctx context.Context, ids []uuid.UUID) (bool
 		return true, nil
 	}
 	var count int64
-	if err := r.db.WithContext(ctx).Model(&catalogDomain.Genre{}).Where("id IN ?", ids).Count(&count).Error; err != nil {
+	// An alias id counts as unknown: books never link alias rows.
+	if err := r.db.WithContext(ctx).Model(&catalogDomain.Genre{}).Where("id IN ? AND merged_into_id IS NULL", ids).Count(&count).Error; err != nil {
 		return false, err
 	}
 	return count == int64(len(ids)), nil

@@ -88,6 +88,30 @@ func TestListGenres_OnlyPublished(t *testing.T) {
 	}
 }
 
+// TestListGenres_ExcludesAliasRows: a merged genre (alias row, always
+// rejected - docs/features/genre-moderation-queue.md) never surfaces
+// publicly; the published-only filter covers it.
+func TestListGenres_ExcludesAliasRows(t *testing.T) {
+	f := newGenreFixture(t)
+	alias := uuid.New()
+	if err := f.repo.db.Exec("INSERT INTO genres (id, name, slug, status, merged_into_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		alias, "alias", "alias", domain.GenreStatusRejected, f.published, time.Now()).Error; err != nil {
+		t.Fatalf("insert alias: %v", err)
+	}
+	genres, err := f.repo.ListGenres(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, g := range genres {
+		if g.ID == alias {
+			t.Fatalf("alias row must not be listed publicly: %+v", genres)
+		}
+	}
+	if len(genres) != 1 || genres[0].ID != f.published {
+		t.Fatalf("expected only the published genre, got %+v", genres)
+	}
+}
+
 func TestListBooks_GenreFilterRequiresPublishedGenre(t *testing.T) {
 	f := newGenreFixture(t)
 	ctx := context.Background()

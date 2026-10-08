@@ -551,10 +551,10 @@ Implemented in its own contract: [admin-users.md](admin-users.md); covers the li
 
 Product decision taken; split into three features with their own contracts:
 1. #301 Genre status & Wikidata identity — `status` (pending/published/rejected, all existing genres -> pending) + `wikidata_qid`, public published-only filtering, harvest QID-first matching with rejected tombstones, admin badge/filter/edit, `pending_genres` dashboard tile: [genre-status.md](genre-status.md).
-2. #302 Genre moderation queue with merge — replaces the `/moderation/genres` placeholder; adds `pending_genres` to the sidebar moderation badge and the Модерация/Жанры tab badge (contract TBD).
+2. #302 Genre moderation queue with merge (done) — replaces the `/moderation/genres` placeholder; adds `pending_genres` to the sidebar moderation badge and the Модерация/Жанры tab badge; merge turns the source into an alias row (`merged_into_id`) so its QID and slug keep resolving: [genre-moderation-queue.md](genre-moderation-queue.md).
 3. #303 Wikidata genre import — replaces the `/import/genres` placeholder (contract TBD).
 
-Placeholders stay until #302/#303.
+The `/moderation/genres` placeholder is replaced (#302); the `/import/genres` placeholder stays until #303.
 
 ---
 

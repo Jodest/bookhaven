@@ -19,6 +19,7 @@ export function buildNavCounters(stats?: AdminDashboard, jobs?: AdminHarvestJob[
     counters.sections.moderation = pendingModerationTotal(stats);
     counters.tabs['moderation.books'] = stats.pending_import_review;
     counters.tabs['moderation.authors'] = stats.pending_authors;
+    counters.tabs['moderation.genres'] = stats.pending_genres;
   }
   if (jobs) {
     const inFlight = countInFlightHarvestJobs(jobs);

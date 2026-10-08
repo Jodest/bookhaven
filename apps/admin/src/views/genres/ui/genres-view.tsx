@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminGenresApi, GenreStatusBadge, GENRE_STATUS_LABELS } from '@/entities/genre';
-import { AdminGenre, AdminGenreInput, AdminGenreStatus } from '@bookhaven/api-client';
+import { AdminGenre, AdminGenreInput, AdminGenreStatus, ApiError } from '@bookhaven/api-client';
 import {
   Input,
   Button,
@@ -118,9 +119,22 @@ export function GenresView() {
 
   const totalPages = data ? Math.ceil(data.total / limit) : 0;
 
+  // A taken QID may belong to a merged (hidden) genre: its QID stays reserved
+  // (docs/features/genre-moderation-queue.md rule 6).
+  const mutationError = createMutation.error || updateMutation.error;
+  const mutationErrorText =
+    mutationError instanceof ApiError && mutationError.status === 409 && /qid/i.test(mutationError.message)
+      ? `${mutationError.message} (возможно, у слитого жанра)`
+      : mutationError?.message;
+
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Жанры</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-3xl font-bold tracking-tight">Жанры</h1>
+        <Link href={'/moderation/genres' as any} className="text-sm text-primary hover:underline">
+          Очередь модерации
+        </Link>
+      </div>
 
       <GenreForm
         formData={formData}
@@ -147,9 +161,9 @@ export function GenresView() {
           </button>
         </div>
       )}
-      {(createMutation.error || updateMutation.error) && (
+      {mutationError && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          {createMutation.error?.message || updateMutation.error?.message}
+          {mutationErrorText}
         </div>
       )}
 

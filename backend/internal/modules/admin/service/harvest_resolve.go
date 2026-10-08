@@ -287,7 +287,10 @@ func (s *Service) createHarvestAuthor(ctx context.Context, name, slug, qid strin
 // (docs/features/genre-status.md rule 6): slug-only matching, missing
 // genres are created as pending (free-text labels need review), and a
 // slug-matched genre is linked whatever its status, rejected included.
-// Harvest uses ResolveOrCreateHarvestGenres instead.
+// A slug match on an alias row (a merged genre,
+// docs/features/genre-moderation-queue.md rule 5) links its target instead,
+// whatever the target's status. Harvest uses ResolveOrCreateHarvestGenres
+// instead.
 func (s *Service) ResolveOrCreateGenreIDsByNames(ctx context.Context, names []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(names))
 	ids := make([]string, 0, len(names))
@@ -309,6 +312,12 @@ func (s *Service) ResolveOrCreateGenreIDsByNames(ctx context.Context, names []st
 				return nil, fmt.Errorf("create genre %q: %w", name, createErr)
 			}
 			genre = created
+		} else {
+			target, _, followErr := s.followGenreAlias(ctx, genre)
+			if followErr != nil {
+				return nil, followErr
+			}
+			genre = target
 		}
 
 		id := genre.ID.String()
@@ -358,6 +367,10 @@ type GenreResolution struct {
 	// QIDBackfilled reports that the QID was written to a slug-matched
 	// genre that had none.
 	QIDBackfilled bool
+	// ViaAlias is the matched alias row (a merged genre) when the QID or
+	// slug match was followed to its target; Genre is then the target.
+	// Nil for a direct match.
+	ViaAlias *catalogDomain.Genre
 }
 
 // ResolveOrCreateHarvestGenres resolves harvested genre refs to genre IDs
@@ -375,6 +388,13 @@ type GenreResolution struct {
 //     - same QID or no QID given -> linked.
 //  3. No match -> a new pending genre (with the QID, if any) is created
 //     and linked.
+//
+// Alias rows (merged genres, docs/features/genre-moderation-queue.md rule
+// 5): when the QID or slug match is an alias, it is followed one hop to
+// its target before any status check or backfill, and the target gets the
+// normal outcome (rejected target -> skipped, otherwise linked). Neither
+// the alias nor the target is written (no QID backfill), and nothing is
+// created. A target that is itself an alias or missing is an error.
 //
 // Empty names are skipped; duplicates (by resolved ID) are collapsed. When
 // refs are skipped one info line lists them; the caller still creates the
@@ -423,11 +443,13 @@ func (s *Service) resolveHarvestGenre(ctx context.Context, name, qid string) (*G
 		genre, err := s.repo.GetGenreByQID(ctx, qid)
 		switch {
 		case err == nil:
-			outcome := GenreOutcomeExisting
-			if genre.Status == catalogDomain.GenreStatusRejected {
-				outcome = GenreOutcomeRejected
+			// The alias check comes before the rejected check: an alias
+			// is always rejected itself, its target decides.
+			target, alias, err := s.followGenreAlias(ctx, genre)
+			if err != nil {
+				return nil, err
 			}
-			return &GenreResolution{Genre: genre, Outcome: outcome, Match: GenreMatchQID}, nil
+			return &GenreResolution{Genre: target, Outcome: genreMatchOutcome(target), Match: GenreMatchQID, ViaAlias: alias}, nil
 		case !errors.Is(err, gorm.ErrRecordNotFound):
 			return nil, fmt.Errorf("lookup genre by qid %q: %w", qid, err)
 		}
@@ -453,6 +475,16 @@ func (s *Service) resolveGenreBySlug(ctx context.Context, name, qid string) (*Ge
 			return nil, fmt.Errorf("create genre %q: %w", name, err)
 		}
 		return &GenreResolution{Genre: created, Outcome: GenreOutcomeCreated}, nil
+	}
+
+	if genre.IsAlias() {
+		// Follow the alias before the backfill and the status checks; no
+		// QID is written to the alias or the target.
+		target, alias, err := s.followGenreAlias(ctx, genre)
+		if err != nil {
+			return nil, err
+		}
+		return &GenreResolution{Genre: target, Outcome: genreMatchOutcome(target), Match: GenreMatchSlug, ViaAlias: alias}, nil
 	}
 
 	res := &GenreResolution{Genre: genre, Outcome: GenreOutcomeExisting, Match: GenreMatchSlug}
@@ -486,4 +518,38 @@ func (s *Service) resolveGenreBySlug(ctx context.Context, name, qid string) (*Ge
 			zap.String("ref_qid", qid))
 	}
 	return res, nil
+}
+
+// genreMatchOutcome is the outcome of an existing (matched) genre: a
+// rejected genre is a tombstone (skip), anything else is linked.
+func genreMatchOutcome(g *catalogDomain.Genre) string {
+	if g.Status == catalogDomain.GenreStatusRejected {
+		return GenreOutcomeRejected
+	}
+	return GenreOutcomeExisting
+}
+
+// followGenreAlias follows an alias row (a merged genre,
+// docs/features/genre-moderation-queue.md rule 5) at most one hop. For a
+// non-alias genre it returns (g, nil). For an alias it returns the target
+// (loaded with GetGenreByID) and the alias itself. Merges keep alias
+// chains one hop deep, so a target that is missing or itself an alias is
+// an invariant breach: it is logged with both IDs and returned as an
+// error.
+func (s *Service) followGenreAlias(ctx context.Context, g *catalogDomain.Genre) (target, alias *catalogDomain.Genre, err error) {
+	if !g.IsAlias() {
+		return g, nil, nil
+	}
+	targetID := *g.MergedIntoID
+	target, err = s.repo.GetGenreByID(ctx, targetID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			s.log.Error("genre alias target is missing or itself an alias",
+				zap.String("alias_id", g.ID.String()),
+				zap.String("target_id", targetID.String()))
+			return nil, nil, fmt.Errorf("genre alias %s: target %s is missing or itself an alias", g.ID, targetID)
+		}
+		return nil, nil, fmt.Errorf("load target %s of genre alias %s: %w", targetID, g.ID, err)
+	}
+	return target, g, nil
 }

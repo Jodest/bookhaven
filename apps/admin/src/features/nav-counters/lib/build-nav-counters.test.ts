@@ -29,22 +29,27 @@ const jobs = [
 describe('buildNavCounters', () => {
   it('maps stats and jobs to section and tab counters', () => {
     expect(buildNavCounters(stats, jobs)).toEqual({
-      sections: { moderation: 11, import: 3 },
-      tabs: { 'moderation.books': 4, 'moderation.authors': 7, 'import.jobs': 3 },
+      sections: { moderation: 17, import: 3 },
+      tabs: {
+        'moderation.books': 4,
+        'moderation.authors': 7,
+        'moderation.genres': 6,
+        'import.jobs': 3,
+      },
     });
   });
 
   it('ignores pending_reviews', () => {
     const counters = buildNavCounters({ ...stats, pending_reviews: 1000 }, undefined);
-    expect(counters.sections.moderation).toBe(11);
+    expect(counters.sections.moderation).toBe(17);
     expect(Object.values(counters.tabs)).not.toContain(1000);
   });
 
   it('omits keys whose source is undefined', () => {
     expect(buildNavCounters(undefined, undefined)).toEqual({ sections: {}, tabs: {} });
     expect(buildNavCounters(stats, undefined)).toEqual({
-      sections: { moderation: 11 },
-      tabs: { 'moderation.books': 4, 'moderation.authors': 7 },
+      sections: { moderation: 17 },
+      tabs: { 'moderation.books': 4, 'moderation.authors': 7, 'moderation.genres': 6 },
     });
     expect(buildNavCounters(undefined, jobs)).toEqual({
       sections: { import: 3 },
