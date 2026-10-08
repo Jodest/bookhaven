@@ -8,6 +8,7 @@ import (
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"gorm.io/gorm"
 )
 
 // Tests for docs/features/genre-status.md (status lifecycle + Wikidata QID).
@@ -338,6 +339,26 @@ func TestUpdateGenre_StatusAndQID(t *testing.T) {
 			t.Fatalf("expected ErrDuplicateGenreQID, got %v", err)
 		}
 	})
+
+	t.Run("merged concurrently", func(t *testing.T) {
+		// The genre is read fine but becomes an alias before the write: the
+		// repository's guarded update matches 0 rows (gorm.ErrRecordNotFound).
+		_, repo, id := setup()
+		svc := NewService(&aliasOnUpdateRepo{fakeRepository: repo})
+		if _, err := svc.UpdateGenre(ctx, id, GenreInput{Name: "роман"}); !errors.Is(err, ErrGenreNotFound) {
+			t.Fatalf("expected ErrGenreNotFound, got %v", err)
+		}
+	})
+}
+
+// aliasOnUpdateRepo simulates a merge landing between UpdateGenre's read and
+// its write: the guarded update finds no non-alias row.
+type aliasOnUpdateRepo struct {
+	*fakeRepository
+}
+
+func (r *aliasOnUpdateRepo) UpdateGenre(ctx context.Context, genre *catalogDomain.Genre) error {
+	return gorm.ErrRecordNotFound
 }
 
 func TestGenreDuplicateKeyError_MapsQIDConstraint(t *testing.T) {

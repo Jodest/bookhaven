@@ -103,7 +103,7 @@ describe('SectionTabs', () => {
   it('moderation tabs show their own counts; zero and other tabs have no badge', () => {
     countersValue = {
       sections: {},
-      tabs: { 'moderation.books': 4, 'moderation.authors': 0 },
+      tabs: { 'moderation.books': 4, 'moderation.authors': 0, 'moderation.genres': 6 },
     };
     renderTabs('/moderation/reviews');
 
@@ -113,7 +113,10 @@ describe('SectionTabs', () => {
     );
     expect(screen.getByRole('link', { name: 'Авторы' })).toHaveAccessibleName('Авторы');
     expect(screen.getByRole('link', { name: 'Отзывы' })).toHaveAccessibleName('Отзывы');
-    expect(screen.getByRole('link', { name: 'Жанры' })).toHaveAccessibleName('Жанры');
+    expect(screen.getByRole('link', { name: 'Жанры, ожидают проверки: 6' })).toHaveAttribute(
+      'href',
+      '/moderation/genres'
+    );
   });
 
   it('import Задачи tab shows the in-flight jobs count', () => {

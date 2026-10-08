@@ -72,8 +72,13 @@ describe('useNavCounters', () => {
 
     await waitFor(() =>
       expect(result.current).toEqual({
-        sections: { moderation: 11, import: 1 },
-        tabs: { 'moderation.books': 4, 'moderation.authors': 7, 'import.jobs': 1 },
+        sections: { moderation: 17, import: 1 },
+        tabs: {
+          'moderation.books': 4,
+          'moderation.authors': 7,
+          'moderation.genres': 6,
+          'import.jobs': 1,
+        },
       })
     );
     expect(dashboardMock).toHaveBeenCalledTimes(1);

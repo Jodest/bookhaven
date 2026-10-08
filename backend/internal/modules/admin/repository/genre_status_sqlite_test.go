@@ -19,6 +19,7 @@ CREATE TABLE genres (
 	slug TEXT NOT NULL UNIQUE,
 	status TEXT NOT NULL DEFAULT 'pending',
 	wikidata_qid TEXT,
+	merged_into_id TEXT REFERENCES genres(id),
 	created_at DATETIME
 );
 CREATE UNIQUE INDEX idx_genres_wikidata_qid ON genres(wikidata_qid) WHERE wikidata_qid IS NOT NULL;

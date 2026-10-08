@@ -65,6 +65,23 @@ type fakeAdminService struct {
 	lastBulkIDs      []uuid.UUID
 	lastBulkStatus   string
 
+	genreQueueItems      []adminService.GenreQueueItem
+	genreQueueErr        error
+	lastGenreQueueFilter repository.GenreModerationFilter
+	lastGenreQueuePage   int
+	lastGenreQueueLimit  int
+	genreBulkReport      *adminService.GenreBulkStatusReport
+	genreBulkErr         error
+	genreBulkCalled      bool
+	lastGenreBulkIDs     []uuid.UUID
+	lastGenreBulkStatus  string
+	mergeGenresResult    *catalogDomain.Genre
+	mergeGenresBooks     int64
+	mergeGenresErr       error
+	mergeGenresCalled    bool
+	lastMergeGenreSource uuid.UUID
+	lastMergeGenreTarget uuid.UUID
+
 	importResult  *adminService.AuthorImportResult
 	importErr     error
 	lastImportQID string

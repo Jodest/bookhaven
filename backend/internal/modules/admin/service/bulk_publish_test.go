@@ -439,3 +439,23 @@ func (f *fakeBulkPublishRepository) ListUsers(ctx context.Context, filter reposi
 func (f *fakeBulkPublishRepository) ChangeUserRole(ctx context.Context, targetID uuid.UUID, decide repository.RoleDecider) (*usersDomain.User, usersDomain.Role, error) {
 	return nil, "", nil
 }
+
+func (f *fakeBulkPublishRepository) ListGenresForModeration(ctx context.Context, filter repository.GenreModerationFilter) ([]repository.GenreModerationRow, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeBulkPublishRepository) ListGenreSampleBooks(ctx context.Context, genreIDs []uuid.UUID) (map[uuid.UUID][]repository.SampleBook, error) {
+	return map[uuid.UUID][]repository.SampleBook{}, nil
+}
+
+func (f *fakeBulkPublishRepository) ListGenreHintCandidates(ctx context.Context) ([]catalogDomain.Genre, error) {
+	return nil, nil
+}
+
+func (f *fakeBulkPublishRepository) SetGenreStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeBulkPublishRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (int64, error) {
+	return 0, nil
+}

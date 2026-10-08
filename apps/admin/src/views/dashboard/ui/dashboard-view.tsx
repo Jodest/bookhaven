@@ -181,13 +181,7 @@ export function DashboardView() {
         href: '/moderation/books',
       },
       { label: 'Авторы на модерации', value: data.pending_authors, href: '/moderation/authors' },
-      {
-        // Until the genre moderation queue (#302) exists, the tile opens the
-        // catalog list filtered to pending genres.
-        label: 'Жанры на модерации',
-        value: data.pending_genres,
-        href: '/catalog/genres?status=pending',
-      },
+      { label: 'Жанры на модерации', value: data.pending_genres, href: '/moderation/genres' },
       {
         label: 'Скрытых отзывов',
         value: data.pending_reviews,

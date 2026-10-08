@@ -110,7 +110,7 @@ describe('DashboardView', () => {
     );
   });
 
-  it('renders a card for pending genres linking to the pending-filtered genre catalog', async () => {
+  it('renders a card for pending genres linking to the genre moderation queue', async () => {
     renderView();
 
     await waitFor(() => expect(screen.getByText('Жанры на модерации')).toBeInTheDocument());
@@ -118,7 +118,7 @@ describe('DashboardView', () => {
     expect(within(moderation).getByText('6')).toBeInTheDocument();
     expect(within(moderation).getByText('Жанры на модерации').closest('a')).toHaveAttribute(
       'href',
-      '/catalog/genres?status=pending'
+      '/moderation/genres'
     );
   });
 

@@ -83,6 +83,26 @@ definitions:
       name:
         type: string
     type: object
+  github_com_bookhaven_backend_internal_modules_admin_service.GenreBulkStatusReport:
+    properties:
+      errors:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.GenreBulkStatusRowError'
+        type: array
+      processed:
+        type: integer
+      updated:
+        type: integer
+    type: object
+  github_com_bookhaven_backend_internal_modules_admin_service.GenreBulkStatusRowError:
+    properties:
+      genre_id:
+        type: string
+      message:
+        type: string
+      name:
+        type: string
+    type: object
   github_com_bookhaven_backend_internal_modules_admin_service.ImportReport:
     properties:
       created:
@@ -357,6 +377,15 @@ definitions:
       status:
         type: string
     type: object
+  internal_modules_admin_transport_http.bulkGenreStatusRequest:
+    properties:
+      ids:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+    type: object
   internal_modules_admin_transport_http.bulkPublishBooksRequest:
     properties:
       search:
@@ -465,6 +494,33 @@ definitions:
           type: string
         type: array
     type: object
+  internal_modules_admin_transport_http.genreHintResponse:
+    properties:
+      genre:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+      match:
+        description: Match is exact_name | same_stem | shared_word.
+        type: string
+    type: object
+  internal_modules_admin_transport_http.genreQueueItemResponse:
+    properties:
+      books_total:
+        type: integer
+      books_visible:
+        type: integer
+      created_at:
+        type: string
+      genre:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+      sample_books:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreSampleBookResponse'
+        type: array
+      similar:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreHintResponse'
+        type: array
+    type: object
   internal_modules_admin_transport_http.genreResponse:
     properties:
       id:
@@ -478,6 +534,15 @@ definitions:
         type: string
       wikidata_qid:
         description: WikidataQID is the bare Wikidata QID, null when none.
+        type: string
+    type: object
+  internal_modules_admin_transport_http.genreSampleBookResponse:
+    properties:
+      id:
+        type: string
+      is_hidden:
+        type: boolean
+      title:
         type: string
     type: object
   internal_modules_admin_transport_http.importWikidataAuthorRequest:
@@ -517,6 +582,19 @@ definitions:
       items:
         items:
           $ref: '#/definitions/internal_modules_admin_transport_http.bookResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.listGenreQueueResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreQueueItemResponse'
         type: array
       limit:
         type: integer
@@ -604,6 +682,18 @@ definitions:
         $ref: '#/definitions/internal_modules_admin_transport_http.authorResponse'
       books_reassigned:
         type: integer
+    type: object
+  internal_modules_admin_transport_http.mergeGenreRequest:
+    properties:
+      canonical_id:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.mergeGenreResponse:
+    properties:
+      books_reassigned:
+        type: integer
+      genre:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
     type: object
   internal_modules_admin_transport_http.moderateReviewRequest:
     properties:
@@ -2918,6 +3008,184 @@ paths:
       security:
       - BearerAuth: []
       summary: Обновить жанр (админ)
+      tags:
+      - admin
+  /admin/genres/{id}/merge:
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен. Книги жанра id переносятся
+        в canonical_id (без дублей); жанр id становится отклонённым алиасом canonical_id
+        и сохраняет название и slug, поэтому будущие импорты его названия или QID
+        указывают на canonical_id. QID переносится, только если у canonical_id его
+        нет. Необратимо.
+      parameters:
+      - description: ID сливаемого жанра
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID жанра, в который сливаем
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.mergeGenreRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.mergeGenreResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Слить жанр в другой (админ)
+      tags:
+      - admin
+  /admin/genres/bulk-status:
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Меняет только status у каждого
+        жанра из ids (не более 100, дубликаты схлопываются); название, slug, QID и
+        связи с книгами не меняются. Каждый id обрабатывается независимо: неизвестный
+        id или слитый жанр — построчная ошибка «genre not found», остальные применяются.
+        HTTP 200 независимо от построчных исходов.'
+      parameters:
+      - description: ID жанров и новый статус (pending / published / rejected)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.bulkGenreStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.GenreBulkStatusReport'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Сменить статус выбранных жанров (админ)
+      tags:
+      - admin
+  /admin/genres/moderation:
+    get:
+      description: Требуется роль admin. Жанры с заданным статусом (по умолчанию pending),
+        новые сверху, с количеством связанных книг, до 3 примеров книг и подсказками
+        «возможно, тот же жанр» (только для отображения). Слитые жанры (алиасы) не
+        выводятся.
+      parameters:
+      - description: 'Статус: pending (по умолчанию) / published / rejected'
+        in: query
+        name: status
+        type: string
+      - description: 'Wikidata QID: with / without'
+        in: query
+        name: qid
+        type: string
+      - description: Поиск по названию
+        in: query
+        name: search
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 50
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.listGenreQueueResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Очередь модерации жанров (админ)
       tags:
       - admin
   /admin/harvest:

@@ -737,6 +737,10 @@ func (s *Service) UpdateGenre(ctx context.Context, id uuid.UUID, input GenreInpu
 	}
 
 	if err := s.repo.UpdateGenre(ctx, genre); err != nil {
+		// The row became an alias (or vanished) after the read above.
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrGenreNotFound
+		}
 		if isDuplicateKeyError(err) {
 			return nil, genreDuplicateKeyError(err)
 		}

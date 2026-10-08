@@ -162,8 +162,11 @@ func RegisterAdminRoutes(
 
 	genres := admin.Group("/genres", adminRole)
 	genres.GET("", adminHandler.ListGenres)
+	genres.GET("/moderation", adminHandler.ListGenreModerationQueue)
+	genres.POST("/bulk-status", adminHandler.BulkSetGenreStatus, requireBearer)
 	genres.POST("", adminHandler.CreateGenre, requireBearer)
 	genres.PATCH("/:id", adminHandler.UpdateGenre, requireBearer)
+	genres.POST("/:id/merge", adminHandler.MergeGenres, requireBearer)
 
 	users := admin.Group("/users", adminRole)
 	users.GET("", adminHandler.ListUsers)

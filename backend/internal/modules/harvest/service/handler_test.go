@@ -185,8 +185,9 @@ func (f *fakeAdminRepository) ListGenres(ctx context.Context, search, status str
 }
 
 func (f *fakeAdminRepository) GetGenreByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error) {
+	// Mirrors the repository: alias rows are not found by id.
 	for i := range f.genres {
-		if f.genres[i].ID == id {
+		if f.genres[i].ID == id && !f.genres[i].IsAlias() {
 			return &f.genres[i], nil
 		}
 	}
@@ -1123,4 +1124,24 @@ func (f *fakeAdminRepository) ListUsers(ctx context.Context, filter adminreposit
 
 func (f *fakeAdminRepository) ChangeUserRole(ctx context.Context, targetID uuid.UUID, decide adminrepository.RoleDecider) (*usersDomain.User, usersDomain.Role, error) {
 	return nil, "", nil
+}
+
+func (f *fakeAdminRepository) ListGenresForModeration(ctx context.Context, filter adminrepository.GenreModerationFilter) ([]adminrepository.GenreModerationRow, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeAdminRepository) ListGenreSampleBooks(ctx context.Context, genreIDs []uuid.UUID) (map[uuid.UUID][]adminrepository.SampleBook, error) {
+	return map[uuid.UUID][]adminrepository.SampleBook{}, nil
+}
+
+func (f *fakeAdminRepository) ListGenreHintCandidates(ctx context.Context) ([]catalogDomain.Genre, error) {
+	return nil, nil
+}
+
+func (f *fakeAdminRepository) SetGenreStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeAdminRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (int64, error) {
+	return 0, nil
 }

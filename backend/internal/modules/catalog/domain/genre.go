@@ -26,13 +26,23 @@ type Genre struct {
 	// set. The explicit column tag is required: GORM naming would otherwise
 	// produce wikidata_q_id.
 	WikidataQID *string `gorm:"column:wikidata_qid"`
-	Books       []Book  `gorm:"many2many:book_genres;"`
-	CreatedAt   time.Time
+	// MergedIntoID, when set, makes this row an alias of the target genre
+	// (docs/features/genre-moderation-queue.md): resolvers that match it by
+	// slug or QID follow it to the target. An alias is always rejected (DB
+	// CHECK) and hidden from every admin list.
+	MergedIntoID *uuid.UUID `gorm:"type:uuid;column:merged_into_id"`
+	Books        []Book     `gorm:"many2many:book_genres;"`
+	CreatedAt    time.Time
 }
 
 // IsPublished reports whether the genre is publicly visible.
 func (g Genre) IsPublished() bool {
 	return g.Status == GenreStatusPublished
+}
+
+// IsAlias reports whether the genre was merged into another genre.
+func (g Genre) IsAlias() bool {
+	return g.MergedIntoID != nil
 }
 
 // IsValidGenreStatus reports whether s is one of the known statuses.
