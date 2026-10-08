@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/bookhaven/backend/internal/modules/users/domain"
 	"github.com/google/uuid"
@@ -13,7 +14,12 @@ type Repository interface {
 	Create(ctx context.Context, user *domain.User) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
-	Update(ctx context.Context, user *domain.User) error
+	// UpdateProfile persists only the profile columns (name, avatar_url,
+	// profile_type, updated_at) of user. It never writes role, email,
+	// password_hash or email_verified_at, so a concurrent admin role change
+	// cannot be reverted by a profile save. Returns gorm.ErrRecordNotFound
+	// when no row has user.ID.
+	UpdateProfile(ctx context.Context, user *domain.User) error
 }
 
 // GormRepository is a GORM-based implementation of Repository.
@@ -46,6 +52,22 @@ func (r *GormRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	return &user, nil
 }
 
-func (r *GormRepository) Update(ctx context.Context, user *domain.User) error {
-	return r.db.WithContext(ctx).Save(user).Error
+func (r *GormRepository) UpdateProfile(ctx context.Context, user *domain.User) error {
+	now := time.Now()
+	res := r.db.WithContext(ctx).Model(&domain.User{}).
+		Where("id = ?", user.ID).
+		Updates(map[string]any{
+			"name":         user.Name,
+			"avatar_url":   user.AvatarURL,
+			"profile_type": user.ProfileType,
+			"updated_at":   now,
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	user.UpdatedAt = now
+	return nil
 }

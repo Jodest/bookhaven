@@ -197,6 +197,25 @@ definitions:
       title:
         type: string
     type: object
+  internal_modules_admin_transport_http.adminUserResponse:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      email_verified_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      profile_type:
+        type: string
+      role:
+        type: string
+    type: object
   internal_modules_admin_transport_http.authorHintResponse:
     properties:
       author:
@@ -341,6 +360,12 @@ definitions:
   internal_modules_admin_transport_http.bulkPublishBooksRequest:
     properties:
       search:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.changeUserRoleRequest:
+    properties:
+      role:
+        description: Role is one of user | contributor | moderator | admin.
         type: string
     type: object
   internal_modules_admin_transport_http.createUpdateAuthorRequest:
@@ -500,6 +525,19 @@ definitions:
       items:
         items:
           $ref: '#/definitions/internal_modules_admin_transport_http.reviewResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.listUsersResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.adminUserResponse'
         type: array
       limit:
         type: integer
@@ -3129,6 +3167,135 @@ paths:
       security:
       - BearerAuth: []
       summary: Скрыть/показать рецензию (модерация)
+      tags:
+      - admin
+  /admin/users:
+    get:
+      description: 'Требуется роль admin. Поиск по email или имени (подстрока без
+        учёта регистра), фильтр по роли. Сортировка: сначала новые. Хеш пароля никогда
+        не возвращается. 400 с code: invalid_role — недопустимое значение фильтра
+        role.'
+      parameters:
+      - description: Поиск по email или имени
+        in: query
+        name: search
+        type: string
+      - description: 'Роль: user | contributor | moderator | admin'
+        in: query
+        name: role
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.listUsersResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список пользователей (админ)
+      tags:
+      - admin
+  /admin/users/{id}/role:
+    patch:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Роль: user | contributor
+        | moderator | admin. Изменение вступает в силу со следующего запроса пользователя.
+        Установка текущей роли ничего не меняет (200). 400 с code: invalid_role; 404
+        с code: user_not_found; 409 с code: cannot_change_own_role (нельзя менять
+        собственную роль) | last_admin (нельзя снять роль с последнего администратора).
+        403 — у выполняющего запрос больше нет роли admin.'
+      parameters:
+      - description: ID пользователя
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Новая роль
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.changeUserRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.adminUserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Изменить роль пользователя (админ)
       tags:
       - admin
   /auth/forgot-password:

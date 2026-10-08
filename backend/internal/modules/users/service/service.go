@@ -50,7 +50,8 @@ func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, erro
 	return user, nil
 }
 
-// UpdateMe updates the authenticated user's profile fields.
+// UpdateMe updates the authenticated user's profile fields. Only the profile
+// columns are persisted (repository.UpdateProfile), never role.
 func (s *Service) UpdateMe(ctx context.Context, userID uuid.UUID, name, avatarURL, profileType *string) (*domain.User, error) {
 	user, err := s.repo.GetByID(ctx, userID)
 	if err != nil {
@@ -89,7 +90,7 @@ func (s *Service) UpdateMe(ctx context.Context, userID uuid.UUID, name, avatarUR
 		user.ProfileType = pt
 	}
 
-	if err := s.repo.Update(ctx, user); err != nil {
+	if err := s.repo.UpdateProfile(ctx, user); err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 

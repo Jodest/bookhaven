@@ -1,5 +1,5 @@
-import { PlaceholderPage } from '@/shared/ui';
+import { UsersView } from '@/views/users';
 
 export default function Page() {
-  return <PlaceholderPage title="Пользователи" />;
+  return <UsersView />;
 }
