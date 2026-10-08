@@ -8,6 +8,8 @@ Give admins a safe, dedicated way to consolidate a duplicate author record (a na
 
 Source: backlog issue #117, flagged by `docs/ai/features/catalog-data-import/business-analysis.md` risk R-002.
 
+Genre merge (#302) deliberately differs: the merged genre becomes a rejected alias row instead of being deleted, so its slug and QID keep resolving to the target (see [genre-moderation-queue.md](genre-moderation-queue.md)).
+
 ## User Stories
 
 - As an admin, I spot two author records that are really the same person (e.g. "Лев Толстой" / "Л. Н. Толстой"). I pick one as "duplicate" and one as "canonical" and merge them, so every book ends up attributed to a single, consistent author record and the duplicate disappears.

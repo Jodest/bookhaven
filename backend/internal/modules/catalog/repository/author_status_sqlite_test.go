@@ -62,6 +62,7 @@ CREATE TABLE genres (
 	slug TEXT NOT NULL UNIQUE,
 	status TEXT NOT NULL DEFAULT 'pending',
 	wikidata_qid TEXT,
+	merged_into_id TEXT REFERENCES genres(id),
 	created_at DATETIME
 );
 CREATE TABLE book_authors (book_id TEXT NOT NULL, author_id TEXT NOT NULL, PRIMARY KEY (book_id, author_id));

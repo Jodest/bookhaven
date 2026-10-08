@@ -1,5 +1,5 @@
-import { PlaceholderPage } from '@/shared/ui';
+import { GenreModerationView } from '@/views/genre-moderation';
 
 export default function Page() {
-  return <PlaceholderPage title="Модерация жанров" />;
+  return <GenreModerationView />;
 }

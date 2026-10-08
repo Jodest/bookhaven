@@ -39,9 +39,11 @@ var (
 	// ErrInvalidModerationFilter is returned by ListAuthorModerationQueue
 	// for an unknown status / qid / books filter value (HTTP 400).
 	ErrInvalidModerationFilter = errors.New("invalid moderation filter")
-	// ErrBulkStatusTooLarge is returned by BulkSetAuthorStatus, without
-	// changing anything, for more than bulkAuthorStatusCap distinct ids.
-	ErrBulkStatusTooLarge = fmt.Errorf("too many author ids: at most %d per request", bulkAuthorStatusCap)
+	// ErrBulkStatusTooLarge is returned by BulkSetAuthorStatus and
+	// BulkSetGenreStatus, without changing anything, for more distinct ids
+	// than the cap (bulkAuthorStatusCap / bulkGenreStatusCap, both 100), so
+	// the message is entity-neutral.
+	ErrBulkStatusTooLarge = fmt.Errorf("too many ids: at most %d per request", bulkAuthorStatusCap)
 )
 
 // AuthorHint is a display-only "possibly the same person" suggestion.

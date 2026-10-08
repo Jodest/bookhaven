@@ -17,6 +17,8 @@ Stop unvetted genres (harvest/import autocreated junk) from appearing on the pub
 
 What #302/#303 need from this feature is listed under "Hand-off to #302 / #303".
 
+#302 has shipped: [genre-moderation-queue.md](genre-moderation-queue.md). Its merge keeps the source genre as a rejected alias row (`merged_into_id`) instead of deleting it, and the harvest/file-import resolvers follow aliases to their target.
+
 ## User Stories
 
 - As a reader, I only see genres an admin has published: genre chips, footer, catalog filter, random-book picker and the genres on book cards and book pages.
@@ -204,7 +206,7 @@ Filtering is done at the mapper level (rows 4-6), so every current `Preload("Gen
 
 ## Hand-off to #302 / #303
 
-- #302 merge: move `book_genres` from the duplicate to the canonical genre (`ON CONFLICT DO NOTHING`), delete the duplicate, and carry the QID if the canonical has none, inside the tx after the delete (author rule 11). Bulk status endpoint. Moderation queue with book counts. Nav badge and dashboard tile retarget to `/moderation/genres`.
+- #302 merge: move `book_genres` from the duplicate to the canonical genre (dedupe books that already have it) and carry the QID if the canonical has none. **Superseded during #302 planning:** the duplicate is *not* deleted; it becomes a `rejected` alias row with `merged_into_id` (migration 000018) so both its slug and QID keep resolving to the canonical genre, and the resolvers follow the alias. See [genre-moderation-queue.md](genre-moderation-queue.md). Bulk status endpoint. Moderation queue with book counts. Nav badge and dashboard tile retarget to `/moderation/genres`.
 - #303 import: reuse `GetGenreByQID`, `createGenre` (pending plus QID) and `resolveHarvestGenre`/`GenreResolution` outcomes for the single-genre import result. Validate QIDs with the same normalization.
 
 ## Existing Patterns

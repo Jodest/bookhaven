@@ -1617,6 +1617,174 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/genres/bulk-status": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Меняет только status у каждого жанра из ids (не более 100, дубликаты схлопываются); название, slug, QID и связи с книгами не меняются. Каждый id обрабатывается независимо: неизвестный id или слитый жанр — построчная ошибка «genre not found», остальные применяются. HTTP 200 независимо от построчных исходов.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Сменить статус выбранных жанров (админ)",
+                "parameters": [
+                    {
+                        "description": "ID жанров и новый статус (pending / published / rejected)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.bulkGenreStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.GenreBulkStatusReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/moderation": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Жанры с заданным статусом (по умолчанию pending), новые сверху, с количеством связанных книг, до 3 примеров книг и подсказками «возможно, тот же жанр» (только для отображения). Слитые жанры (алиасы) не выводятся.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Очередь модерации жанров (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Статус: pending (по умолчанию) / published / rejected",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Wikidata QID: with / without",
+                        "name": "qid",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Поиск по названию",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Номер страницы",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Размер страницы, максимум 50",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.listGenreQueueResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/genres/{id}": {
             "patch": {
                 "security": [
@@ -1707,6 +1875,97 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/{id}/merge": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Книги жанра id переносятся в canonical_id (без дублей); жанр id становится отклонённым алиасом canonical_id и сохраняет название и slug, поэтому будущие импорты его названия или QID указывают на canonical_id. QID переносится, только если у canonical_id его нет. Необратимо.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Слить жанр в другой (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID сливаемого жанра",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "ID жанра, в который сливаем",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.mergeGenreRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.mergeGenreResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -5839,6 +6098,37 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_bookhaven_backend_internal_modules_admin_service.GenreBulkStatusReport": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.GenreBulkStatusRowError"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_admin_service.GenreBulkStatusRowError": {
+            "type": "object",
+            "properties": {
+                "genre_id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_bookhaven_backend_internal_modules_admin_service.ImportReport": {
             "type": "object",
             "properties": {
@@ -6243,6 +6533,20 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.bulkGenreStatusRequest": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_admin_transport_http.bulkPublishBooksRequest": {
             "type": "object",
             "properties": {
@@ -6394,6 +6698,47 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.genreHintResponse": {
+            "type": "object",
+            "properties": {
+                "genre": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.genreResponse"
+                },
+                "match": {
+                    "description": "Match is exact_name | same_stem | shared_word.",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.genreQueueItemResponse": {
+            "type": "object",
+            "properties": {
+                "books_total": {
+                    "type": "integer"
+                },
+                "books_visible": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "genre": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.genreResponse"
+                },
+                "sample_books": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.genreSampleBookResponse"
+                    }
+                },
+                "similar": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.genreHintResponse"
+                    }
+                }
+            }
+        },
         "internal_modules_admin_transport_http.genreResponse": {
             "type": "object",
             "properties": {
@@ -6412,6 +6757,20 @@ const docTemplate = `{
                 },
                 "wikidata_qid": {
                     "description": "WikidataQID is the bare Wikidata QID, null when none.",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.genreSampleBookResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "is_hidden": {
+                    "type": "boolean"
+                },
+                "title": {
                     "type": "string"
                 }
             }
@@ -6472,6 +6831,26 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/internal_modules_admin_transport_http.bookResponse"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.listGenreQueueResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.genreQueueItemResponse"
                     }
                 },
                 "limit": {
@@ -6605,6 +6984,25 @@ const docTemplate = `{
                 },
                 "books_reassigned": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.mergeGenreRequest": {
+            "type": "object",
+            "properties": {
+                "canonical_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.mergeGenreResponse": {
+            "type": "object",
+            "properties": {
+                "books_reassigned": {
+                    "type": "integer"
+                },
+                "genre": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.genreResponse"
                 }
             }
         },

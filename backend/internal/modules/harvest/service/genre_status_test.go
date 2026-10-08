@@ -104,3 +104,38 @@ func TestProcessRecord_AllGenresRejectedStillCreatesHiddenBook(t *testing.T) {
 		t.Fatalf("expected the slug-matched tombstone to get its QID backfilled, got %v", q)
 	}
 }
+
+// TestProcessRecord_GenreAliasLinksTarget: a genre ref that hits an alias
+// row (a merged genre, docs/features/genre-moderation-queue.md rule 5)
+// links the alias target, by QID and by slug, and creates nothing.
+func TestProcessRecord_GenreAliasLinksTarget(t *testing.T) {
+	admin, repo := newTestAdmin()
+	targetID := uuid.New()
+	target := targetID
+	repo.genres = append(repo.genres,
+		catalogDomain.Genre{ID: targetID, Name: "роман", Slug: "roman", Status: catalogDomain.GenreStatusPublished},
+		catalogDomain.Genre{ID: uuid.New(), Name: "романы", Slug: "romany", Status: catalogDomain.GenreStatusRejected, WikidataQID: strPtr("Q123"), MergedIntoID: &target},
+	)
+
+	rec := bookdata.ExternalBookRecord{
+		Title:      "Война и мир",
+		Genres:     []string{"романы", "что-то"},
+		GenreRefs:  []bookdata.ExternalGenre{{Name: "романы"}, {Name: "что-то", QID: "Q123"}},
+		Language:   "ru",
+		SourceName: "wikidata",
+		SourceID:   "Q170583",
+	}
+	if _, err := processRecord(context.Background(), rec, nil, admin); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repo.genres) != 2 {
+		t.Fatalf("expected no new genre, got %d", len(repo.genres))
+	}
+	ids := repo.bookGenreIDs[0]
+	if len(ids) != 1 || ids[0] != targetID {
+		t.Fatalf("expected the book linked to the alias target once, got %v", ids)
+	}
+	if repo.genres[0].WikidataQID != nil {
+		t.Fatalf("no QID must be backfilled onto the target, got %v", *repo.genres[0].WikidataQID)
+	}
+}

@@ -37,6 +37,9 @@ type Service interface {
 	ListGenres(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Genre, int64, error)
 	CreateGenre(ctx context.Context, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error)
+	ListGenreModerationQueue(ctx context.Context, filter repository.GenreModerationFilter, page, limit int) ([]adminService.GenreQueueItem, int64, error)
+	BulkSetGenreStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.GenreBulkStatusReport, error)
+	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (*catalogDomain.Genre, int64, error)
 	ListReviews(ctx context.Context, filter repository.ReviewFilter) ([]reviewsDomain.Review, int64, error)
 	ModerateReview(ctx context.Context, id uuid.UUID, isHidden bool) (*reviewsDomain.Review, error)
 	LookupBook(ctx context.Context, isbn, query, author string) (*bookdata.ExternalBookRecord, error)
@@ -251,6 +254,53 @@ type createUpdateGenreRequest struct {
 	// WikidataQID: omitted/null = unchanged, "" = clear, otherwise a bare
 	// QID (^Q[0-9]+$ after trim/uppercase; 400 invalid, 409 taken).
 	WikidataQID *string `json:"wikidata_qid,omitempty"`
+}
+
+type genreSampleBookResponse struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	IsHidden bool   `json:"is_hidden"`
+}
+
+type genreHintResponse struct {
+	Genre genreResponse `json:"genre"`
+	// Match is exact_name | same_stem | shared_word.
+	Match string `json:"match"`
+}
+
+type genreQueueItemResponse struct {
+	Genre        genreResponse             `json:"genre"`
+	CreatedAt    time.Time                 `json:"created_at"`
+	BooksTotal   int64                     `json:"books_total"`
+	BooksVisible int64                     `json:"books_visible"`
+	SampleBooks  []genreSampleBookResponse `json:"sample_books"`
+	Similar      []genreHintResponse       `json:"similar"`
+}
+
+type listGenreQueueResponse struct {
+	Items []genreQueueItemResponse `json:"items"`
+	Total int64                    `json:"total"`
+	Page  int                      `json:"page"`
+	Limit int                      `json:"limit"`
+}
+
+type bulkGenreStatusRequest struct {
+	IDs    []string `json:"ids"`
+	Status string   `json:"status"`
+}
+
+// mergeGenreRequest is the body of POST /admin/genres/:id/merge. The
+// path's :id is the source genre that becomes an alias; CanonicalID is the
+// target that receives its books.
+type mergeGenreRequest struct {
+	CanonicalID string `json:"canonical_id"`
+}
+
+// mergeGenreResponse is returned on a successful merge: the target genre
+// (with a carried QID) plus how many books were reassigned.
+type mergeGenreResponse struct {
+	Genre           genreResponse `json:"genre"`
+	BooksReassigned int64         `json:"books_reassigned"`
 }
 
 type moderateReviewRequest struct {
@@ -1345,6 +1395,175 @@ func (h *Handler) UpdateGenre(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, toGenreResponse(*genre))
+}
+
+// ListGenreModerationQueue godoc
+// @Summary Очередь модерации жанров (админ)
+// @Description Требуется роль admin. Жанры с заданным статусом (по умолчанию pending), новые сверху, с количеством связанных книг, до 3 примеров книг и подсказками «возможно, тот же жанр» (только для отображения). Слитые жанры (алиасы) не выводятся.
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param status query string false "Статус: pending (по умолчанию) / published / rejected"
+// @Param qid query string false "Wikidata QID: with / without"
+// @Param search query string false "Поиск по названию"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 50"
+// @Success 200 {object} listGenreQueueResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/genres/moderation [get]
+func (h *Handler) ListGenreModerationQueue(c echo.Context) error {
+	ctx := c.Request().Context()
+	page, limit := parsePagination(c)
+	if limit > 50 {
+		limit = 50
+	}
+
+	filter := repository.GenreModerationFilter{
+		Status: c.QueryParam("status"),
+		QID:    c.QueryParam("qid"),
+		Search: c.QueryParam("search"),
+	}
+
+	queue, total, err := h.service.ListGenreModerationQueue(ctx, filter, page, limit)
+	if err != nil {
+		if errors.Is(err, adminService.ErrInvalidModerationFilter) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list genre moderation queue"})
+	}
+
+	items := make([]genreQueueItemResponse, 0, len(queue))
+	for _, q := range queue {
+		samples := make([]genreSampleBookResponse, 0, len(q.SampleBooks))
+		for _, b := range q.SampleBooks {
+			samples = append(samples, genreSampleBookResponse{ID: b.ID.String(), Title: b.Title, IsHidden: b.IsHidden})
+		}
+		similar := make([]genreHintResponse, 0, len(q.Similar))
+		for _, hint := range q.Similar {
+			similar = append(similar, genreHintResponse{Genre: toGenreResponse(hint.Genre), Match: hint.Match})
+		}
+		items = append(items, genreQueueItemResponse{
+			Genre:        toGenreResponse(q.Genre),
+			CreatedAt:    q.Genre.CreatedAt,
+			BooksTotal:   q.BooksTotal,
+			BooksVisible: q.BooksVisible,
+			SampleBooks:  samples,
+			Similar:      similar,
+		})
+	}
+
+	return c.JSON(http.StatusOK, listGenreQueueResponse{
+		Items: items,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	})
+}
+
+// BulkSetGenreStatus godoc
+// @Summary Сменить статус выбранных жанров (админ)
+// @Description Требуется роль admin и Bearer-токен. Меняет только status у каждого жанра из ids (не более 100, дубликаты схлопываются); название, slug, QID и связи с книгами не меняются. Каждый id обрабатывается независимо: неизвестный id или слитый жанр — построчная ошибка «genre not found», остальные применяются. HTTP 200 независимо от построчных исходов.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body bulkGenreStatusRequest true "ID жанров и новый статус (pending / published / rejected)"
+// @Success 200 {object} adminService.GenreBulkStatusReport
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/genres/bulk-status [post]
+func (h *Handler) BulkSetGenreStatus(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req bulkGenreStatusRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if !catalogDomain.IsValidGenreStatus(req.Status) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": adminService.ErrInvalidGenreStatus.Error()})
+	}
+	if len(req.IDs) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ids must not be empty"})
+	}
+
+	ids := make([]uuid.UUID, 0, len(req.IDs))
+	for _, raw := range req.IDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid genre id: %q", raw)})
+		}
+		ids = append(ids, id)
+	}
+
+	report, err := h.service.BulkSetGenreStatus(ctx, ids, req.Status)
+	if err != nil {
+		switch {
+		case errors.Is(err, adminService.ErrInvalidGenreStatus),
+			errors.Is(err, adminService.ErrBulkStatusTooLarge):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update genre statuses"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, report)
+}
+
+// MergeGenres godoc
+// @Summary Слить жанр в другой (админ)
+// @Description Требуется роль admin и Bearer-токен. Книги жанра id переносятся в canonical_id (без дублей); жанр id становится отклонённым алиасом canonical_id и сохраняет название и slug, поэтому будущие импорты его названия или QID указывают на canonical_id. QID переносится, только если у canonical_id его нет. Необратимо.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID сливаемого жанра"
+// @Param body body mergeGenreRequest true "ID жанра, в который сливаем"
+// @Success 200 {object} mergeGenreResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/genres/{id}/merge [post]
+func (h *Handler) MergeGenres(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	sourceID, err := parseID(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid genre id"})
+	}
+
+	var req mergeGenreRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	targetID, err := uuid.Parse(req.CanonicalID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid canonical_id"})
+	}
+
+	genre, booksReassigned, err := h.service.MergeGenres(ctx, sourceID, targetID)
+	if err != nil {
+		switch {
+		case errors.Is(err, adminService.ErrCannotMergeGenreIntoSelf):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, adminService.ErrGenreNotFound):
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "genre not found"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to merge genres"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, mergeGenreResponse{
+		Genre:           toGenreResponse(*genre),
+		BooksReassigned: booksReassigned,
+	})
 }
 
 // ListReviews godoc
