@@ -5,13 +5,16 @@ import { HarvestJobsView } from './harvest-jobs-view';
 
 const listJobsMock = vi.fn();
 
-vi.mock('@/entities/harvest', () => ({
-  HARVEST_JOBS_QUERY_KEY: ['admin', 'harvest', 'jobs'],
-  adminHarvestApi: {
-    trigger: vi.fn(),
-    listJobs: (...args: unknown[]) => listJobsMock(...args),
-    getJob: vi.fn(),
-    searchAuthors: vi.fn(),
+vi.mock('@bookhaven/api-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@bookhaven/api-client')>()),
+  api: {
+    admin: {
+      harvest: {
+        trigger: vi.fn(),
+        jobs: { list: (...args: unknown[]) => listJobsMock(...args), get: vi.fn() },
+        authors: { search: vi.fn() },
+      },
+    },
   },
 }));
 

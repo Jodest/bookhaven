@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NavCounters } from '@/features/nav-counters';
 import { SectionTabs } from './section-tabs';
 import { SectionIndexRedirect } from './section-index-redirect';
 
@@ -23,6 +24,13 @@ vi.mock('@/entities/session', async (importOriginal) => ({
   }),
 }));
 
+let countersValue: NavCounters = { sections: {}, tabs: {} };
+
+vi.mock('@/features/nav-counters', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/nav-counters')>()),
+  useNavCounters: () => countersValue,
+}));
+
 function renderTabs(pathname: string) {
   pathnameValue = pathname;
   return render(<SectionTabs />);
@@ -31,6 +39,7 @@ function renderTabs(pathname: string) {
 describe('SectionTabs', () => {
   beforeEach(() => {
     role = 'admin';
+    countersValue = { sections: {}, tabs: {} };
   });
 
   it('admin on /moderation/reviews sees moderation tabs with Отзывы active', () => {
@@ -89,6 +98,33 @@ describe('SectionTabs', () => {
   it.each(['/', '/users', '/unknown'])('admin on %s renders nothing', (pathname) => {
     const { container } = renderTabs(pathname);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('moderation tabs show their own counts; zero and other tabs have no badge', () => {
+    countersValue = {
+      sections: {},
+      tabs: { 'moderation.books': 4, 'moderation.authors': 0 },
+    };
+    renderTabs('/moderation/reviews');
+
+    expect(screen.getByRole('link', { name: 'Книги, ожидают проверки: 4' })).toHaveAttribute(
+      'href',
+      '/moderation/books'
+    );
+    expect(screen.getByRole('link', { name: 'Авторы' })).toHaveAccessibleName('Авторы');
+    expect(screen.getByRole('link', { name: 'Отзывы' })).toHaveAccessibleName('Отзывы');
+    expect(screen.getByRole('link', { name: 'Жанры' })).toHaveAccessibleName('Жанры');
+  });
+
+  it('import Задачи tab shows the in-flight jobs count', () => {
+    countersValue = { sections: {}, tabs: { 'import.jobs': 3 } };
+    renderTabs('/import/file');
+
+    expect(screen.getByRole('link', { name: 'Задачи, задач в работе: 3' })).toHaveAttribute(
+      'href',
+      '/import/jobs'
+    );
+    expect(screen.getByRole('link', { name: 'Файл' })).toHaveAttribute('aria-current', 'page');
   });
 });
 

@@ -38,6 +38,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Author direct import from Wikidata — "Импорт из Wikidata" panel on `/authors/moderation`: search by name, import a single author as `pending` with its QID (harvest matching rules: QID first, slug backfill, namesakes, rejected tombstones never recreated; ru label and person P31 required) or import + start the existing book harvest; "already in BookHaven" markers in the shared Wikidata search widget, also on `/harvest` (see [docs/features/author-direct-import.md](features/author-direct-import.md), #273/#274, epic #272 feature 3 of 4)
 - [x] Author enrichment from Wikidata — fill-empty-only day-precision birth/death dates (P569/P570, rank selection, Julian → Gregorian) and a free-licence Wikimedia Commons portrait (P18) with attribution: on direct import (created), at the end of a harvest job, and via per-row / bulk "Обогатить из Wikidata" on `/authors/moderation` (the backfill path); attribution line on the public author page (see [docs/features/author-wikidata-enrichment.md](features/author-wikidata-enrichment.md), #278/#279, epic #277 feature 4 of 4 — epic complete)
 - [x] Bulk publish action for pending-review harvested books — the harvest-review-queue contract explicitly deferred a bulk "publish all" action, so admins publish harvested books one row at a time [code] (proposed 2026-10-02, #114; implemented as `adminBooksApi.bulkPublish`, now on /moderation/books)
+- [x] Admin navigation restructure — five sections (Обзор / Модерация / Каталог / Импорт / Пользователи) with tabs driven by one navigation config that also drives the role guard (moderators land on review moderation); catalog, moderation queues and import pages moved under `/catalog`, `/moderation`, `/import`; regrouped overview with a compact harvest jobs block and admin-only sidebar/tab counters for pending moderation and in-flight harvest jobs (see [docs/features/admin-navigation-restructure.md](features/admin-navigation-restructure.md), #284-#288, epic #283; #289/#290 tracked in Up Next)
 
 ## Post-MVP
 
@@ -47,7 +48,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 ## Up Next (queued order)
 
-- [ ] Admin navigation restructure — five sections (Обзор / Модерация / Каталог / Импорт / Пользователи) with tabs and a config-driven role guard; phases #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters, then #289 Users (separate contract, relates to #247) and #290 Genres moderation/import (needs product decision); phases 1-4 (#284-#287) done (see [docs/features/admin-navigation-restructure.md](features/admin-navigation-restructure.md), epic #283)
+- [ ] Admin navigation, remaining phases — #289 Users management (separate contract, relates to #247) and #290 Genres moderation/import (needs product decision); phases #284-#288 are done (see [docs/features/admin-navigation-restructure.md](features/admin-navigation-restructure.md), epic #283)
 
 Email notifications (#121, in Proposed) can build on the mailer from #157.
 

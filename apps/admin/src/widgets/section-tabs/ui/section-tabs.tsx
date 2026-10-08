@@ -1,9 +1,18 @@
 'use client';
 
 import { useAuthStore } from '@/entities/session';
+import { NavBadge, useNavCounters } from '@/features/nav-counters';
 import { getVisibleTabs, resolveNavLocation } from '@/shared/config';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+
+// Screen-reader label of the tab badge per tab id (tabs without a counter
+// have no entry).
+const TAB_BADGE_SR_LABELS: Partial<Record<string, string>> = {
+  'moderation.books': 'ожидают проверки',
+  'moderation.authors': 'ожидают проверки',
+  'import.jobs': 'задач в работе',
+};
 
 /**
  * Tabs of the section owning the current pathname (navigation config driven).
@@ -13,6 +22,8 @@ export function SectionTabs() {
   const pathname = usePathname();
   const { user } = useAuthStore();
   const role = user?.role;
+  // Admin-only badge counts; called before the early returns (hooks order).
+  const counters = useNavCounters();
 
   const loc = resolveNavLocation(pathname);
   if (!loc) return null;
@@ -36,6 +47,11 @@ export function SectionTabs() {
             }`}
           >
             {tab.label}
+            <NavBadge
+              count={counters.tabs[tab.id]}
+              srLabel={TAB_BADGE_SR_LABELS[tab.id] ?? ''}
+              className="ml-2"
+            />
           </Link>
         );
       })}
