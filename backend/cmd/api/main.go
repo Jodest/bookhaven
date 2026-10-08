@@ -104,8 +104,9 @@ func main() {
 	// harvest author-name-search endpoint (see
 	// docs/features/harvest-author-search.md) AND the direct author import
 	// (docs/features/author-direct-import.md) AND the author enrichment
-	// (docs/features/author-wikidata-enrichment.md, Wikidata + Commons). The
-	// SAME instance is passed to all three, so they share one rate-limit
+	// (docs/features/author-wikidata-enrichment.md, Wikidata + Commons) AND
+	// the genre search/import (docs/features/genre-wikidata-import.md). The
+	// SAME instance is passed to all four, so they share one rate-limit
 	// budget; it does not share the OpenLibraryClient's budget, nor the
 	// same host.
 	wikidataClient := bookdata.NewWikidataClient()
@@ -113,6 +114,7 @@ func main() {
 		adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()),
 		adminservice.WithAuthorFetcher(wikidataClient),
 		adminservice.WithAuthorEnrichmentSource(wikidataClient),
+		adminservice.WithGenreWikidataSource(wikidataClient),
 		adminservice.WithLogger(logger))
 	shelvesService := shelvesservice.NewService(shelvesRepo)
 	listsService := listsservice.NewService(listsRepo)

@@ -78,6 +78,31 @@ type wbSearchEntityResult struct {
 // list/search endpoint where "no results" is a normal, displayable state
 // (unlike FindByISBN/FindByTitleAuthor, which model a single point lookup).
 func (c *WikidataClient) SearchAuthors(ctx context.Context, query string) ([]AuthorCandidate, error) {
+	hits, err := c.searchEntities(ctx, query, authorSearchLimit)
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]AuthorCandidate, 0, len(hits))
+	for _, h := range hits {
+		candidates = append(candidates, AuthorCandidate(h))
+	}
+	return candidates, nil
+}
+
+// entitySearchHit is one wbsearchentities result (label falls back to the
+// matched text when the item has no label in the search language).
+type entitySearchHit struct {
+	QID         string
+	Label       string
+	Description string
+}
+
+// searchEntities runs one wbsearchentities request (language=ru,
+// uselang=ru, type=item) with the given limit on cfg.searchBaseURL via
+// cfg.doRequest. Shared by SearchAuthors and SearchGenres; query is
+// trimmed and an empty query returns ErrInvalidQuery without a call. HTTP
+// 400 → ErrInvalidQuery, other >= 400 → ErrSourceUnavailable.
+func (c *WikidataClient) searchEntities(ctx context.Context, query string, limit int) ([]entitySearchHit, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, ErrInvalidQuery
@@ -94,7 +119,7 @@ func (c *WikidataClient) SearchAuthors(ctx context.Context, query string) ([]Aut
 	q.Set("uselang", "ru")
 	q.Set("type", "item")
 	q.Set("format", "json")
-	q.Set("limit", strconv.Itoa(authorSearchLimit))
+	q.Set("limit", strconv.Itoa(limit))
 	u.RawQuery = q.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -126,17 +151,17 @@ func (c *WikidataClient) SearchAuthors(ctx context.Context, query string) ([]Aut
 		return nil, fmt.Errorf("bookdata: parse wikidata search response: %w", err)
 	}
 
-	candidates := make([]AuthorCandidate, 0, len(parsed.Search))
+	hits := make([]entitySearchHit, 0, len(parsed.Search))
 	for _, r := range parsed.Search {
 		label := r.Label
 		if label == "" {
 			label = r.Match.Text
 		}
-		candidates = append(candidates, AuthorCandidate{
+		hits = append(hits, entitySearchHit{
 			QID:         r.ID,
 			Label:       label,
 			Description: r.Description,
 		})
 	}
-	return candidates, nil
+	return hits, nil
 }

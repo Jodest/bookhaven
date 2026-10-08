@@ -82,6 +82,13 @@ type fakeAdminService struct {
 	lastMergeGenreSource uuid.UUID
 	lastMergeGenreTarget uuid.UUID
 
+	genreSearchResult  *adminService.GenreSearchResult
+	genreSearchErr     error
+	lastGenreSearchQ   string
+	genreImportResult  *adminService.GenreImportResult
+	genreImportErr     error
+	lastGenreImportQID string
+
 	importResult  *adminService.AuthorImportResult
 	importErr     error
 	lastImportQID string
@@ -124,6 +131,25 @@ func (f *fakeAdminService) ChangeUserRole(ctx context.Context, actorID, targetID
 func (f *fakeAdminService) EnrichAuthorsFromWikidata(ctx context.Context, ids []uuid.UUID) (*adminService.AuthorEnrichmentReport, error) {
 	f.lastEnrichIDs = ids
 	return f.enrichReport, f.enrichErr
+}
+
+func (f *fakeAdminService) SearchWikidataGenres(ctx context.Context, query string) (*adminService.GenreSearchResult, error) {
+	f.lastGenreSearchQ = query
+	if f.genreSearchErr != nil {
+		return nil, f.genreSearchErr
+	}
+	if f.genreSearchResult == nil {
+		return &adminService.GenreSearchResult{ClassCheck: adminService.GenreClassCheckOK}, nil
+	}
+	return f.genreSearchResult, nil
+}
+
+func (f *fakeAdminService) ImportWikidataGenre(ctx context.Context, qid string) (*adminService.GenreImportResult, error) {
+	f.lastGenreImportQID = qid
+	if f.genreImportErr != nil {
+		return nil, f.genreImportErr
+	}
+	return f.genreImportResult, nil
 }
 
 func (f *fakeAdminService) ImportWikidataAuthor(ctx context.Context, qid string) (*adminService.AuthorImportResult, error) {
