@@ -105,7 +105,7 @@ Decision: tabs point to wherever the content lives **today**; each later phase o
 | Обзор | Обзор | `/` | `['/']` | admin | `/` |
 | Модерация | Книги | `/books?visibility=pending_review` | `[]` | admin | `/moderation/books` (#286) |
 | Модерация | Авторы | `/authors/moderation` | `['/authors/moderation']` | admin | `/moderation/authors` (#286) |
-| Модерация | Жанры | `/moderation/genres` | `['/moderation/genres']` | admin | same (placeholder) |
+| Модерация | Жанры | `/moderation/genres` | `['/moderation/genres']` | admin | same (`GenreModerationView` since #302) |
 | Модерация | Отзывы | `/reviews` | `['/reviews']` | admin, moderator | `/moderation/reviews` (#286) |
 | Каталог | Книги | `/books` | `['/books']` | admin | `/catalog/books` (#285) |
 | Каталог | Авторы | `/authors` | `['/authors']` | admin | `/catalog/authors` (#285) |
@@ -113,7 +113,7 @@ Decision: tabs point to wherever the content lives **today**; each later phase o
 | Импорт | Wikidata | `/harvest` | `['/harvest']` | admin | `/import/wikidata` (#287) |
 | Импорт | Автор | — omitted (panel lives on `/authors/moderation`) | | admin | `/import/author` (#287) |
 | Импорт | Файл | `/books/import` | `['/books/import']` | admin | `/import/file` (#287) |
-| Импорт | Жанры | `/import/genres` | `['/import/genres']` | admin | same (placeholder) |
+| Импорт | Жанры | `/import/genres` | `['/import/genres']` | admin | same (`GenreImportView` since #303) |
 | Импорт | Задания | — omitted (job history lives on `/harvest`) | | admin | `/import/jobs` (#287) |
 | Пользователи | Пользователи | `/users` | `['/users']` | admin | same (`UsersView` since #289) |
 
@@ -145,7 +145,7 @@ Keep, in order: `/login` passthrough, login-redirect effect, `forbiddenPath` eff
 
 ### Placeholder pages
 
-Shared presentational component `apps/admin/src/shared/ui/placeholder-page.tsx` (`PlaceholderPage({ title, description? })`, exported from `@/shared/ui`), used by `app/users/page.tsx` ("Пользователи"), `app/moderation/genres/page.tsx` ("Модерация жанров"), `app/import/genres/page.tsx` ("Импорт жанров"). Text: "Раздел в разработке." Pages may live directly in `app/` (thin) — no `views/*` slice needed for placeholders.
+Shared presentational component `apps/admin/src/shared/ui/placeholder-page.tsx` (`PlaceholderPage({ title, description? })`, exported from `@/shared/ui`), used by `app/users/page.tsx` ("Пользователи"), `app/moderation/genres/page.tsx` ("Модерация жанров"), `app/import/genres/page.tsx` ("Импорт жанров"). Text: "Раздел в разработке." Pages may live directly in `app/` (thin) — no `views/*` slice needed for placeholders. (Historical: all three placeholders were replaced by #289, #302 and #303; `PlaceholderPage` was deleted with #303.)
 
 ### Tests (phase 1)
 
@@ -552,9 +552,9 @@ Implemented in its own contract: [admin-users.md](admin-users.md); covers the li
 Product decision taken; split into three features with their own contracts:
 1. #301 Genre status & Wikidata identity — `status` (pending/published/rejected, all existing genres -> pending) + `wikidata_qid`, public published-only filtering, harvest QID-first matching with rejected tombstones, admin badge/filter/edit, `pending_genres` dashboard tile: [genre-status.md](genre-status.md).
 2. #302 Genre moderation queue with merge (done) — replaces the `/moderation/genres` placeholder; adds `pending_genres` to the sidebar moderation badge and the Модерация/Жанры tab badge; merge turns the source into an alias row (`merged_into_id`) so its QID and slug keep resolving: [genre-moderation-queue.md](genre-moderation-queue.md).
-3. #303 Wikidata genre import — replaces the `/import/genres` placeholder (contract TBD).
+3. #303 Wikidata genre import (done) — `/import/genres` renders `GenreImportView` (Wikidata literary-genre search + import as pending genres): [genre-wikidata-import.md](genre-wikidata-import.md).
 
-The `/moderation/genres` placeholder is replaced (#302); the `/import/genres` placeholder stays until #303.
+All three features shipped; the epic is complete. Every placeholder page is replaced and the shared `PlaceholderPage` component was removed with #303.
 
 ---
 

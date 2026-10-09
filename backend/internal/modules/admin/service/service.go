@@ -61,6 +61,12 @@ type Service struct {
 	// author_enrich.go). Nil unless configured via
 	// WithAuthorEnrichmentSource.
 	enrichmentSource AuthorEnrichmentSource
+	// genreSource backs the Wikidata genre search and import (see
+	// genre_import.go). Nil unless configured via WithGenreWikidataSource.
+	genreSource GenreWikidataSource
+	// genreClassifyTimeout bounds each genre classification call; zero
+	// means defaultGenreClassifyTimeout (tests shorten it).
+	genreClassifyTimeout time.Duration
 	// log receives informational events (harvest tombstone skips, merge
 	// QID drops). A no-op logger unless configured via WithLogger.
 	log *zap.Logger
@@ -90,6 +96,18 @@ func WithLookupClient(client bookdata.Client) Option {
 func WithAuthorFetcher(fetcher AuthorFetcher) Option {
 	return func(s *Service) {
 		s.authorFetcher = fetcher
+	}
+}
+
+// WithGenreWikidataSource wires the Wikidata client used by
+// SearchWikidataGenres and ImportWikidataGenre. backend/cmd/api passes the
+// same *bookdata.WikidataClient it uses for the author search/import, so all
+// admin Wikidata traffic shares one rate-limit budget. Without it the
+// search and the import (unless the QID is already in BookHaven) return
+// ErrGenreImportUnavailable.
+func WithGenreWikidataSource(source GenreWikidataSource) Option {
+	return func(s *Service) {
+		s.genreSource = source
 	}
 }
 

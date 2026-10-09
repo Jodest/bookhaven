@@ -1,5 +1,5 @@
-import { PlaceholderPage } from '@/shared/ui';
+import { GenreImportView } from '@/views/genre-import';
 
 export default function Page() {
-  return <PlaceholderPage title="Импорт жанров" />;
+  return <GenreImportView />;
 }

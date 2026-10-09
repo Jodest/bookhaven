@@ -163,6 +163,8 @@ func RegisterAdminRoutes(
 	genres := admin.Group("/genres", adminRole)
 	genres.GET("", adminHandler.ListGenres)
 	genres.GET("/moderation", adminHandler.ListGenreModerationQueue)
+	genres.GET("/wikidata-search", adminHandler.SearchWikidataGenres)
+	genres.POST("/import-wikidata", adminHandler.ImportWikidataGenre, requireBearer)
 	genres.POST("/bulk-status", adminHandler.BulkSetGenreStatus, requireBearer)
 	genres.POST("", adminHandler.CreateGenre, requireBearer)
 	genres.PATCH("/:id", adminHandler.UpdateGenre, requireBearer)

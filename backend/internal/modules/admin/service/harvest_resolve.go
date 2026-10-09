@@ -338,8 +338,8 @@ type GenreRef struct {
 	QID  string
 }
 
-// Genre resolution outcomes shared by the harvest resolver and the future
-// Wikidata genre import (#303).
+// Genre resolution outcomes shared by the harvest resolver and the
+// Wikidata genre import (docs/features/genre-wikidata-import.md).
 const (
 	GenreOutcomeCreated  = "created"
 	GenreOutcomeExisting = "existing"

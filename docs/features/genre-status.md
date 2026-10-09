@@ -11,7 +11,7 @@ Stop unvetted genres (harvest/import autocreated junk) from appearing on the pub
 ## Out of scope (later features of the epic)
 
 - **#302 moderation queue + merge**: `/moderation/genres` (replaces the placeholder), bulk publish/reject, merge duplicate genres, nav moderation badge + tab badge for genres.
-- **#303 Wikidata genre import**: `/import/genres` (replaces the placeholder), search/import genres by QID.
+- **#303 Wikidata genre import**: `/import/genres` (replaces the placeholder), search/import genres by QID. Shipped: [genre-wikidata-import.md](genre-wikidata-import.md).
 - Any change to book publication (`books.is_hidden`) based on genre status.
 - Open Library subjects as a genre source. Harvest keeps ignoring them; do not add them.
 

@@ -40,6 +40,8 @@ type Service interface {
 	ListGenreModerationQueue(ctx context.Context, filter repository.GenreModerationFilter, page, limit int) ([]adminService.GenreQueueItem, int64, error)
 	BulkSetGenreStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.GenreBulkStatusReport, error)
 	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (*catalogDomain.Genre, int64, error)
+	SearchWikidataGenres(ctx context.Context, query string) (*adminService.GenreSearchResult, error)
+	ImportWikidataGenre(ctx context.Context, qid string) (*adminService.GenreImportResult, error)
 	ListReviews(ctx context.Context, filter repository.ReviewFilter) ([]reviewsDomain.Review, int64, error)
 	ModerateReview(ctx context.Context, id uuid.UUID, isHidden bool) (*reviewsDomain.Review, error)
 	LookupBook(ctx context.Context, isbn, query, author string) (*bookdata.ExternalBookRecord, error)

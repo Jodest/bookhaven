@@ -214,6 +214,10 @@ func (f *fakeBulkPublishRepository) GetGenreByQID(ctx context.Context, qid strin
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (f *fakeBulkPublishRepository) ListGenresByQIDs(ctx context.Context, qids []string) ([]catalogDomain.Genre, error) {
+	return []catalogDomain.Genre{}, nil
+}
+
 func (f *fakeBulkPublishRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {
 	for i := range f.genres {
 		if f.genres[i].ID == id {

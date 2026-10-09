@@ -61,6 +61,19 @@ func (c *WikidataClient) SourceName() string { return "wikidata" }
 // language name label). Missing optional variables simply leave the
 // corresponding ExternalBookRecord field unset.
 func (c *WikidataClient) Query(ctx context.Context, sparql string) ([]ExternalBookRecord, error) {
+	bindings, err := c.sparqlBindings(ctx, sparql)
+	if err != nil {
+		return nil, err
+	}
+	return parseSparqlBindings(bindings), nil
+}
+
+// sparqlBindings runs one SPARQL query on cfg.baseURL via cfg.doRequest and
+// returns the raw results.bindings. Shared by Query and ClassifyGenres. An
+// empty query returns ErrInvalidQuery without a call; HTTP 400 →
+// ErrInvalidQuery, other >= 400 → ErrSourceUnavailable (429/5xx are
+// handled by doRequest); malformed JSON is a wrapped parse error.
+func (c *WikidataClient) sparqlBindings(ctx context.Context, sparql string) ([]map[string]sparqlValue, error) {
 	if strings.TrimSpace(sparql) == "" {
 		return nil, ErrInvalidQuery
 	}
@@ -102,8 +115,7 @@ func (c *WikidataClient) Query(ctx context.Context, sparql string) ([]ExternalBo
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("bookdata: parse wikidata response: %w", err)
 	}
-
-	return parseSparqlBindings(parsed.Results.Bindings), nil
+	return parsed.Results.Bindings, nil
 }
 
 // FindByISBN looks up a single book by ISBN-10 or ISBN-13 (Wikidata

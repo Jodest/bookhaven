@@ -494,6 +494,28 @@ definitions:
           type: string
         type: array
     type: object
+  internal_modules_admin_transport_http.genreAliasRefResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.genreExistingResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+      status:
+        type: string
+      via_alias:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreAliasRefResponse'
+    type: object
   internal_modules_admin_transport_http.genreHintResponse:
     properties:
       genre:
@@ -501,6 +523,32 @@ definitions:
       match:
         description: Match is exact_name | same_stem | shared_word.
         type: string
+    type: object
+  internal_modules_admin_transport_http.genreImportResponse:
+    properties:
+      genre:
+        allOf:
+        - $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+        description: Genre is the canonical genre.
+      match:
+        description: Match is qid | slug for existing/rejected, null for created.
+        type: string
+      outcome:
+        description: Outcome is created | existing | rejected.
+        type: string
+      qid_backfilled:
+        type: boolean
+      qid_mismatch:
+        description: |-
+          QIDMismatch is the QID of a same-named genre that carries a
+          different QID (left untouched), null otherwise.
+        type: string
+      via_alias:
+        allOf:
+        - $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+        description: |-
+          ViaAlias is the merged genre the match was followed through, null
+          for a direct match.
     type: object
   internal_modules_admin_transport_http.genreQueueItemResponse:
     properties:
@@ -545,10 +593,47 @@ definitions:
       title:
         type: string
     type: object
+  internal_modules_admin_transport_http.genreWikidataCandidateResponse:
+    properties:
+      description:
+        type: string
+      existing:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreExistingResponse'
+      label:
+        type: string
+      literary_genre:
+        description: |-
+          LiteraryGenre is true for checked candidates, null when class_check
+          is unavailable.
+        type: boolean
+      qid:
+        type: string
+      ru_label:
+        description: |-
+          RuLabel is the Russian label; null when absent or when class_check
+          is unavailable.
+        type: string
+    type: object
+  internal_modules_admin_transport_http.genreWikidataSearchResponse:
+    properties:
+      class_check:
+        description: ClassCheck is ok | unavailable.
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreWikidataCandidateResponse'
+        type: array
+    type: object
   internal_modules_admin_transport_http.importWikidataAuthorRequest:
     properties:
       qid:
         example: Q7200
+        type: string
+    type: object
+  internal_modules_admin_transport_http.importWikidataGenreRequest:
+    properties:
+      qid:
+        example: Q132311
         type: string
     type: object
   internal_modules_admin_transport_http.listAuthorQueueResponse:
@@ -3125,6 +3210,96 @@ paths:
       summary: Сменить статус выбранных жанров (админ)
       tags:
       - admin
+  /admin/genres/import-wikidata:
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Сначала ищет жанр в БД по
+        QID с учётом слитых жанров (без запроса к Wikidata), затем загружает элемент
+        Wikidata (нужно русское название), проверяет, что это литературный жанр, и
+        сопоставляет по правилам харвеста: совпадение по slug без QID — QID привязывается;
+        с другим QID — существующий жанр не меняется (qid_mismatch); слитый жанр —
+        возвращается каноничный (via_alias); иначе создаётся жанр в статусе pending
+        с QID. Отклонённые жанры повторно не создаются (outcome=rejected). Название,
+        slug и статус существующего жанра не меняются. 201 — создан, 200 — existing
+        / rejected. 422 содержит code: no_ru_label | not_a_literary_genre.'
+      parameters:
+      - description: QID элемента Wikidata
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.importWikidataGenreRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreImportResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreImportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Импортировать литературный жанр из Wikidata по QID (админ)
+      tags:
+      - admin
   /admin/genres/moderation:
     get:
       description: Требуется роль admin. Жанры с заданным статусом (по умолчанию pending),
@@ -3186,6 +3361,70 @@ paths:
       security:
       - BearerAuth: []
       summary: Очередь модерации жанров (админ)
+      tags:
+      - admin
+  /admin/genres/wikidata-search:
+    get:
+      description: 'Требуется роль admin. Только чтение: ищет элементы Wikidata по
+        названию (wbsearchentities, 20 кандидатов), одним SPARQL-запросом оставляет
+        только литературные жанры и получает русское название, возвращает первые 10.
+        Если проверку выполнить не удалось, class_check = unavailable, кандидаты не
+        отфильтрованы, ru_label и literary_genre = null (импорт проверит жанр сам).
+        Поле existing — жанр BookHaven с тем же QID (каноничный жанр; via_alias —
+        слитый жанр, которому принадлежит QID) или null. Отсутствие совпадений — не
+        ошибка (200, items: []).'
+      parameters:
+      - description: Название жанра
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreWikidataSearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Поиск литературных жанров в Wikidata (админ)
       tags:
       - admin
   /admin/harvest:

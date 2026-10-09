@@ -10,7 +10,7 @@ Give admins one page, `/moderation/genres`, to process `pending` genres from har
 
 ## Out of scope
 
-- #303 Wikidata genre import (`/import/genres`).
+- #303 Wikidata genre import (`/import/genres`). Shipped: [genre-wikidata-import.md](genre-wikidata-import.md).
 - Un-merge or alias management UI. A merge cannot be undone from the UI. Recovery is manual SQL by the human.
 - Automatic merging or rejecting. Hints are display-only.
 - pg_trgm or any other fuzzy-matching infrastructure.
