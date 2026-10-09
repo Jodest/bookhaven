@@ -124,7 +124,7 @@ func (f *fakeRepository) ListBooks(ctx context.Context, shelfID uuid.UUID, limit
 	var books []catalogDomain.Book
 	for key := range f.items {
 		if key.shelfID == shelfID {
-			if b, ok := f.books[key.bookID]; ok && !b.IsHidden {
+			if b, ok := f.books[key.bookID]; ok && (b.Status == "" || b.IsPublished()) {
 				books = append(books, *b)
 			}
 		}
@@ -142,7 +142,7 @@ func (f *fakeRepository) ListBooks(ctx context.Context, shelfID uuid.UUID, limit
 
 func (f *fakeRepository) BookExists(ctx context.Context, bookID uuid.UUID) (bool, error) {
 	b, ok := f.books[bookID]
-	return ok && !b.IsHidden, nil
+	return ok && (b.Status == "" || b.IsPublished()), nil
 }
 
 func (f *fakeRepository) UserShelvesWithBook(ctx context.Context, userID, bookID uuid.UUID) (map[uuid.UUID]struct{}, error) {
@@ -293,7 +293,7 @@ func TestGetPublicShelf_HiddenBooksExcluded(t *testing.T) {
 	visibleBook := uuid.New()
 	hiddenBook := uuid.New()
 	repo.books[visibleBook] = &catalogDomain.Book{ID: visibleBook, Title: "Видимая", Slug: "vidimaya"}
-	repo.books[hiddenBook] = &catalogDomain.Book{ID: hiddenBook, Title: "Скрытая", Slug: "skrytaya", IsHidden: true}
+	repo.books[hiddenBook] = &catalogDomain.Book{ID: hiddenBook, Title: "Скрытая", Slug: "skrytaya", Status: catalogDomain.BookStatusRejected}
 	repo.items[shelfBookKey{shelfID: shelf.ID, bookID: visibleBook}] = time.Now()
 	repo.items[shelfBookKey{shelfID: shelf.ID, bookID: hiddenBook}] = time.Now()
 

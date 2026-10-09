@@ -175,11 +175,7 @@ export function DashboardView() {
     );
   } else {
     const moderationTiles: Tile[] = [
-      {
-        label: 'Импортировано, на проверке',
-        value: data.pending_import_review,
-        href: '/moderation/books',
-      },
+      { label: 'Книги на модерации', value: data.pending_books, href: '/moderation/books' },
       { label: 'Авторы на модерации', value: data.pending_authors, href: '/moderation/authors' },
       { label: 'Жанры на модерации', value: data.pending_genres, href: '/moderation/genres' },
       {
@@ -190,7 +186,11 @@ export function DashboardView() {
     ];
     const catalogTiles: Tile[] = [
       { label: 'Всего книг', value: data.books, href: '/catalog/books' },
-      { label: 'Скрытых книг', value: data.hidden_books, href: '/catalog/books?visibility=hidden' },
+      {
+        label: 'Отклонённых книг',
+        value: data.rejected_books,
+        href: '/catalog/books?status=rejected',
+      },
       { label: 'Авторов', value: data.authors, href: '/catalog/authors' },
       { label: 'Жанров', value: data.genres, href: '/catalog/genres' },
     ];

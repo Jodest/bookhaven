@@ -801,8 +801,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Фильтр видимости (all/visible/hidden/pending_review)",
-                        "name": "visibility",
+                        "description": "Статус: pending, published, rejected",
+                        "name": "status",
                         "in": "query"
                     },
                     {
@@ -841,6 +841,15 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_admin_transport_http.listBooksResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
@@ -955,14 +964,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/books/bulk-publish": {
+        "/admin/books/bulk-status": {
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Требуется роль admin и Bearer-токен. Публикует (is_hidden=false) каждую книгу, подходящую под предикат pending_review (is_hidden=true AND external_source IS NOT NULL), опционально уточнённый тем же search, что и GET /admin/books. Поле visibility в теле запроса игнорируется — предикат всегда фиксирован на сервере. Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов (кроме 422 при превышении лимита партии).",
+                "description": "Требуется роль admin и Bearer-токен. Меняет только status (и updated_at) у каждой книги из ids (не более 100, дубликаты схлопываются); остальные поля и связи не меняются, повторная валидация контента не выполняется. Каждый id обрабатывается независимо: неизвестный id — построчная ошибка «book not found», остальные применяются. HTTP 200 независимо от построчных исходов.",
                 "consumes": [
                     "application/json"
                 ],
@@ -972,14 +981,15 @@ const docTemplate = `{
                 "tags": [
                     "admin"
                 ],
-                "summary": "Опубликовать все книги на проверке (админ)",
+                "summary": "Сменить статус выбранных книг (админ)",
                 "parameters": [
                     {
-                        "description": "Опциональный поиск",
+                        "description": "ID книг и новый статус (pending / published / rejected)",
                         "name": "body",
                         "in": "body",
+                        "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_admin_transport_http.bulkPublishBooksRequest"
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.bulkBookStatusRequest"
                         }
                     }
                 ],
@@ -987,7 +997,16 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishReport"
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BookBulkStatusReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
@@ -1001,15 +1020,6 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Unprocessable Entity",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1036,7 +1046,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Требуется роль admin и Bearer-токен. multipart/form-data: file (обязательно, .csv/.json), format (опционально, csv|json — иначе определяется по расширению), is_hidden (опционально, true/false, применяется ко всей партии). Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов.",
+                "description": "Требуется роль admin и Bearer-токен. multipart/form-data: file (обязательно, .csv/.json), format (опционально, csv|json — иначе определяется по расширению), status (опционально, pending|published, применяется ко всей партии; по умолчанию published, иное значение — 400). Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -6250,24 +6260,24 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishReport": {
+        "github_com_bookhaven_backend_internal_modules_admin_service.BookBulkStatusReport": {
             "type": "object",
             "properties": {
                 "errors": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishRowError"
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BookBulkStatusRowError"
                     }
                 },
                 "processed": {
                     "type": "integer"
                 },
-                "published": {
+                "updated": {
                     "type": "integer"
                 }
             }
         },
-        "github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishRowError": {
+        "github_com_bookhaven_backend_internal_modules_admin_service.BookBulkStatusRowError": {
             "type": "object",
             "properties": {
                 "book_id": {
@@ -6660,8 +6670,8 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "is_hidden": {
-                    "type": "boolean"
+                "status": {
+                    "type": "string"
                 },
                 "title": {
                     "type": "string"
@@ -6698,9 +6708,6 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "is_hidden": {
-                    "type": "boolean"
-                },
                 "isbn": {
                     "type": "string"
                 },
@@ -6725,6 +6732,9 @@ const docTemplate = `{
                 "slug": {
                     "type": "string"
                 },
+                "status": {
+                    "type": "string"
+                },
                 "title": {
                     "type": "string"
                 },
@@ -6734,6 +6744,20 @@ const docTemplate = `{
             }
         },
         "internal_modules_admin_transport_http.bulkAuthorStatusRequest": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.bulkBookStatusRequest": {
             "type": "object",
             "properties": {
                 "ids": {
@@ -6757,14 +6781,6 @@ const docTemplate = `{
                     }
                 },
                 "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_modules_admin_transport_http.bulkPublishBooksRequest": {
-            "type": "object",
-            "properties": {
-                "search": {
                     "type": "string"
                 }
             }
@@ -6830,9 +6846,6 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
-                "is_hidden": {
-                    "type": "boolean"
-                },
                 "isbn": {
                     "type": "string"
                 },
@@ -6846,6 +6859,10 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status (pending | published | rejected): on POST omitted means\npublished; on PATCH omitted means unchanged. Invalid -\u003e 400.",
                     "type": "string"
                 },
                 "title": {
@@ -6884,19 +6901,19 @@ const docTemplate = `{
                 "genres": {
                     "type": "integer"
                 },
-                "hidden_books": {
+                "pending_authors": {
                     "type": "integer"
                 },
-                "pending_authors": {
+                "pending_books": {
                     "type": "integer"
                 },
                 "pending_genres": {
                     "type": "integer"
                 },
-                "pending_import_review": {
+                "pending_reviews": {
                     "type": "integer"
                 },
-                "pending_reviews": {
+                "rejected_books": {
                     "type": "integer"
                 }
             }
@@ -7051,8 +7068,8 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "is_hidden": {
-                    "type": "boolean"
+                "status": {
+                    "type": "string"
                 },
                 "title": {
                     "type": "string"

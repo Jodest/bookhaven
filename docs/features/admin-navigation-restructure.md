@@ -2,6 +2,8 @@
 
 Status: in progress (phases 1-6 done)
 
+> **Update ([book-status-model.md](book-status-model.md)):** `/moderation/books` now lists `status=pending` books from every source, with per-row "Опубликовать"/"Отклонить" and a header "Опубликовать все на странице (N)" (all via `bulkStatus`). The dashboard tile is "Книги на модерации" (`pending_books`), and the catalog tile "Отклонённых книг" (`rejected_books`, `/catalog/books?status=rejected`) replaces "Скрытых книг".
+
 Epic: #283. Phases (existing sub-issues): #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters -> #289 Users (separate contract) -> #290 Genres moderation/import (needs product decision).
 
 Phases 1-5 are frontend-only (`apps/admin`). Phase 1 (#284) is done. Phases 2+3 (#285 + #286) shipped **together in one branch/PR** (human decision: avoids a window where pending-review books have no page) and are done. Phase 4 (#287) is done. Phase 5 (#288) is done; phases 6-7 stay outlines.

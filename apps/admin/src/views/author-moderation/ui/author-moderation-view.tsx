@@ -27,6 +27,7 @@ import {
 } from '@bookhaven/ui';
 import { Search } from 'lucide-react';
 import { adminAuthorsApi, AuthorStatusBadge } from '@/entities/author';
+import { BOOK_STATUS_LABELS } from '@/entities/book';
 import {
   bulkEnrichSummary,
   enrichErrorMessage,
@@ -516,7 +517,11 @@ function QueueRow({ item, selected, pending, enrichPending, onEnrich, onToggle, 
                 <Link href={`/catalog/books/${b.id}/edit` as any} className="text-primary underline">
                   {b.title}
                 </Link>
-                {b.is_hidden && <span className="ml-1 text-xs text-muted-foreground">(скрыта)</span>}
+                {b.status !== 'published' && (
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    ({(BOOK_STATUS_LABELS[b.status] ?? b.status).toLowerCase()})
+                  </span>
+                )}
               </li>
             ))}
           </ul>

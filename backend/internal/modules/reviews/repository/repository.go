@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	"github.com/google/uuid"
@@ -32,7 +33,7 @@ type Repository interface {
 	// (liked == true) and revieweeID != userID, a review_like notification
 	// for the author is upserted in the same transaction.
 	ToggleLike(ctx context.Context, reviewID, userID, revieweeID uuid.UUID) (liked bool, likesCount int, err error)
-	// BookExists checks whether a book exists and is not hidden.
+	// BookExists checks whether a published book exists.
 	BookExists(ctx context.Context, bookID uuid.UUID) (bool, error)
 }
 
@@ -254,12 +255,12 @@ func (r *GormRepository) ToggleLike(ctx context.Context, reviewID, userID, revie
 	return liked, likesCount, err
 }
 
-// BookExists checks whether a non-hidden book exists.
+// BookExists checks whether a published book exists (status = published).
 func (r *GormRepository) BookExists(ctx context.Context, bookID uuid.UUID) (bool, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).
 		Table("books").
-		Where("id = ? AND is_hidden = ?", bookID, false).
+		Where("id = ? AND status = ?", bookID, catalogDomain.BookStatusPublished).
 		Count(&count).Error; err != nil {
 		return false, err
 	}

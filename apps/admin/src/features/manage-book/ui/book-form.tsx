@@ -4,11 +4,12 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminAuthorsApi, AuthorStatusBadge, AUTHOR_STATUS_LABELS } from '@/entities/author';
 import { adminGenresApi, GenreStatusBadge, GENRE_STATUS_LABELS } from '@/entities/genre';
-import { adminBooksApi } from '@/entities/book';
+import { adminBooksApi, BOOK_STATUS_LABELS } from '@/entities/book';
 import {
   AdminAuthor,
   AdminBook,
   AdminBookInput,
+  AdminBookStatus,
   AdminGenre,
   ApiError,
   LookupRecord,
@@ -29,6 +30,11 @@ import { MultiSelect } from '@/shared/ui';
 const TITLE_NOT_RUSSIAN_ERROR = 'title must be in Russian';
 const TITLE_NOT_RUSSIAN_HINT =
   'Название должно быть на русском языке. Если официальное название книги пишется латиницей, отметьте «Название на латинице допустимо».';
+
+const BOOK_STATUS_OPTIONS = (['published', 'pending', 'rejected'] as const).map((value) => ({
+  value,
+  label: BOOK_STATUS_LABELS[value],
+}));
 
 interface BookFormProps {
   initial?: AdminBook;
@@ -57,14 +63,14 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
           language: initial.language,
           author_ids: initial.authors.map((a) => a.id),
           genre_ids: initial.genres.map((g) => g.id),
-          is_hidden: initial.is_hidden,
+          status: initial.status,
           allow_non_russian_title: false,
         }
       : {
           language: 'ru',
           author_ids: [],
           genre_ids: [],
-          is_hidden: false,
+          status: 'published',
           allow_non_russian_title: false,
         },
   });
@@ -166,9 +172,9 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
   const handleFormSubmit = async (data: AdminBookInput) => {
     setServerError(null);
 
-    if (initial && initial.is_hidden !== data.is_hidden) {
-      const action = data.is_hidden ? 'скрыть' : 'вернуть в видимость';
-      if (!window.confirm(`Вы уверены, что хотите ${action} эту книгу?`)) {
+    if (initial && data.status && initial.status !== data.status) {
+      const label = BOOK_STATUS_LABELS[data.status];
+      if (!window.confirm(`Вы уверены, что хотите сменить статус на «${label}» у этой книги?`)) {
         return;
       }
     }
@@ -332,15 +338,12 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="is_hidden">Видимость</Label>
+        <Label htmlFor="status">Статус</Label>
         <Select
-          id="is_hidden"
-          options={[
-            { value: 'false', label: 'Видима' },
-            { value: 'true', label: 'Скрыта' },
-          ]}
-          value={watch('is_hidden') ? 'true' : 'false'}
-          onChange={(e) => setValue('is_hidden', e.target.value === 'true')}
+          id="status"
+          options={BOOK_STATUS_OPTIONS}
+          value={watch('status') ?? 'published'}
+          onChange={(e) => setValue('status', e.target.value as AdminBookStatus)}
         />
       </div>
 

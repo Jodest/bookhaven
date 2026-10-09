@@ -21,12 +21,12 @@ import {
 
 export function BookImportView() {
   const [file, setFile] = useState<File | null>(null);
-  const [isHidden, setIsHidden] = useState(false);
+  const [status, setStatus] = useState<'published' | 'pending'>('published');
   const [report, setReport] = useState<ImportReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const importMutation = useMutation({
-    mutationFn: (selectedFile: File) => adminBooksApi.import(selectedFile, { isHidden }),
+    mutationFn: (selectedFile: File) => adminBooksApi.import(selectedFile, { status }),
     onSuccess: (data) => {
       setReport(data);
       setError(null);
@@ -80,15 +80,15 @@ export function BookImportView() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="import-is-hidden">Видимость партии</Label>
+          <Label htmlFor="import-status">Статус партии</Label>
           <Select
-            id="import-is-hidden"
+            id="import-status"
             options={[
-              { value: 'false', label: 'Видима' },
-              { value: 'true', label: 'Скрыта' },
+              { value: 'published', label: 'Опубликованы' },
+              { value: 'pending', label: 'На модерации' },
             ]}
-            value={isHidden ? 'true' : 'false'}
-            onChange={(e) => setIsHidden(e.target.value === 'true')}
+            value={status}
+            onChange={(e) => setStatus(e.target.value === 'pending' ? 'pending' : 'published')}
           />
         </div>
 

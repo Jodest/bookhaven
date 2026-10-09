@@ -14,7 +14,7 @@ import (
 const authorBookStatsJoin = `LEFT JOIN (
 	SELECT ba.author_id,
 		COUNT(*) AS books_total,
-		SUM(CASE WHEN b.is_hidden THEN 0 ELSE 1 END) AS books_visible
+		SUM(CASE WHEN b.status = 'published' THEN 1 ELSE 0 END) AS books_visible
 	FROM book_authors ba
 	JOIN books b ON b.id = ba.book_id
 	GROUP BY ba.author_id
@@ -134,11 +134,11 @@ func (r *GormRepository) ListAuthorSampleBooks(ctx context.Context, authorIDs []
 		AuthorID uuid.UUID
 		ID       uuid.UUID
 		Title    string
-		IsHidden bool
+		Status   string
 	}
 	if err := r.db.WithContext(ctx).Raw(`
-		SELECT author_id, id, title, is_hidden FROM (
-			SELECT ba.author_id, b.id, b.title, b.is_hidden,
+		SELECT author_id, id, title, status FROM (
+			SELECT ba.author_id, b.id, b.title, b.status,
 				ROW_NUMBER() OVER (PARTITION BY ba.author_id ORDER BY b.title ASC, b.id ASC) AS rn
 			FROM book_authors ba
 			JOIN books b ON b.id = ba.book_id
@@ -154,7 +154,7 @@ func (r *GormRepository) ListAuthorSampleBooks(ctx context.Context, authorIDs []
 		if len(out[row.AuthorID]) >= sampleBooksPerAuthor {
 			continue
 		}
-		out[row.AuthorID] = append(out[row.AuthorID], SampleBook{ID: row.ID, Title: row.Title, IsHidden: row.IsHidden})
+		out[row.AuthorID] = append(out[row.AuthorID], SampleBook{ID: row.ID, Title: row.Title, Status: row.Status})
 	}
 	return out, nil
 }
@@ -198,6 +198,19 @@ func (r *GormRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, stat
 	// Updates with an explicit column map (not Save): only status and
 	// updated_at are written; name, slug, bio, QID and book_authors stay.
 	result := r.db.WithContext(ctx).Model(&catalogDomain.Author{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{"status": status, "updated_at": time.Now()})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+func (r *GormRepository) SetBookStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	// Updates with an explicit column map (not Save): only status and
+	// updated_at are written; every other book column and the
+	// book_authors/book_genres links stay (book-status-model.md rule 7).
+	result := r.db.WithContext(ctx).Model(&catalogDomain.Book{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{"status": status, "updated_at": time.Now()})
 	if result.Error != nil {

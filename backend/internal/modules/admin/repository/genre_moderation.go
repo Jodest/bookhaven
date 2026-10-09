@@ -24,7 +24,7 @@ type GenreModerationFilter struct {
 }
 
 // GenreModerationRow is one genre of the moderation queue with its
-// linked-books counts (books_visible = linked books with is_hidden = false).
+// linked-books counts (books_visible = linked books with status = 'published').
 type GenreModerationRow struct {
 	Genre        catalogDomain.Genre
 	BooksTotal   int64
@@ -36,7 +36,7 @@ type GenreModerationRow struct {
 const genreBookStatsJoin = `LEFT JOIN (
 	SELECT bg.genre_id,
 		COUNT(*) AS books_total,
-		SUM(CASE WHEN b.is_hidden THEN 0 ELSE 1 END) AS books_visible
+		SUM(CASE WHEN b.status = 'published' THEN 1 ELSE 0 END) AS books_visible
 	FROM book_genres bg
 	JOIN books b ON b.id = bg.book_id
 	GROUP BY bg.genre_id
@@ -124,14 +124,14 @@ func (r *GormRepository) ListGenreSampleBooks(ctx context.Context, genreIDs []uu
 	}
 
 	var rows []struct {
-		GenreID  uuid.UUID
-		ID       uuid.UUID
-		Title    string
-		IsHidden bool
+		GenreID uuid.UUID
+		ID      uuid.UUID
+		Title   string
+		Status  string
 	}
 	if err := r.db.WithContext(ctx).Raw(`
-		SELECT genre_id, id, title, is_hidden FROM (
-			SELECT bg.genre_id, b.id, b.title, b.is_hidden,
+		SELECT genre_id, id, title, status FROM (
+			SELECT bg.genre_id, b.id, b.title, b.status,
 				ROW_NUMBER() OVER (PARTITION BY bg.genre_id ORDER BY b.title ASC, b.id ASC) AS rn
 			FROM book_genres bg
 			JOIN books b ON b.id = bg.book_id
@@ -147,7 +147,7 @@ func (r *GormRepository) ListGenreSampleBooks(ctx context.Context, genreIDs []uu
 		if len(out[row.GenreID]) >= sampleBooksPerAuthor {
 			continue
 		}
-		out[row.GenreID] = append(out[row.GenreID], SampleBook{ID: row.ID, Title: row.Title, IsHidden: row.IsHidden})
+		out[row.GenreID] = append(out[row.GenreID], SampleBook{ID: row.ID, Title: row.Title, Status: row.Status})
 	}
 	return out, nil
 }

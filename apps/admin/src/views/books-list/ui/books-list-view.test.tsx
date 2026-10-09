@@ -17,7 +17,8 @@ const listMock = vi.fn();
 const genresListMock = vi.fn();
 const authorsListMock = vi.fn();
 
-vi.mock('@/entities/book', () => ({
+vi.mock('@/entities/book', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/book')>()),
   adminBooksApi: {
     list: (...args: unknown[]) => listMock(...args),
   },
@@ -49,7 +50,7 @@ function makeBook(overrides: Partial<AdminBook> = {}): AdminBook {
     rating: 0,
     ratings_count: 0,
     reviews_count: 0,
-    is_hidden: false,
+    status: 'published',
     external_source: null,
     authors: [],
     genres: [],
@@ -107,31 +108,63 @@ describe('BooksListView', () => {
     vi.restoreAllMocks();
   });
 
-  it('visibility options are exactly Все / Видимые / Скрытые', async () => {
+  it('status filter options are Все статусы / Опубликована / На модерации / Отклонена', async () => {
+    searchParamsValue = new URLSearchParams('page=3');
     renderView();
 
-    const option = await screen.findByRole('option', { name: 'Видимые' });
-    const select = option.closest('select') as HTMLSelectElement;
+    const select = (await screen.findByLabelText('Статус')) as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
-      'Все',
-      'Видимые',
-      'Скрытые',
+      'Все статусы',
+      'Опубликована',
+      'На модерации',
+      'Отклонена',
     ]);
 
-    fireEvent.change(select, { target: { value: 'hidden' } });
+    fireEvent.change(select, { target: { value: 'rejected' } });
     await waitFor(() =>
-      expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('visibility=hidden'))
+      expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('status=rejected'))
     );
+    expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('page=1'));
   });
 
-  it('legacy visibility=pending_review is not sent to the API and the select shows "Все"', async () => {
-    searchParamsValue = new URLSearchParams('visibility=pending_review');
+  it('sends ?status= to the API', async () => {
+    searchParamsValue = new URLSearchParams('status=pending');
     renderView();
 
     await waitFor(() => expect(listMock).toHaveBeenCalled());
-    expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ visibility: '' }));
-    const option = screen.getByRole('option', { name: 'Видимые' });
-    expect((option.closest('select') as HTMLSelectElement).value).toBe('');
+    expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
+    expect((screen.getByLabelText('Статус') as HTMLSelectElement).value).toBe('pending');
+  });
+
+  it('ignores an invalid status and the legacy visibility param', async () => {
+    searchParamsValue = new URLSearchParams('status=hidden&visibility=hidden');
+    renderView();
+
+    await waitFor(() => expect(listMock).toHaveBeenCalled());
+    const args = listMock.mock.calls[0][0];
+    expect(args.status).toBe('');
+    expect(args).not.toHaveProperty('visibility');
+    expect((screen.getByLabelText('Статус') as HTMLSelectElement).value).toBe('');
+  });
+
+  it('shows a status badge per row', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        makeBook({ id: 'b1', title: 'Опубликованная', status: 'published' }),
+        makeBook({ id: 'b2', title: 'Ожидающая', status: 'pending' }),
+        makeBook({ id: 'b3', title: 'Отклонённая', status: 'rejected' }),
+      ],
+      total: 3,
+      page: 1,
+      limit: 20,
+    });
+    renderView();
+
+    await waitFor(() => expect(screen.getByText('Ожидающая')).toBeInTheDocument());
+    const rowOf = (title: string) => screen.getByText(title).closest('tr') as HTMLElement;
+    expect(rowOf('Опубликованная')).toHaveTextContent('Опубликована');
+    expect(rowOf('Ожидающая')).toHaveTextContent('На модерации');
+    expect(rowOf('Отклонённая')).toHaveTextContent('Отклонена');
   });
 
   it('header has "Добавить книгу" to the catalog and no "Импортировать" link', async () => {
@@ -151,7 +184,7 @@ describe('BooksListView', () => {
         makeBook({
           id: 'imported-1',
           title: 'Импортированная книга',
-          is_hidden: true,
+          status: 'pending',
           external_source: 'wikidata',
         }),
       ],
@@ -169,7 +202,7 @@ describe('BooksListView', () => {
   it('has no publish actions, even for a hidden imported row; edit links to the catalog', async () => {
     listMock.mockResolvedValue({
       items: [
-        makeBook({ id: 'imported-2', title: 'На проверке', is_hidden: true, external_source: 'wikidata' }),
+        makeBook({ id: 'imported-2', title: 'На проверке', status: 'pending', external_source: 'wikidata' }),
       ],
       total: 1,
       page: 1,

@@ -430,7 +430,7 @@ func TestSimilarityJob_OnlyBooksWithPartnersQueried(t *testing.T) {
 
 func TestSimilarityJob_SourceNotFoundSkipped(t *testing.T) {
 	repo, store := jobFixture()
-	repo.books[1].IsHidden = true // book 2 hidden mid-run
+	repo.books[1].Status = domain.BookStatusPending // book 2 hidden mid-run
 	stats, err := NewSimilarityJob(repo, store, nil).Run(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -619,7 +619,7 @@ func TestListSimilarBooks_NilReaderIsStage1(t *testing.T) {
 func TestListSimilarBooks_PrecomputedHiddenDroppedAndLimit(t *testing.T) {
 	repo := newFakeRepository()
 	src, want := seedSimilar(repo, 4)
-	repo.books[2].IsHidden = true // want[1]
+	repo.books[2].Status = domain.BookStatusPending // want[1]
 	pre := &fakePrecomputedReader{ids: map[uuid.UUID][]uuid.UUID{src.ID: {want[0], want[1], want[2], want[3]}}}
 	svc := NewService(repo, WithPrecomputedSimilar(pre))
 
@@ -639,7 +639,7 @@ func TestListSimilarBooks_PrecomputedHiddenDroppedAndLimit(t *testing.T) {
 func TestListSimilarBooks_HiddenSourceNotFoundBeforePrecomputed(t *testing.T) {
 	repo := newFakeRepository()
 	src, want := seedSimilar(repo, 2)
-	repo.books[0].IsHidden = true
+	repo.books[0].Status = domain.BookStatusPending
 	pre := &fakePrecomputedReader{ids: map[uuid.UUID][]uuid.UUID{src.ID: want}}
 	svc := NewService(repo, WithPrecomputedSimilar(pre))
 

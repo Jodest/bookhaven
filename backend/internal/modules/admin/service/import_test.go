@@ -33,7 +33,7 @@ type fakeImportRepository struct {
 var _ repository.Repository = (*fakeImportRepository)(nil)
 
 func (f *fakeImportRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
-	return repository.DashboardStats{Books: int64(len(f.books)), HiddenBooks: 0, Authors: int64(len(f.authors)), Genres: int64(len(f.genres))}, nil
+	return repository.DashboardStats{Books: int64(len(f.books)), Authors: int64(len(f.authors)), Genres: int64(len(f.genres))}, nil
 }
 
 func (f *fakeImportRepository) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -299,7 +299,7 @@ func TestImportBooks(t *testing.T) {
 	t.Run("empty input returns a zero report", func(t *testing.T) {
 		svc, _ := newImportService()
 
-		report := svc.ImportBooks(context.Background(), nil, false)
+		report := svc.ImportBooks(context.Background(), nil, "")
 
 		if report.Processed != 0 || report.Created != 0 || report.SkippedExisting != 0 || len(report.Errors) != 0 {
 			t.Fatalf("expected zero report, got %+v", report)
@@ -312,13 +312,16 @@ func TestImportBooks(t *testing.T) {
 			{Title: "Война и мир", Authors: []string{"Leo Tolstoy"}, Genres: []string{"Novel"}, Language: "ru"},
 		}
 
-		report := svc.ImportBooks(context.Background(), rows, false)
+		report := svc.ImportBooks(context.Background(), rows, "")
 
 		if report.Processed != 1 || report.Created != 1 || report.SkippedExisting != 0 || len(report.Errors) != 0 {
 			t.Fatalf("unexpected report: %+v", report)
 		}
 		if len(repo.books) != 1 || repo.books[0].Title != "Война и мир" {
 			t.Fatalf("expected book to be created, got %+v", repo.books)
+		}
+		if repo.books[0].Status != catalogDomain.BookStatusPublished {
+			t.Fatalf("expected default batch status published, got %q", repo.books[0].Status)
 		}
 		if repo.books[0].ExternalSource != nil || repo.books[0].ExternalID != nil {
 			t.Fatalf("expected external_source/external_id to stay nil, got %v / %v", repo.books[0].ExternalSource, repo.books[0].ExternalID)
@@ -338,7 +341,7 @@ func TestImportBooks(t *testing.T) {
 		svc, repo := newImportService()
 		rows := []ImportRowInput{{Title: "Книга", Authors: []string{"Author"}}}
 
-		report := svc.ImportBooks(context.Background(), rows, false)
+		report := svc.ImportBooks(context.Background(), rows, "")
 
 		if report.Created != 1 {
 			t.Fatalf("expected 1 created, got %+v", report)
@@ -348,17 +351,19 @@ func TestImportBooks(t *testing.T) {
 		}
 	})
 
-	t.Run("batch is_hidden flag is respected", func(t *testing.T) {
+	t.Run("batch status pending is respected", func(t *testing.T) {
 		svc, repo := newImportService()
-		rows := []ImportRowInput{{Title: "Книга", Authors: []string{"Author"}}}
+		rows := []ImportRowInput{{Title: "Книга", Authors: []string{"Author"}}, {Title: "Другая книга", Authors: []string{"Author"}}}
 
-		report := svc.ImportBooks(context.Background(), rows, true)
+		report := svc.ImportBooks(context.Background(), rows, catalogDomain.BookStatusPending)
 
-		if report.Created != 1 {
-			t.Fatalf("expected 1 created, got %+v", report)
+		if report.Created != 2 {
+			t.Fatalf("expected 2 created, got %+v", report)
 		}
-		if !repo.books[0].IsHidden {
-			t.Fatal("expected book to be hidden per the batch flag")
+		for _, b := range repo.books {
+			if b.Status != catalogDomain.BookStatusPending {
+				t.Fatalf("expected every book to be pending per the batch status, got %q", b.Status)
+			}
 		}
 	})
 
@@ -366,7 +371,7 @@ func TestImportBooks(t *testing.T) {
 		svc, repo := newImportService()
 		rows := []ImportRowInput{{Title: "Book", Authors: []string{"   "}}}
 
-		report := svc.ImportBooks(context.Background(), rows, false)
+		report := svc.ImportBooks(context.Background(), rows, "")
 
 		if report.Processed != 1 || report.Created != 0 || len(report.Errors) != 1 {
 			t.Fatalf("unexpected report: %+v", report)
@@ -383,7 +388,7 @@ func TestImportBooks(t *testing.T) {
 		svc, _ := newImportService()
 		rows := []ImportRowInput{{Title: "", Authors: []string{"Author"}}}
 
-		report := svc.ImportBooks(context.Background(), rows, false)
+		report := svc.ImportBooks(context.Background(), rows, "")
 
 		if report.Created != 0 || len(report.Errors) != 1 {
 			t.Fatalf("unexpected report: %+v", report)
@@ -395,7 +400,7 @@ func TestImportBooks(t *testing.T) {
 		badISBN := "123"
 		rows := []ImportRowInput{{Title: "Книга", Authors: []string{"Author"}, ISBN: &badISBN}}
 
-		report := svc.ImportBooks(context.Background(), rows, false)
+		report := svc.ImportBooks(context.Background(), rows, "")
 
 		if report.Created != 0 || len(report.Errors) != 1 {
 			t.Fatalf("unexpected report: %+v", report)
@@ -407,7 +412,7 @@ func TestImportBooks(t *testing.T) {
 		repo.books = append(repo.books, catalogDomain.Book{ID: uuid.New(), Title: "Existing", Slug: "book"})
 		rows := []ImportRowInput{{Title: "Книга", Slug: "book", Authors: []string{"Author"}}}
 
-		report := svc.ImportBooks(context.Background(), rows, false)
+		report := svc.ImportBooks(context.Background(), rows, "")
 
 		if report.SkippedExisting != 1 || report.Created != 0 || len(report.Errors) != 0 {
 			t.Fatalf("unexpected report: %+v", report)
@@ -424,7 +429,7 @@ func TestImportBooks(t *testing.T) {
 			{Title: "Книга", Authors: []string{"Author"}},
 		}
 
-		report := svc.ImportBooks(context.Background(), rows, false)
+		report := svc.ImportBooks(context.Background(), rows, "")
 
 		if report.Processed != 2 || report.Created != 1 || report.SkippedExisting != 1 || len(report.Errors) != 0 {
 			t.Fatalf("unexpected report: %+v", report)
@@ -443,7 +448,7 @@ func TestImportBooks(t *testing.T) {
 			{Title: "", Authors: []string{"Author"}},
 		}
 
-		report := svc.ImportBooks(context.Background(), rows, false)
+		report := svc.ImportBooks(context.Background(), rows, "")
 
 		if report.Processed != 3 || report.Created != 1 || report.SkippedExisting != 1 || len(report.Errors) != 1 {
 			t.Fatalf("unexpected report: %+v", report)
@@ -460,7 +465,7 @@ func TestImportBooks(t *testing.T) {
 			{Title: "Книга", Authors: []string{"Author"}},
 		}
 
-		report := svc.ImportBooks(context.Background(), rows, false)
+		report := svc.ImportBooks(context.Background(), rows, "")
 
 		if report.Processed != 2 || report.Created != 1 || len(report.Errors) != 1 {
 			t.Fatalf("unexpected report: %+v", report)
@@ -536,6 +541,10 @@ func (f *fakeImportRepository) ListGenreHintCandidates(ctx context.Context) ([]c
 }
 
 func (f *fakeImportRepository) SetGenreStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeImportRepository) SetBookStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
 	return false, nil
 }
 

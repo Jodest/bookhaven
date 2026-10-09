@@ -28,7 +28,7 @@ type fakeMergeAuthorsRepository struct {
 var _ repository.Repository = (*fakeMergeAuthorsRepository)(nil)
 
 func (f *fakeMergeAuthorsRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
-	return repository.DashboardStats{Books: int64(len(f.books)), HiddenBooks: 0, Authors: int64(len(f.authors)), Genres: 0}, nil
+	return repository.DashboardStats{Books: int64(len(f.books)), Authors: int64(len(f.authors)), Genres: 0}, nil
 }
 
 func (f *fakeMergeAuthorsRepository) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -487,6 +487,10 @@ func (f *fakeMergeAuthorsRepository) ListGenreHintCandidates(ctx context.Context
 }
 
 func (f *fakeMergeAuthorsRepository) SetGenreStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeMergeAuthorsRepository) SetBookStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
 	return false, nil
 }
 

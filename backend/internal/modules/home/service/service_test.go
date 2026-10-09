@@ -154,7 +154,7 @@ func (l *fakeLoader) GetBooksByIDs(_ context.Context, ids []uuid.UUID) ([]catalo
 	l.calls++
 	var result []catalogdomain.Book
 	for _, id := range ids {
-		if b, ok := l.books[id]; ok && !b.IsHidden {
+		if b, ok := l.books[id]; ok && (b.Status == "" || b.IsPublished()) {
 			result = append(result, b)
 		}
 	}
@@ -323,7 +323,7 @@ func TestGetHome_CalendarDropsEventWhoseBooksWereHidden(t *testing.T) {
 
 	// Hide the author's only book after the selection was cached.
 	hidden := loader.books[book]
-	hidden.IsHidden = true
+	hidden.Status = catalogdomain.BookStatusPending
 	loader.books[book] = hidden
 
 	home, err := svc.GetHome(context.Background())
@@ -383,7 +383,7 @@ func TestGetHome_CacheHitSkipsSelectionButHydratesLive(t *testing.T) {
 
 	// Hide a book after caching; it must disappear on the next request.
 	hidden := loader.books[b]
-	hidden.IsHidden = true
+	hidden.Status = catalogdomain.BookStatusPending
 	loader.books[b] = hidden
 
 	home, err := svc.GetHome(context.Background())

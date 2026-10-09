@@ -73,7 +73,7 @@ describe('BookImportView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Импортировать' }));
 
-    await waitFor(() => expect(importMock).toHaveBeenCalledWith(file, { isHidden: false }));
+    await waitFor(() => expect(importMock).toHaveBeenCalledWith(file, { status: 'published' }));
 
     await waitFor(() => expect(screen.getByText('Создано: 1')).toBeInTheDocument());
     expect(screen.getByText('Обработано: 3')).toBeInTheDocument();
@@ -97,5 +97,27 @@ describe('BookImportView', () => {
     await waitFor(() =>
       expect(screen.getByText('too many rows; use cmd/harvest or cmd/seed')).toBeInTheDocument()
     );
+  });
+
+  it('offers Опубликованы / На модерации and sends the chosen batch status', async () => {
+    importMock.mockResolvedValue({ processed: 1, created: 1, skipped_existing: 0, errors: [] });
+
+    renderView();
+
+    const select = screen.getByLabelText('Статус партии') as HTMLSelectElement;
+    expect(select.value).toBe('published');
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      'Опубликованы',
+      'На модерации',
+    ]);
+
+    const file = makeFile('books.csv');
+    fireEvent.change(screen.getByLabelText('Файл (.csv или .json)') as HTMLInputElement, {
+      target: { files: [file] },
+    });
+    fireEvent.change(select, { target: { value: 'pending' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Импортировать' }));
+
+    await waitFor(() => expect(importMock).toHaveBeenCalledWith(file, { status: 'pending' }));
   });
 });

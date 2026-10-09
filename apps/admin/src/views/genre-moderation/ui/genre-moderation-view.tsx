@@ -26,6 +26,7 @@ import {
 } from '@bookhaven/ui';
 import { Search } from 'lucide-react';
 import { adminGenresApi, GenreStatusBadge } from '@/entities/genre';
+import { BOOK_STATUS_LABELS } from '@/entities/book';
 import { MergeGenreDialog } from '@/features/merge-genre';
 import {
   bulkGenreStatusConfirmText,
@@ -440,7 +441,11 @@ function QueueRow({ item, selected, pending, onToggle, onStatus, onMerge }: Queu
                 <Link href={`/catalog/books/${b.id}/edit` as any} className="text-primary underline">
                   {b.title}
                 </Link>
-                {b.is_hidden && <span className="ml-1 text-xs text-muted-foreground">(скрыта)</span>}
+                {b.status !== 'published' && (
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    ({(BOOK_STATUS_LABELS[b.status] ?? b.status).toLowerCase()})
+                  </span>
+                )}
               </li>
             ))}
           </ul>

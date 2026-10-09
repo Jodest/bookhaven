@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **Superseded by [book-status-model.md](book-status-model.md) (bulk-status).** `POST /admin/books/bulk-publish` and `BulkPublishBooks` were removed; `/moderation/books` now publishes or rejects pending books through `POST /admin/books/bulk-status`.
+
 This is a follow-up to `docs/features/harvest-review-queue.md` (implemented), which explicitly deferred a bulk "publish all" action ("Bulk publish, if wanted later, is a follow-up; flag it, don't build it."). That contract shipped the `pending_review` admin book filter, the `external_source`/`pending_import_review` fields, and a per-row "Опубликовать" quick action that reuses the existing `PATCH /api/v1/admin/books/:id` full-replace endpoint. This contract adds a single new action that publishes every book currently matching the admin's `pending_review` view (optionally narrowed by the existing search box), so an admin no longer has to click "Опубликовать" once per row after a large harvest run.
 
 ## Scope boundaries (read first)

@@ -15,7 +15,7 @@
 // processing, then inspect the result with asynq.Inspector (or the
 // `asynqmon` CLI/web UI pointed at the same Redis) using the printed queue
 // name + task ID. A completed job should have created at least one book
-// with is_hidden = true in the catalog.
+// with status = pending in the catalog.
 //
 // Curated-author-list mode ("Approach A", see
 // docs/features/harvest-review-queue.md): instead of hand-writing SPARQL,

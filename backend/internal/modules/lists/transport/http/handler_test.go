@@ -129,7 +129,7 @@ func (f *fakeRepository) ListBooks(ctx context.Context, listID uuid.UUID, limit,
 	var items []item
 	for key, it := range f.items {
 		if key.listID == listID {
-			if b, ok := f.books[key.bookID]; ok && !b.IsHidden {
+			if b, ok := f.books[key.bookID]; ok && (b.Status == "" || b.IsPublished()) {
 				items = append(items, item{bookID: key.bookID, position: it.Position, addedAt: it.AddedAt.UnixNano()})
 			}
 		}
@@ -161,7 +161,7 @@ func (f *fakeRepository) ListBooks(ctx context.Context, listID uuid.UUID, limit,
 
 func (f *fakeRepository) BookExists(ctx context.Context, bookID uuid.UUID) (bool, error) {
 	b, ok := f.books[bookID]
-	return ok && !b.IsHidden, nil
+	return ok && (b.Status == "" || b.IsPublished()), nil
 }
 
 func (f *fakeRepository) MaxPosition(ctx context.Context, listID uuid.UUID) (int, error) {

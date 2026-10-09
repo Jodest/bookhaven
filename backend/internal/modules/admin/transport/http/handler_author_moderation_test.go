@@ -27,7 +27,7 @@ func TestListAuthorModerationQueue_Shape(t *testing.T) {
 	svc.queueItems = []adminService.AuthorQueueItem{
 		{
 			Author: row, BooksTotal: 3, BooksVisible: 1,
-			SampleBooks: []repository.SampleBook{{ID: bookID, Title: "Война и мир", IsHidden: true}},
+			SampleBooks: []repository.SampleBook{{ID: bookID, Title: "Война и мир", Status: catalogDomain.BookStatusPending}},
 			Similar:     []adminService.AuthorHint{{Author: hint, Match: adminService.MatchSurnameInitial}},
 		},
 		{Author: catalogDomain.Author{ID: uuid.New(), Name: "Гомер", Status: "pending"}, SampleBooks: []repository.SampleBook{}, Similar: []adminService.AuthorHint{}},
@@ -56,7 +56,7 @@ func TestListAuthorModerationQueue_Shape(t *testing.T) {
 	it := body.Items[0]
 	if it.Author.ID != row.ID.String() || it.Author.Status != "pending" || it.Author.ExternalID == nil || *it.Author.ExternalID != qid ||
 		it.BooksTotal != 3 || it.BooksVisible != 1 ||
-		len(it.SampleBooks) != 1 || it.SampleBooks[0].ID != bookID.String() || !it.SampleBooks[0].IsHidden ||
+		len(it.SampleBooks) != 1 || it.SampleBooks[0].ID != bookID.String() || it.SampleBooks[0].Status != catalogDomain.BookStatusPending ||
 		len(it.Similar) != 1 || it.Similar[0].Author.ID != hint.ID.String() || it.Similar[0].Match != "surname_initial" || it.Similar[0].Author.Status != "published" {
 		t.Fatalf("unexpected item: %+v", it)
 	}

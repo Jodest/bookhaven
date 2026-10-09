@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { adminBooksApi } from '@/entities/book';
+import { adminBooksApi, BookStatusBadge, BOOK_STATUS_LABELS } from '@/entities/book';
 import { adminAuthorsApi } from '@/entities/author';
 import { adminGenresApi } from '@/entities/genre';
-import { AdminBook } from '@bookhaven/api-client';
+import { AdminBook, AdminBookStatus } from '@bookhaven/api-client';
 import {
   Button,
   Input,
@@ -23,6 +23,19 @@ import Link from 'next/link';
 import { Plus, Search } from 'lucide-react';
 import { Pagination } from '@/shared/ui';
 
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'Все статусы' },
+  { value: 'published', label: BOOK_STATUS_LABELS.published },
+  { value: 'pending', label: BOOK_STATUS_LABELS.pending },
+  { value: 'rejected', label: BOOK_STATUS_LABELS.rejected },
+];
+
+// Only valid statuses are sent; anything else (including the legacy
+// `visibility` param, which is no longer read) means "all".
+function parseStatus(value: string | null): AdminBookStatus | '' {
+  return value === 'pending' || value === 'published' || value === 'rejected' ? value : '';
+}
+
 export function BooksListView() {
   const router = useRouter();
   const pathname = usePathname();
@@ -30,21 +43,18 @@ export function BooksListView() {
 
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-  // Only these values belong to the catalog; anything else (e.g. the legacy
-  // `pending_review`, now under /moderation/books) is treated as "all".
-  const rawVisibility = searchParams.get('visibility') || '';
-  const visibility = rawVisibility === 'visible' || rawVisibility === 'hidden' ? rawVisibility : '';
+  const status = parseStatus(searchParams.get('status'));
   const genreId = searchParams.get('genre_id') || '';
   const authorId = searchParams.get('author_id') || '';
   const source = searchParams.get('source') || '';
   const limit = 20;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'books', { search, visibility, genreId, authorId, source, page }],
+    queryKey: ['admin', 'books', { search, status, genreId, authorId, source, page }],
     queryFn: () =>
       adminBooksApi.list({
         search: search || undefined,
-        visibility,
+        status,
         genreId: genreId || undefined,
         authorId: authorId || undefined,
         source: source as 'manual' | 'harvested' | '',
@@ -122,13 +132,10 @@ export function BooksListView() {
           </Button>
         </form>
         <Select
-          options={[
-            { value: '', label: 'Все' },
-            { value: 'visible', label: 'Видимые' },
-            { value: 'hidden', label: 'Скрытые' },
-          ]}
-          value={visibility}
-          onChange={(e) => updateParams({ visibility: e.target.value, page: '1' })}
+          aria-label="Статус"
+          options={STATUS_FILTER_OPTIONS}
+          value={status}
+          onChange={(e) => updateParams({ status: e.target.value, page: '1' })}
           className="w-full md:w-48"
         />
         <Select
@@ -188,11 +195,7 @@ export function BooksListView() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        {book.is_hidden ? (
-                          <Badge variant="secondary">Скрыта</Badge>
-                        ) : (
-                          <Badge variant="default">Видима</Badge>
-                        )}
+                        <BookStatusBadge status={book.status} />
                         {book.external_source && (
                           <Badge variant="outline">Импортировано</Badge>
                         )}
