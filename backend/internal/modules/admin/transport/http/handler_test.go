@@ -56,6 +56,11 @@ type fakeAdminService struct {
 	lastGenreInput        *adminService.GenreInput
 	genreErr              error
 
+	getAuthorErr    error
+	getAuthorCalled bool
+	getGenreErr     error
+	getGenreCalled  bool
+
 	queueItems       []adminService.AuthorQueueItem
 	queueErr         error
 	lastQueueFilter  repository.AuthorModerationFilter
@@ -253,6 +258,19 @@ func (f *fakeAdminService) ListAuthors(ctx context.Context, search, status strin
 	return f.authors, int64(len(f.authors)), nil
 }
 
+func (f *fakeAdminService) GetAuthor(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error) {
+	f.getAuthorCalled = true
+	if f.getAuthorErr != nil {
+		return nil, f.getAuthorErr
+	}
+	for i := range f.authors {
+		if f.authors[i].ID == id {
+			return &f.authors[i], nil
+		}
+	}
+	return nil, adminService.ErrAuthorNotFound
+}
+
 func (f *fakeAdminService) CreateAuthor(ctx context.Context, input adminService.AuthorInput) (*catalogDomain.Author, error) {
 	if input.BirthDate != nil && *input.BirthDate == "not-a-date" {
 		return nil, adminService.ErrInvalidDate
@@ -291,6 +309,19 @@ func (f *fakeAdminService) UpdateAuthor(ctx context.Context, id uuid.UUID, input
 func (f *fakeAdminService) ListGenres(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Genre, int64, error) {
 	f.lastGenreStatusFilter = status
 	return f.genres, int64(len(f.genres)), nil
+}
+
+func (f *fakeAdminService) GetGenre(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error) {
+	f.getGenreCalled = true
+	if f.getGenreErr != nil {
+		return nil, f.getGenreErr
+	}
+	for i := range f.genres {
+		if f.genres[i].ID == id {
+			return &f.genres[i], nil
+		}
+	}
+	return nil, adminService.ErrGenreNotFound
 }
 
 func (f *fakeAdminService) CreateGenre(ctx context.Context, input adminService.GenreInput) (*catalogDomain.Genre, error) {

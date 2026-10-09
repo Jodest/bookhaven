@@ -27,6 +27,7 @@ type Service interface {
 	CreateBook(ctx context.Context, input adminService.BookInput) (*catalogDomain.Book, error)
 	UpdateBook(ctx context.Context, id uuid.UUID, input adminService.BookInput) (*catalogDomain.Book, error)
 	ListAuthors(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Author, int64, error)
+	GetAuthor(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error)
 	CreateAuthor(ctx context.Context, input adminService.AuthorInput) (*catalogDomain.Author, error)
 	UpdateAuthor(ctx context.Context, id uuid.UUID, input adminService.AuthorInput) (*catalogDomain.Author, error)
 	MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (*catalogDomain.Author, int64, error)
@@ -35,6 +36,7 @@ type Service interface {
 	ImportWikidataAuthor(ctx context.Context, qid string) (*adminService.AuthorImportResult, error)
 	EnrichAuthorsFromWikidata(ctx context.Context, ids []uuid.UUID) (*adminService.AuthorEnrichmentReport, error)
 	ListGenres(ctx context.Context, search, status string, page, limit int) ([]catalogDomain.Genre, int64, error)
+	GetGenre(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error)
 	CreateGenre(ctx context.Context, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	ListGenreModerationQueue(ctx context.Context, filter repository.GenreModerationFilter, page, limit int) ([]adminService.GenreQueueItem, int64, error)
@@ -826,6 +828,39 @@ func (h *Handler) ListAuthors(c echo.Context) error {
 	})
 }
 
+// GetAuthor godoc
+// @Summary Получить автора по ID (админ)
+// @Description Требуется роль admin. Возвращает автора в любом статусе.
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID автора"
+// @Success 200 {object} authorResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/authors/{id} [get]
+func (h *Handler) GetAuthor(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	id, err := parseID(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid author id"})
+	}
+
+	author, err := h.service.GetAuthor(ctx, id)
+	if err != nil {
+		if errors.Is(err, adminService.ErrAuthorNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "author not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get author"})
+	}
+
+	return c.JSON(http.StatusOK, toAuthorResponse(*author))
+}
+
 // CreateAuthor godoc
 // @Summary Создать автора (админ)
 // @Description Требуется роль admin и Bearer-токен
@@ -1304,6 +1339,39 @@ func (h *Handler) ListGenres(c echo.Context) error {
 		Page:  page,
 		Limit: limit,
 	})
+}
+
+// GetGenre godoc
+// @Summary Получить жанр по ID (админ)
+// @Description Требуется роль admin. Возвращает жанр в любом статусе; ID алиаса (слитого жанра) даёт 404.
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID жанра"
+// @Success 200 {object} genreResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/genres/{id} [get]
+func (h *Handler) GetGenre(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	id, err := parseID(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid genre id"})
+	}
+
+	genre, err := h.service.GetGenre(ctx, id)
+	if err != nil {
+		if errors.Is(err, adminService.ErrGenreNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "genre not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get genre"})
+	}
+
+	return c.JSON(http.StatusOK, toGenreResponse(*genre))
 }
 
 // CreateGenre godoc
