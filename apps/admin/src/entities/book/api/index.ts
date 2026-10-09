@@ -8,4 +8,5 @@ export const adminBooksApi = {
   lookup: api.admin.books.lookup,
   import: api.admin.books.import,
   bulkStatus: api.admin.books.bulkStatus,
+  moderationQueue: api.admin.books.moderationQueue,
 };

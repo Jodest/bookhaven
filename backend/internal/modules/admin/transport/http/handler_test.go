@@ -44,6 +44,13 @@ type fakeAdminService struct {
 	lastBookBulkIDs    []uuid.UUID
 	lastBookBulkStatus string
 
+	// Book moderation queue (handler_book_moderation_test.go).
+	bookQueueItems      []adminService.BookQueueItem
+	bookQueueErr        error
+	lastBookQueueFilter repository.BookModerationFilter
+	lastBookQueuePage   int
+	lastBookQueueLimit  int
+
 	mergeAuthorsErr           error
 	mergeAuthorsBooksReturned int64
 	lastMergeDuplicateID      uuid.UUID

@@ -141,6 +141,19 @@ type Repository interface {
 	// changing nothing, when either genre is missing or already an alias.
 	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (booksReassigned int64, err error)
 
+	// Book moderation queue (docs/features/book-moderation-queue.md).
+	// ListBooksForModeration lists books matching filter, newest first,
+	// with authors and genres preloaded.
+	ListBooksForModeration(ctx context.Context, filter BookModerationFilter) ([]catalogDomain.Book, int64, error)
+	// FindBooksByNormalizedISBNs returns books whose ISBN, with hyphens and
+	// spaces stripped and uppercased, is in isbns, excluding excludeIDs.
+	// Empty isbns returns an empty slice without a query.
+	FindBooksByNormalizedISBNs(ctx context.Context, isbns []string, excludeIDs []uuid.UUID) ([]BookHintCandidate, error)
+	// FindBooksByAuthorIDs returns books linked to any of authorIDs
+	// (excluding excludeIDs), each with the matched author ids. Empty
+	// authorIDs returns an empty slice without a query.
+	FindBooksByAuthorIDs(ctx context.Context, authorIDs, excludeIDs []uuid.UUID) ([]BookHintCandidate, error)
+
 	// Reviews moderation.
 	ListReviews(ctx context.Context, filter ReviewFilter) ([]reviewsDomain.Review, int64, error)
 	GetReviewByID(ctx context.Context, id uuid.UUID) (*reviewsDomain.Review, error)

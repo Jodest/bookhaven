@@ -147,6 +147,7 @@ func RegisterAdminRoutes(
 	books.GET("/lookup", adminHandler.LookupBook)
 	books.POST("/import", adminHandler.ImportBooks, requireBearer, echomiddleware.BodyLimit(adminhttp.ImportMaxRequestBody))
 	books.POST("/bulk-status", adminHandler.BulkSetBookStatus, requireBearer)
+	books.GET("/moderation", adminHandler.ListBookModerationQueue)
 	books.GET("/:id", adminHandler.GetBook)
 	books.PATCH("/:id", adminHandler.UpdateBook, requireBearer)
 

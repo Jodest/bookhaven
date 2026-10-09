@@ -49,6 +49,7 @@ type Service interface {
 	LookupBook(ctx context.Context, isbn, query, author string) (*bookdata.ExternalBookRecord, error)
 	ImportBooks(ctx context.Context, rows []adminService.ImportRowInput, defaultStatus string) adminService.ImportReport
 	BulkSetBookStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.BookBulkStatusReport, error)
+	ListBookModerationQueue(ctx context.Context, filter repository.BookModerationFilter, page, limit int) ([]adminService.BookQueueItem, int64, error)
 	ListUsers(ctx context.Context, search, role string, page, limit int) ([]usersDomain.User, int64, error)
 	ChangeUserRole(ctx context.Context, actorID, targetID uuid.UUID, role string) (*usersDomain.User, error)
 }
@@ -288,6 +289,41 @@ type listGenreQueueResponse struct {
 	Total int64                    `json:"total"`
 	Page  int                      `json:"page"`
 	Limit int                      `json:"limit"`
+}
+
+// bookHintBookResponse is the compact book of a "possibly the same book"
+// hint (docs/features/book-moderation-queue.md); hint candidates carry no
+// authors or genres.
+type bookHintBookResponse struct {
+	ID             string  `json:"id"`
+	Title          string  `json:"title"`
+	Slug           string  `json:"slug"`
+	Status         string  `json:"status"`
+	ISBN           *string `json:"isbn"`
+	PublishedYear  *int    `json:"published_year"`
+	ExternalSource *string `json:"external_source"`
+}
+
+type bookHintResponse struct {
+	Book bookHintBookResponse `json:"book"`
+	// Match is same_isbn | same_title_author.
+	Match string `json:"match"`
+}
+
+// bookQueueItemResponse is one book moderation queue row. ExternalID sits
+// on the item (not in book) so bookResponse stays unchanged.
+type bookQueueItemResponse struct {
+	Book       bookResponse       `json:"book"`
+	ExternalID *string            `json:"external_id"`
+	CreatedAt  time.Time          `json:"created_at"`
+	Similar    []bookHintResponse `json:"similar"`
+}
+
+type listBookQueueResponse struct {
+	Items []bookQueueItemResponse `json:"items"`
+	Total int64                   `json:"total"`
+	Page  int                     `json:"page"`
+	Limit int                     `json:"limit"`
 }
 
 type bulkGenreStatusRequest struct {
@@ -1540,6 +1576,77 @@ func (h *Handler) ListGenreModerationQueue(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, listGenreQueueResponse{
+		Items: items,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	})
+}
+
+// ListBookModerationQueue godoc
+// @Summary Очередь модерации книг (админ)
+// @Description Требуется роль admin. Книги с заданным статусом (по умолчанию pending), новые сверху, с авторами и жанрами (с их статусами), источником, external_id и подсказками «возможно, та же книга» (same_isbn / same_title_author, только для отображения).
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param status query string false "Статус: pending (по умолчанию) / published / rejected"
+// @Param source query string false "Источник: manual / harvested"
+// @Param search query string false "Полнотекстовый поиск (название, ISBN, описание)"
+// @Param page query int false "Номер страницы"
+// @Param limit query int false "Размер страницы, максимум 50"
+// @Success 200 {object} listBookQueueResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/books/moderation [get]
+func (h *Handler) ListBookModerationQueue(c echo.Context) error {
+	ctx := c.Request().Context()
+	page, limit := parsePagination(c)
+	if limit > 50 {
+		limit = 50
+	}
+
+	filter := repository.BookModerationFilter{
+		Status: c.QueryParam("status"),
+		Source: c.QueryParam("source"),
+		Search: c.QueryParam("search"),
+	}
+
+	queue, total, err := h.service.ListBookModerationQueue(ctx, filter, page, limit)
+	if err != nil {
+		if errors.Is(err, adminService.ErrInvalidModerationFilter) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list book moderation queue"})
+	}
+
+	items := make([]bookQueueItemResponse, 0, len(queue))
+	for _, q := range queue {
+		similar := make([]bookHintResponse, 0, len(q.Similar))
+		for _, hint := range q.Similar {
+			similar = append(similar, bookHintResponse{
+				Book: bookHintBookResponse{
+					ID:             hint.Book.ID.String(),
+					Title:          hint.Book.Title,
+					Slug:           hint.Book.Slug,
+					Status:         hint.Book.Status,
+					ISBN:           hint.Book.ISBN,
+					PublishedYear:  hint.Book.PublishedYear,
+					ExternalSource: hint.Book.ExternalSource,
+				},
+				Match: hint.Match,
+			})
+		}
+		items = append(items, bookQueueItemResponse{
+			Book:       toBookResponse(q.Book),
+			ExternalID: q.Book.ExternalID,
+			CreatedAt:  q.Book.CreatedAt,
+			Similar:    similar,
+		})
+	}
+
+	return c.JSON(http.StatusOK, listBookQueueResponse{
 		Items: items,
 		Total: total,
 		Page:  page,
