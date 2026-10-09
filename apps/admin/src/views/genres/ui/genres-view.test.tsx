@@ -97,29 +97,33 @@ describe('GenresView status and QID', () => {
     expect(pushMock).toHaveBeenCalledWith('/catalog/genres?status=rejected&page=1');
   });
 
-  it('sends QID on create (no status) and status + QID on edit', async () => {
+  it('has no create form: the form appears only on «Редактировать»', async () => {
+    listMock.mockResolvedValue({ items: [makeGenre()], total: 1, page: 1, limit: 20 });
+
+    renderView();
+
+    await screen.findByRole('button', { name: 'Редактировать' });
+    expect(screen.queryByRole('button', { name: 'Создать' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Название *')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(screen.queryByLabelText('Название *')).not.toBeInTheDocument();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('sends status + QID on edit, then hides the form and shows «Жанр обновлен»', async () => {
     listMock.mockResolvedValue({
       items: [makeGenre({ status: 'pending', wikidata_qid: 'Q8261' })],
       total: 1,
       page: 1,
       limit: 20,
     });
-    createMock.mockResolvedValue(makeGenre());
     updateMock.mockResolvedValue(makeGenre());
 
     renderView();
-
-    // Create form: no status select, QID sent.
-    expect(screen.queryByLabelText('Статус', { selector: '#status' })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Название *'), { target: { value: 'повесть' } });
-    fireEvent.change(screen.getByLabelText('Wikidata QID'), { target: { value: 'Q49084' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
-    await waitFor(() => expect(createMock).toHaveBeenCalled());
-    expect(createMock.mock.calls[0][0]).toEqual(
-      expect.objectContaining({ name: 'повесть', wikidata_qid: 'Q49084' })
-    );
-    expect(createMock.mock.calls[0][0]).not.toHaveProperty('status');
-    await waitFor(() => expect(screen.getByText('Жанр создан')).toBeInTheDocument());
 
     // Edit form: status + QID pre-filled; clearing the QID sends "".
     fireEvent.click(await screen.findByRole('button', { name: 'Редактировать' }));
@@ -137,6 +141,8 @@ describe('GenresView status and QID', () => {
         expect.objectContaining({ status: 'published', wikidata_qid: '' })
       )
     );
+    await waitFor(() => expect(screen.getByText('Жанр обновлен')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Название *')).not.toBeInTheDocument();
   });
 
   it('links to the genre moderation queue from the header', async () => {
@@ -148,21 +154,21 @@ describe('GenresView status and QID', () => {
     );
   });
 
-  it('extends a 409 QID conflict with a merged-genre hint and keeps other messages', async () => {
-    listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
-    createMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'genre wikidata qid already exists'));
+  it('extends a 409 QID conflict on update with a merged-genre hint and keeps other messages', async () => {
+    listMock.mockResolvedValue({ items: [makeGenre()], total: 1, page: 1, limit: 20 });
+    updateMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'genre wikidata qid already exists'));
     renderView();
 
-    fireEvent.change(screen.getByLabelText('Название *'), { target: { value: 'повесть' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
     await waitFor(() =>
       expect(
         screen.getByText('genre wikidata qid already exists (возможно, у слитого жанра)')
       ).toBeInTheDocument()
     );
 
-    createMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'slug already exists'));
-    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    updateMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'slug already exists'));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
     await waitFor(() => expect(screen.getByText('slug already exists')).toBeInTheDocument());
   });
 });

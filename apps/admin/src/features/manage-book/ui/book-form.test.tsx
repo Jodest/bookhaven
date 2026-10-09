@@ -459,3 +459,53 @@ describe('BookForm status select', () => {
     expect(onSubmit.mock.calls[0][0]).toMatchObject({ status: 'rejected' });
   });
 });
+
+describe('BookForm stayOnSuccess', () => {
+  beforeEach(() => {
+    pushMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  function renderCreate(stayOnSuccess?: boolean) {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BookForm onSubmit={onSubmit} stayOnSuccess={stayOnSuccess} />
+      </QueryClientProvider>
+    );
+    return onSubmit;
+  }
+
+  it('resets the form, hides «Отмена» and does not navigate when true', async () => {
+    const onSubmit = renderCreate(true);
+
+    expect(screen.queryByRole('button', { name: 'Отмена' })).not.toBeInTheDocument();
+    const title = screen.getByLabelText('Название *') as HTMLInputElement;
+    fireEvent.change(title, { target: { value: 'Книга' } });
+    fireEvent.change(screen.getByLabelText('Статус'), { target: { value: 'pending' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    await waitFor(() => expect(title.value).toBe(''));
+    expect((screen.getByLabelText('Статус') as HTMLSelectElement).value).toBe('published');
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('navigates to /catalog/books by default and renders «Отмена»', async () => {
+    const onSubmit = renderCreate();
+
+    expect(screen.getByRole('button', { name: 'Отмена' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Название *'), { target: { value: 'Книга' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/catalog/books'));
+  });
+});

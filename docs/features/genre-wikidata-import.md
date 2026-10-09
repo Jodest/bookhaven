@@ -2,6 +2,8 @@
 
 Status: done
 
+> **Update ([import-by-entity.md](import-by-entity.md), #314):** `/import/genres` is now Импорт → Жанры with the sections «Вручную» (manual create, moved from Каталог → Жанры) and «Wikidata» (`widgets/wikidata-genre-import`, `WikidataGenreImportPanel`, formerly `views/genre-import`). The catalog genres page only edits.
+
 Issue: #303. Epic #290 "Genre moderation and Wikidata import", feature 3 of 3 (the last one; phase 7 of [admin-navigation-restructure.md](admin-navigation-restructure.md)). Builds on [genre-status.md](genre-status.md) (#301: `status`, `wikidata_qid`, `resolveHarvestGenre`, `GenreResolution`) and [genre-moderation-queue.md](genre-moderation-queue.md) (#302: alias rows via `merged_into_id`, `followGenreAlias`, `GenreResolution.ViaAlias`, `genreModerationHref`). Modeled on [author-direct-import.md](author-direct-import.md). Those docs are the source of truth and are not reopened here.
 
 ## Goal
@@ -96,7 +98,7 @@ Backend: admin
 
 Frontend
 - [x] `/import/genres` renders `GenreImportView`; the placeholder is gone.
-- [x] Search input + "Найти" (Enter searches), loading/error/empty states. Empty hint: "Литературных жанров не найдено. Проверьте написание или создайте жанр вручную в каталоге."
+- [x] Search input + "Найти" (Enter searches), loading/error/empty states. Empty hint: "Литературных жанров не найдено. Проверьте написание или создайте жанр вручную в разделе «Вручную»."
 - [x] Each candidate: name (`ru_label`, else `label` with "нет русского названия"), description (or "без описания"), QID link `https://www.wikidata.org/wiki/<QID>` (`target="_blank" rel="noopener noreferrer"`), and the `existing` marker (`GenreStatusBadge`, "через слитый жанр «X»" when `via_alias`, "Открыть" → `genreModerationHref(existing)`).
 - [x] `class_check: "unavailable"` → a warning above the list: "Не удалось проверить, что это литературные жанры — проверка будет выполнена при импорте."
 - [x] Actions: not existing and (`ru_label` or unknown) → "Импортировать"; existing pending/published → text "Уже в каталоге" (no button); existing rejected → "Отклонён ранее" (no button); `ru_label === null` with `class_check: "ok"` → "Нет русского названия" (no button). The clicked candidate's button is disabled while pending.

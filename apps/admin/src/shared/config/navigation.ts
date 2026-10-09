@@ -124,14 +124,19 @@ export const navSections: NavSection[] = [
     basePath: '/import',
     tabs: [
       {
-        id: 'import.wikidata',
-        label: 'Wikidata',
-        href: '/import/wikidata',
-        match: ['/import/wikidata'],
+        id: 'import.books',
+        label: 'Книги',
+        href: '/import/books',
+        match: ['/import/books'],
         roles: ['admin'],
       },
-      { id: 'import.author', label: 'Автор', href: '/import/author', match: ['/import/author'], roles: ['admin'] },
-      { id: 'import.file', label: 'Файл', href: '/import/file', match: ['/import/file'], roles: ['admin'] },
+      {
+        id: 'import.authors',
+        label: 'Авторы',
+        href: '/import/authors',
+        match: ['/import/authors'],
+        roles: ['admin'],
+      },
       {
         id: 'import.genres',
         label: 'Жанры',

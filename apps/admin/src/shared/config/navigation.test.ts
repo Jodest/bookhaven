@@ -16,7 +16,7 @@ describe('resolveNavLocation', () => {
   it.each([
     ['/', 'overview.dashboard'],
     ['/catalog/books', 'catalog.books'],
-    ['/catalog/books/new', 'catalog.books'],
+    ['/catalog/books/123/edit', 'catalog.books'],
     ['/catalog/books/5/edit', 'catalog.books'],
     ['/catalog/authors', 'catalog.authors'],
     ['/catalog/genres', 'catalog.genres'],
@@ -24,9 +24,8 @@ describe('resolveNavLocation', () => {
     ['/moderation/authors', 'moderation.authors'],
     ['/moderation/genres', 'moderation.genres'],
     ['/moderation/reviews', 'moderation.reviews'],
-    ['/import/wikidata', 'import.wikidata'],
-    ['/import/author', 'import.author'],
-    ['/import/file', 'import.file'],
+    ['/import/books', 'import.books'],
+    ['/import/authors', 'import.authors'],
     ['/import/genres', 'import.genres'],
     ['/import/jobs', 'import.jobs'],
     ['/users', 'users.list'],
@@ -38,7 +37,7 @@ describe('resolveNavLocation', () => {
     expect(resolveNavLocation('/')?.section.id).toBe('overview');
     expect(resolveNavLocation('/users')?.section.id).toBe('users');
     expect(resolveNavLocation('/moderation/authors')?.section.id).toBe('moderation');
-    expect(resolveNavLocation('/import/file')?.section.id).toBe('import');
+    expect(resolveNavLocation('/import/books')?.section.id).toBe('import');
   });
 
   it('resolves bare section paths as base paths', () => {
@@ -66,7 +65,7 @@ describe('resolveNavLocation', () => {
     '/genres',
     '/reviews',
     '/harvest',
-    '/import/wikidatax',
+    '/import/booksx',
     '/import/unknown',
     '/catalog/unknown',
     '/moderation/booksx',
@@ -164,7 +163,7 @@ describe('home and section hrefs', () => {
     expect(getSectionHref(moderation, 'admin')).toBe('/moderation/books');
     expect(getSectionHref(catalog, 'admin')).toBe('/catalog/books');
     expect(getSectionHref(catalog, 'moderator')).toBeNull();
-    expect(getSectionHref(importSection, 'admin')).toBe('/import/wikidata');
+    expect(getSectionHref(importSection, 'admin')).toBe('/import/books');
     expect(getSectionHref(importSection, 'moderator')).toBeNull();
   });
 });

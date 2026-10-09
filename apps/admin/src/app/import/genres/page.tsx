@@ -1,5 +1,5 @@
-import { GenreImportView } from '@/views/genre-import';
+import { ImportGenresView } from '@/views/import-genres';
 
 export default function Page() {
-  return <GenreImportView />;
+  return <ImportGenresView />;
 }
