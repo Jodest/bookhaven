@@ -35,7 +35,7 @@ type fakeAdminRepository struct {
 var _ adminrepository.Repository = (*fakeAdminRepository)(nil)
 
 func (f *fakeAdminRepository) DashboardCounts(ctx context.Context) (adminrepository.DashboardStats, error) {
-	return adminrepository.DashboardStats{Books: int64(len(f.books)), HiddenBooks: 0, Authors: int64(len(f.authors)), Genres: int64(len(f.genres))}, nil
+	return adminrepository.DashboardStats{Books: int64(len(f.books)), Authors: int64(len(f.authors)), Genres: int64(len(f.genres))}, nil
 }
 
 func (f *fakeAdminRepository) ListBooks(ctx context.Context, filter adminrepository.BookFilter) ([]catalogDomain.Book, int64, error) {
@@ -360,8 +360,8 @@ func TestProcessRecord_CreatesHiddenBook(t *testing.T) {
 		t.Fatalf("expected 1 book, got %d", len(repo.books))
 	}
 	book := repo.books[0]
-	if !book.IsHidden {
-		t.Error("expected book to be created with IsHidden = true")
+	if book.Status != catalogDomain.BookStatusPending {
+		t.Errorf("expected book to be created with status pending, got %q", book.Status)
 	}
 	if book.ExternalSource == nil || *book.ExternalSource != "wikidata" {
 		t.Errorf("ExternalSource = %v, want wikidata", book.ExternalSource)
@@ -1062,7 +1062,7 @@ func TestProcessRecord_AllAuthorsRejectedStillCreatesHiddenBook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if outcome != outcomeCreated || len(repo.books) != 1 || !repo.books[0].IsHidden {
+	if outcome != outcomeCreated || len(repo.books) != 1 || repo.books[0].Status != catalogDomain.BookStatusPending {
 		t.Fatalf("expected one hidden book created, outcome=%v books=%+v", outcome, repo.books)
 	}
 	if len(repo.authors) != 1 {
@@ -1143,6 +1143,10 @@ func (f *fakeAdminRepository) ListGenreHintCandidates(ctx context.Context) ([]ca
 }
 
 func (f *fakeAdminRepository) SetGenreStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	return false, nil
+}
+
+func (f *fakeAdminRepository) SetBookStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
 	return false, nil
 }
 

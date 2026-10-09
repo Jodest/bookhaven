@@ -173,7 +173,7 @@ func (r *GormRepository) ListBooks(ctx context.Context, listID uuid.UUID, limit,
 
 	query := r.db.WithContext(ctx).Model(&catalogDomain.Book{}).
 		Joins("JOIN list_items ON list_items.book_id = books.id").
-		Where("list_items.list_id = ? AND books.is_hidden = ?", listID, false).
+		Where("list_items.list_id = ? AND books.status = ?", listID, catalogDomain.BookStatusPublished).
 		Order("list_items.position ASC, list_items.added_at ASC, list_items.book_id ASC")
 
 	if err := query.Count(&total).Error; err != nil {
@@ -200,12 +200,12 @@ func (r *GormRepository) ListBooks(ctx context.Context, listID uuid.UUID, limit,
 	return books, total, nil
 }
 
-// BookExists checks whether a book exists and is not hidden.
+// BookExists checks whether a published book exists.
 func (r *GormRepository) BookExists(ctx context.Context, bookID uuid.UUID) (bool, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).
 		Model(&catalogDomain.Book{}).
-		Where("id = ? AND is_hidden = ?", bookID, false).
+		Where("id = ? AND status = ?", bookID, catalogDomain.BookStatusPublished).
 		Count(&count).Error; err != nil {
 		return false, err
 	}

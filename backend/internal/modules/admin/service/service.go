@@ -32,6 +32,7 @@ var (
 	ErrInvalidAuthorStatus   = errors.New("author status is invalid")
 	ErrInvalidGenreName      = errors.New("genre name is required")
 	ErrInvalidGenreStatus    = errors.New("genre status is invalid")
+	ErrInvalidBookStatus     = errors.New("book status is invalid")
 	ErrDuplicateGenreQID     = errors.New("genre wikidata qid already exists")
 	ErrInvalidSlug           = errors.New("slug is not URL safe")
 	ErrDuplicateSlug         = errors.New("slug already exists")
@@ -137,8 +138,12 @@ func (s *Service) DashboardCounts(ctx context.Context) (repository.DashboardStat
 	return s.repo.DashboardCounts(ctx)
 }
 
-// ListBooks returns an admin paginated list of books including hidden ones.
+// ListBooks returns an admin paginated list of books of every status;
+// filter.Status, when non-empty, must be a valid book status.
 func (s *Service) ListBooks(ctx context.Context, filter repository.BookFilter) ([]catalogDomain.Book, int64, error) {
+	if filter.Status != "" && !catalogDomain.IsValidBookStatus(filter.Status) {
+		return nil, 0, ErrInvalidBookStatus
+	}
 	return s.repo.ListBooks(ctx, filter)
 }
 
@@ -180,7 +185,10 @@ type BookInput struct {
 	Language      string
 	AuthorIDs     []string
 	GenreIDs      []string
-	IsHidden      bool
+	// Status is a book status (catalogDomain.BookStatus*). On create, nil
+	// means published (manual creation is vetted); on update, nil means
+	// unchanged. Any non-nil invalid value is ErrInvalidBookStatus.
+	Status *string
 	// ExternalSource/ExternalID identify the origin record for books
 	// created via an automated harvest (e.g. "wikidata" + a QID). Left nil
 	// by existing callers (regular admin create/update flows).
@@ -198,6 +206,13 @@ type BookInput struct {
 
 // CreateBook creates a new book with relationships.
 func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDomain.Book, error) {
+	status := catalogDomain.BookStatusPublished
+	if input.Status != nil {
+		if !catalogDomain.IsValidBookStatus(*input.Status) {
+			return nil, ErrInvalidBookStatus
+		}
+		status = *input.Status
+	}
 	if err := validateBookInput(input, input.AllowNonRussianTitle); err != nil {
 		return nil, err
 	}
@@ -258,7 +273,7 @@ func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDoma
 		PublishedYear:  input.PublishedYear,
 		PageCount:      input.PageCount,
 		Language:       strings.TrimSpace(input.Language),
-		IsHidden:       input.IsHidden,
+		Status:         status,
 		ExternalSource: normalizeOptionalString(input.ExternalSource),
 		ExternalID:     normalizeOptionalString(input.ExternalID),
 	}
@@ -281,6 +296,9 @@ func (s *Service) UpdateBook(ctx context.Context, id uuid.UUID, input BookInput)
 			return nil, ErrBookNotFound
 		}
 		return nil, fmt.Errorf("get book: %w", err)
+	}
+	if input.Status != nil && !catalogDomain.IsValidBookStatus(*input.Status) {
+		return nil, ErrInvalidBookStatus
 	}
 
 	// Grandfathering: the title-language check guards against *new*
@@ -350,7 +368,9 @@ func (s *Service) UpdateBook(ctx context.Context, id uuid.UUID, input BookInput)
 	book.PublishedYear = input.PublishedYear
 	book.PageCount = input.PageCount
 	book.Language = strings.TrimSpace(input.Language)
-	book.IsHidden = input.IsHidden
+	if input.Status != nil {
+		book.Status = *input.Status
+	}
 	book.ExternalSource = normalizeOptionalString(input.ExternalSource)
 	book.ExternalID = normalizeOptionalString(input.ExternalID)
 

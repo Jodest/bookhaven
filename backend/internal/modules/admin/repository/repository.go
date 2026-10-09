@@ -17,7 +17,7 @@ type Repository interface {
 	// Dashboard counts.
 	DashboardCounts(ctx context.Context) (DashboardStats, error)
 
-	// Books (includes hidden records).
+	// Books (every status).
 	ListBooks(ctx context.Context, filter BookFilter) ([]catalogDomain.Book, int64, error)
 	GetBookByID(ctx context.Context, id uuid.UUID) (*catalogDomain.Book, error)
 	// GetBookByExternalID looks up a book by its (external_source,
@@ -27,6 +27,9 @@ type Repository interface {
 	CreateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error
 	UpdateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error
 	BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
+	// SetBookStatus updates only status (and updated_at) of one book.
+	// found is false when no book has that id.
+	SetBookStatus(ctx context.Context, id uuid.UUID, status string) (found bool, err error)
 
 	// Authors.
 	// ListAuthors lists authors of every status; status, when non-empty,
@@ -161,16 +164,14 @@ type Repository interface {
 // BookFilter defines filtering options for admin book list.
 type BookFilter struct {
 	Search string
-	// Visibility is one of "" (all), "visible", "hidden" (all hidden books,
-	// including pending-review ones - unchanged superset behavior), or
-	// "pending_review" (hidden AND harvested: is_hidden = true AND
-	// external_source IS NOT NULL - a narrower, additive filter value).
-	Visibility string
-	GenreID    *uuid.UUID
-	AuthorID   *uuid.UUID
+	// Status is "" (all) or a valid book status (pending, published,
+	// rejected); see docs/features/book-status-model.md rule 6.
+	Status   string
+	GenreID  *uuid.UUID
+	AuthorID *uuid.UUID
 	// Source is one of "" (all), "manual" (external_source IS NULL), or
 	// "harvested" (external_source IS NOT NULL) - a coarse manual/harvested
-	// split, independent of and ANDed with Visibility (see
+	// split, independent of and ANDed with Status (see
 	// docs/features/admin-book-list-filters.md).
 	Source string
 	Limit  int
@@ -179,14 +180,14 @@ type BookFilter struct {
 
 // DashboardStats holds the admin dashboard counters.
 type DashboardStats struct {
-	Books               int64
-	HiddenBooks         int64
-	Authors             int64
-	Genres              int64
-	PendingReviews      int64
-	PendingImportReview int64
-	PendingAuthors      int64
-	PendingGenres       int64
+	Books          int64
+	PendingBooks   int64
+	RejectedBooks  int64
+	Authors        int64
+	Genres         int64
+	PendingReviews int64
+	PendingAuthors int64
+	PendingGenres  int64
 }
 
 // AuthorModerationFilter defines filtering options for the author
@@ -203,7 +204,7 @@ type AuthorModerationFilter struct {
 }
 
 // AuthorModerationRow is one author of the moderation queue with its
-// linked-books counts (books_visible = linked books with is_hidden = false).
+// linked-books counts (books_visible = linked books with status = 'published').
 type AuthorModerationRow struct {
 	Author       catalogDomain.Author
 	BooksTotal   int64
@@ -212,9 +213,9 @@ type AuthorModerationRow struct {
 
 // SampleBook is a short linked-book reference shown in the moderation queue.
 type SampleBook struct {
-	ID       uuid.UUID
-	Title    string
-	IsHidden bool
+	ID     uuid.UUID
+	Title  string
+	Status string
 }
 
 // sampleBooksPerAuthor bounds ListAuthorSampleBooks per author.
@@ -244,7 +245,10 @@ func (r *GormRepository) DashboardCounts(ctx context.Context) (DashboardStats, e
 	if err := db.Model(&catalogDomain.Book{}).Count(&st.Books).Error; err != nil {
 		return DashboardStats{}, err
 	}
-	if err := db.Model(&catalogDomain.Book{}).Where("is_hidden = ?", true).Count(&st.HiddenBooks).Error; err != nil {
+	if err := db.Model(&catalogDomain.Book{}).Where("status = ?", catalogDomain.BookStatusPending).Count(&st.PendingBooks).Error; err != nil {
+		return DashboardStats{}, err
+	}
+	if err := db.Model(&catalogDomain.Book{}).Where("status = ?", catalogDomain.BookStatusRejected).Count(&st.RejectedBooks).Error; err != nil {
 		return DashboardStats{}, err
 	}
 	if err := db.Model(&catalogDomain.Author{}).Count(&st.Authors).Error; err != nil {
@@ -255,9 +259,6 @@ func (r *GormRepository) DashboardCounts(ctx context.Context) (DashboardStats, e
 		return DashboardStats{}, err
 	}
 	if err := db.Model(&reviewsDomain.Review{}).Where("is_hidden = ?", true).Count(&st.PendingReviews).Error; err != nil {
-		return DashboardStats{}, err
-	}
-	if err := db.Model(&catalogDomain.Book{}).Where("is_hidden = ? AND external_source IS NOT NULL", true).Count(&st.PendingImportReview).Error; err != nil {
 		return DashboardStats{}, err
 	}
 	if err := db.Model(&catalogDomain.Author{}).Where("status = ?", catalogDomain.AuthorStatusPending).Count(&st.PendingAuthors).Error; err != nil {
@@ -285,13 +286,8 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]ca
 		)
 	}
 
-	switch filter.Visibility {
-	case "visible":
-		query = query.Where("is_hidden = ?", false)
-	case "hidden":
-		query = query.Where("is_hidden = ?", true)
-	case "pending_review":
-		query = query.Where("is_hidden = ? AND external_source IS NOT NULL", true)
+	if filter.Status != "" {
+		query = query.Where("books.status = ?", filter.Status)
 	}
 
 	if filter.GenreID != nil {
@@ -317,17 +313,10 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]ca
 	if limit <= 0 {
 		limit = 20
 	}
-	// maxBookListLimit bounds Limit from above. It is higher than the
-	// admin books list page's own page-size cap (parsePagination caps
-	// requested limits at 100 before building BookFilter) so it never
-	// affects normal paginated requests; it exists so
-	// admin/service.BulkPublishBooks can fetch up to bulkPublishCap+1
-	// (501) pending-review rows in one ListBooks call
-	// (docs/features/harvest-bulk-publish.md) without rows beyond 100
-	// being silently dropped from the per-row publish loop while total
-	// (computed above, unaffected by Limit) still reports the full match
-	// count.
-	const maxBookListLimit = 1000
+	// maxBookListLimit bounds Limit from above, matching the admin books
+	// list page-size cap (parsePagination caps requested limits at 100
+	// before building BookFilter).
+	const maxBookListLimit = 100
 	if limit > maxBookListLimit {
 		limit = maxBookListLimit
 	}

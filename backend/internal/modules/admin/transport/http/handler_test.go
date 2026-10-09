@@ -36,11 +36,13 @@ type fakeAdminService struct {
 
 	importReport     *adminService.ImportReport
 	lastImportRows   []adminService.ImportRowInput
-	lastImportHidden bool
+	lastImportStatus string
 
-	bulkPublishReport     *adminService.BulkPublishReport
-	bulkPublishErr        error
-	lastBulkPublishSearch string
+	bookBulkReport     *adminService.BookBulkStatusReport
+	bookBulkErr        error
+	bookBulkCalled     bool
+	lastBookBulkIDs    []uuid.UUID
+	lastBookBulkStatus string
 
 	mergeAuthorsErr           error
 	mergeAuthorsBooksReturned int64
@@ -188,7 +190,7 @@ func (f *fakeAdminService) DashboardCounts(ctx context.Context) (repository.Dash
 		return repository.DashboardStats{}, f.dashboardErr
 	}
 	return repository.DashboardStats{
-		Books: 10, HiddenBooks: 2, Authors: 5, Genres: 4, PendingReviews: 3, PendingImportReview: 1, PendingAuthors: 7, PendingGenres: 6,
+		Books: 10, PendingBooks: 2, RejectedBooks: 1, Authors: 5, Genres: 4, PendingReviews: 3, PendingAuthors: 7, PendingGenres: 6,
 	}, nil
 }
 
@@ -214,12 +216,16 @@ func (f *fakeAdminService) CreateBook(ctx context.Context, input adminService.Bo
 	if strings.TrimSpace(input.Title) == "" {
 		return nil, adminService.ErrInvalidTitle
 	}
+	status := catalogDomain.BookStatusPublished
+	if input.Status != nil {
+		status = *input.Status
+	}
 	book := catalogDomain.Book{
 		ID:       uuid.New(),
 		Title:    input.Title,
 		Slug:     "book",
 		Language: input.Language,
-		IsHidden: input.IsHidden,
+		Status:   status,
 	}
 	f.books = append(f.books, book)
 	return &book, nil
@@ -233,7 +239,9 @@ func (f *fakeAdminService) UpdateBook(ctx context.Context, id uuid.UUID, input a
 	for i := range f.books {
 		if f.books[i].ID == id {
 			f.books[i].Title = input.Title
-			f.books[i].IsHidden = input.IsHidden
+			if input.Status != nil {
+				f.books[i].Status = *input.Status
+			}
 			return &f.books[i], nil
 		}
 	}
@@ -337,24 +345,26 @@ func (f *fakeAdminService) LookupBook(ctx context.Context, isbn, query, author s
 	return f.lookupRecord, nil
 }
 
-func (f *fakeAdminService) ImportBooks(ctx context.Context, rows []adminService.ImportRowInput, defaultHidden bool) adminService.ImportReport {
+func (f *fakeAdminService) ImportBooks(ctx context.Context, rows []adminService.ImportRowInput, defaultStatus string) adminService.ImportReport {
 	f.lastImportRows = rows
-	f.lastImportHidden = defaultHidden
+	f.lastImportStatus = defaultStatus
 	if f.importReport != nil {
 		return *f.importReport
 	}
 	return adminService.ImportReport{Processed: len(rows), Created: len(rows), Errors: []adminService.ImportRowError{}}
 }
 
-func (f *fakeAdminService) BulkPublishBooks(ctx context.Context, search string) (adminService.BulkPublishReport, error) {
-	f.lastBulkPublishSearch = search
-	if f.bulkPublishErr != nil {
-		return adminService.BulkPublishReport{}, f.bulkPublishErr
+func (f *fakeAdminService) BulkSetBookStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.BookBulkStatusReport, error) {
+	f.bookBulkCalled = true
+	f.lastBookBulkIDs = ids
+	f.lastBookBulkStatus = status
+	if f.bookBulkErr != nil {
+		return adminService.BookBulkStatusReport{}, f.bookBulkErr
 	}
-	if f.bulkPublishReport != nil {
-		return *f.bulkPublishReport, nil
+	if f.bookBulkReport != nil {
+		return *f.bookBulkReport, nil
 	}
-	return adminService.BulkPublishReport{Errors: []adminService.BulkPublishRowError{}}, nil
+	return adminService.BookBulkStatusReport{Processed: len(ids), Updated: len(ids), Errors: []adminService.BookBulkStatusRowError{}}, nil
 }
 
 func (f *fakeAdminService) MergeAuthors(ctx context.Context, duplicateID, canonicalID uuid.UUID) (*catalogDomain.Author, int64, error) {
@@ -409,16 +419,16 @@ func TestDashboard_Admin(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
-	if body.Books != 10 || body.HiddenBooks != 2 || body.PendingReviews != 3 || body.PendingImportReview != 1 || body.PendingAuthors != 7 || body.PendingGenres != 6 {
+	if body.Books != 10 || body.PendingBooks != 2 || body.RejectedBooks != 1 || body.PendingReviews != 3 || body.PendingAuthors != 7 || body.PendingGenres != 6 {
 		t.Fatalf("unexpected dashboard counts: %+v", body)
 	}
 }
 
-func TestListBooks_PendingReviewVisibilityFilter(t *testing.T) {
+func TestListBooks_StatusFilter(t *testing.T) {
 	h, svc := setupHandler()
-	svc.books = []catalogDomain.Book{{ID: uuid.New(), Title: "Book", Language: "ru"}}
+	svc.books = []catalogDomain.Book{{ID: uuid.New(), Title: "Book", Language: "ru", Status: catalogDomain.BookStatusPending}}
 
-	c, rec := newContext(http.MethodGet, "/api/v1/admin/books?visibility=pending_review", nil)
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books?status=pending&visibility=hidden", nil)
 	setAdminUser(c)
 
 	if err := h.ListBooks(c); err != nil {
@@ -427,8 +437,21 @@ func TestListBooks_PendingReviewVisibilityFilter(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if svc.lastBookFilter.Visibility != "pending_review" {
-		t.Fatalf("expected visibility filter %q, got %q", "pending_review", svc.lastBookFilter.Visibility)
+	if svc.lastBookFilter.Status != catalogDomain.BookStatusPending {
+		t.Fatalf("expected status filter %q, got %q", "pending", svc.lastBookFilter.Status)
+	}
+}
+
+func TestListBooks_InvalidStatus_BadRequest(t *testing.T) {
+	h, _ := setupHandler()
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books?status=hidden", nil)
+	setAdminUser(c)
+
+	if err := h.ListBooks(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 
@@ -483,7 +506,7 @@ func TestListBooks_InvalidGenreAndAuthorID_Ignored(t *testing.T) {
 func TestListBooks_Admin(t *testing.T) {
 	h, svc := setupHandler()
 	source := "wikidata"
-	svc.books = []catalogDomain.Book{{ID: uuid.New(), Title: "Book", Language: "ru", IsHidden: true, ExternalSource: &source}}
+	svc.books = []catalogDomain.Book{{ID: uuid.New(), Title: "Book", Language: "ru", Status: catalogDomain.BookStatusPending, ExternalSource: &source}}
 
 	c, rec := newContext(http.MethodGet, "/api/v1/admin/books", nil)
 	setAdminUser(c)
@@ -504,6 +527,12 @@ func TestListBooks_Admin(t *testing.T) {
 	}
 	if body.Items[0].ExternalSource == nil || *body.Items[0].ExternalSource != "wikidata" {
 		t.Fatalf("expected external_source %q, got %+v", "wikidata", body.Items[0].ExternalSource)
+	}
+	if body.Items[0].Status != catalogDomain.BookStatusPending {
+		t.Fatalf("expected status %q, got %q", "pending", body.Items[0].Status)
+	}
+	if strings.Contains(rec.Body.String(), "is_hidden") {
+		t.Fatalf("book response must not contain is_hidden: %s", rec.Body.String())
 	}
 }
 

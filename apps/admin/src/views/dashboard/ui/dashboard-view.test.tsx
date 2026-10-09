@@ -63,11 +63,11 @@ describe('DashboardView', () => {
     listJobsMock.mockReset();
     dashboardMock.mockResolvedValue({
       books: 20,
-      hidden_books: 3,
+      rejected_books: 3,
       authors: 11,
       genres: 5,
       pending_reviews: 2,
-      pending_import_review: 4,
+      pending_books: 4,
       pending_authors: 7,
       pending_genres: 6,
     });
@@ -86,13 +86,14 @@ describe('DashboardView', () => {
     expect(headings).toEqual(['Модерация', 'Каталог', 'Импорт']);
   });
 
-  it('renders a card for pending import review with a link to the moderation queue', async () => {
+  it('renders a card for pending books with a link to the moderation queue', async () => {
     renderView();
 
-    await waitFor(() => expect(screen.getByText('Импортировано, на проверке')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Книги на модерации')).toBeInTheDocument());
     const moderation = group('Модерация');
     expect(within(moderation).getByText('4')).toBeInTheDocument();
-    expect(within(moderation).getByText('Импортировано, на проверке').closest('a')).toHaveAttribute(
+    expect(screen.queryByText('Импортировано, на проверке')).not.toBeInTheDocument();
+    expect(within(moderation).getByText('Книги на модерации').closest('a')).toHaveAttribute(
       'href',
       '/moderation/books'
     );
@@ -142,10 +143,12 @@ describe('DashboardView', () => {
       'href',
       '/catalog/books'
     );
-    expect(within(catalog).getByText('Скрытых книг').closest('a')).toHaveAttribute(
+    expect(within(catalog).getByText('Отклонённых книг').closest('a')).toHaveAttribute(
       'href',
-      '/catalog/books?visibility=hidden'
+      '/catalog/books?status=rejected'
     );
+    expect(within(catalog).getByText('3')).toBeInTheDocument();
+    expect(screen.queryByText('Скрытых книг')).not.toBeInTheDocument();
     expect(within(catalog).getByText('Авторов').closest('a')).toHaveAttribute(
       'href',
       '/catalog/authors'

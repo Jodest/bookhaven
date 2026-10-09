@@ -69,14 +69,14 @@ const (
 // creation rules and ResolveOrCreateAuthorIDsByNames/
 // ResolveOrCreateGenreIDsByNames for author/genre matching - no parallel
 // logic is implemented here (NFR-001). Imported books never set
-// ExternalSource/ExternalID (this is not the harvest path) and default to
-// defaultHidden - there is no per-row visibility override in this
-// increment.
-func (s *Service) ImportBooks(ctx context.Context, rows []ImportRowInput, defaultHidden bool) ImportReport {
+// ExternalSource/ExternalID (this is not the harvest path) and get
+// defaultStatus (a valid book status; "" means CreateBook's default,
+// published) - there is no per-row status override.
+func (s *Service) ImportBooks(ctx context.Context, rows []ImportRowInput, defaultStatus string) ImportReport {
 	report := ImportReport{Processed: len(rows), Errors: []ImportRowError{}}
 
 	for i, row := range rows {
-		outcome, err := s.importRow(ctx, row, defaultHidden)
+		outcome, err := s.importRow(ctx, row, defaultStatus)
 		if err != nil {
 			report.Errors = append(report.Errors, ImportRowError{
 				Row:     i + 1,
@@ -99,7 +99,7 @@ func (s *Service) ImportBooks(ctx context.Context, rows []ImportRowInput, defaul
 // importRow validates, resolves authors/genres, and creates a single row's
 // book. It returns a non-nil error only for *this row's* failure - callers
 // record it and continue with the rest of the batch.
-func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultHidden bool) (importOutcome, error) {
+func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStatus string) (importOutcome, error) {
 	language := strings.TrimSpace(row.Language)
 	if language == "" {
 		language = defaultImportLanguage
@@ -129,7 +129,11 @@ func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultHidd
 		Language:      language,
 		AuthorIDs:     authorIDs,
 		GenreIDs:      genreIDs,
-		IsHidden:      defaultHidden,
+	}
+
+	if defaultStatus != "" {
+		status := defaultStatus
+		input.Status = &status
 	}
 
 	if _, err := s.CreateBook(ctx, input); err != nil {

@@ -82,7 +82,7 @@ func (f *fakeRepository) GetSimilarSource(ctx context.Context, bookID uuid.UUID)
 		return nil, f.similarSourceErr
 	}
 	for _, b := range f.books {
-		if b.ID != bookID || b.IsHidden {
+		if b.ID != bookID || (b.Status != "" && !b.IsPublished()) {
 			continue
 		}
 		src := &repository.SimilarSource{}
@@ -117,7 +117,7 @@ func (f *fakeRepository) GetBooksByIDs(ctx context.Context, ids []uuid.UUID) ([]
 	// Iterate in reverse to make sure callers do not rely on result order.
 	for i := len(f.books) - 1; i >= 0; i-- {
 		b := f.books[i]
-		if want[b.ID] && !b.IsHidden {
+		if want[b.ID] && (b.Status == "" || b.IsPublished()) {
 			result = append(result, b)
 		}
 	}
@@ -509,7 +509,7 @@ func TestListSimilarBooks_UnknownBook404(t *testing.T) {
 func TestListSimilarBooks_HiddenBook404(t *testing.T) {
 	h, repo := setupHandler()
 	src := seedSimilarBooks(repo, 2)
-	repo.books[0].IsHidden = true
+	repo.books[0].Status = domain.BookStatusPending
 	rec := callSimilar(t, h, src.ID.String(), "")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)

@@ -286,17 +286,23 @@ function normalizeReadingChallenge(raw: RawReadingChallenge): ReadingChallenge {
 }
 
 export interface AdminDashboard {
+  /** All books, every status. */
   books: number;
-  hidden_books: number;
+  /** Books with status 'pending' (docs/features/book-status-model.md). */
+  pending_books: number;
+  /** Books with status 'rejected'. */
+  rejected_books: number;
   authors: number;
   genres: number;
   pending_reviews: number;
-  pending_import_review: number;
   /** Authors with status 'pending' (the author moderation queue). */
   pending_authors: number;
   /** Genres with status 'pending' (docs/features/genre-status.md). */
   pending_genres: number;
 }
+
+/** Book moderation status (docs/features/book-status-model.md). */
+export type AdminBookStatus = 'pending' | 'published' | 'rejected';
 
 export interface AdminBook {
   id: string;
@@ -311,7 +317,7 @@ export interface AdminBook {
   rating: number;
   ratings_count: number;
   reviews_count: number;
-  is_hidden: boolean;
+  status: AdminBookStatus;
   external_source: string | null;
   authors: AdminAuthor[];
   genres: AdminGenre[];
@@ -379,7 +385,7 @@ export interface AdminAuthorMergeResult {
 export interface AdminAuthorSampleBook {
   id: string;
   title: string;
-  is_hidden: boolean;
+  status: AdminBookStatus;
 }
 
 /** Display-only "possibly the same person" suggestion. */
@@ -393,7 +399,7 @@ export interface AdminAuthorQueueItem {
   created_at: string;
   /** All linked books. */
   books_total: number;
-  /** Linked books with is_hidden = false. */
+  /** Linked books with status = published. */
   books_visible: number;
   /** Up to 3 linked books, ordered by title. */
   sample_books: AdminAuthorSampleBook[];
@@ -440,7 +446,7 @@ export interface AdminGenreQueueItem {
   created_at: string;
   /** All linked books. */
   books_total: number;
-  /** Linked books with is_hidden = false. */
+  /** Linked books with status = published. */
   books_visible: number;
   /** Up to 3 linked books, ordered by title. */
   sample_books: AdminGenreSampleBook[];
@@ -534,7 +540,8 @@ export interface AdminBookInput {
   language: string;
   author_ids: string[];
   genre_ids: string[];
-  is_hidden: boolean;
+  /** Create: omitted means published. Update: omitted means unchanged. */
+  status?: AdminBookStatus;
   /**
    * Opt-in: lifts only the server's Russian-title check for books whose
    * official title is written in Latin script (e.g. «Empire V»). Input-only,
@@ -603,21 +610,18 @@ export interface ImportReport {
   errors: ImportRowError[];
 }
 
-// BulkPublishRowError describes one book that failed to publish during a
-// POST /api/v1/admin/books/bulk-publish batch.
-export interface BulkPublishRowError {
+export interface AdminBookBulkStatusRowError {
   book_id: string;
   title: string;
   message: string;
 }
 
-// BulkPublishReport is the response of POST /api/v1/admin/books/bulk-publish,
-// returned with HTTP 200 regardless of per-row outcomes (the batch-too-large
-// guard is the only case that responds with a non-200 status instead).
-export interface BulkPublishReport {
+// Response of POST /api/v1/admin/books/bulk-status (HTTP 200 regardless of
+// per-row outcomes).
+export interface AdminBookBulkStatusReport {
   processed: number;
-  published: number;
-  errors: BulkPublishRowError[];
+  updated: number;
+  errors: AdminBookBulkStatusRowError[];
 }
 
 // AdminHarvestTriggerInput is the request body of POST /api/v1/admin/harvest.
@@ -1884,7 +1888,7 @@ export const api = {
         page?: number;
         limit?: number;
         search?: string;
-        visibility?: 'visible' | 'hidden' | 'pending_review' | '';
+        status?: AdminBookStatus | '';
         genreId?: string;
         authorId?: string;
         source?: 'manual' | 'harvested' | '';
@@ -1893,7 +1897,7 @@ export const api = {
         if (params?.page !== undefined) queryParams.page = String(params.page);
         if (params?.limit !== undefined) queryParams.limit = String(params.limit);
         if (params?.search) queryParams.search = params.search;
-        if (params?.visibility) queryParams.visibility = params.visibility;
+        if (params?.status) queryParams.status = params.status;
         if (params?.genreId) queryParams.genre_id = params.genreId;
         if (params?.authorId) queryParams.author_id = params.authorId;
         if (params?.source) queryParams.source = params.source;
@@ -1921,24 +1925,27 @@ export const api = {
           `/api/v1/admin/books/lookup?${new URLSearchParams(queryParams)}`
         );
       },
-      import: (file: File, options?: { format?: 'csv' | 'json'; isHidden?: boolean }) => {
+      import: (
+        file: File,
+        options?: { format?: 'csv' | 'json'; status?: 'pending' | 'published' }
+      ) => {
         const formData = new FormData();
         formData.append('file', file);
         if (options?.format) {
           formData.append('format', options.format);
         }
-        if (options?.isHidden !== undefined) {
-          formData.append('is_hidden', String(options.isHidden));
+        if (options?.status) {
+          formData.append('status', options.status);
         }
         return fetcher<ImportReport>('/api/v1/admin/books/import', {
           method: 'POST',
           body: formData,
         });
       },
-      bulkPublish: (params?: { search?: string }) =>
-        fetcher<BulkPublishReport>('/api/v1/admin/books/bulk-publish', {
+      bulkStatus: (ids: string[], status: AdminBookStatus) =>
+        fetcher<AdminBookBulkStatusReport>('/api/v1/admin/books/bulk-status', {
           method: 'POST',
-          body: JSON.stringify({ search: params?.search }),
+          body: JSON.stringify({ ids, status }),
         }),
     },
     authors: {

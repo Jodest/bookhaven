@@ -9,12 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/labstack/echo/v4"
 )
 
 // newMultipartImportRequest builds an echo.Context/ResponseRecorder pair for
 // POST /admin/books/import: a multipart/form-data body with an uploaded
-// "file" part plus optional extra form fields (e.g. "format", "is_hidden").
+// "file" part plus optional extra form fields (e.g. "format", "status").
 func newMultipartImportRequest(t *testing.T, fields map[string]string, filename, content string) (echo.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 
@@ -172,18 +173,48 @@ func TestImportBooks_EmptyFile_NotAnError(t *testing.T) {
 	}
 }
 
-func TestImportBooks_IsHiddenFormField_PassedThrough(t *testing.T) {
-	h, svc := setupHandler()
-	c, rec := newMultipartImportRequest(t, map[string]string{"is_hidden": "true"}, "books.csv", "title,authors\nBook,Author\n")
-	setAdminUser(c)
+func TestImportBooks_StatusFormField(t *testing.T) {
+	cases := []struct {
+		name   string
+		fields map[string]string
+		want   string
+	}{
+		{"absent defaults to published", nil, catalogDomain.BookStatusPublished},
+		{"empty defaults to published", map[string]string{"status": "  "}, catalogDomain.BookStatusPublished},
+		{"pending", map[string]string{"status": "pending"}, catalogDomain.BookStatusPending},
+		{"published", map[string]string{"status": "published"}, catalogDomain.BookStatusPublished},
+	}
+	for _, tc := range cases {
+		h, svc := setupHandler()
+		c, rec := newMultipartImportRequest(t, tc.fields, "books.csv", "title,authors\nBook,Author\n")
+		setAdminUser(c)
 
-	if err := h.ImportBooks(c); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		if err := h.ImportBooks(c); err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.name, err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d: %s", tc.name, rec.Code, rec.Body.String())
+		}
+		if svc.lastImportStatus != tc.want {
+			t.Fatalf("%s: expected status %q, got %q", tc.name, tc.want, svc.lastImportStatus)
+		}
 	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	if !svc.lastImportHidden {
-		t.Fatal("expected defaultHidden to be true")
+}
+
+func TestImportBooks_InvalidStatus_BadRequest(t *testing.T) {
+	for _, status := range []string{"rejected", "hidden", "true"} {
+		h, svc := setupHandler()
+		c, rec := newMultipartImportRequest(t, map[string]string{"status": status}, "books.csv", "title,authors\nBook,Author\n")
+		setAdminUser(c)
+
+		if err := h.ImportBooks(c); err != nil {
+			t.Fatalf("%s: unexpected error: %v", status, err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: expected 400, got %d", status, rec.Code)
+		}
+		if svc.lastImportRows != nil {
+			t.Fatalf("%s: service must not be called", status)
+		}
 	}
 }

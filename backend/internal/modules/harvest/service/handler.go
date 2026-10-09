@@ -10,7 +10,7 @@
 // adminservice.ResolveOrCreateHarvestGenres and
 // docs/features/genre-status.md), and creates books via adminservice.Service.CreateBook.
 //
-// Books created by this handler are always is_hidden = true: harvested data
+// Books created by this handler are always status = pending: harvested data
 // is crowdsourced (Wikidata/Open Library) and needs human review before it
 // is shown on the public catalog. This is a hardcoded rule for this
 // increment (see business analysis OQ-002), not a per-job option.
@@ -41,6 +41,7 @@ import (
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 )
@@ -332,6 +333,7 @@ func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, 
 	}
 
 	externalSource := wikidataSourceName
+	status := catalogDomain.BookStatusPending
 	input := adminservice.BookInput{
 		Title:          enriched.Title,
 		Description:    enriched.Description,
@@ -342,7 +344,7 @@ func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, 
 		Language:       language,
 		AuthorIDs:      authorIDs,
 		GenreIDs:       genreIDs,
-		IsHidden:       true,
+		Status:         &status,
 		ExternalSource: &externalSource,
 		ExternalID:     &sourceID,
 		// The title comes only from the Wikidata "ru" label

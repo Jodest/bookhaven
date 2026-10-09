@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **Update ([book-status-model.md](book-status-model.md)):** the `visibility` filter (all/visible/hidden/pending_review) is replaced by `status` (pending/published/rejected, empty = all, invalid = 400). `source` stays independent and is ANDed with `status`.
+
 ## Goal
 
 Let a content admin narrow the admin books list (`/books` in `apps/admin`) beyond the existing `search` (title/ISBN/description full-text) and `visibility` (all/visible/hidden/pending_review) filters, so they can find and manage books in a specific genre, by a specific author, or by catalog provenance (manually entered vs harvested) as the catalog grows.

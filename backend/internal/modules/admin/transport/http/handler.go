@@ -45,8 +45,8 @@ type Service interface {
 	ListReviews(ctx context.Context, filter repository.ReviewFilter) ([]reviewsDomain.Review, int64, error)
 	ModerateReview(ctx context.Context, id uuid.UUID, isHidden bool) (*reviewsDomain.Review, error)
 	LookupBook(ctx context.Context, isbn, query, author string) (*bookdata.ExternalBookRecord, error)
-	ImportBooks(ctx context.Context, rows []adminService.ImportRowInput, defaultHidden bool) adminService.ImportReport
-	BulkPublishBooks(ctx context.Context, search string) (adminService.BulkPublishReport, error)
+	ImportBooks(ctx context.Context, rows []adminService.ImportRowInput, defaultStatus string) adminService.ImportReport
+	BulkSetBookStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.BookBulkStatusReport, error)
 	ListUsers(ctx context.Context, search, role string, page, limit int) ([]usersDomain.User, int64, error)
 	ChangeUserRole(ctx context.Context, actorID, targetID uuid.UUID, role string) (*usersDomain.User, error)
 }
@@ -129,7 +129,7 @@ type bookResponse struct {
 	Rating         float64          `json:"rating"`
 	RatingsCount   int              `json:"ratings_count"`
 	ReviewsCount   int              `json:"reviews_count"`
-	IsHidden       bool             `json:"is_hidden"`
+	Status         string           `json:"status"`
 	ExternalSource *string          `json:"external_source,omitempty"`
 	Authors        []authorResponse `json:"authors"`
 	Genres         []genreResponse  `json:"genres"`
@@ -159,20 +159,20 @@ type listGenresResponse struct {
 }
 
 type dashboardResponse struct {
-	Books               int64 `json:"books"`
-	HiddenBooks         int64 `json:"hidden_books"`
-	Authors             int64 `json:"authors"`
-	Genres              int64 `json:"genres"`
-	PendingReviews      int64 `json:"pending_reviews"`
-	PendingImportReview int64 `json:"pending_import_review"`
-	PendingAuthors      int64 `json:"pending_authors"`
-	PendingGenres       int64 `json:"pending_genres"`
+	Books          int64 `json:"books"`
+	PendingBooks   int64 `json:"pending_books"`
+	RejectedBooks  int64 `json:"rejected_books"`
+	Authors        int64 `json:"authors"`
+	Genres         int64 `json:"genres"`
+	PendingReviews int64 `json:"pending_reviews"`
+	PendingAuthors int64 `json:"pending_authors"`
+	PendingGenres  int64 `json:"pending_genres"`
 }
 
 type authorSampleBookResponse struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	IsHidden bool   `json:"is_hidden"`
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Status string `json:"status"`
 }
 
 type authorHintResponse struct {
@@ -213,7 +213,9 @@ type createUpdateBookRequest struct {
 	Language      string   `json:"language"`
 	AuthorIDs     []string `json:"author_ids"`
 	GenreIDs      []string `json:"genre_ids"`
-	IsHidden      bool     `json:"is_hidden"`
+	// Status (pending | published | rejected): on POST omitted means
+	// published; on PATCH omitted means unchanged. Invalid -> 400.
+	Status *string `json:"status,omitempty"`
 	// AllowNonRussianTitle lifts only the Russian-title check for official
 	// Latin-script titles. Input-only, not persisted.
 	AllowNonRussianTitle bool `json:"allow_non_russian_title"`
@@ -259,9 +261,9 @@ type createUpdateGenreRequest struct {
 }
 
 type genreSampleBookResponse struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	IsHidden bool   `json:"is_hidden"`
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Status string `json:"status"`
 }
 
 type genreHintResponse struct {
@@ -309,14 +311,9 @@ type moderateReviewRequest struct {
 	IsHidden bool `json:"is_hidden"`
 }
 
-// bulkPublishBooksRequest is the optional body of
-// POST /admin/books/bulk-publish. Search mirrors the existing search query
-// param already accepted by GET /admin/books; an absent/empty value means
-// "all pending-review books". There is deliberately no visibility/filter
-// field here - the handler/service always and only target the
-// pending_review predicate server-side, regardless of request body content.
-type bulkPublishBooksRequest struct {
-	Search string `json:"search,omitempty"`
+type bulkBookStatusRequest struct {
+	IDs    []string `json:"ids"`
+	Status string   `json:"status"`
 }
 
 // lookupResponse is the normalized record returned by GET /admin/books/lookup,
@@ -459,7 +456,7 @@ func toBookResponse(b catalogDomain.Book) bookResponse {
 		Rating:         b.Rating,
 		RatingsCount:   b.RatingsCount,
 		ReviewsCount:   b.ReviewsCount,
-		IsHidden:       b.IsHidden,
+		Status:         b.Status,
 		ExternalSource: b.ExternalSource,
 		Authors:        authors,
 		Genres:         genres,
@@ -530,14 +527,14 @@ func (h *Handler) Dashboard(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, dashboardResponse{
-		Books:               stats.Books,
-		HiddenBooks:         stats.HiddenBooks,
-		Authors:             stats.Authors,
-		Genres:              stats.Genres,
-		PendingReviews:      stats.PendingReviews,
-		PendingImportReview: stats.PendingImportReview,
-		PendingAuthors:      stats.PendingAuthors,
-		PendingGenres:       stats.PendingGenres,
+		Books:          stats.Books,
+		PendingBooks:   stats.PendingBooks,
+		RejectedBooks:  stats.RejectedBooks,
+		Authors:        stats.Authors,
+		Genres:         stats.Genres,
+		PendingReviews: stats.PendingReviews,
+		PendingAuthors: stats.PendingAuthors,
+		PendingGenres:  stats.PendingGenres,
 	})
 }
 
@@ -548,13 +545,14 @@ func (h *Handler) Dashboard(c echo.Context) error {
 // @Produce json
 // @Security BearerAuth
 // @Param search query string false "Поиск"
-// @Param visibility query string false "Фильтр видимости (all/visible/hidden/pending_review)"
+// @Param status query string false "Статус: pending, published, rejected"
 // @Param genre_id query string false "Фильтр по жанру (UUID)"
 // @Param author_id query string false "Фильтр по автору (UUID)"
 // @Param source query string false "Фильтр по источнику (manual/harvested)"
 // @Param page query int false "Номер страницы"
 // @Param limit query int false "Размер страницы, максимум 100"
 // @Success 200 {object} listBooksResponse
+// @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -564,11 +562,14 @@ func (h *Handler) ListBooks(c echo.Context) error {
 
 	page, limit := parsePagination(c)
 	filter := repository.BookFilter{
-		Search:     c.QueryParam("search"),
-		Visibility: c.QueryParam("visibility"),
-		Source:     c.QueryParam("source"),
-		Limit:      limit,
-		Offset:     (page - 1) * limit,
+		Search: c.QueryParam("search"),
+		Status: c.QueryParam("status"),
+		Source: c.QueryParam("source"),
+		Limit:  limit,
+		Offset: (page - 1) * limit,
+	}
+	if filter.Status != "" && !catalogDomain.IsValidBookStatus(filter.Status) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": adminService.ErrInvalidBookStatus.Error()})
 	}
 
 	if genreID := c.QueryParam("genre_id"); genreID != "" {
@@ -585,6 +586,9 @@ func (h *Handler) ListBooks(c echo.Context) error {
 
 	books, total, err := h.service.ListBooks(ctx, filter)
 	if err != nil {
+		if errors.Is(err, adminService.ErrInvalidBookStatus) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list books"})
 	}
 
@@ -656,6 +660,9 @@ func (h *Handler) CreateBook(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
+	if req.Status != nil && !catalogDomain.IsValidBookStatus(*req.Status) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": adminService.ErrInvalidBookStatus.Error()})
+	}
 
 	book, err := h.service.CreateBook(ctx, adminService.BookInput{
 		Title:         req.Title,
@@ -668,12 +675,14 @@ func (h *Handler) CreateBook(c echo.Context) error {
 		Language:      req.Language,
 		AuthorIDs:     req.AuthorIDs,
 		GenreIDs:      req.GenreIDs,
-		IsHidden:      req.IsHidden,
+		Status:        req.Status,
 
 		AllowNonRussianTitle: req.AllowNonRussianTitle,
 	})
 	if err != nil {
 		switch {
+		case errors.Is(err, adminService.ErrInvalidBookStatus):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		case errors.Is(err, adminService.ErrInvalidTitle),
 			errors.Is(err, adminService.ErrTitleNotRussian),
 			errors.Is(err, adminService.ErrDescriptionNotRussian),
@@ -724,6 +733,9 @@ func (h *Handler) UpdateBook(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
+	if req.Status != nil && !catalogDomain.IsValidBookStatus(*req.Status) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": adminService.ErrInvalidBookStatus.Error()})
+	}
 
 	book, err := h.service.UpdateBook(ctx, id, adminService.BookInput{
 		Title:         req.Title,
@@ -736,7 +748,7 @@ func (h *Handler) UpdateBook(c echo.Context) error {
 		Language:      req.Language,
 		AuthorIDs:     req.AuthorIDs,
 		GenreIDs:      req.GenreIDs,
-		IsHidden:      req.IsHidden,
+		Status:        req.Status,
 
 		AllowNonRussianTitle: req.AllowNonRussianTitle,
 	})
@@ -744,6 +756,8 @@ func (h *Handler) UpdateBook(c echo.Context) error {
 		switch {
 		case errors.Is(err, adminService.ErrBookNotFound):
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "book not found"})
+		case errors.Is(err, adminService.ErrInvalidBookStatus):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		case errors.Is(err, adminService.ErrInvalidTitle),
 			errors.Is(err, adminService.ErrTitleNotRussian),
 			errors.Is(err, adminService.ErrDescriptionNotRussian),
@@ -1015,7 +1029,7 @@ func (h *Handler) ListAuthorModerationQueue(c echo.Context) error {
 	for _, q := range queue {
 		samples := make([]authorSampleBookResponse, 0, len(q.SampleBooks))
 		for _, b := range q.SampleBooks {
-			samples = append(samples, authorSampleBookResponse{ID: b.ID.String(), Title: b.Title, IsHidden: b.IsHidden})
+			samples = append(samples, authorSampleBookResponse{ID: b.ID.String(), Title: b.Title, Status: b.Status})
 		}
 		similar := make([]authorHintResponse, 0, len(q.Similar))
 		for _, hint := range q.Similar {
@@ -1441,7 +1455,7 @@ func (h *Handler) ListGenreModerationQueue(c echo.Context) error {
 	for _, q := range queue {
 		samples := make([]genreSampleBookResponse, 0, len(q.SampleBooks))
 		for _, b := range q.SampleBooks {
-			samples = append(samples, genreSampleBookResponse{ID: b.ID.String(), Title: b.Title, IsHidden: b.IsHidden})
+			samples = append(samples, genreSampleBookResponse{ID: b.ID.String(), Title: b.Title, Status: b.Status})
 		}
 		similar := make([]genreHintResponse, 0, len(q.Similar))
 		for _, hint := range q.Similar {
@@ -1689,7 +1703,7 @@ func (h *Handler) LookupBook(c echo.Context) error {
 
 // ImportBooks godoc
 // @Summary Массовый импорт книг из CSV/JSON файла (админ)
-// @Description Требуется роль admin и Bearer-токен. multipart/form-data: file (обязательно, .csv/.json), format (опционально, csv|json — иначе определяется по расширению), is_hidden (опционально, true/false, применяется ко всей партии). Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов.
+// @Description Требуется роль admin и Bearer-токен. multipart/form-data: file (обязательно, .csv/.json), format (опционально, csv|json — иначе определяется по расширению), status (опционально, pending|published, применяется ко всей партии; по умолчанию published, иное значение — 400). Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов.
 // @Tags admin
 // @Accept multipart/form-data
 // @Produce json
@@ -1740,40 +1754,64 @@ func (h *Handler) ImportBooks(c echo.Context) error {
 		})
 	}
 
-	defaultHidden := strings.EqualFold(strings.TrimSpace(c.FormValue("is_hidden")), "true")
+	status := strings.TrimSpace(c.FormValue("status"))
+	if status == "" {
+		status = catalogDomain.BookStatusPublished
+	}
+	if status != catalogDomain.BookStatusPending && status != catalogDomain.BookStatusPublished {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "status must be pending or published"})
+	}
 
-	report := h.service.ImportBooks(ctx, rows, defaultHidden)
+	report := h.service.ImportBooks(ctx, rows, status)
 	return c.JSON(http.StatusOK, report)
 }
 
-// BulkPublishBooks godoc
-// @Summary Опубликовать все книги на проверке (админ)
-// @Description Требуется роль admin и Bearer-токен. Публикует (is_hidden=false) каждую книгу, подходящую под предикат pending_review (is_hidden=true AND external_source IS NOT NULL), опционально уточнённый тем же search, что и GET /admin/books. Поле visibility в теле запроса игнорируется — предикат всегда фиксирован на сервере. Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200 независимо от построчных исходов (кроме 422 при превышении лимита партии).
+// BulkSetBookStatus godoc
+// @Summary Сменить статус выбранных книг (админ)
+// @Description Требуется роль admin и Bearer-токен. Меняет только status (и updated_at) у каждой книги из ids (не более 100, дубликаты схлопываются); остальные поля и связи не меняются, повторная валидация контента не выполняется. Каждый id обрабатывается независимо: неизвестный id — построчная ошибка «book not found», остальные применяются. HTTP 200 независимо от построчных исходов.
 // @Tags admin
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param body body bulkPublishBooksRequest false "Опциональный поиск"
-// @Success 200 {object} adminService.BulkPublishReport
+// @Param body body bulkBookStatusRequest true "ID книг и новый статус (pending / published / rejected)"
+// @Success 200 {object} adminService.BookBulkStatusReport
+// @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} map[string]string
-// @Failure 422 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /admin/books/bulk-publish [post]
-func (h *Handler) BulkPublishBooks(c echo.Context) error {
+// @Router /admin/books/bulk-status [post]
+func (h *Handler) BulkSetBookStatus(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	var req bulkPublishBooksRequest
+	var req bulkBookStatusRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
+	if !catalogDomain.IsValidBookStatus(req.Status) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": adminService.ErrInvalidBookStatus.Error()})
+	}
+	if len(req.IDs) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "ids must not be empty"})
+	}
 
-	report, err := h.service.BulkPublishBooks(ctx, req.Search)
-	if err != nil {
-		if errors.Is(err, adminService.ErrBulkPublishTooLarge) {
-			return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+	ids := make([]uuid.UUID, 0, len(req.IDs))
+	for _, raw := range req.IDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid book id: %q", raw)})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to bulk-publish books"})
+		ids = append(ids, id)
+	}
+
+	report, err := h.service.BulkSetBookStatus(ctx, ids, req.Status)
+	if err != nil {
+		switch {
+		case errors.Is(err, adminService.ErrInvalidBookStatus),
+			errors.Is(err, adminService.ErrBulkStatusTooLarge):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update book statuses"})
+		}
 	}
 
 	return c.JSON(http.StatusOK, report)

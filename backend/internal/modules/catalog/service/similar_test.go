@@ -249,7 +249,7 @@ func TestListSimilarBooks_HiddenSourceNotFoundEvenWithWarmCache(t *testing.T) {
 	svc := NewService(repo, WithSimilarCache(cache))
 	src, want := seedSimilar(repo, 3)
 	cache.data[src.ID] = want
-	repo.books[0].IsHidden = true
+	repo.books[0].Status = domain.BookStatusPending
 
 	_, err := svc.ListSimilarBooks(context.Background(), src.ID, 8)
 	if !errors.Is(err, ErrBookNotFound) {
@@ -326,7 +326,7 @@ func TestListSimilarBooks_HitWithNowHiddenBookDropsIt(t *testing.T) {
 	src, want := seedSimilar(repo, 4)
 	cache.data[src.ID] = want
 	// Hide want[1] (books[0] is the source).
-	repo.books[2].IsHidden = true
+	repo.books[2].Status = domain.BookStatusPending
 
 	books, err := svc.ListSimilarBooks(context.Background(), src.ID, 8)
 	if err != nil {

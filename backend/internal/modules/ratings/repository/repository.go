@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	ratingsDomain "github.com/bookhaven/backend/internal/modules/ratings/domain"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -20,7 +21,7 @@ type Repository interface {
 	UpsertAndRecalc(ctx context.Context, bookID, userID uuid.UUID, value int) (created bool, rating float64, ratingsCount int, err error)
 	// GetByUserAndBook returns a user's rating for a specific book.
 	GetByUserAndBook(ctx context.Context, userID, bookID uuid.UUID) (*ratingsDomain.Rating, error)
-	// BookExists checks whether a book exists and is not hidden.
+	// BookExists checks whether a published book exists.
 	BookExists(ctx context.Context, bookID uuid.UUID) (bool, error)
 }
 
@@ -94,12 +95,12 @@ func (r *GormRepository) GetByUserAndBook(ctx context.Context, userID, bookID uu
 	return &rating, nil
 }
 
-// BookExists checks whether a non-hidden book exists.
+// BookExists checks whether a published book exists.
 func (r *GormRepository) BookExists(ctx context.Context, bookID uuid.UUID) (bool, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).
 		Table("books").
-		Where("id = ? AND is_hidden = ?", bookID, false).
+		Where("id = ? AND status = ?", bookID, catalogDomain.BookStatusPublished).
 		Count(&count).Error; err != nil {
 		return false, err
 	}

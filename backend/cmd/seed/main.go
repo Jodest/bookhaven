@@ -293,6 +293,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Война и мир",
 				Slug:          "war-and-peace",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Эпический роман о России в эпоху Наполеоновских войн."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/12621906-L.jpg"),
 				ISBN:          ptr("9780140447934"),
@@ -307,6 +308,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Преступление и наказание",
 				Slug:          "crime-and-punishment",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Роман о моральных терзаниях бывшего студента Родиона Раскольникова."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264381-L.jpg"),
 				ISBN:          ptr("9780140449136"),
@@ -321,6 +323,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "1984",
 				Slug:          "1984",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Антиутопический роман о тоталитарном обществе."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8579161-L.jpg"),
 				ISBN:          ptr("9780451524935"),
@@ -335,6 +338,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Мастер и Маргарита",
 				Slug:          "master-and-margarita",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Роман о любви, дьяволе и Москве 1930-х годов."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8373864-L.jpg"),
 				ISBN:          ptr("9780141188285"),
@@ -349,6 +353,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Анна Каренина",
 				Slug:          "anna-karenina",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Роман о трагической любви замужней женщины и молодого офицера."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264187-L.jpg"),
 				ISBN:          ptr("9780143035008"),
@@ -363,6 +368,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Воскресение",
 				Slug:          "resurrection",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Роман о духовном перерождении помещика Нехлюдова."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264175-L.jpg"),
 				ISBN:          ptr("9780140448092"),
@@ -377,6 +383,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Братья Карамазовы",
 				Slug:          "brothers-karamazov",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Философский роман о семейных конфликтах и нравственных исканиях."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264393-L.jpg"),
 				ISBN:          ptr("9780140449136"),
@@ -391,6 +398,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Идиот",
 				Slug:          "the-idiot",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Роман о «идеальном человеке» князе Мышкине."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264389-L.jpg"),
 				ISBN:          ptr("9780140447927"),
@@ -405,6 +413,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Мёртвые души",
 				Slug:          "dead-souls",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Поэма о приключениях Чичикова, скупающего мёртвых крепостных."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264015-L.jpg"),
 				ISBN:          ptr("9780140448078"),
@@ -419,6 +428,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Ревизор",
 				Slug:          "the-government-inspector",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Комедия о чиновниках provincialного города, принятивших бродягу за ревизора."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264021-L.jpg"),
 				ISBN:          ptr("9780140447941"),
@@ -433,6 +443,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Отцы и дети",
 				Slug:          "fathers-and-sons",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Роман о конфликте поколений и спорах о нигилизме."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264031-L.jpg"),
 				ISBN:          ptr("9780140448108"),
@@ -447,6 +458,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Вишнёвый сад",
 				Slug:          "the-cherry-orchard",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Пьеса о старой дворянской семье, теряющей имение."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264041-L.jpg"),
 				ISBN:          ptr("9780142437872"),
@@ -461,6 +473,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Чайка",
 				Slug:          "the-seagull",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Пьеса о любви, литературных амбициях и творческом поиске."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264047-L.jpg"),
 				ISBN:          ptr("9780142437865"),
@@ -475,6 +488,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Герой нашего времени",
 				Slug:          "a-hero-of-our-time",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Роман о молодом офицере Печорине — «лишнем человеке»."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264051-L.jpg"),
 				ISBN:          ptr("9780140448115"),
@@ -489,6 +503,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Евгений Онегин",
 				Slug:          "yevgeny-onegin",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Роман в стихах о судьбе молодого петербургского дворянина."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264057-L.jpg"),
 				ISBN:          ptr("9780140448122"),
@@ -503,6 +518,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Капитанская дочка",
 				Slug:          "the-captain's-daughter",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Исторический роман о восстании Пугачёва."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264061-L.jpg"),
 				ISBN:          ptr("9780140448139"),
@@ -517,6 +533,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Дивный новый мир",
 				Slug:          "brave-new-world",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Антиутопия о будущем обществе, контролируемом с помощью генетики и наркотиков."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8579167-L.jpg"),
 				ISBN:          ptr("9780060850524"),
@@ -531,6 +548,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "На Западе без перемен",
 				Slug:          "all-quiet-on-the-western-front",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Антивоенный роман о судьбе немецких солдат в Первой мировой войне."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8264401-L.jpg"),
 				ISBN:          ptr("9780449212387"),
@@ -545,6 +563,7 @@ func seedCatalog(db *gorm.DB) error {
 			book: catalogDomain.Book{
 				Title:         "Скотный двор",
 				Slug:          "animal-farm",
+				Status:        catalogDomain.BookStatusPublished,
 				Description:   ptr("Аллегорическая сказка о револении животных на ферме."),
 				CoverURL:      ptr("https://covers.openlibrary.org/b/id/8579157-L.jpg"),
 				ISBN:          ptr("9780451526342"),

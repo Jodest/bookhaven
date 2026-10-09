@@ -7,5 +7,5 @@ export const adminBooksApi = {
   update: api.admin.books.update,
   lookup: api.admin.books.lookup,
   import: api.admin.books.import,
-  bulkPublish: api.admin.books.bulkPublish,
+  bulkStatus: api.admin.books.bulkStatus,
 };
