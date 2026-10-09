@@ -157,6 +157,7 @@ func RegisterAdminRoutes(
 	authors.POST("/import-wikidata", adminHandler.ImportWikidataAuthor, requireBearer)
 	authors.POST("/enrich-wikidata", adminHandler.EnrichAuthorsFromWikidata, requireBearer)
 	authors.POST("", adminHandler.CreateAuthor, requireBearer)
+	authors.GET("/:id", adminHandler.GetAuthor)
 	authors.PATCH("/:id", adminHandler.UpdateAuthor, requireBearer)
 	authors.POST("/:id/merge", adminHandler.MergeAuthors, requireBearer)
 
@@ -167,6 +168,7 @@ func RegisterAdminRoutes(
 	genres.POST("/import-wikidata", adminHandler.ImportWikidataGenre, requireBearer)
 	genres.POST("/bulk-status", adminHandler.BulkSetGenreStatus, requireBearer)
 	genres.POST("", adminHandler.CreateGenre, requireBearer)
+	genres.GET("/:id", adminHandler.GetGenre)
 	genres.PATCH("/:id", adminHandler.UpdateGenre, requireBearer)
 	genres.POST("/:id/merge", adminHandler.MergeGenres, requireBearer)
 
