@@ -2,6 +2,8 @@
 
 Status: in progress (phases 1-6 done)
 
+> **Update ([import-by-entity.md](import-by-entity.md), #314):** the Импорт tabs are now Книги `/import/books` (manual form + Wikidata harvest + CSV/JSON file), Авторы `/import/authors` (manual + Wikidata), Жанры `/import/genres` (manual + Wikidata) and Задачи `/import/jobs`; bare `/import` goes to `/import/books`. `/import/wikidata`, `/import/file`, `/import/author` and `/catalog/books/new` are temporary (non-permanent) redirects in `apps/admin/next.config.js`. Catalog no longer creates books/authors/genres (edit only). The phase notes below describe the state at the time each phase shipped.
+
 > **Update ([book-status-model.md](book-status-model.md)):** `/moderation/books` now lists `status=pending` books from every source, with per-row "Опубликовать"/"Отклонить" and a header "Опубликовать все на странице (N)" (all via `bulkStatus`). The dashboard tile is "Книги на модерации" (`pending_books`), and the catalog tile "Отклонённых книг" (`rejected_books`, `/catalog/books?status=rejected`) replaces "Скрытых книг".
 
 Epic: #283. Phases (existing sub-issues): #284 shell/tabs/guard -> #285 Catalog -> #286 Moderation -> #287 Import -> #288 Overview + counters -> #289 Users (separate contract) -> #290 Genres moderation/import (needs product decision).
@@ -17,8 +19,8 @@ Target structure:
 ```
 Обзор         /
 Модерация     /moderation/books | /moderation/authors | /moderation/genres* | /moderation/reviews
-Каталог       /catalog/books (+ /new, /[id]/edit) | /catalog/authors | /catalog/genres
-Импорт        /import/wikidata | /import/author | /import/file | /import/genres* | /import/jobs
+Каталог       /catalog/books (+ /[id]/edit) | /catalog/authors | /catalog/genres
+Импорт        /import/books | /import/authors | /import/genres | /import/jobs   (since #314, see import-by-entity.md)
 Пользователи  /users*
 ```
 

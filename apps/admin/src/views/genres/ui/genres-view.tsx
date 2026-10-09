@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminGenresApi, GenreStatusBadge, GENRE_STATUS_LABELS } from '@/entities/genre';
-import { AdminGenre, AdminGenreInput, AdminGenreStatus, ApiError } from '@bookhaven/api-client';
+import { AdminGenre, AdminGenreInput, AdminGenreStatus } from '@bookhaven/api-client';
 import {
   Input,
   Button,
@@ -19,7 +19,7 @@ import {
 } from '@bookhaven/ui';
 import { Search } from 'lucide-react';
 import { Pagination } from '@/shared/ui';
-import { GenreForm } from '@/features/manage-genre';
+import { GenreForm, genreMutationErrorText } from '@/features/manage-genre';
 
 const STATUS_FILTER_OPTIONS = [
   { value: '', label: 'Все статусы' },
@@ -58,16 +58,6 @@ export function GenresView() {
       }),
   });
 
-  const createMutation = useMutation({
-    mutationFn: adminGenresApi.create,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'genres'] });
-      setFormData({ name: '' });
-      // Manually created genres are published right away.
-      setSuccessMessage('Жанр создан');
-    },
-  });
-
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: AdminGenreInput }) =>
       adminGenresApi.update(id, data),
@@ -96,18 +86,19 @@ export function GenresView() {
     updateParams({ search, page: '1' });
   };
 
+  // Catalog only edits: creating lives on /import/genres
+  // (docs/features/import-by-entity.md).
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setSuccessMessage(null);
     if (editing) {
       updateMutation.mutate({ id: editing.id, data: formData });
-    } else {
-      createMutation.mutate(formData);
     }
   };
 
   const startEdit = (genre: AdminGenre) => {
     setSuccessMessage(null);
+    updateMutation.reset();
     setEditing(genre);
     setFormData({
       name: genre.name,
@@ -119,13 +110,7 @@ export function GenresView() {
 
   const totalPages = data ? Math.ceil(data.total / limit) : 0;
 
-  // A taken QID may belong to a merged (hidden) genre: its QID stays reserved
-  // (docs/features/genre-moderation-queue.md rule 6).
-  const mutationError = createMutation.error || updateMutation.error;
-  const mutationErrorText =
-    mutationError instanceof ApiError && mutationError.status === 409 && /qid/i.test(mutationError.message)
-      ? `${mutationError.message} (возможно, у слитого жанра)`
-      : mutationError?.message;
+  const mutationError = updateMutation.error;
 
   return (
     <div className="space-y-6">
@@ -136,18 +121,21 @@ export function GenresView() {
         </Link>
       </div>
 
-      <GenreForm
-        formData={formData}
-        onFieldChange={(patch) => setFormData((prev) => ({ ...prev, ...patch }))}
-        editing={editing}
-        onSubmit={handleSubmit}
-        onCancel={() => {
-          setEditing(null);
-          setFormData({ name: '' });
-          setSuccessMessage(null);
-        }}
-        pending={createMutation.isPending || updateMutation.isPending}
-      />
+      {editing && (
+        <GenreForm
+          formData={formData}
+          onFieldChange={(patch) => setFormData((prev) => ({ ...prev, ...patch }))}
+          editing={editing}
+          onSubmit={handleSubmit}
+          onCancel={() => {
+            setEditing(null);
+            setFormData({ name: '' });
+            setSuccessMessage(null);
+            updateMutation.reset();
+          }}
+          pending={updateMutation.isPending}
+        />
+      )}
 
       {successMessage && (
         <div className="rounded-md bg-green-100 p-3 text-sm text-green-900">
@@ -163,7 +151,7 @@ export function GenresView() {
       )}
       {mutationError && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          {mutationErrorText}
+          {genreMutationErrorText(mutationError)}
         </div>
       )}
 

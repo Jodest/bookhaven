@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **Update ([import-by-entity.md](import-by-entity.md), #314):** manual creation (with the lookup assistant) and the file import both live on Импорт → Книги `/import/books` now, in the sections «Вручную» and «Из файла» (`widgets/book-file-import`, `BookFileImportPanel`). `/catalog/books/new` and `/import/file` redirect there, and the catalog books list has no «Добавить книгу» button. The `/books/import` and `/books/new` paths below are historical.
+
 This is the "Способ B" increment of the `catalog-data-import` initiative (see `docs/ai/features/catalog-data-import/business-analysis.md`, Решение 2/4, FR-002–FR-009, FR-012, NFR-002/003). The offline harvester (`cmd/harvest`), the `bookdata` clients, and the admin review queue (`docs/features/bookdata-clients.md`, `docs/features/async-harvest-queue.md`, `docs/features/harvest-review-queue.md`) are already implemented and are **not** touched by this contract. This contract covers two independently shippable, admin-facing asks that both reuse `admin/service` rather than duplicating its validation/creation logic (NFR-001):
 
 1. **Lookup assistant** — `GET /api/v1/admin/books/lookup`, a synchronous single-record Open Library lookup that pre-fills the existing "create book" form.

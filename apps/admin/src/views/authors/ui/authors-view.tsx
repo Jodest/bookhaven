@@ -60,15 +60,6 @@ export function AuthorsView() {
       }),
   });
 
-  const createMutation = useMutation({
-    mutationFn: adminAuthorsApi.create,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'authors'] });
-      setFormData({ name: '' });
-      setSuccessMessage('Автор создан');
-    },
-  });
-
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: AdminAuthorInput }) =>
       adminAuthorsApi.update(id, data),
@@ -97,18 +88,19 @@ export function AuthorsView() {
     updateParams({ search, page: '1' });
   };
 
+  // Catalog only edits: creating lives on /import/authors
+  // (docs/features/import-by-entity.md).
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setSuccessMessage(null);
     if (editing) {
       updateMutation.mutate({ id: editing.id, data: formData });
-    } else {
-      createMutation.mutate(formData);
     }
   };
 
   const startEdit = (author: AdminAuthor) => {
     setSuccessMessage(null);
+    updateMutation.reset();
     setEditing(author);
     setFormData({
       name: author.name,
@@ -142,21 +134,33 @@ export function AuthorsView() {
         </div>
       )}
 
-      <AuthorForm
-        formData={formData}
-        onFieldChange={(patch) => setFormData((prev) => ({ ...prev, ...patch }))}
-        editing={editing}
-        onSubmit={handleSubmit}
-        onCancel={() => {
-          setEditing(null);
-          setFormData({ name: '' });
-          setSuccessMessage(null);
-        }}
-        pending={createMutation.isPending || updateMutation.isPending}
-        successMessage={successMessage}
-        onDismissSuccess={() => setSuccessMessage(null)}
-        errorMessage={createMutation.error?.message || updateMutation.error?.message}
-      />
+      {successMessage && (
+        <div className="flex items-center justify-between rounded-md bg-green-100 p-3 text-sm text-green-900">
+          {successMessage}
+          <button type="button" onClick={() => setSuccessMessage(null)} className="ml-4 underline">
+            Скрыть
+          </button>
+        </div>
+      )}
+
+      {editing && (
+        <AuthorForm
+          formData={formData}
+          onFieldChange={(patch) => setFormData((prev) => ({ ...prev, ...patch }))}
+          editing={editing}
+          onSubmit={handleSubmit}
+          onCancel={() => {
+            setEditing(null);
+            setFormData({ name: '' });
+            setSuccessMessage(null);
+            updateMutation.reset();
+          }}
+          pending={updateMutation.isPending}
+          successMessage={null}
+          onDismissSuccess={() => setSuccessMessage(null)}
+          errorMessage={updateMutation.error?.message}
+        />
+      )}
 
       <form onSubmit={handleSearch} className="flex gap-2">
         <Input

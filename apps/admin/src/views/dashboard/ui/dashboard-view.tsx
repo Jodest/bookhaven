@@ -143,7 +143,7 @@ function RecentHarvestJobs() {
           <Link href={'/import/jobs' as any} className="text-primary hover:underline">
             Все задачи →
           </Link>
-          <Link href={'/import/wikidata' as any} className="text-primary hover:underline">
+          <Link href={'/import/books' as any} className="text-primary hover:underline">
             Запустить харвест
           </Link>
         </div>

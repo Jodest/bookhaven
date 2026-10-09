@@ -39,9 +39,15 @@ const BOOK_STATUS_OPTIONS = (['published', 'pending', 'rejected'] as const).map(
 interface BookFormProps {
   initial?: AdminBook;
   onSubmit: (data: AdminBookInput) => Promise<unknown>;
+  /**
+   * When true, a successful submit resets the form to its defaults instead of
+   * navigating to /catalog/books, and «Отмена» is not rendered (the create
+   * section on /import/books, docs/features/import-by-entity.md).
+   */
+  stayOnSuccess?: boolean;
 }
 
-export function BookForm({ initial, onSubmit }: BookFormProps) {
+export function BookForm({ initial, onSubmit, stayOnSuccess = false }: BookFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const {
@@ -49,6 +55,7 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
     handleSubmit,
     setValue,
     watch,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<AdminBookInput>({
     defaultValues: initial
@@ -181,6 +188,12 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
 
     try {
       await onSubmit(data);
+      if (stayOnSuccess) {
+        reset();
+        setLookupResult(null);
+        setLookupError(null);
+        return;
+      }
       router.push('/catalog/books' as any);
     } catch (error) {
       let message = 'Не удалось сохранить книгу. Проверьте введенные данные.';
@@ -351,9 +364,11 @@ export function BookForm({ initial, onSubmit }: BookFormProps) {
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Сохранение...' : initial ? 'Сохранить' : 'Создать'}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push('/catalog/books' as any)}>
-          Отмена
-        </Button>
+        {!stayOnSuccess && (
+          <Button type="button" variant="outline" onClick={() => router.push('/catalog/books' as any)}>
+            Отмена
+          </Button>
+        )}
       </div>
     </form>
   );

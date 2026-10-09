@@ -74,7 +74,7 @@ describe('Shell', () => {
       ['Обзор', '/'],
       ['Модерация', '/moderation/books'],
       ['Каталог', '/catalog/books'],
-      ['Импорт', '/import/wikidata'],
+      ['Импорт', '/import/books'],
       ['Пользователи', '/users'],
     ]);
     expect(links[0]).toHaveAttribute('aria-current', 'page');
@@ -90,13 +90,13 @@ describe('Shell', () => {
     expect(active.map((l) => l.textContent)).toEqual(['Модерация']);
   });
 
-  it('admin on /catalog/books/123/edit highlights Каталог; /import/file highlights Импорт', () => {
+  it('admin on /catalog/books/123/edit highlights Каталог; /import/authors highlights Импорт', () => {
     setUser('admin');
     const { unmount } = renderShell('/catalog/books/123/edit');
     expect(screen.getByRole('link', { name: 'Каталог' })).toHaveAttribute('aria-current', 'page');
     unmount();
 
-    renderShell('/import/file');
+    renderShell('/import/authors');
     expect(screen.getByRole('link', { name: 'Импорт' })).toHaveAttribute('aria-current', 'page');
   });
 
@@ -128,7 +128,7 @@ describe('Shell', () => {
     expect(screen.queryByText('Доступ запрещен')).not.toBeInTheDocument();
   });
 
-  it.each(['/catalog/books', '/moderation/books', '/users', '/unknown', '/import', '/import/wikidata', '/catalog'])(
+  it.each(['/catalog/books', '/moderation/books', '/users', '/unknown', '/import', '/import/books', '/catalog'])(
     'moderator on %s sees admin-only AccessDenied with a link home',
     (pathname) => {
       setUser('moderator');
@@ -215,7 +215,7 @@ describe('Shell', () => {
       ).toHaveAttribute('href', '/moderation/books');
       expect(screen.getByRole('link', { name: 'Импорт, задач в работе: 2' })).toHaveAttribute(
         'href',
-        '/import/wikidata'
+        '/import/books'
       );
       expect(screen.getByRole('link', { name: 'Каталог' })).toBeInTheDocument();
     });

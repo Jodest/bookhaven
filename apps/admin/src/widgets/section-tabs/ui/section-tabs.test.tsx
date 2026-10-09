@@ -56,25 +56,24 @@ describe('SectionTabs', () => {
     expect(screen.getByRole('link', { name: 'Книги' })).not.toHaveAttribute('aria-current');
   });
 
-  it('admin on /import/file sees import tabs with Файл active', () => {
-    renderTabs('/import/file');
+  it('admin on /import/authors sees import tabs with Авторы active', () => {
+    renderTabs('/import/authors');
 
     const links = screen.getAllByRole('link');
     expect(links.map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
-      ['Wikidata', '/import/wikidata'],
-      ['Автор', '/import/author'],
-      ['Файл', '/import/file'],
+      ['Книги', '/import/books'],
+      ['Авторы', '/import/authors'],
       ['Жанры', '/import/genres'],
       ['Задачи', '/import/jobs'],
     ]);
-    expect(screen.getByRole('link', { name: 'Файл' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Авторы' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('admin on /import/jobs sees import tabs with Задачи active', () => {
     renderTabs('/import/jobs');
 
     expect(screen.getByRole('link', { name: 'Задачи' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Wikidata' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Книги' })).not.toHaveAttribute('aria-current');
   });
 
   it('admin on /catalog/books/5/edit sees catalog tabs with Книги active', () => {
@@ -121,13 +120,13 @@ describe('SectionTabs', () => {
 
   it('import Задачи tab shows the in-flight jobs count', () => {
     countersValue = { sections: {}, tabs: { 'import.jobs': 3 } };
-    renderTabs('/import/file');
+    renderTabs('/import/books');
 
     expect(screen.getByRole('link', { name: 'Задачи, задач в работе: 3' })).toHaveAttribute(
       'href',
       '/import/jobs'
     );
-    expect(screen.getByRole('link', { name: 'Файл' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Книги' })).toHaveAttribute('aria-current', 'page');
   });
 });
 
@@ -164,11 +163,11 @@ describe('SectionIndexRedirect', () => {
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
-  it('admin on /import goes to /import/wikidata', () => {
+  it('admin on /import goes to /import/books', () => {
     role = 'admin';
     pathnameValue = '/import';
     render(<SectionIndexRedirect sectionId="import" />);
-    expect(replaceMock).toHaveBeenCalledWith('/import/wikidata');
+    expect(replaceMock).toHaveBeenCalledWith('/import/books');
   });
 
   it('moderator on /import is not redirected', () => {

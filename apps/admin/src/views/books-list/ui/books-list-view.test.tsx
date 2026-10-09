@@ -167,14 +167,12 @@ describe('BooksListView', () => {
     expect(rowOf('Отклонённая')).toHaveTextContent('Отклонена');
   });
 
-  it('header has "Добавить книгу" to the catalog and no "Импортировать" link', async () => {
+  it('header has no "Добавить книгу" and no "Импортировать" link (creation lives under Импорт)', async () => {
     renderView();
 
     await waitFor(() => expect(listMock).toHaveBeenCalled());
-    expect(screen.getByRole('link', { name: 'Добавить книгу' })).toHaveAttribute(
-      'href',
-      '/catalog/books/new'
-    );
+    expect(screen.queryByRole('link', { name: 'Добавить книгу' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Добавить книгу' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Импортировать' })).not.toBeInTheDocument();
   });
 
