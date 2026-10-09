@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -37,7 +38,7 @@ CREATE TABLE authors (
 CREATE TABLE books (
 	id TEXT PRIMARY KEY,
 	title TEXT NOT NULL,
-	is_hidden BOOLEAN NOT NULL DEFAULT 0
+	status TEXT NOT NULL DEFAULT 'pending'
 );
 CREATE TABLE book_authors (book_id TEXT NOT NULL, author_id TEXT NOT NULL, PRIMARY KEY (book_id, author_id));
 `
@@ -85,7 +86,11 @@ func (f *modFixture) author(name, status string, qid *string) uuid.UUID {
 func (f *modFixture) book(title string, hidden bool, authorIDs ...uuid.UUID) uuid.UUID {
 	f.t.Helper()
 	id := uuid.New()
-	if err := f.db.Exec("INSERT INTO books (id, title, is_hidden) VALUES (?, ?, ?)", id, title, hidden).Error; err != nil {
+	status := catalogDomain.BookStatusPublished
+	if hidden {
+		status = catalogDomain.BookStatusPending
+	}
+	if err := f.db.Exec("INSERT INTO books (id, title, status) VALUES (?, ?, ?)", id, title, status).Error; err != nil {
 		f.t.Fatalf("insert book: %v", err)
 	}
 	for _, a := range authorIDs {
@@ -182,7 +187,7 @@ func TestListAuthorSampleBooks_AtMostThreeByTitle(t *testing.T) {
 		t.Fatalf("samples: %v", err)
 	}
 	got := samples[a]
-	if len(got) != 3 || got[0].Title != "А" || !got[0].IsHidden || got[1].Title != "Б" || got[2].Title != "В" {
+	if len(got) != 3 || got[0].Title != "А" || got[0].Status != catalogDomain.BookStatusPending || got[1].Title != "Б" || got[2].Title != "В" {
 		t.Fatalf("unexpected samples for a: %+v", got)
 	}
 	if len(samples[b]) != 1 || samples[b][0].Title != "В" {

@@ -12,7 +12,8 @@ vi.mock('next/navigation', () => ({
 
 const lookupMock = vi.fn();
 
-vi.mock('@/entities/book', () => ({
+vi.mock('@/entities/book', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/book')>()),
   adminBooksApi: {
     lookup: (...args: unknown[]) => lookupMock(...args),
   },
@@ -64,7 +65,7 @@ const latinBook: AdminBook = {
   rating: 0,
   ratings_count: 0,
   reviews_count: 0,
-  is_hidden: false,
+  status: 'published',
   external_source: null,
   authors: [],
   genres: [],
@@ -389,5 +390,72 @@ describe('BookForm genre picker status', () => {
     expect(selectedList).toHaveTextContent('На модерации');
     expect(selectedList).toHaveTextContent('ожидающий жанр');
     expect(selectedList).not.toHaveTextContent('опубликованный жанр');
+  });
+});
+
+describe('BookForm status select', () => {
+  beforeEach(() => {
+    pushMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  it('defaults to «Опубликована» on create and submits status published', async () => {
+    const { onSubmit } = renderForm();
+
+    const select = screen.getByLabelText('Статус') as HTMLSelectElement;
+    expect(select.value).toBe('published');
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      'Опубликована',
+      'На модерации',
+      'Отклонена',
+    ]);
+
+    fireEvent.change(screen.getByLabelText('Название *'), { target: { value: 'Книга' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ status: 'published' });
+  });
+
+  it('shows the current status on edit and sends the changed status after confirmation', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { onSubmit } = renderForm({ ...latinBook, status: 'pending' });
+
+    const select = screen.getByLabelText('Статус') as HTMLSelectElement;
+    expect(select.value).toBe('pending');
+    fireEvent.change(select, { target: { value: 'rejected' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Вы уверены, что хотите сменить статус на «Отклонена» у этой книги?'
+    );
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ status: 'rejected' });
+  });
+
+  it('does not submit when the status change is not confirmed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { onSubmit } = renderForm({ ...latinBook, status: 'pending' });
+
+    fireEvent.change(screen.getByLabelText('Статус'), { target: { value: 'published' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for confirmation when the status is unchanged', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    const { onSubmit } = renderForm({ ...latinBook, status: 'rejected' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ status: 'rejected' });
   });
 });

@@ -17,7 +17,7 @@ export function buildNavCounters(stats?: AdminDashboard, jobs?: AdminHarvestJob[
   const counters: NavCounters = { sections: {}, tabs: {} };
   if (stats) {
     counters.sections.moderation = pendingModerationTotal(stats);
-    counters.tabs['moderation.books'] = stats.pending_import_review;
+    counters.tabs['moderation.books'] = stats.pending_books;
     counters.tabs['moderation.authors'] = stats.pending_authors;
     counters.tabs['moderation.genres'] = stats.pending_genres;
   }

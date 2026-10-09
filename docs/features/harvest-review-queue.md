@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **Update ([book-status-model.md](book-status-model.md)):** `books.is_hidden` was replaced by `books.status`. Harvested books are created `pending`; the `visibility` / `pending_review` filter is replaced by `?status=pending` (which also includes manually created pending books; combine with `source=harvested` for the old meaning), and the dashboard `pending_import_review` count is replaced by `pending_books`.
+
 This is the next increment on top of `docs/features/async-harvest-queue.md` (implemented). That increment made harvested books get created with `is_hidden = true` and `external_source`/`external_id` set, but shipped no way to (a) find them distinctly in the admin UI, (b) safely decide what to harvest without hand-written SPARQL, or (c) stop the demo seed from being mistaken for real data. This contract covers three related, independently shippable asks. Treat `docs/ai/features/catalog-data-import/business-analysis.md`'s settled decisions as context; this contract resolves **OQ-005** (harvest selection criterion) by committing to "способ A"/Approach A tooling: a curated Wikidata author-QID list, not an open category query with `LIMIT`.
 
 ## Scope boundaries (read first)

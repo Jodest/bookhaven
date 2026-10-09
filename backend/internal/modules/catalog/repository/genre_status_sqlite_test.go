@@ -64,7 +64,7 @@ func newGenreFixture(t *testing.T) *genreFixture {
 		f.mixed:    {f.published, f.pending},
 	}
 	for id, genreIDs := range books {
-		if err := db.Exec("INSERT INTO books (id, title, slug, is_hidden, created_at, updated_at) VALUES (?, ?, ?, FALSE, ?, ?)",
+		if err := db.Exec("INSERT INTO books (id, title, slug, status, created_at, updated_at) VALUES (?, ?, ?, 'published', ?, ?)",
 			id, "Book", "book-"+id.String(), now, now).Error; err != nil {
 			t.Fatalf("insert book: %v", err)
 		}

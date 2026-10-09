@@ -6,7 +6,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { adminBooksApi } from '@/entities/book';
-import { AdminBook, ApiError, BulkPublishReport } from '@bookhaven/api-client';
+import {
+  AdminBook,
+  AdminBookBulkStatusReport,
+  AdminBookStatus,
+  ApiError,
+} from '@bookhaven/api-client';
 import {
   Button,
   Input,
@@ -19,10 +24,14 @@ import {
 } from '@bookhaven/ui';
 import { Pagination } from '@/shared/ui';
 
+type StatusAction = { ids: string[]; status: Extract<AdminBookStatus, 'published' | 'rejected'> };
+
 /**
- * Pending-review queue: hidden books imported from an external source.
- * Search-only on purpose — `bulkPublish` honours only `search`, so the bulk
- * scope always equals the displayed list.
+ * Book moderation queue: every book with status = pending, whatever its
+ * source (docs/features/book-status-model.md). Row actions and the
+ * "publish this page" header button all go through bulkStatus; the bulk
+ * scope is the displayed page (20 rows, under the server cap of 100), not
+ * the search.
  */
 export function BookModerationView() {
   const router = useRouter();
@@ -40,10 +49,10 @@ export function BookModerationView() {
   const limit = 20;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'books', 'pending_review', { search: activeSearch, page }],
+    queryKey: ['admin', 'books', 'pending', { search: activeSearch, page }],
     queryFn: () =>
       adminBooksApi.list({
-        visibility: 'pending_review',
+        status: 'pending',
         search: activeSearch || undefined,
         page,
         limit,
@@ -55,51 +64,16 @@ export function BookModerationView() {
     queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
   };
 
-  const publishMutation = useMutation({
-    mutationFn: (book: AdminBook) =>
-      adminBooksApi.update(book.id, {
-        title: book.title,
-        slug: book.slug,
-        description: book.description,
-        cover_url: book.cover_url,
-        isbn: book.isbn,
-        published_year: book.published_year,
-        page_count: book.page_count,
-        language: book.language,
-        author_ids: book.authors.map((a) => a.id),
-        genre_ids: book.genres.map((g) => g.id),
-        is_hidden: false,
-      }),
-    onSuccess: () => {
+  const statusMutation = useMutation({
+    mutationFn: ({ ids, status }: StatusAction) => adminBooksApi.bulkStatus(ids, status),
+    onSuccess: (report: AdminBookBulkStatusReport, { status }: StatusAction) => {
       invalidate();
-      setFeedback({ type: 'success', message: 'Книга опубликована.' });
-    },
-    onError: (error) => {
-      const message =
-        error instanceof ApiError
-          ? error.message || 'Не удалось опубликовать книгу.'
-          : 'Не удалось опубликовать книгу.';
-      setFeedback({ type: 'error', message });
-    },
-  });
-
-  const handlePublish = (book: AdminBook) => {
-    setFeedback(null);
-    if (!confirm(`Опубликовать книгу «${book.title}»?`)) {
-      return;
-    }
-    publishMutation.mutate(book);
-  };
-
-  const bulkPublishMutation = useMutation({
-    mutationFn: (params: { search?: string }) => adminBooksApi.bulkPublish(params),
-    onSuccess: (report: BulkPublishReport) => {
-      invalidate();
-      const summary = `Опубликовано ${report.published} из ${report.processed}.`;
+      const verb = status === 'published' ? 'Опубликовано' : 'Отклонено';
+      const summary = `${verb} ${report.updated} из ${report.processed}.`;
       if (report.errors.length > 0) {
         const sample = report.errors
           .slice(0, 3)
-          .map((e) => `«${e.title}»: ${e.message}`)
+          .map((e) => `«${e.title || e.book_id}»: ${e.message}`)
           .join('; ');
         setFeedback({
           type: 'error',
@@ -112,20 +86,32 @@ export function BookModerationView() {
     onError: (error) => {
       const message =
         error instanceof ApiError
-          ? error.message || 'Не удалось опубликовать книги.'
-          : 'Не удалось опубликовать книги.';
+          ? error.message || 'Не удалось изменить статус.'
+          : 'Не удалось изменить статус.';
       setFeedback({ type: 'error', message });
     },
   });
 
-  const total = data?.total ?? 0;
-
-  const handleBulkPublish = () => {
+  const handleRowAction = (book: AdminBook, status: StatusAction['status']) => {
     setFeedback(null);
-    if (!confirm(`Опубликовать все книги на проверке (${total})?`)) {
+    const question =
+      status === 'published'
+        ? `Опубликовать книгу «${book.title}»?`
+        : `Отклонить книгу «${book.title}»?`;
+    if (!confirm(question)) {
       return;
     }
-    bulkPublishMutation.mutate({ search: activeSearch || undefined });
+    statusMutation.mutate({ ids: [book.id], status });
+  };
+
+  const pageIds = data?.items.map((b) => b.id) ?? [];
+
+  const handlePublishPage = () => {
+    setFeedback(null);
+    if (!confirm(`Опубликовать все книги на этой странице (${pageIds.length})?`)) {
+      return;
+    }
+    statusMutation.mutate({ ids: pageIds, status: 'published' });
   };
 
   const updateParams = (updates: Record<string, string | undefined>) => {
@@ -151,9 +137,9 @@ export function BookModerationView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Книги на проверке</h1>
-        {total > 0 && (
-          <Button onClick={handleBulkPublish} disabled={bulkPublishMutation.isPending}>
-            Опубликовать все ({total})
+        {pageIds.length > 0 && (
+          <Button onClick={handlePublishPage} disabled={statusMutation.isPending}>
+            Опубликовать все на странице ({pageIds.length})
           </Button>
         )}
       </div>
@@ -226,10 +212,18 @@ export function BookModerationView() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handlePublish(book)}
-                          disabled={publishMutation.isPending}
+                          onClick={() => handleRowAction(book, 'published')}
+                          disabled={statusMutation.isPending}
                         >
                           Опубликовать
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRowAction(book, 'rejected')}
+                          disabled={statusMutation.isPending}
+                        >
+                          Отклонить
                         </Button>
                         <Link href={`/catalog/books/${book.id}/edit` as any}>
                           <Button variant="ghost" size="sm">

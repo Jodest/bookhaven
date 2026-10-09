@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// mockRepository re-implements the BookFilter.Visibility filtering logic
-// (mirroring GormRepository.ListBooks' switch statement) for unit testing,
+// mockRepository re-implements the BookFilter filtering logic (mirroring
+// GormRepository.ListBooks) for unit testing,
 // following this repo's hand-rolled-fake convention (see
 // catalog/repository/repository_test.go).
 type mockRepository struct {
@@ -18,19 +18,8 @@ type mockRepository struct {
 func (m *mockRepository) filterBooks(filter BookFilter) []catalogDomain.Book {
 	var result []catalogDomain.Book
 	for _, b := range m.books {
-		switch filter.Visibility {
-		case "visible":
-			if b.IsHidden {
-				continue
-			}
-		case "hidden":
-			if !b.IsHidden {
-				continue
-			}
-		case "pending_review":
-			if !b.IsHidden || b.ExternalSource == nil {
-				continue
-			}
+		if filter.Status != "" && b.Status != filter.Status {
+			continue
 		}
 
 		if filter.GenreID != nil && !hasGenre(b, *filter.GenreID) {
@@ -74,46 +63,28 @@ func hasAuthor(b catalogDomain.Book, authorID uuid.UUID) bool {
 	return false
 }
 
-func TestListBooks_PendingReviewFilter_HiddenAndImportedOnly(t *testing.T) {
+func TestListBooks_PendingStatusFilter_IncludesManualAndImported(t *testing.T) {
 	source := "wikidata"
 	repo := &mockRepository{
 		books: []catalogDomain.Book{
-			{ID: uuid.New(), Title: "Visible", IsHidden: false},
-			{ID: uuid.New(), Title: "Hidden, manual", IsHidden: true},
-			{ID: uuid.New(), Title: "Hidden, imported", IsHidden: true, ExternalSource: &source},
+			{ID: uuid.New(), Title: "Published", Status: catalogDomain.BookStatusPublished},
+			{ID: uuid.New(), Title: "Pending, manual", Status: catalogDomain.BookStatusPending},
+			{ID: uuid.New(), Title: "Pending, imported", Status: catalogDomain.BookStatusPending, ExternalSource: &source},
+			{ID: uuid.New(), Title: "Rejected", Status: catalogDomain.BookStatusRejected},
 		},
 	}
 
-	result := repo.filterBooks(BookFilter{Visibility: "pending_review"})
-	if len(result) != 1 {
-		t.Fatalf("expected 1 pending_review book, got %d", len(result))
-	}
-	if result[0].Title != "Hidden, imported" {
-		t.Fatalf("expected the hidden+imported book, got %q", result[0].Title)
-	}
-}
-
-func TestListBooks_HiddenFilter_IsSupersetOfPendingReview(t *testing.T) {
-	source := "wikidata"
-	repo := &mockRepository{
-		books: []catalogDomain.Book{
-			{ID: uuid.New(), Title: "Visible", IsHidden: false},
-			{ID: uuid.New(), Title: "Hidden, manual", IsHidden: true},
-			{ID: uuid.New(), Title: "Hidden, imported", IsHidden: true, ExternalSource: &source},
-		},
-	}
-
-	result := repo.filterBooks(BookFilter{Visibility: "hidden"})
+	result := repo.filterBooks(BookFilter{Status: catalogDomain.BookStatusPending})
 	if len(result) != 2 {
-		t.Fatalf("expected 2 hidden books (superset, unchanged behavior), got %d", len(result))
+		t.Fatalf("expected 2 pending books (manual + imported), got %d", len(result))
 	}
 }
 
-func TestListBooks_NoVisibilityFilter_ReturnsAll(t *testing.T) {
+func TestListBooks_NoStatusFilter_ReturnsAll(t *testing.T) {
 	repo := &mockRepository{
 		books: []catalogDomain.Book{
-			{ID: uuid.New(), Title: "A", IsHidden: false},
-			{ID: uuid.New(), Title: "B", IsHidden: true},
+			{ID: uuid.New(), Title: "A", Status: catalogDomain.BookStatusPublished},
+			{ID: uuid.New(), Title: "B", Status: catalogDomain.BookStatusPending},
 		},
 	}
 
@@ -197,19 +168,18 @@ func TestListBooks_SourceHarvested_ExcludesManualBooks(t *testing.T) {
 	}
 }
 
-func TestListBooks_SourceHarvestedAndVisibilityVisible_ReturnsPublishedHarvestedBooks(t *testing.T) {
+func TestListBooks_SourceHarvestedAndStatusPublished_ReturnsPublishedHarvestedBooks(t *testing.T) {
 	source := "wikidata"
 	repo := &mockRepository{
 		books: []catalogDomain.Book{
-			{ID: uuid.New(), Title: "Harvested, hidden", IsHidden: true, ExternalSource: &source},
-			{ID: uuid.New(), Title: "Harvested, published", IsHidden: false, ExternalSource: &source},
-			{ID: uuid.New(), Title: "Manual, published", IsHidden: false},
+			{ID: uuid.New(), Title: "Harvested, pending", Status: catalogDomain.BookStatusPending, ExternalSource: &source},
+			{ID: uuid.New(), Title: "Harvested, published", Status: catalogDomain.BookStatusPublished, ExternalSource: &source},
+			{ID: uuid.New(), Title: "Manual, published", Status: catalogDomain.BookStatusPublished},
 		},
 	}
 
-	// This combination (harvested + visible) is a case pending_review
-	// cannot express, since pending_review hardcodes is_hidden = true.
-	result := repo.filterBooks(BookFilter{Source: "harvested", Visibility: "visible"})
+	// Source and status are independent filters, ANDed together.
+	result := repo.filterBooks(BookFilter{Source: "harvested", Status: catalogDomain.BookStatusPublished})
 	if len(result) != 1 {
 		t.Fatalf("expected 1 published harvested book, got %d", len(result))
 	}

@@ -111,7 +111,7 @@ func (r *GormRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]do
 }
 
 // ListByUserVisible returns all shelves for a user with their book counts
-// computed over visible (is_hidden = false) books only. Used for the public
+// computed over visible (status = 'published') books only. Used for the public
 // profile listing, where hidden books must not count towards a shelf's size
 // or its inclusion. Unlike ListByUser (which counts all shelf_items rows
 // regardless of visibility - a pre-existing gap for the owner-facing count,
@@ -123,7 +123,7 @@ func (r *GormRepository) ListByUserVisible(ctx context.Context, userID uuid.UUID
 		SELECT s.*, COUNT(b.id) AS books_count
 		FROM shelves s
 		LEFT JOIN shelf_items si ON si.shelf_id = s.id
-		LEFT JOIN books b ON b.id = si.book_id AND b.is_hidden = false
+		LEFT JOIN books b ON b.id = si.book_id AND b.status = 'published'
 		WHERE s.user_id = ?
 		GROUP BY s.id
 		ORDER BY
@@ -237,7 +237,7 @@ func (r *GormRepository) ListBooks(ctx context.Context, shelfID uuid.UUID, limit
 
 	query := r.db.WithContext(ctx).Model(&catalogDomain.Book{}).
 		Joins("JOIN shelf_items ON shelf_items.book_id = books.id").
-		Where("shelf_items.shelf_id = ? AND books.is_hidden = ?", shelfID, false).
+		Where("shelf_items.shelf_id = ? AND books.status = ?", shelfID, catalogDomain.BookStatusPublished).
 		Order("shelf_items.added_at DESC")
 
 	if err := query.Count(&total).Error; err != nil {
@@ -264,12 +264,12 @@ func (r *GormRepository) ListBooks(ctx context.Context, shelfID uuid.UUID, limit
 	return books, total, nil
 }
 
-// BookExists checks whether a book exists and is not hidden.
+// BookExists checks whether a published book exists.
 func (r *GormRepository) BookExists(ctx context.Context, bookID uuid.UUID) (bool, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).
 		Model(&catalogDomain.Book{}).
-		Where("id = ? AND is_hidden = ?", bookID, false).
+		Where("id = ? AND status = ?", bookID, catalogDomain.BookStatusPublished).
 		Count(&count).Error; err != nil {
 		return false, err
 	}

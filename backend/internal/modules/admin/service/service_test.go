@@ -59,9 +59,11 @@ type fakeRepository struct {
 	genreSampleCalls   int
 	genreHintCalls     int
 	setGenreStatusErr  map[uuid.UUID]error
-	mergeGenresErr     error
-	mergeGenresCalls   int
-	mergeGenresBooks   int64
+	// setBookStatusErr backs the BulkSetBookStatus row-error tests.
+	setBookStatusErr map[uuid.UUID]error
+	mergeGenresErr   error
+	mergeGenresCalls int
+	mergeGenresBooks int64
 
 	// listGenresByQIDsErr / listGenresByQIDsCalls back the genre
 	// Wikidata search markers (genre_import_test.go).
@@ -76,11 +78,11 @@ func (f *fakeRepository) DashboardCounts(ctx context.Context) (repository.Dashbo
 	var st repository.DashboardStats
 	for _, b := range f.books {
 		st.Books++
-		if b.IsHidden {
-			st.HiddenBooks++
-		}
-		if b.IsHidden && b.ExternalSource != nil {
-			st.PendingImportReview++
+		switch b.Status {
+		case catalogDomain.BookStatusPending:
+			st.PendingBooks++
+		case catalogDomain.BookStatusRejected:
+			st.RejectedBooks++
 		}
 	}
 	st.Authors = int64(len(f.authors))
@@ -427,26 +429,24 @@ func TestDashboardCounts(t *testing.T) {
 	}
 }
 
-func TestDashboardCounts_PendingImportReview(t *testing.T) {
+func TestDashboardCounts_PendingAndRejectedBooks(t *testing.T) {
 	svc, repo := newService()
 	ctx := context.Background()
 
 	source := "wikidata"
 	repo.books = []catalogDomain.Book{
-		{ID: uuid.New(), IsHidden: true, ExternalSource: &source},
-		{ID: uuid.New(), IsHidden: true},
-		{ID: uuid.New(), IsHidden: false},
+		{ID: uuid.New(), Status: catalogDomain.BookStatusPending, ExternalSource: &source},
+		{ID: uuid.New(), Status: catalogDomain.BookStatusPending},
+		{ID: uuid.New(), Status: catalogDomain.BookStatusRejected},
+		{ID: uuid.New(), Status: catalogDomain.BookStatusPublished},
 	}
 
 	stats, err := svc.DashboardCounts(ctx)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if stats.HiddenBooks != 2 {
-		t.Fatalf("expected 2 hidden books, got %d", stats.HiddenBooks)
-	}
-	if stats.PendingImportReview != 1 {
-		t.Fatalf("expected 1 pending import review book, got %d", stats.PendingImportReview)
+	if stats.Books != 4 || stats.PendingBooks != 2 || stats.RejectedBooks != 1 {
+		t.Fatalf("expected books=4 pending=2 rejected=1, got %+v", stats)
 	}
 }
 
@@ -682,14 +682,15 @@ func TestUpdateBook_UnchangedLatinTitleWithoutFlag_Succeeds(t *testing.T) {
 	ctx := context.Background()
 
 	id := uuid.New()
-	repo.books = []catalogDomain.Book{{ID: id, Title: "Empire V", Slug: "empire-v", Language: "ru", IsHidden: true}}
+	repo.books = []catalogDomain.Book{{ID: id, Title: "Empire V", Slug: "empire-v", Language: "ru", Status: catalogDomain.BookStatusPending}}
 
-	book, err := svc.UpdateBook(ctx, id, BookInput{Title: "  Empire V  ", Slug: "empire-v", Language: "ru", IsHidden: false})
+	published := catalogDomain.BookStatusPublished
+	book, err := svc.UpdateBook(ctx, id, BookInput{Title: "  Empire V  ", Slug: "empire-v", Language: "ru", Status: &published})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if book.IsHidden {
-		t.Fatalf("expected book to be updated (is_hidden=false), got %+v", book)
+	if book.Status != catalogDomain.BookStatusPublished {
+		t.Fatalf("expected book to be updated (status=published), got %+v", book)
 	}
 }
 
@@ -1099,6 +1100,20 @@ func (f *fakeRepository) ListGenreHintCandidates(ctx context.Context) ([]catalog
 		}
 	}
 	return out, nil
+}
+
+// SetBookStatus mirrors the repository: only status changes.
+func (f *fakeRepository) SetBookStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
+	if err := f.setBookStatusErr[id]; err != nil {
+		return false, err
+	}
+	for i := range f.books {
+		if f.books[i].ID == id {
+			f.books[i].Status = status
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // SetGenreStatus mirrors the repository: alias rows are not found.

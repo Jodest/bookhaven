@@ -50,8 +50,9 @@ function makeItem(overrides: Partial<AdminGenreQueueItem> = {}): AdminGenreQueue
     books_total: 3,
     books_visible: 1,
     sample_books: [
-      { id: 'b1', title: 'Война и мир', is_hidden: false },
-      { id: 'b2', title: 'Анна Каренина', is_hidden: true },
+      { id: 'b1', title: 'Война и мир', status: 'published' },
+      { id: 'b2', title: 'Анна Каренина', status: 'pending' },
+      { id: 'b3', title: 'Воскресение', status: 'rejected' },
     ],
     similar: [
       {
@@ -121,7 +122,9 @@ describe('GenreModerationView', () => {
       'href',
       '/catalog/books/b1/edit'
     );
-    expect(within(row).getByText('(скрыта)')).toBeInTheDocument();
+    expect(within(row).getByText('(на модерации)')).toBeInTheDocument();
+    expect(within(row).getByText('(отклонена)')).toBeInTheDocument();
+    expect(within(row).getAllByText(/^\((на модерации|отклонена)\)$/)).toHaveLength(2);
 
     expect(within(row).getByText('роман')).toBeInTheDocument();
     expect(within(row).getByText('(та же основа)')).toBeInTheDocument();

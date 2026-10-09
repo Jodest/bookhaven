@@ -103,7 +103,7 @@ const interactionsQuery = `WITH pos AS (
 SELECT pos.user_id, pos.book_id
 FROM pos
 JOIN users u ON u.id = pos.user_id AND u.email_verified_at IS NOT NULL
-JOIN books b ON b.id = pos.book_id AND b.is_hidden = FALSE
+JOIN books b ON b.id = pos.book_id AND b.status = 'published'
 WHERE NOT EXISTS (
     SELECT 1 FROM ratings r2
     WHERE r2.user_id = pos.user_id AND r2.book_id = pos.book_id AND r2.value <= 2
@@ -120,7 +120,7 @@ func (r *GormRepository) ListInteractions(ctx context.Context) ([]Interaction, e
 func (r *GormRepository) ListVisibleBookStats(ctx context.Context) ([]BookStat, error) {
 	var rows []BookStat
 	if err := r.db.WithContext(ctx).
-		Raw("SELECT id, ratings_count FROM books WHERE is_hidden = FALSE").
+		Raw("SELECT id, ratings_count FROM books WHERE status = 'published'").
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}

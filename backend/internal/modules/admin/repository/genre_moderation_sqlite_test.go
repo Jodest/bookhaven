@@ -30,7 +30,7 @@ CREATE TABLE genres (
 	CHECK (merged_into_id IS NULL OR status = 'rejected')
 );
 CREATE UNIQUE INDEX idx_genres_wikidata_qid ON genres(wikidata_qid) WHERE wikidata_qid IS NOT NULL;
-CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', is_hidden BOOLEAN NOT NULL DEFAULT 0, external_source TEXT, deleted_at DATETIME);
+CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', external_source TEXT, deleted_at DATETIME);
 CREATE TABLE book_genres (book_id TEXT NOT NULL, genre_id TEXT NOT NULL, PRIMARY KEY (book_id, genre_id));
 CREATE TABLE authors (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'published');
 CREATE TABLE reviews (id TEXT PRIMARY KEY, is_hidden BOOLEAN NOT NULL DEFAULT 0, deleted_at DATETIME);
@@ -90,7 +90,11 @@ func (f *genreModFixture) alias(name, slug string, target uuid.UUID, qid *string
 func (f *genreModFixture) book(title string, hidden bool, genreIDs ...uuid.UUID) uuid.UUID {
 	f.t.Helper()
 	id := uuid.New()
-	if err := f.db.Exec("INSERT INTO books (id, title, is_hidden) VALUES (?, ?, ?)", id, title, hidden).Error; err != nil {
+	status := catalogDomain.BookStatusPublished
+	if hidden {
+		status = catalogDomain.BookStatusPending
+	}
+	if err := f.db.Exec("INSERT INTO books (id, title, status) VALUES (?, ?, ?)", id, title, status).Error; err != nil {
 		f.t.Fatalf("insert book: %v", err)
 	}
 	for _, g := range genreIDs {
@@ -207,7 +211,7 @@ func TestListGenreSampleBooks_AtMostThreeByTitle(t *testing.T) {
 		t.Fatalf("samples: %v", err)
 	}
 	got := samples[g]
-	if len(got) != 3 || got[0].ID != a || got[1].Title != "Б" || !got[1].IsHidden || got[2].Title != "В" {
+	if len(got) != 3 || got[0].ID != a || got[1].Title != "Б" || got[1].Status != catalogDomain.BookStatusPending || got[2].Title != "В" {
 		t.Fatalf("unexpected samples: %+v", got)
 	}
 	for _, s := range got {

@@ -216,7 +216,7 @@ func (f *fakeRepository) ToggleLike(ctx context.Context, reviewID, userID, revie
 
 func (f *fakeRepository) BookExists(ctx context.Context, bookID uuid.UUID) (bool, error) {
 	book, ok := f.books[bookID]
-	return ok && !book.IsHidden, nil
+	return ok && (book.Status == "" || book.IsPublished()), nil
 }
 
 func setupTestService() (*Service, *fakeRepository) {

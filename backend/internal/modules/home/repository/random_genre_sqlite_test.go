@@ -18,7 +18,7 @@ CREATE TABLE books (
 	cover_url TEXT,
 	rating REAL DEFAULT 0,
 	ratings_count INTEGER DEFAULT 0,
-	is_hidden BOOLEAN DEFAULT FALSE
+	status TEXT NOT NULL DEFAULT 'pending'
 );
 CREATE TABLE genres (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'pending');
 CREATE TABLE book_genres (book_id TEXT NOT NULL, genre_id TEXT NOT NULL, PRIMARY KEY (book_id, genre_id));
@@ -36,7 +36,7 @@ func TestPickRandomBookID_GenreFilterRequiresPublishedGenre(t *testing.T) {
 
 	book := uuid.New()
 	genres := map[string]uuid.UUID{"published": uuid.New(), "pending": uuid.New(), "rejected": uuid.New()}
-	if err := db.Exec("INSERT INTO books (id, is_hidden) VALUES (?, FALSE)", book).Error; err != nil {
+	if err := db.Exec("INSERT INTO books (id, status) VALUES (?, 'published')", book).Error; err != nil {
 		t.Fatalf("insert book: %v", err)
 	}
 	for status, id := range genres {

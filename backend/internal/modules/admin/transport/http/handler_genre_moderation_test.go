@@ -65,7 +65,7 @@ func TestListGenreModerationQueue_Shape(t *testing.T) {
 	svc.genreQueueItems = []adminService.GenreQueueItem{
 		{
 			Genre: row, BooksTotal: 3, BooksVisible: 1,
-			SampleBooks: []repository.SampleBook{{ID: bookID, Title: "Война и мир", IsHidden: true}},
+			SampleBooks: []repository.SampleBook{{ID: bookID, Title: "Война и мир", Status: catalogDomain.BookStatusPending}},
 			Similar:     []adminService.GenreHint{{Genre: hint, Match: adminService.GenreMatchSameStem}},
 		},
 		{Genre: catalogDomain.Genre{ID: uuid.New(), Name: "эпос", Status: "pending"}, SampleBooks: []repository.SampleBook{}, Similar: []adminService.GenreHint{}},
@@ -94,7 +94,7 @@ func TestListGenreModerationQueue_Shape(t *testing.T) {
 	it := body.Items[0]
 	if it.Genre.ID != row.ID.String() || it.Genre.Status != "pending" || it.Genre.WikidataQID == nil || *it.Genre.WikidataQID != qid ||
 		it.BooksTotal != 3 || it.BooksVisible != 1 ||
-		len(it.SampleBooks) != 1 || it.SampleBooks[0].ID != bookID.String() || !it.SampleBooks[0].IsHidden ||
+		len(it.SampleBooks) != 1 || it.SampleBooks[0].ID != bookID.String() || it.SampleBooks[0].Status != catalogDomain.BookStatusPending ||
 		len(it.Similar) != 1 || it.Similar[0].Genre.ID != hint.ID.String() || it.Similar[0].Match != "same_stem" || it.Similar[0].Genre.Status != "published" {
 		t.Fatalf("unexpected item: %+v", it)
 	}

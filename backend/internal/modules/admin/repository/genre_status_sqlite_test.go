@@ -23,7 +23,7 @@ CREATE TABLE genres (
 	created_at DATETIME
 );
 CREATE UNIQUE INDEX idx_genres_wikidata_qid ON genres(wikidata_qid) WHERE wikidata_qid IS NOT NULL;
-CREATE TABLE books (id TEXT PRIMARY KEY, is_hidden BOOLEAN NOT NULL DEFAULT 0, external_source TEXT, deleted_at DATETIME);
+CREATE TABLE books (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'pending', external_source TEXT, deleted_at DATETIME);
 CREATE TABLE authors (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'published');
 CREATE TABLE reviews (id TEXT PRIMARY KEY, is_hidden BOOLEAN NOT NULL DEFAULT 0, deleted_at DATETIME);
 `

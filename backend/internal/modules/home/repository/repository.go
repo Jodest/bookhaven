@@ -71,7 +71,7 @@ type ReviewRow struct {
 }
 
 // Repository is the home module's read-only data access. All methods apply
-// the visibility filter (books.is_hidden = false, reviews.is_hidden = false)
+// the visibility filter (books.status = 'published', reviews.is_hidden = false)
 // in SQL.
 type Repository interface {
 	// ListPoolIDs returns all visible book IDs matching f, ordered by id.
@@ -162,7 +162,7 @@ const poolGenreFilter = "EXISTS (SELECT 1 FROM book_genres bg JOIN genres g ON g
 
 // poolQuery builds the shared visible-books filter.
 func (r *GormRepository) poolQuery(ctx context.Context, f PoolFilter) *gorm.DB {
-	q := r.db.WithContext(ctx).Table("books").Select("books.id").Where("books.is_hidden = FALSE")
+	q := r.db.WithContext(ctx).Table("books").Select("books.id").Where("books.status = 'published'")
 	if f.RequireCover {
 		q = q.Where("books.cover_url IS NOT NULL AND books.cover_url <> ''")
 	}
@@ -211,7 +211,7 @@ func (r *GormRepository) PickRandomBookID(ctx context.Context, f PoolFilter) (*u
 const calendarEventsQuery = `WITH vis AS (
     SELECT ba.author_id, COUNT(*) AS visible_books
     FROM book_authors ba
-    JOIN books b ON b.id = ba.book_id AND b.is_hidden = FALSE
+    JOIN books b ON b.id = ba.book_id AND b.status = 'published'
     GROUP BY ba.author_id
 )
 SELECT a.id AS author_id, a.name, a.slug, a.photo_url, a.birth_date, a.death_date,
@@ -250,7 +250,7 @@ const topBooksByAuthorsQuery = `SELECT author_id, book_id FROM (
            ROW_NUMBER() OVER (PARTITION BY ba.author_id
                               ORDER BY b.rating DESC, b.ratings_count DESC, b.title ASC, b.id ASC) AS rn
     FROM book_authors ba
-    JOIN books b ON b.id = ba.book_id AND b.is_hidden = FALSE
+    JOIN books b ON b.id = ba.book_id AND b.status = 'published'
     WHERE ba.author_id IN ?
 ) t
 WHERE rn <= ?
@@ -276,7 +276,7 @@ func (r *GormRepository) ListTopBooksByAuthors(ctx context.Context, authorIDs []
 
 const anniversaryQuery = `SELECT id AS book_id, (@year - published_year) AS years, rating, ratings_count, title
 FROM books
-WHERE is_hidden = FALSE
+WHERE status = 'published'
   AND published_year IS NOT NULL
   AND published_year < @year
   AND (@year - published_year) % @step = 0
@@ -301,7 +301,7 @@ func (r *GormRepository) ListAnniversaryBooks(ctx context.Context, year, step, l
 func (r *GormRepository) ListNewBookIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	var rows []idRow
 	if err := r.db.WithContext(ctx).
-		Raw("SELECT id FROM books WHERE is_hidden = FALSE ORDER BY created_at DESC, id DESC LIMIT ?", limit).
+		Raw("SELECT id FROM books WHERE status = 'published' ORDER BY created_at DESC, id DESC LIMIT ?", limit).
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -312,7 +312,7 @@ func (r *GormRepository) ListTopRatedBookIDs(ctx context.Context, minRating floa
 	var rows []idRow
 	if err := r.db.WithContext(ctx).
 		Raw(`SELECT id FROM books
-WHERE is_hidden = FALSE AND rating >= ? AND ratings_count >= ?
+WHERE status = 'published' AND rating >= ? AND ratings_count >= ?
 ORDER BY rating DESC, ratings_count DESC, id ASC
 LIMIT ?`, minRating, minCount, limit).
 		Scan(&rows).Error; err != nil {
@@ -326,7 +326,7 @@ LIMIT ?`, minRating, minCount, limit).
 const recentReviewsQuery = `SELECT id FROM (
     SELECT DISTINCT ON (r.book_id) r.id, r.created_at
     FROM reviews r
-    JOIN books b ON b.id = r.book_id AND b.is_hidden = FALSE
+    JOIN books b ON b.id = r.book_id AND b.status = 'published'
     WHERE r.is_hidden = FALSE AND char_length(r.content) >= ?
     ORDER BY r.book_id, r.created_at DESC, r.id DESC
 ) t
@@ -345,7 +345,7 @@ const reviewsByIDsQuery = `SELECT r.id, r.book_id, r.rating, r.content, r.likes_
        u.id AS user_id, u.name AS user_name, u.avatar_url AS user_avatar_url
 FROM reviews r
 JOIN users u ON u.id = r.user_id
-JOIN books b ON b.id = r.book_id AND b.is_hidden = FALSE
+JOIN books b ON b.id = r.book_id AND b.status = 'published'
 WHERE r.id IN ? AND r.is_hidden = FALSE`
 
 func (r *GormRepository) GetReviewsByIDs(ctx context.Context, reviewIDs []uuid.UUID) ([]ReviewRow, error) {
@@ -363,7 +363,7 @@ func (r *GormRepository) GetSystemShelf(ctx context.Context, userID uuid.UUID, s
 	var rows []ShelfRef
 	if err := r.db.WithContext(ctx).Raw(`SELECT s.id,
        (SELECT COUNT(*) FROM shelf_items si
-        JOIN books b ON b.id = si.book_id AND b.is_hidden = FALSE
+        JOIN books b ON b.id = si.book_id AND b.status = 'published'
         WHERE si.shelf_id = s.id) AS total
 FROM shelves s
 WHERE s.user_id = ? AND s.type = ?
@@ -379,7 +379,7 @@ LIMIT 1`, userID, shelfType).Scan(&rows).Error; err != nil {
 
 func (r *GormRepository) ListShelfBookIDs(ctx context.Context, shelfID uuid.UUID, limit int) ([]uuid.UUID, error) {
 	q := `SELECT b.id FROM shelf_items si
-JOIN books b ON b.id = si.book_id AND b.is_hidden = FALSE
+JOIN books b ON b.id = si.book_id AND b.status = 'published'
 WHERE si.shelf_id = ?
 ORDER BY si.added_at DESC, b.id ASC`
 	args := []interface{}{shelfID}
@@ -408,7 +408,7 @@ const recommendationSeedsQuery = `WITH pos AS (
 )
 SELECT pos.book_id AS id
 FROM pos
-JOIN books b ON b.id = pos.book_id AND b.is_hidden = FALSE
+JOIN books b ON b.id = pos.book_id AND b.status = 'published'
 WHERE NOT EXISTS (
     SELECT 1 FROM ratings r2
     WHERE r2.user_id = @user AND r2.book_id = pos.book_id AND r2.value <= 2
@@ -452,7 +452,7 @@ SELECT r.book_id AS id FROM ratings r WHERE r.user_id = @user`, map[string]inter
 // exclusions in SQL so the LIMIT never cuts valid candidates.
 const aggregateSimilarQuery = `SELECT bs.similar_book_id AS id, SUM(bs.score) AS score, COUNT(*) AS count
 FROM book_similarities bs
-JOIN books b ON b.id = bs.similar_book_id AND b.is_hidden = FALSE
+JOIN books b ON b.id = bs.similar_book_id AND b.status = 'published'
 WHERE bs.book_id IN @seeds
   AND bs.similar_book_id NOT IN @seeds
   AND NOT EXISTS (

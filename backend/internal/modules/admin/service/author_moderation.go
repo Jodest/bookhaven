@@ -62,7 +62,7 @@ type AuthorQueueItem struct {
 }
 
 // BulkStatusReport is the JSON report of POST /admin/authors/bulk-status,
-// mirroring BulkPublishReport. Returned with HTTP 200 regardless of
+// mirroring ImportReport. Returned with HTTP 200 regardless of
 // per-row outcomes.
 type BulkStatusReport struct {
 	Processed int                  `json:"processed"`

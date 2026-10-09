@@ -5,11 +5,11 @@ import { buildNavCounters } from './build-nav-counters';
 
 const stats: AdminDashboard = {
   books: 100,
-  hidden_books: 10,
+  rejected_books: 10,
   authors: 50,
   genres: 5,
   pending_reviews: 42,
-  pending_import_review: 4,
+  pending_books: 4,
   pending_authors: 7,
   pending_genres: 6,
 };

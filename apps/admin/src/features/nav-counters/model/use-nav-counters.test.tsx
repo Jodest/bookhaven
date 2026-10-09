@@ -46,11 +46,11 @@ describe('useNavCounters', () => {
     listJobsMock.mockReset();
     dashboardMock.mockResolvedValue({
       books: 20,
-      hidden_books: 3,
+      rejected_books: 3,
       authors: 11,
       genres: 5,
       pending_reviews: 9,
-      pending_import_review: 4,
+      pending_books: 4,
       pending_authors: 7,
       pending_genres: 6,
     });

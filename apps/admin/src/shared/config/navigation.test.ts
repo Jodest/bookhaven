@@ -80,7 +80,7 @@ describe('resolveNavLocation', () => {
   );
 
   it('ignores query strings', () => {
-    expect(tabIdOf('/catalog/books?visibility=hidden')).toBe('catalog.books');
+    expect(tabIdOf('/catalog/books?status=rejected')).toBe('catalog.books');
   });
 });
 

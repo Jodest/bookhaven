@@ -78,7 +78,7 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]do
 	query := r.db.WithContext(ctx).Model(&domain.Book{}).
 		Preload("Authors").
 		Preload("Genres").
-		Where("is_hidden = ?", false)
+		Where("books.status = ?", domain.BookStatusPublished)
 
 	if filter.Search != "" {
 		query = query.Where(
@@ -158,7 +158,7 @@ func (r *GormRepository) GetBookBySlug(ctx context.Context, slug string) (*domai
 	if err := r.db.WithContext(ctx).
 		Preload("Authors").
 		Preload("Genres").
-		Where("slug = ? AND is_hidden = ?", slug, false).
+		Where("slug = ? AND books.status = ?", slug, domain.BookStatusPublished).
 		First(&book).Error; err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (r *GormRepository) GetAuthorBySlug(ctx context.Context, slug string) (*dom
 	var author domain.Author
 	if err := r.db.WithContext(ctx).
 		Preload("Books", func(db *gorm.DB) *gorm.DB {
-			return db.Where("is_hidden = ?", false).Order("rating DESC, created_at DESC")
+			return db.Where("books.status = ?", domain.BookStatusPublished).Order("rating DESC, created_at DESC")
 		}).
 		Preload("Books.Authors").
 		Preload("Books.Genres").
@@ -226,7 +226,7 @@ func (r *GormRepository) ListLanguages(ctx context.Context) ([]string, error) {
 	var languages []string
 	if err := r.db.WithContext(ctx).
 		Model(&domain.Book{}).
-		Where("is_hidden = ?", false).
+		Where("status = ?", domain.BookStatusPublished).
 		Distinct("language").
 		Order("language ASC").
 		Pluck("language", &languages).Error; err != nil {
@@ -240,7 +240,7 @@ func (r *GormRepository) GetSimilarSource(ctx context.Context, bookID uuid.UUID)
 
 	var ids []uuid.UUID
 	if err := db.Model(&domain.Book{}).
-		Where("id = ? AND is_hidden = ?", bookID, false).
+		Where("id = ? AND status = ?", bookID, domain.BookStatusPublished).
 		Limit(1).
 		Pluck("id", &ids).Error; err != nil {
 		return nil, err
@@ -330,7 +330,7 @@ ranked AS (
            ) AS rn
     FROM agg
     JOIN books b ON b.id = agg.book_id
-    WHERE b.is_hidden = FALSE
+    WHERE b.status = 'published'
 )
 SELECT r.book_id, r.shared_authors, r.shared_genres, r.rating, r.ratings_count,
        (SELECT COUNT(*) FROM book_genres g
@@ -392,7 +392,7 @@ func (r *GormRepository) GetBooksByIDs(ctx context.Context, ids []uuid.UUID) ([]
 	if err := r.db.WithContext(ctx).
 		Preload("Authors").
 		Preload("Genres").
-		Where("id IN ? AND is_hidden = ?", ids, false).
+		Where("id IN ? AND books.status = ?", ids, domain.BookStatusPublished).
 		Find(&books).Error; err != nil {
 		return nil, err
 	}

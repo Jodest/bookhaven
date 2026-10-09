@@ -43,18 +43,18 @@ definitions:
           type: string
         type: array
     type: object
-  github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishReport:
+  github_com_bookhaven_backend_internal_modules_admin_service.BookBulkStatusReport:
     properties:
       errors:
         items:
-          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishRowError'
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BookBulkStatusRowError'
         type: array
       processed:
         type: integer
-      published:
+      updated:
         type: integer
     type: object
-  github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishRowError:
+  github_com_bookhaven_backend_internal_modules_admin_service.BookBulkStatusRowError:
     properties:
       book_id:
         type: string
@@ -320,8 +320,8 @@ definitions:
     properties:
       id:
         type: string
-      is_hidden:
-        type: boolean
+      status:
+        type: string
       title:
         type: string
     type: object
@@ -345,8 +345,6 @@ definitions:
         type: array
       id:
         type: string
-      is_hidden:
-        type: boolean
       isbn:
         type: string
       language:
@@ -363,12 +361,23 @@ definitions:
         type: integer
       slug:
         type: string
+      status:
+        type: string
       title:
         type: string
       updated_at:
         type: string
     type: object
   internal_modules_admin_transport_http.bulkAuthorStatusRequest:
+    properties:
+      ids:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.bulkBookStatusRequest:
     properties:
       ids:
         items:
@@ -384,11 +393,6 @@ definitions:
           type: string
         type: array
       status:
-        type: string
-    type: object
-  internal_modules_admin_transport_http.bulkPublishBooksRequest:
-    properties:
-      search:
         type: string
     type: object
   internal_modules_admin_transport_http.changeUserRoleRequest:
@@ -436,8 +440,6 @@ definitions:
         items:
           type: string
         type: array
-      is_hidden:
-        type: boolean
       isbn:
         type: string
       language:
@@ -447,6 +449,11 @@ definitions:
       published_year:
         type: integer
       slug:
+        type: string
+      status:
+        description: |-
+          Status (pending | published | rejected): on POST omitted means
+          published; on PATCH omitted means unchanged. Invalid -> 400.
         type: string
       title:
         type: string
@@ -476,15 +483,15 @@ definitions:
         type: integer
       genres:
         type: integer
-      hidden_books:
-        type: integer
       pending_authors:
+        type: integer
+      pending_books:
         type: integer
       pending_genres:
         type: integer
-      pending_import_review:
-        type: integer
       pending_reviews:
+        type: integer
+      rejected_books:
         type: integer
     type: object
   internal_modules_admin_transport_http.enrichWikidataRequest:
@@ -588,8 +595,8 @@ definitions:
     properties:
       id:
         type: string
-      is_hidden:
-        type: boolean
+      status:
+        type: string
       title:
         type: string
     type: object
@@ -2476,9 +2483,9 @@ paths:
         in: query
         name: search
         type: string
-      - description: Фильтр видимости (all/visible/hidden/pending_review)
+      - description: 'Статус: pending, published, rejected'
         in: query
-        name: visibility
+        name: status
         type: string
       - description: Фильтр по жанру (UUID)
         in: query
@@ -2507,6 +2514,12 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/internal_modules_admin_transport_http.listBooksResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:
@@ -2700,30 +2713,35 @@ paths:
       summary: Обновить книгу (админ)
       tags:
       - admin
-  /admin/books/bulk-publish:
+  /admin/books/bulk-status:
     post:
       consumes:
       - application/json
-      description: Требуется роль admin и Bearer-токен. Публикует (is_hidden=false)
-        каждую книгу, подходящую под предикат pending_review (is_hidden=true AND external_source
-        IS NOT NULL), опционально уточнённый тем же search, что и GET /admin/books.
-        Поле visibility в теле запроса игнорируется — предикат всегда фиксирован на
-        сервере. Каждая строка обрабатывается независимо; результат — отчёт со счётчиками
-        и построчными ошибками, HTTP 200 независимо от построчных исходов (кроме 422
-        при превышении лимита партии).
+      description: 'Требуется роль admin и Bearer-токен. Меняет только status (и updated_at)
+        у каждой книги из ids (не более 100, дубликаты схлопываются); остальные поля
+        и связи не меняются, повторная валидация контента не выполняется. Каждый id
+        обрабатывается независимо: неизвестный id — построчная ошибка «book not found»,
+        остальные применяются. HTTP 200 независимо от построчных исходов.'
       parameters:
-      - description: Опциональный поиск
+      - description: ID книг и новый статус (pending / published / rejected)
         in: body
         name: body
+        required: true
         schema:
-          $ref: '#/definitions/internal_modules_admin_transport_http.bulkPublishBooksRequest'
+          $ref: '#/definitions/internal_modules_admin_transport_http.bulkBookStatusRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BulkPublishReport'
+            $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.BookBulkStatusReport'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:
@@ -2736,12 +2754,6 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "422":
-          description: Unprocessable Entity
-          schema:
-            additionalProperties:
-              type: string
-            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -2750,7 +2762,7 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Опубликовать все книги на проверке (админ)
+      summary: Сменить статус выбранных книг (админ)
       tags:
       - admin
   /admin/books/import:
@@ -2759,9 +2771,10 @@ paths:
       - multipart/form-data
       description: 'Требуется роль admin и Bearer-токен. multipart/form-data: file
         (обязательно, .csv/.json), format (опционально, csv|json — иначе определяется
-        по расширению), is_hidden (опционально, true/false, применяется ко всей партии).
-        Каждая строка обрабатывается независимо; результат — отчёт со счётчиками и
-        построчными ошибками, HTTP 200 независимо от построчных исходов.'
+        по расширению), status (опционально, pending|published, применяется ко всей
+        партии; по умолчанию published, иное значение — 400). Каждая строка обрабатывается
+        независимо; результат — отчёт со счётчиками и построчными ошибками, HTTP 200
+        независимо от построчных исходов.'
       produces:
       - application/json
       responses:

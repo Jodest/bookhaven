@@ -50,7 +50,7 @@ CREATE TABLE books (
 	rating REAL DEFAULT 0,
 	ratings_count INTEGER DEFAULT 0,
 	reviews_count INTEGER DEFAULT 0,
-	is_hidden BOOLEAN DEFAULT FALSE,
+	status TEXT NOT NULL DEFAULT 'pending',
 	external_source TEXT,
 	external_id TEXT,
 	created_at DATETIME,
@@ -123,7 +123,7 @@ func newStatusFixture(t *testing.T) *statusFixture {
 	i := 0
 	for id, authorIDs := range books {
 		i++
-		if err := db.Exec("INSERT INTO books (id, title, slug, is_hidden, created_at, updated_at) VALUES (?, ?, ?, FALSE, ?, ?)",
+		if err := db.Exec("INSERT INTO books (id, title, slug, status, created_at, updated_at) VALUES (?, ?, ?, 'published', ?, ?)",
 			id, "Book", "book-"+id.String(), now, now).Error; err != nil {
 			t.Fatalf("insert book: %v", err)
 		}

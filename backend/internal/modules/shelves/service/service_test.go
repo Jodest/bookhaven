@@ -95,7 +95,7 @@ func (f *fakeRepository) ListByUserVisible(ctx context.Context, userID uuid.UUID
 				if key.shelfID != copy.ID {
 					continue
 				}
-				if b, ok := f.books[key.bookID]; ok && !b.IsHidden {
+				if b, ok := f.books[key.bookID]; ok && (b.Status == "" || b.IsPublished()) {
 					copy.BooksCount++
 				}
 			}
@@ -179,7 +179,7 @@ func (f *fakeRepository) ListBooks(ctx context.Context, shelfID uuid.UUID, limit
 	var books []catalogDomain.Book
 	for key := range f.items {
 		if key.shelfID == shelfID {
-			if b, ok := f.books[key.bookID]; ok && !b.IsHidden {
+			if b, ok := f.books[key.bookID]; ok && (b.Status == "" || b.IsPublished()) {
 				books = append(books, *b)
 			}
 		}
@@ -197,7 +197,7 @@ func (f *fakeRepository) ListBooks(ctx context.Context, shelfID uuid.UUID, limit
 
 func (f *fakeRepository) BookExists(ctx context.Context, bookID uuid.UUID) (bool, error) {
 	b, ok := f.books[bookID]
-	return ok && !b.IsHidden, nil
+	return ok && (b.Status == "" || b.IsPublished()), nil
 }
 
 func (f *fakeRepository) UserShelvesWithBook(ctx context.Context, userID, bookID uuid.UUID) (map[uuid.UUID]struct{}, error) {
@@ -576,7 +576,7 @@ func TestListPublicByUser_ExcludesEmptyAndHiddenOnlyShelves(t *testing.T) {
 	visibleBook := uuid.New()
 	hiddenBook := uuid.New()
 	repo.books[visibleBook] = &catalogDomain.Book{ID: visibleBook, Title: "Visible"}
-	repo.books[hiddenBook] = &catalogDomain.Book{ID: hiddenBook, Title: "Hidden", IsHidden: true}
+	repo.books[hiddenBook] = &catalogDomain.Book{ID: hiddenBook, Title: "Hidden", Status: catalogDomain.BookStatusRejected}
 
 	withVisible := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "С видимой книгой", Type: domain.ShelfTypeCustom}
 	onlyHidden := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Только скрытая", Type: domain.ShelfTypeCustom}
@@ -658,7 +658,7 @@ func TestGetPublicShelf_ExcludesHiddenBooks(t *testing.T) {
 	visibleBook := uuid.New()
 	hiddenBook := uuid.New()
 	repo.books[visibleBook] = &catalogDomain.Book{ID: visibleBook, Title: "Visible"}
-	repo.books[hiddenBook] = &catalogDomain.Book{ID: hiddenBook, Title: "Hidden", IsHidden: true}
+	repo.books[hiddenBook] = &catalogDomain.Book{ID: hiddenBook, Title: "Hidden", Status: catalogDomain.BookStatusRejected}
 	repo.items[shelfBookKey{shelfID: shelf.ID, bookID: visibleBook}] = time.Now()
 	repo.items[shelfBookKey{shelfID: shelf.ID, bookID: hiddenBook}] = time.Now()
 

@@ -14,14 +14,12 @@ vi.mock('next/navigation', () => ({
 }));
 
 const listMock = vi.fn();
-const updateMock = vi.fn();
-const bulkPublishMock = vi.fn();
+const bulkStatusMock = vi.fn();
 
 vi.mock('@/entities/book', () => ({
   adminBooksApi: {
     list: (...args: unknown[]) => listMock(...args),
-    update: (...args: unknown[]) => updateMock(...args),
-    bulkPublish: (...args: unknown[]) => bulkPublishMock(...args),
+    bulkStatus: (...args: unknown[]) => bulkStatusMock(...args),
   },
 }));
 
@@ -39,7 +37,7 @@ function makeBook(overrides: Partial<AdminBook> = {}): AdminBook {
     rating: 0,
     ratings_count: 0,
     reviews_count: 0,
-    is_hidden: true,
+    status: 'pending',
     external_source: 'wikidata',
     authors: [],
     genres: [],
@@ -65,11 +63,9 @@ describe('BookModerationView', () => {
     searchParamsValue = new URLSearchParams();
     pushMock.mockReset();
     listMock.mockReset();
-    updateMock.mockReset();
-    bulkPublishMock.mockReset();
+    bulkStatusMock.mockReset();
     listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
-    updateMock.mockResolvedValue(makeBook({ is_hidden: false }));
-    bulkPublishMock.mockResolvedValue({ processed: 0, published: 0, errors: [] });
+    bulkStatusMock.mockResolvedValue({ processed: 1, updated: 1, errors: [] });
   });
 
   afterEach(() => {
@@ -77,13 +73,13 @@ describe('BookModerationView', () => {
     vi.restoreAllMocks();
   });
 
-  it('lists pending_review books with search and page from the URL', async () => {
+  it('lists status=pending books (all sources) with search and page from the URL', async () => {
     searchParamsValue = new URLSearchParams('search=Толстой&page=2');
     renderView();
 
     await waitFor(() =>
       expect(listMock).toHaveBeenCalledWith({
-        visibility: 'pending_review',
+        status: 'pending',
         search: 'Толстой',
         page: 2,
         limit: 20,
@@ -132,51 +128,44 @@ describe('BookModerationView', () => {
     expect(edit).toHaveAttribute('href', '/catalog/books/p1/edit');
   });
 
-  describe('row publish', () => {
-    it('publishes after confirmation, reusing full-replace update with is_hidden: false', async () => {
+  describe('row actions', () => {
+    it('publishes after confirmation via bulkStatus([id], published)', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-      const book = makeBook({
-        id: 'imported-2',
-        title: 'На проверке',
-        authors: [
-          {
-            id: 'a1',
-            name: 'Автор',
-            slug: 'a1',
-            biography: null,
-            photo_url: null,
-            birth_date: null,
-            death_date: null,
-            status: 'published',
-            external_source: null,
-            external_id: null,
-            photo_attribution: null,
-          },
-        ],
-        genres: [{ id: 'g1', name: 'Жанр', slug: 'g1', status: 'published', wikidata_qid: null }],
+      listMock.mockResolvedValue({
+        items: [makeBook({ id: 'imported-2', title: 'На проверке' })],
+        total: 1,
+        page: 1,
+        limit: 20,
       });
-      listMock.mockResolvedValue({ items: [book], total: 1, page: 1, limit: 20 });
 
       renderView();
 
-      const publishButton = await screen.findByRole('button', { name: 'Опубликовать' });
-      fireEvent.click(publishButton);
+      fireEvent.click(await screen.findByRole('button', { name: 'Опубликовать' }));
 
       expect(confirmSpy).toHaveBeenCalledWith('Опубликовать книгу «На проверке»?');
-      await waitFor(() =>
-        expect(updateMock).toHaveBeenCalledWith(
-          'imported-2',
-          expect.objectContaining({
-            is_hidden: false,
-            author_ids: ['a1'],
-            genre_ids: ['g1'],
-          })
-        )
-      );
-      expect(await screen.findByText('Книга опубликована.')).toBeInTheDocument();
+      await waitFor(() => expect(bulkStatusMock).toHaveBeenCalledWith(['imported-2'], 'published'));
+      expect(await screen.findByText('Опубликовано 1 из 1.')).toBeInTheDocument();
     });
 
-    it('does not publish when the confirmation is cancelled', async () => {
+    it('rejects after confirmation via bulkStatus([id], rejected)', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      listMock.mockResolvedValue({
+        items: [makeBook({ id: 'manual-1', title: 'Ручная книга', external_source: null })],
+        total: 1,
+        page: 1,
+        limit: 20,
+      });
+
+      renderView();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Отклонить' }));
+
+      expect(confirmSpy).toHaveBeenCalledWith('Отклонить книгу «Ручная книга»?');
+      await waitFor(() => expect(bulkStatusMock).toHaveBeenCalledWith(['manual-1'], 'rejected'));
+      expect(await screen.findByText('Отклонено 1 из 1.')).toBeInTheDocument();
+    });
+
+    it('does nothing when the confirmation is cancelled', async () => {
       vi.spyOn(window, 'confirm').mockReturnValue(false);
       listMock.mockResolvedValue({
         items: [makeBook({ id: 'imported-3', title: 'Отменить публикацию' })],
@@ -187,25 +176,25 @@ describe('BookModerationView', () => {
 
       renderView();
 
-      const publishButton = await screen.findByRole('button', { name: 'Опубликовать' });
-      fireEvent.click(publishButton);
+      fireEvent.click(await screen.findByRole('button', { name: 'Опубликовать' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Отклонить' }));
 
-      expect(updateMock).not.toHaveBeenCalled();
+      expect(bulkStatusMock).not.toHaveBeenCalled();
     });
   });
 
-  describe('bulk publish', () => {
-    it('does not render the button when the total is zero', async () => {
+  describe('publish the page', () => {
+    it('does not render the button when the page is empty', async () => {
       renderView();
 
       await screen.findByText('Нет книг на проверке.');
       expect(screen.queryByRole('button', { name: /Опубликовать все/ })).not.toBeInTheDocument();
     });
 
-    it('renders "Опубликовать все (N)" with the already-fetched total', async () => {
+    it('renders "Опубликовать все на странице (N)" with the number of rows on the page', async () => {
       listMock.mockResolvedValue({
-        items: [makeBook({ id: 'p1' })],
-        total: 7,
+        items: [makeBook({ id: 'p1' }), makeBook({ id: 'p2' })],
+        total: 45,
         page: 1,
         limit: 20,
       });
@@ -213,33 +202,36 @@ describe('BookModerationView', () => {
       renderView();
 
       expect(
-        await screen.findByRole('button', { name: 'Опубликовать все (7)' })
+        await screen.findByRole('button', { name: 'Опубликовать все на странице (2)' })
       ).toBeInTheDocument();
     });
 
-    it('confirms, then calls bulkPublish with the current search value, then shows a success summary', async () => {
+    it('confirms, then calls bulkStatus with the page ids, then shows a success summary', async () => {
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
       searchParamsValue = new URLSearchParams('search=Толстой');
       listMock.mockResolvedValue({
-        items: [makeBook({ id: 'p1' })],
+        items: [makeBook({ id: 'p1' }), makeBook({ id: 'p2' }), makeBook({ id: 'p3' })],
         total: 3,
         page: 1,
         limit: 20,
       });
-      bulkPublishMock.mockResolvedValue({ processed: 3, published: 3, errors: [] });
+      bulkStatusMock.mockResolvedValue({ processed: 3, updated: 3, errors: [] });
 
       renderView();
 
-      const button = await screen.findByRole('button', { name: 'Опубликовать все (3)' });
-      fireEvent.click(button);
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Опубликовать все на странице (3)' })
+      );
 
-      expect(confirmSpy).toHaveBeenCalledWith('Опубликовать все книги на проверке (3)?');
-      await waitFor(() => expect(bulkPublishMock).toHaveBeenCalledWith({ search: 'Толстой' }));
+      expect(confirmSpy).toHaveBeenCalledWith('Опубликовать все книги на этой странице (3)?');
+      await waitFor(() =>
+        expect(bulkStatusMock).toHaveBeenCalledWith(['p1', 'p2', 'p3'], 'published')
+      );
       expect(await screen.findByText('Опубликовано 3 из 3.')).toBeInTheDocument();
     });
 
-    it('passes search: undefined when no search is active', async () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
+    it('does not call bulkStatus when the confirmation is cancelled', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
       listMock.mockResolvedValue({
         items: [makeBook({ id: 'p1' })],
         total: 1,
@@ -249,48 +241,37 @@ describe('BookModerationView', () => {
 
       renderView();
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Опубликовать все (1)' }));
-      await waitFor(() => expect(bulkPublishMock).toHaveBeenCalledWith({ search: undefined }));
-    });
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Опубликовать все на странице (1)' })
+      );
 
-    it('does not call bulkPublish when the confirmation is cancelled', async () => {
-      vi.spyOn(window, 'confirm').mockReturnValue(false);
-      listMock.mockResolvedValue({
-        items: [makeBook({ id: 'p1' })],
-        total: 2,
-        page: 1,
-        limit: 20,
-      });
-
-      renderView();
-
-      const button = await screen.findByRole('button', { name: 'Опубликовать все (2)' });
-      fireEvent.click(button);
-
-      expect(bulkPublishMock).not.toHaveBeenCalled();
+      expect(bulkStatusMock).not.toHaveBeenCalled();
     });
 
     it('shows an error summary with a sample of row errors when the report contains failures', async () => {
       vi.spyOn(window, 'confirm').mockReturnValue(true);
       listMock.mockResolvedValue({
-        items: [makeBook({ id: 'p1' })],
+        items: [makeBook({ id: 'p1' }), makeBook({ id: 'p2' })],
         total: 2,
         page: 1,
         limit: 20,
       });
-      bulkPublishMock.mockResolvedValue({
+      bulkStatusMock.mockResolvedValue({
         processed: 2,
-        published: 1,
-        errors: [{ book_id: 'p2', title: 'Плохая книга', message: 'slug already exists' }],
+        updated: 1,
+        errors: [{ book_id: 'p2', title: '', message: 'book not found' }],
       });
 
       renderView();
 
-      const button = await screen.findByRole('button', { name: 'Опубликовать все (2)' });
-      fireEvent.click(button);
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Опубликовать все на странице (2)' })
+      );
 
       await waitFor(() =>
-        expect(screen.getByText(/Опубликовано 1 из 2\. Ошибок: 1/)).toBeInTheDocument()
+        expect(
+          screen.getByText(/Опубликовано 1 из 2\. Ошибок: 1 \(«p2»: book not found\)/)
+        ).toBeInTheDocument()
       );
     });
   });

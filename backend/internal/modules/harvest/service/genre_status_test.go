@@ -91,7 +91,7 @@ func TestProcessRecord_AllGenresRejectedStillCreatesHiddenBook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if outcome != outcomeCreated || len(repo.books) != 1 || !repo.books[0].IsHidden {
+	if outcome != outcomeCreated || len(repo.books) != 1 || repo.books[0].Status != catalogDomain.BookStatusPending {
 		t.Fatalf("expected one hidden book created, outcome=%v books=%+v", outcome, repo.books)
 	}
 	if len(repo.genres) != 2 {

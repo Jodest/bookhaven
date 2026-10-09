@@ -232,7 +232,7 @@ func TestListAuthorModerationQueue_AssemblesContextAndHints(t *testing.T) {
 		{Author: shortName},
 	}
 	repo.samples = map[uuid.UUID][]repository.SampleBook{
-		pendingTolstoy.ID: {{ID: bookID, Title: "Война и мир", IsHidden: true}},
+		pendingTolstoy.ID: {{ID: bookID, Title: "Война и мир", Status: catalogDomain.BookStatusPending}},
 	}
 	repo.candidates = []catalogDomain.Author{published}
 
