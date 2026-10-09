@@ -509,3 +509,50 @@ describe('BookForm stayOnSuccess', () => {
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/catalog/books'));
   });
 });
+
+describe('BookForm returnHref', () => {
+  beforeEach(() => {
+    pushMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  function renderEdit(returnHref?: string) {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BookForm initial={latinBook} onSubmit={onSubmit} returnHref={returnHref} />
+      </QueryClientProvider>
+    );
+    return onSubmit;
+  }
+
+  it('«Отмена» goes to returnHref without saving', () => {
+    const onSubmit = renderEdit('/catalog/books?status=pending&page=2');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(pushMock).toHaveBeenCalledWith('/catalog/books?status=pending&page=2');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('navigates to returnHref after a successful save', async () => {
+    const onSubmit = renderEdit('/moderation/books');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/moderation/books'));
+  });
+
+  it('defaults to /catalog/books for «Отмена»', () => {
+    renderEdit();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(pushMock).toHaveBeenCalledWith('/catalog/books');
+  });
+});

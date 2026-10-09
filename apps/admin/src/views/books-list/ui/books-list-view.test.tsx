@@ -14,6 +14,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 const listMock = vi.fn();
+const bulkStatusMock = vi.fn();
 const genresListMock = vi.fn();
 const authorsListMock = vi.fn();
 
@@ -21,6 +22,7 @@ vi.mock('@/entities/book', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/book')>()),
   adminBooksApi: {
     list: (...args: unknown[]) => listMock(...args),
+    bulkStatus: (...args: unknown[]) => bulkStatusMock(...args),
   },
 }));
 
@@ -64,11 +66,13 @@ function renderView() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+  const utils = render(
     <QueryClientProvider client={queryClient}>
       <BooksListView />
     </QueryClientProvider>
   );
+  return { invalidateSpy, ...utils };
 }
 
 describe('BooksListView', () => {
@@ -76,6 +80,8 @@ describe('BooksListView', () => {
     searchParamsValue = new URLSearchParams();
     pushMock.mockReset();
     listMock.mockReset();
+    bulkStatusMock.mockReset();
+    window.sessionStorage.clear();
     genresListMock.mockReset();
     authorsListMock.mockReset();
     listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
@@ -121,10 +127,7 @@ describe('BooksListView', () => {
     ]);
 
     fireEvent.change(select, { target: { value: 'rejected' } });
-    await waitFor(() =>
-      expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('status=rejected'))
-    );
-    expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('page=1'));
+    expect(pushMock).toHaveBeenCalledWith('/catalog/books?status=rejected');
   });
 
   it('sends ?status= to the API', async () => {
@@ -197,7 +200,7 @@ describe('BooksListView', () => {
     expect(screen.getByText('Импортировано', { selector: 'span' })).toBeInTheDocument();
   });
 
-  it('has no publish actions, even for a hidden imported row; edit links to the catalog', async () => {
+  it('has no publish actions, even for a hidden imported row; edit links to the edit page with back', async () => {
     listMock.mockResolvedValue({
       items: [
         makeBook({ id: 'imported-2', title: 'На проверке', status: 'pending', external_source: 'wikidata' }),
@@ -210,17 +213,21 @@ describe('BooksListView', () => {
     renderView();
 
     const edit = await screen.findByRole('link', { name: 'Редактировать' });
-    expect(edit).toHaveAttribute('href', '/catalog/books/imported-2/edit');
+    expect(edit).toHaveAttribute(
+      'href',
+      `/catalog/books/imported-2/edit?back=${encodeURIComponent('/catalog/books')}`
+    );
     expect(screen.queryByRole('button', { name: /Опубликовать/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Снять с публикации' })).not.toBeInTheDocument();
   });
 
   describe('genre/author/source filters', () => {
-    it('selecting a genre updates the URL with genre_id and resets page to 1', async () => {
+    it('selecting a genre updates the URL with genre_id and drops page', async () => {
       searchParamsValue = new URLSearchParams('page=2');
       renderView();
 
-      const option = await screen.findByRole('option', { name: 'Фантастика' });
-      const select = option.closest('select') as HTMLSelectElement;
+      await screen.findByRole('option', { name: 'Фантастика' });
+      const select = screen.getByLabelText('Жанр') as HTMLSelectElement;
       fireEvent.change(select, { target: { value: 'g1' } });
 
       await waitFor(() =>
@@ -228,15 +235,15 @@ describe('BooksListView', () => {
           expect.stringContaining('genre_id=g1')
         )
       );
-      expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('page=1'));
+      expect(pushMock).toHaveBeenLastCalledWith(expect.not.stringContaining('page='));
     });
 
-    it('selecting an author updates the URL with author_id and resets page to 1', async () => {
+    it('selecting an author updates the URL with author_id and drops page', async () => {
       searchParamsValue = new URLSearchParams('page=2');
       renderView();
 
-      const option = await screen.findByRole('option', { name: 'Автор' });
-      const select = option.closest('select') as HTMLSelectElement;
+      await screen.findByRole('option', { name: 'Автор' });
+      const select = screen.getByLabelText('Автор') as HTMLSelectElement;
       fireEvent.change(select, { target: { value: 'a1' } });
 
       await waitFor(() =>
@@ -244,14 +251,13 @@ describe('BooksListView', () => {
           expect.stringContaining('author_id=a1')
         )
       );
-      expect(pushMock).toHaveBeenCalledWith(expect.stringContaining('page=1'));
+      expect(pushMock).toHaveBeenLastCalledWith(expect.not.stringContaining('page='));
     });
 
     it('selecting a source updates the URL and passes it through to adminBooksApi.list', async () => {
       renderView();
 
-      const option = await screen.findByRole('option', { name: 'Добавлено вручную' });
-      const sourceSelect = option.closest('select') as HTMLSelectElement;
+      const sourceSelect = (await screen.findByLabelText('Источник')) as HTMLSelectElement;
       fireEvent.change(sourceSelect, { target: { value: 'harvested' } });
 
       await waitFor(() =>
@@ -276,6 +282,22 @@ describe('BooksListView', () => {
       );
     });
 
+    it('drops an invalid source and keeps an unknown author id', async () => {
+      searchParamsValue = new URLSearchParams('author_id=unknown&source=evil&search=x');
+      renderView();
+
+      await waitFor(() => expect(listMock).toHaveBeenCalled());
+      expect(listMock.mock.calls[0][0]).toEqual({
+        search: 'x',
+        status: '',
+        authorId: 'unknown',
+        genreId: undefined,
+        source: '',
+        page: 1,
+        limit: 20,
+      });
+    });
+
     it('clearing a filter removes the corresponding query param', async () => {
       searchParamsValue = new URLSearchParams('genre_id=g1');
       renderView();
@@ -287,5 +309,39 @@ describe('BooksListView', () => {
       const lastCall = pushMock.mock.calls[pushMock.mock.calls.length - 1][0] as string;
       expect(lastCall).not.toContain('genre_id');
     });
+  });
+
+  it('unpublishes a published book → pending and invalidates books + dashboard', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    listMock.mockResolvedValue({ items: [makeBook()], total: 1, page: 1, limit: 20 });
+    bulkStatusMock.mockResolvedValue({ processed: 1, updated: 1, errors: [] });
+
+    const { invalidateSpy } = renderView();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Снять с публикации' }));
+    expect(window.confirm).toHaveBeenCalledWith(
+      'Снять книгу «Тестовая книга» с публикации? Она вернётся в очередь модерации.'
+    );
+    await waitFor(() => expect(bulkStatusMock).toHaveBeenCalledWith(['book-1'], 'pending'));
+    expect(
+      await screen.findByText('Книга «Тестовая книга» снята с публикации и возвращена на модерацию.')
+    ).toBeInTheDocument();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'books'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'dashboard'] });
+  });
+
+  it('cancelling the unpublish confirm does nothing', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    listMock.mockResolvedValue({ items: [makeBook()], total: 1, page: 1, limit: 20 });
+
+    renderView();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Снять с публикации' }));
+    expect(bulkStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('links to the book moderation queue from the header', async () => {
+    renderView();
+    expect(screen.getByRole('link', { name: 'Очередь модерации' })).toHaveAttribute('href', '/moderation/books');
   });
 });

@@ -1,66 +1,81 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { adminBooksApi, BookStatusBadge, BOOK_STATUS_LABELS } from '@/entities/book';
 import { adminAuthorsApi } from '@/entities/author';
 import { adminGenresApi } from '@/entities/genre';
-import { AdminBook, AdminBookStatus } from '@bookhaven/api-client';
+import { AdminBook } from '@bookhaven/api-client';
+import { Badge } from '@bookhaven/ui';
+import { useBookStatusMutation } from '@/features/moderate-book';
 import {
-  Button,
-  Input,
-  Badge,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Select,
-} from '@bookhaven/ui';
-import Link from 'next/link';
-import { Search } from 'lucide-react';
-import { Pagination } from '@/shared/ui';
+  CatalogList,
+  type CatalogListColumn,
+  type CatalogListFilter,
+  type CatalogListState,
+} from '@/widgets/catalog-list';
 
-const STATUS_FILTER_OPTIONS = [
-  { value: '', label: 'Все статусы' },
-  { value: 'published', label: BOOK_STATUS_LABELS.published },
-  { value: 'pending', label: BOOK_STATUS_LABELS.pending },
-  { value: 'rejected', label: BOOK_STATUS_LABELS.rejected },
+// Catalog books list (docs/features/catalog-unified-lists.md), rendered
+// through the shared widgets/catalog-list shell.
+
+type BooksListParams = NonNullable<Parameters<typeof adminBooksApi.list>[0]>;
+
+const SOURCE_OPTIONS = [
+  { value: '', label: 'Все' },
+  { value: 'manual', label: 'Добавлено вручную' },
+  { value: 'harvested', label: 'Импортировано' },
 ];
 
-// Only valid statuses are sent; anything else (including the legacy
-// `visibility` param, which is no longer read) means "all".
-function parseStatus(value: string | null): AdminBookStatus | '' {
-  return value === 'pending' || value === 'published' || value === 'rejected' ? value : '';
+function parseSource(value: string | undefined): 'manual' | 'harvested' | '' {
+  return value === 'manual' || value === 'harvested' ? value : '';
 }
 
+// The legacy `visibility` param is never read; an invalid status means "all".
+const buildParams = ({ status, search, page, limit, filters }: CatalogListState): BooksListParams => ({
+  search,
+  status: status ?? '',
+  // Unknown author/genre ids (e.g. beyond the first 100 options) still filter.
+  authorId: filters.author_id,
+  genreId: filters.genre_id,
+  source: parseSource(filters.source),
+  page,
+  limit,
+});
+
+const COLUMNS: CatalogListColumn<AdminBook>[] = [
+  {
+    id: 'title',
+    header: 'Название',
+    cell: (book) => <span className="font-medium">{book.title}</span>,
+  },
+  {
+    id: 'authors',
+    header: 'Авторы',
+    cell: (book) => book.authors.map((a) => a.name).join(', ') || '—',
+  },
+  {
+    id: 'genres',
+    header: 'Жанры',
+    cell: (book) => book.genres.map((g) => g.name).join(', ') || '—',
+  },
+  {
+    id: 'status',
+    header: 'Статус',
+    cell: (book) => (
+      <div className="flex flex-wrap gap-1">
+        <BookStatusBadge status={book.status} />
+        {book.external_source && <Badge variant="outline">Импортировано</Badge>}
+      </div>
+    ),
+  },
+];
+
 export function BooksListView() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const statusMutation = useBookStatusMutation();
 
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-  const status = parseStatus(searchParams.get('status'));
-  const genreId = searchParams.get('genre_id') || '';
-  const authorId = searchParams.get('author_id') || '';
-  const source = searchParams.get('source') || '';
-  const limit = 20;
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'books', { search, status, genreId, authorId, source, page }],
-    queryFn: () =>
-      adminBooksApi.list({
-        search: search || undefined,
-        status,
-        genreId: genreId || undefined,
-        authorId: authorId || undefined,
-        source: source as 'manual' | 'harvested' | '',
-        page,
-        limit,
-      }),
+  const { data: authorsData } = useQuery({
+    queryKey: ['admin', 'authors', 'all'],
+    queryFn: () => adminAuthorsApi.list({ limit: 100 }),
   });
 
   const { data: genresData } = useQuery({
@@ -68,150 +83,54 @@ export function BooksListView() {
     queryFn: () => adminGenresApi.list({ limit: 100 }),
   });
 
-  const { data: authorsData } = useQuery({
-    queryKey: ['admin', 'authors', 'all'],
-    queryFn: () => adminAuthorsApi.list({ limit: 100 }),
-  });
-
-  const genreOptions = [
-    { value: '', label: 'Все жанры' },
-    ...(genresData?.items.map((g) => ({ value: g.id, label: g.name })) || []),
+  const filters: CatalogListFilter[] = [
+    {
+      param: 'author_id',
+      label: 'Автор',
+      options: [
+        { value: '', label: 'Все авторы' },
+        ...(authorsData?.items.map((a) => ({ value: a.id, label: a.name })) ?? []),
+      ],
+    },
+    {
+      param: 'genre_id',
+      label: 'Жанр',
+      options: [
+        { value: '', label: 'Все жанры' },
+        ...(genresData?.items.map((g) => ({ value: g.id, label: g.name })) ?? []),
+      ],
+    },
+    { param: 'source', label: 'Источник', options: SOURCE_OPTIONS },
   ];
-
-  const authorOptions = [
-    { value: '', label: 'Все авторы' },
-    ...(authorsData?.items.map((a) => ({ value: a.id, label: a.name })) || []),
-  ];
-
-  const sourceOptions = [
-    { value: '', label: 'Все' },
-    { value: 'manual', label: 'Добавлено вручную' },
-    { value: 'harvested', label: 'Импортировано' },
-  ];
-
-  const updateParams = (updates: Record<string, string | undefined>) => {
-    const params = new URLSearchParams(searchParams.toString());
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value === undefined || value === '') {
-        params.delete(key);
-      } else {
-        params.set(key, value);
-      }
-    });
-    router.push(`${pathname}?${params.toString()}` as any);
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateParams({ search, page: '1' });
-  };
-
-  const totalPages = data ? Math.ceil(data.total / limit) : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Книги</h1>
-      </div>
-
-      <div className="flex flex-col gap-4 md:flex-row">
-        <form onSubmit={handleSearch} className="flex flex-1 gap-2">
-          <Input
-            placeholder="Поиск по названию, ISBN, описанию"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <Button type="submit" variant="outline">
-            <Search className="h-4 w-4" />
-          </Button>
-        </form>
-        <Select
-          aria-label="Статус"
-          options={STATUS_FILTER_OPTIONS}
-          value={status}
-          onChange={(e) => updateParams({ status: e.target.value, page: '1' })}
-          className="w-full md:w-48"
-        />
-        <Select
-          options={genreOptions}
-          value={genreId}
-          onChange={(e) => updateParams({ genre_id: e.target.value, page: '1' })}
-          className="w-full md:w-48"
-        />
-        <Select
-          options={authorOptions}
-          value={authorId}
-          onChange={(e) => updateParams({ author_id: e.target.value, page: '1' })}
-          className="w-full md:w-48"
-        />
-        <Select
-          options={sourceOptions}
-          value={source}
-          onChange={(e) => updateParams({ source: e.target.value, page: '1' })}
-          className="w-full md:w-48"
-        />
-      </div>
-
-      {error && (
-        <div className="rounded-md bg-destructive/10 p-4 text-destructive">
-          Не удалось загрузить книги.
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="h-64 animate-pulse rounded-lg bg-muted" />
-      ) : data?.items.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
-          Книги не найдены.
-        </div>
-      ) : (
-        <>
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Название</TableHead>
-                  <TableHead>Авторы</TableHead>
-                  <TableHead>Жанры</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead className="text-right">Действия</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.items.map((book: AdminBook) => (
-                  <TableRow key={book.id}>
-                    <TableCell className="font-medium">{book.title}</TableCell>
-                    <TableCell>
-                      {book.authors.map((a) => a.name).join(', ') || '—'}
-                    </TableCell>
-                    <TableCell>
-                      {book.genres.map((g) => g.name).join(', ') || '—'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        <BookStatusBadge status={book.status} />
-                        {book.external_source && (
-                          <Badge variant="outline">Импортировано</Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Link href={`/catalog/books/${book.id}/edit` as any}>
-                          <Button variant="ghost" size="sm">
-                            Редактировать
-                          </Button>
-                        </Link>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <Pagination page={page} totalPages={totalPages} onPageChange={(p) => updateParams({ page: String(p) })} />
-        </>
-      )}
-    </div>
+    <CatalogList
+      title="Книги"
+      headerExtra={
+        <Link href={'/moderation/books' as any} className="text-sm text-primary hover:underline">
+          Очередь модерации
+        </Link>
+      }
+      entityPath="/catalog/books"
+      flashKey="catalog.books"
+      queryKey={['admin', 'books']}
+      buildParams={buildParams}
+      queryFn={(params) => adminBooksApi.list(params)}
+      statusMutation={statusMutation}
+      getId={(book) => book.id}
+      getName={(book) => book.title}
+      getStatus={(book) => book.status}
+      statusLabels={BOOK_STATUS_LABELS}
+      filters={filters}
+      columns={COLUMNS}
+      copy={{
+        searchPlaceholder: 'Поиск по названию, ISBN, описанию',
+        loadError: 'Не удалось загрузить книги.',
+        empty: 'Книги не найдены.',
+        statusErrorFallback: 'Не удалось снять книгу с публикации.',
+        unpublishConfirm: (name) => `Снять книгу «${name}» с публикации? Она вернётся в очередь модерации.`,
+        unpublishSuccess: (name) => `Книга «${name}» снята с публикации и возвращена на модерацию.`,
+      }}
+    />
   );
 }

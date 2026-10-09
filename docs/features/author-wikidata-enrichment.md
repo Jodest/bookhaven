@@ -104,6 +104,7 @@ Frontend
 ## UX
 
 - Row button: "Обогатить из Wikidata", no confirm (non-destructive, fill-empty-only). Disabled while pending.
+- Update (#316): the same row action is also offered in the catalog authors list (`/catalog/authors`, rows with a QID), not on the edit page ([catalog-unified-lists.md](catalog-unified-lists.md)).
 - Bulk: "Обогатить из Wikidata (N)", no confirm. Rows without QID in the selection are not sent; banner says "Без QID пропущено: K".
 - Result banner (single): «Автор «X»: добавлены дата рождения, дата смерти, фото.» / «Автор «X»: нечего добавить — поля уже заполнены или в Wikidata нет подходящих данных.» + notes mapped to Russian:
   - `birth_date_unusable` / `death_date_unusable`: «дата рождения/смерти в Wikidata неточная или противоречивая — пропущена»

@@ -76,7 +76,7 @@ describe('ImportGenresView', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Жанр создан');
     expect(screen.getByRole('link', { name: 'Открыть в каталоге' })).toHaveAttribute(
       'href',
-      `/catalog/genres?search=${encodeURIComponent('повесть')}`
+      '/catalog/genres/g1/edit'
     );
     expect(name.value).toBe('');
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'genres'] });

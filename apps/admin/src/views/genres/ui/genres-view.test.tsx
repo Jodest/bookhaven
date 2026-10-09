@@ -1,7 +1,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, type AdminGenre } from '@bookhaven/api-client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AdminGenre } from '@bookhaven/api-client';
 import { GenresView } from './genres-view';
 
 const pushMock = vi.fn();
@@ -14,15 +14,13 @@ vi.mock('next/navigation', () => ({
 }));
 
 const listMock = vi.fn();
-const createMock = vi.fn();
-const updateMock = vi.fn();
+const bulkStatusMock = vi.fn();
 
 vi.mock('@/entities/genre', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/genre')>()),
   adminGenresApi: {
     list: (...args: unknown[]) => listMock(...args),
-    create: (...args: unknown[]) => createMock(...args),
-    update: (...args: unknown[]) => updateMock(...args),
+    bulkStatus: (...args: unknown[]) => bulkStatusMock(...args),
   },
 }));
 
@@ -41,20 +39,26 @@ function renderView() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+  const utils = render(
     <QueryClientProvider client={queryClient}>
       <GenresView />
     </QueryClientProvider>
   );
+  return { invalidateSpy, ...utils };
 }
 
-describe('GenresView status and QID', () => {
+describe('GenresView (catalog list)', () => {
   beforeEach(() => {
     searchParamsValue = new URLSearchParams();
     pushMock.mockReset();
     listMock.mockReset();
-    createMock.mockReset();
-    updateMock.mockReset();
+    bulkStatusMock.mockReset();
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('shows a status badge and a linked QID per genre', async () => {
@@ -81,68 +85,52 @@ describe('GenresView status and QID', () => {
     );
   });
 
-  it('reads the status filter from the URL and writes it back on change', async () => {
-    searchParamsValue = new URLSearchParams('status=pending');
+  it('builds list params from the URL and writes the status back', async () => {
+    searchParamsValue = new URLSearchParams('status=pending&page=3');
     listMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
 
     renderView();
 
     await waitFor(() =>
-      expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }))
+      expect(listMock).toHaveBeenCalledWith({ search: undefined, status: 'pending', page: 3, limit: 20 })
     );
     const filter = screen.getByLabelText('Статус') as HTMLSelectElement;
     expect(filter.value).toBe('pending');
 
     fireEvent.change(filter, { target: { value: 'rejected' } });
-    expect(pushMock).toHaveBeenCalledWith('/catalog/genres?status=rejected&page=1');
+    expect(pushMock).toHaveBeenCalledWith('/catalog/genres?status=rejected');
   });
 
-  it('has no create form: the form appears only on «Редактировать»', async () => {
+  it('links «Редактировать» to the edit page with back and has no inline form', async () => {
     listMock.mockResolvedValue({ items: [makeGenre()], total: 1, page: 1, limit: 20 });
 
     renderView();
 
-    await screen.findByRole('button', { name: 'Редактировать' });
+    const edit = await screen.findByRole('link', { name: 'Редактировать' });
+    expect(edit).toHaveAttribute('href', `/catalog/genres/g1/edit?back=${encodeURIComponent('/catalog/genres')}`);
+    fireEvent.click(edit);
+    expect(screen.queryByLabelText('Название *')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Сохранить' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Создать' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Название *')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
-    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
-    expect(screen.queryByLabelText('Название *')).not.toBeInTheDocument();
-    expect(createMock).not.toHaveBeenCalled();
   });
 
-  it('sends status + QID on edit, then hides the form and shows «Жанр обновлен»', async () => {
-    listMock.mockResolvedValue({
-      items: [makeGenre({ status: 'pending', wikidata_qid: 'Q8261' })],
-      total: 1,
-      page: 1,
-      limit: 20,
-    });
-    updateMock.mockResolvedValue(makeGenre());
+  it('unpublishes a published genre → pending and invalidates genres + dashboard', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    listMock.mockResolvedValue({ items: [makeGenre()], total: 1, page: 1, limit: 20 });
+    bulkStatusMock.mockResolvedValue({ processed: 1, updated: 1, errors: [] });
 
-    renderView();
+    const { invalidateSpy } = renderView();
 
-    // Edit form: status + QID pre-filled; clearing the QID sends "".
-    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать' }));
-    const statusSelect = screen.getByLabelText('Статус', { selector: '#status' }) as HTMLSelectElement;
-    expect(statusSelect.value).toBe('pending');
-    const qidInput = screen.getByLabelText('Wikidata QID') as HTMLInputElement;
-    expect(qidInput.value).toBe('Q8261');
-    fireEvent.change(statusSelect, { target: { value: 'published' } });
-    fireEvent.change(qidInput, { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
-
-    await waitFor(() =>
-      expect(updateMock).toHaveBeenCalledWith(
-        'g1',
-        expect.objectContaining({ status: 'published', wikidata_qid: '' })
-      )
+    fireEvent.click(await screen.findByRole('button', { name: 'Снять с публикации' }));
+    expect(window.confirm).toHaveBeenCalledWith(
+      'Снять жанр «роман» с публикации? Он вернётся в очередь модерации.'
     );
-    await waitFor(() => expect(screen.getByText('Жанр обновлен')).toBeInTheDocument());
-    expect(screen.queryByLabelText('Название *')).not.toBeInTheDocument();
+    await waitFor(() => expect(bulkStatusMock).toHaveBeenCalledWith(['g1'], 'pending'));
+    expect(
+      await screen.findByText('Жанр «роман» снят с публикации и возвращён на модерацию.')
+    ).toBeInTheDocument();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'genres'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'dashboard'] });
   });
 
   it('links to the genre moderation queue from the header', async () => {
@@ -152,23 +140,5 @@ describe('GenresView status and QID', () => {
       'href',
       '/moderation/genres'
     );
-  });
-
-  it('extends a 409 QID conflict on update with a merged-genre hint and keeps other messages', async () => {
-    listMock.mockResolvedValue({ items: [makeGenre()], total: 1, page: 1, limit: 20 });
-    updateMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'genre wikidata qid already exists'));
-    renderView();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
-    await waitFor(() =>
-      expect(
-        screen.getByText('genre wikidata qid already exists (возможно, у слитого жанра)')
-      ).toBeInTheDocument()
-    );
-
-    updateMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'slug already exists'));
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
-    await waitFor(() => expect(screen.getByText('slug already exists')).toBeInTheDocument());
   });
 });
