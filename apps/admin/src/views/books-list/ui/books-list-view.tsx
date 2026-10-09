@@ -20,7 +20,7 @@ import {
   Select,
 } from '@bookhaven/ui';
 import Link from 'next/link';
-import { Plus, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Pagination } from '@/shared/ui';
 
 const STATUS_FILTER_OPTIONS = [
@@ -112,12 +112,6 @@ export function BooksListView() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Книги</h1>
-        <Link href={'/catalog/books/new' as any}>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Добавить книгу
-          </Button>
-        </Link>
       </div>
 
       <div className="flex flex-col gap-4 md:flex-row">

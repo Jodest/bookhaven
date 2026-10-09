@@ -323,7 +323,7 @@ describe('AuthorModerationView', () => {
       expect.objectContaining({ status: 'published', books: 'none' })
     );
   });
-  it('has no "Импорт из Wikidata" button and no import panel (moved to /import/author)', async () => {
+  it('has no "Импорт из Wikidata" button and no import panel (moved to /import/authors)', async () => {
     renderView();
     await waitFor(() => expect(screen.getByText('Война и мир')).toBeInTheDocument());
 

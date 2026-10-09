@@ -2,6 +2,8 @@
 
 Status: done
 
+> **Update ([import-by-entity.md](import-by-entity.md), #314):** the author import page moved from `/import/author` to the «Wikidata» section of Импорт → Авторы `/import/authors` (`widgets/wikidata-author-import`, `WikidataAuthorImportPanel`); the old URL redirects. Manual author creation moved from Каталог → Авторы to the «Вручную» section on the same tab. The import empty hint now reads «…или создайте автора вручную в разделе «Вручную».»
+
 Epic: "Author moderation & import", feature 3 of 4. Builds on [author-status.md](author-status.md) (feature 1: `status`, QID, tombstones, harvest resolver rule 4), [author-moderation-queue.md](author-moderation-queue.md) (feature 2: `/authors/moderation`) and [harvest-author-search.md](harvest-author-search.md) (`SearchAuthors`, `GET /admin/harvest/authors/search`, `POST /admin/harvest`). Those docs are the source of truth and are not reopened here.
 
 Feature 4 ([author-wikidata-enrichment.md](author-wikidata-enrichment.md)) shipped: a `created` import is now enriched with dates and a Commons photo from the same Wikidata fetch, and the response gains `enrichment`.

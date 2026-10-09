@@ -26,7 +26,21 @@ vi.mock('@/entities/author', async (importOriginal) => ({
   },
 }));
 
-vi.mock('@/features/merge-author', () => ({ MergeAuthorDialog: () => null }));
+vi.mock('@/features/merge-author', () => ({
+  MergeAuthorDialog: ({
+    duplicate,
+    onMerged,
+  }: {
+    duplicate: AdminAuthor;
+    onMerged: (booksReassigned: number) => void;
+  }) => (
+    <div role="dialog" aria-label={`Слияние ${duplicate.name}`}>
+      <button type="button" onClick={() => onMerged(2)}>
+        Подтвердить слияние
+      </button>
+    </div>
+  ),
+}));
 
 function makeAuthor(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
   return {
@@ -99,21 +113,29 @@ describe('AuthorsView status', () => {
     expect(pushMock).toHaveBeenCalledWith('/catalog/authors?status=rejected&page=1');
   });
 
-  it('sends status on edit only, never on create', async () => {
+  it('has no create form: the form appears only on «Редактировать»', async () => {
+    listMock.mockResolvedValue({ items: [makeAuthor()], total: 1, page: 1, limit: 20 });
+
+    renderView();
+
+    await screen.findByRole('button', { name: 'Редактировать' });
+    expect(screen.queryByRole('button', { name: 'Создать' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Имя *')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Редактировать' }));
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+    expect(screen.queryByLabelText('Имя *')).not.toBeInTheDocument();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('sends status on edit, hides the form after save and shows «Автор обновлен»', async () => {
     listMock.mockResolvedValue({ items: [makeAuthor({ status: 'pending' })], total: 1, page: 1, limit: 20 });
-    createMock.mockResolvedValue(makeAuthor());
     updateMock.mockResolvedValue(makeAuthor());
 
     renderView();
 
-    // Create form: no status select.
-    expect(screen.queryByLabelText('Статус', { selector: '#status' })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Имя *'), { target: { value: 'Новый автор' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
-    await waitFor(() => expect(createMock).toHaveBeenCalled());
-    expect(createMock.mock.calls[0][0]).not.toHaveProperty('status');
-
-    // Edit form: status select pre-filled and sent.
     fireEvent.click(await screen.findByRole('button', { name: 'Редактировать' }));
     const statusSelect = screen.getByLabelText('Статус', { selector: '#status' }) as HTMLSelectElement;
     expect(statusSelect.value).toBe('pending');
@@ -123,6 +145,36 @@ describe('AuthorsView status', () => {
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith('a1', expect.objectContaining({ status: 'published' }))
     );
+    await waitFor(() => expect(screen.getByText('Автор обновлен')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Имя *')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Сохранить' })).not.toBeInTheDocument();
+  });
+
+  it('shows an update error inline in the edit form', async () => {
+    listMock.mockResolvedValue({ items: [makeAuthor()], total: 1, page: 1, limit: 20 });
+    updateMock.mockRejectedValue(new Error('slug already exists'));
+
+    renderView();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(screen.getByText('slug already exists')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeInTheDocument();
+  });
+
+  it('still opens the merge dialog and shows the merge result', async () => {
+    listMock.mockResolvedValue({ items: [makeAuthor()], total: 1, page: 1, limit: 20 });
+
+    renderView();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Слить' }));
+    expect(screen.getByRole('dialog', { name: 'Слияние Лев Толстой' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить слияние' }));
+
+    expect(
+      screen.getByText('Автор «Лев Толстой» слит с каноническим автором. Перенесено книг: 2.')
+    ).toBeInTheDocument();
   });
 
   it('has no "Очередь модерации" link in the header', async () => {
