@@ -2,6 +2,7 @@ import { act, render, screen, waitFor, fireEvent, within } from '@testing-librar
 import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@bookhaven/api-client';
+import { consumeFlash, setFlash } from '@/shared/lib';
 import { ModerationQueue } from './moderation-queue';
 import { moderationCreatedAtColumn } from './created-at-column';
 import type {
@@ -398,5 +399,23 @@ describe('ModerationQueue', () => {
     queryFnMock.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
     renderQueue();
     await waitFor(() => expect(screen.getByText(text)).toBeInTheDocument());
+  });
+
+  it('flashKey: consumes a stored flash into a success banner', async () => {
+    window.sessionStorage.clear();
+    setFlash('test.things', 'Штука сохранена.');
+    renderQueue({ flashKey: 'test.things' });
+    await loaded();
+    expect(screen.getByText('Штука сохранена.')).toBeInTheDocument();
+    expect(consumeFlash('test.things')).toBeNull();
+  });
+
+  it('without flashKey a stored flash is left untouched', async () => {
+    window.sessionStorage.clear();
+    setFlash('test.things', 'Штука сохранена.');
+    renderQueue();
+    await loaded();
+    expect(screen.queryByText('Штука сохранена.')).not.toBeInTheDocument();
+    expect(consumeFlash('test.things')).toBe('Штука сохранена.');
   });
 });

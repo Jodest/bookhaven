@@ -281,4 +281,5 @@ FSD: `app → views → widgets → features → entities → shared`. `widgets/
 - `features/moderate-book` exports `useBookStatusMutation` (+ `BookStatusChange`) for F4 to reuse.
 - Import create sections store the created `{ id, name }`; the banner text is unchanged.
 - F2 files (`views/*-moderation`, `widgets/moderation-queue`) are untouched.
+- Closed in #317 (LOW review note): the book edit page could return to `/moderation/books`, which did not read the flash, so `Книга «X» сохранена.` stayed in sessionStorage and popped up later in `/catalog/books`. The book moderation queue now consumes `catalog.books` via the moderation widget's `flashKey` prop, so the key means "book-saved flash, consumed by whichever book list the edit page returns to" (see [book-moderation-ui.md](book-moderation-ui.md)).
 - Checks: `tsc --noEmit`, `next lint`, `vitest run` (51 files, 496 tests) pass in `apps/admin`. Smoke after `docker compose restart admin`: `/catalog/{books,authors,genres}` and `/catalog/{books,authors,genres}/<real id>/edit` return 200, as do the zero-UUID author/genre edit routes.
