@@ -65,6 +65,19 @@ type fakeRepository struct {
 	mergeGenresCalls int
 	mergeGenresBooks int64
 
+	// Book moderation queue (book_moderation_queue_test.go): bookModRows
+	// backs ListBooksForModeration; isbnCandidates / authorCandidates back
+	// the two hint queries (filtered in memory like the repository).
+	bookModRows       []catalogDomain.Book
+	lastBookModFilter repository.BookModerationFilter
+	isbnCandidates    []repository.BookHintCandidate
+	authorCandidates  []repository.BookHintCandidate
+	isbnHintCalls     int
+	authorHintCalls   int
+	lastHintISBNs     []string
+	lastHintAuthorIDs []uuid.UUID
+	lastHintExclude   []uuid.UUID
+
 	// listGenresByQIDsErr / listGenresByQIDsCalls back the genre
 	// Wikidata search markers (genre_import_test.go).
 	listGenresByQIDsErr   error

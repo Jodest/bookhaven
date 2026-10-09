@@ -1297,6 +1297,99 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/books/moderation": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Книги с заданным статусом (по умолчанию pending), новые сверху, с авторами и жанрами (с их статусами), источником, external_id и подсказками «возможно, та же книга» (same_isbn / same_title_author, только для отображения).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Очередь модерации книг (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Статус: pending (по умолчанию) / published / rejected",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Источник: manual / harvested",
+                        "name": "source",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Полнотекстовый поиск (название, ISBN, описание)",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Номер страницы",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Размер страницы, максимум 50",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.listBookQueueResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/books/{id}": {
             "get": {
                 "security": [
@@ -6832,6 +6925,64 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.bookHintBookResponse": {
+            "type": "object",
+            "properties": {
+                "external_source": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isbn": {
+                    "type": "string"
+                },
+                "published_year": {
+                    "type": "integer"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.bookHintResponse": {
+            "type": "object",
+            "properties": {
+                "book": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.bookHintBookResponse"
+                },
+                "match": {
+                    "description": "Match is same_isbn | same_title_author.",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.bookQueueItemResponse": {
+            "type": "object",
+            "properties": {
+                "book": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.bookResponse"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "external_id": {
+                    "type": "string"
+                },
+                "similar": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.bookHintResponse"
+                    }
+                }
+            }
+        },
         "internal_modules_admin_transport_http.bookResponse": {
             "type": "object",
             "properties": {
@@ -7315,6 +7466,26 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/internal_modules_admin_transport_http.authorResponse"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.listBookQueueResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.bookQueueItemResponse"
                     }
                 },
                 "limit": {
