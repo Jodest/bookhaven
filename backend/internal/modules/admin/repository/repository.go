@@ -105,6 +105,10 @@ type Repository interface {
 	// status, alias rows included. Returns gorm.ErrRecordNotFound when none
 	// exists.
 	GetGenreByQID(ctx context.Context, qid string) (*catalogDomain.Genre, error)
+	// ListGenresByQIDs returns the genres (any status, alias rows
+	// included) whose wikidata_qid is one of qids, in one query. Empty
+	// input returns an empty slice without a query.
+	ListGenresByQIDs(ctx context.Context, qids []string) ([]catalogDomain.Genre, error)
 	// SetGenreQID sets a genre's wikidata_qid without touching any other
 	// column (status included).
 	SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error
@@ -655,6 +659,17 @@ func (r *GormRepository) GetGenreByQID(ctx context.Context, qid string) (*catalo
 		return nil, err
 	}
 	return &genre, nil
+}
+
+func (r *GormRepository) ListGenresByQIDs(ctx context.Context, qids []string) ([]catalogDomain.Genre, error) {
+	if len(qids) == 0 {
+		return []catalogDomain.Genre{}, nil
+	}
+	var genres []catalogDomain.Genre
+	if err := r.db.WithContext(ctx).Where("wikidata_qid IN ?", qids).Find(&genres).Error; err != nil {
+		return nil, err
+	}
+	return genres, nil
 }
 
 func (r *GormRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {

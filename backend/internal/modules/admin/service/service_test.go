@@ -62,6 +62,11 @@ type fakeRepository struct {
 	mergeGenresErr     error
 	mergeGenresCalls   int
 	mergeGenresBooks   int64
+
+	// listGenresByQIDsErr / listGenresByQIDsCalls back the genre
+	// Wikidata search markers (genre_import_test.go).
+	listGenresByQIDsErr   error
+	listGenresByQIDsCalls int
 }
 
 func (f *fakeRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
@@ -304,6 +309,27 @@ func (f *fakeRepository) GetGenreByQID(ctx context.Context, qid string) (*catalo
 		}
 	}
 	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeRepository) ListGenresByQIDs(ctx context.Context, qids []string) ([]catalogDomain.Genre, error) {
+	f.listGenresByQIDsCalls++
+	if f.listGenresByQIDsErr != nil {
+		return nil, f.listGenresByQIDsErr
+	}
+	want := make(map[string]struct{}, len(qids))
+	for _, q := range qids {
+		want[q] = struct{}{}
+	}
+	out := []catalogDomain.Genre{}
+	for _, g := range f.genres {
+		if g.WikidataQID == nil {
+			continue
+		}
+		if _, ok := want[*g.WikidataQID]; ok {
+			out = append(out, g)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {

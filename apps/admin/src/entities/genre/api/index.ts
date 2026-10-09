@@ -7,4 +7,6 @@ export const adminGenresApi = {
   moderationQueue: api.admin.genres.moderationQueue,
   bulkStatus: api.admin.genres.bulkStatus,
   merge: api.admin.genres.merge,
+  searchWikidata: api.admin.genres.searchWikidata,
+  importWikidata: api.admin.genres.importWikidata,
 };

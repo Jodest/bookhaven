@@ -707,6 +707,51 @@ export interface AdminAuthorImportResult {
   enrichment: AdminAuthorImportEnrichment | null;
 }
 
+// Genre import from Wikidata (docs/features/genre-wikidata-import.md).
+
+// AdminGenreExistingMarker is the "already in BookHaven" marker of a genre
+// search candidate (QID match only): the canonical genre, plus the merged
+// alias carrying the QID when there is one.
+export interface AdminGenreExistingMarker {
+  id: string;
+  name: string;
+  slug: string;
+  status: AdminGenreStatus;
+  via_alias: { id: string; name: string; slug: string } | null;
+}
+
+// AdminGenreWikidataCandidate is one item of
+// GET /api/v1/admin/genres/wikidata-search. ru_label and literary_genre are
+// null when class_check is 'unavailable' (ru_label also when the item has
+// no Russian label).
+export interface AdminGenreWikidataCandidate {
+  qid: string;
+  label: string;
+  description: string;
+  ru_label: string | null;
+  literary_genre: boolean | null;
+  existing: AdminGenreExistingMarker | null;
+}
+
+export interface AdminGenreWikidataSearchResult {
+  class_check: 'ok' | 'unavailable';
+  items: AdminGenreWikidataCandidate[];
+}
+
+// AdminGenreImportResult is the response of
+// POST /api/v1/admin/genres/import-wikidata (201 created, 200 existing /
+// rejected). genre is the canonical genre; via_alias the merged genre the
+// match went through; qid_mismatch the QID of a same-named genre that
+// carries a different QID.
+export interface AdminGenreImportResult {
+  outcome: 'created' | 'existing' | 'rejected';
+  match: 'qid' | 'slug' | null;
+  qid_backfilled: boolean;
+  qid_mismatch: string | null;
+  via_alias: AdminGenre | null;
+  genre: AdminGenre;
+}
+
 const API_URL =
   typeof window === 'undefined'
     ? process.env.API_URL || 'http://backend:8080'
@@ -2007,6 +2052,19 @@ export const api = {
         fetcher<AdminGenreMergeResult>(`/api/v1/admin/genres/${sourceId}/merge`, {
           method: 'POST',
           body: JSON.stringify({ canonical_id: canonicalId }),
+        }),
+      // Literary-genre candidates from Wikidata. Errors: 400 empty q, 502
+      // Wikidata unavailable, 503 not configured.
+      searchWikidata: (q: string) =>
+        fetcher<AdminGenreWikidataSearchResult>(
+          `/api/v1/admin/genres/wikidata-search?${new URLSearchParams({ q })}`
+        ),
+      // Errors: 422 carries ApiError.code 'no_ru_label' |
+      // 'not_a_literary_genre'; 409 concurrent create; 502 / 503.
+      importWikidata: (qid: string) =>
+        fetcher<AdminGenreImportResult>('/api/v1/admin/genres/import-wikidata', {
+          method: 'POST',
+          body: JSON.stringify({ qid }),
         }),
     },
     users: {

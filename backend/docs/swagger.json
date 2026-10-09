@@ -1685,6 +1685,132 @@
                 }
             }
         },
+        "/admin/genres/import-wikidata": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Сначала ищет жанр в БД по QID с учётом слитых жанров (без запроса к Wikidata), затем загружает элемент Wikidata (нужно русское название), проверяет, что это литературный жанр, и сопоставляет по правилам харвеста: совпадение по slug без QID — QID привязывается; с другим QID — существующий жанр не меняется (qid_mismatch); слитый жанр — возвращается каноничный (via_alias); иначе создаётся жанр в статусе pending с QID. Отклонённые жанры повторно не создаются (outcome=rejected). Название, slug и статус существующего жанра не меняются. 201 — создан, 200 — existing / rejected. 422 содержит code: no_ru_label | not_a_literary_genre.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Импортировать литературный жанр из Wikidata по QID (админ)",
+                "parameters": [
+                    {
+                        "description": "QID элемента Wikidata",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.importWikidataGenreRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.genreImportResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.genreImportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/genres/moderation": {
             "get": {
                 "security": [
@@ -1768,6 +1894,94 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/wikidata-search": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Только чтение: ищет элементы Wikidata по названию (wbsearchentities, 20 кандидатов), одним SPARQL-запросом оставляет только литературные жанры и получает русское название, возвращает первые 10. Если проверку выполнить не удалось, class_check = unavailable, кандидаты не отфильтрованы, ru_label и literary_genre = null (импорт проверит жанр сам). Поле existing — жанр BookHaven с тем же QID (каноничный жанр; via_alias — слитый жанр, которому принадлежит QID) или null. Отсутствие совпадений — не ошибка (200, items: []).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Поиск литературных жанров в Wikidata (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Название жанра",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.genreWikidataSearchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -6691,6 +6905,40 @@
                 }
             }
         },
+        "internal_modules_admin_transport_http.genreAliasRefResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.genreExistingResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "via_alias": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.genreAliasRefResponse"
+                }
+            }
+        },
         "internal_modules_admin_transport_http.genreHintResponse": {
             "type": "object",
             "properties": {
@@ -6700,6 +6948,42 @@
                 "match": {
                     "description": "Match is exact_name | same_stem | shared_word.",
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.genreImportResponse": {
+            "type": "object",
+            "properties": {
+                "genre": {
+                    "description": "Genre is the canonical genre.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.genreResponse"
+                        }
+                    ]
+                },
+                "match": {
+                    "description": "Match is qid | slug for existing/rejected, null for created.",
+                    "type": "string"
+                },
+                "outcome": {
+                    "description": "Outcome is created | existing | rejected.",
+                    "type": "string"
+                },
+                "qid_backfilled": {
+                    "type": "boolean"
+                },
+                "qid_mismatch": {
+                    "description": "QIDMismatch is the QID of a same-named genre that carries a\ndifferent QID (left untouched), null otherwise.",
+                    "type": "string"
+                },
+                "via_alias": {
+                    "description": "ViaAlias is the merged genre the match was followed through, null\nfor a direct match.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.genreResponse"
+                        }
+                    ]
                 }
             }
         },
@@ -6768,12 +7052,61 @@
                 }
             }
         },
+        "internal_modules_admin_transport_http.genreWikidataCandidateResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "existing": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.genreExistingResponse"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "literary_genre": {
+                    "description": "LiteraryGenre is true for checked candidates, null when class_check\nis unavailable.",
+                    "type": "boolean"
+                },
+                "qid": {
+                    "type": "string"
+                },
+                "ru_label": {
+                    "description": "RuLabel is the Russian label; null when absent or when class_check\nis unavailable.",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.genreWikidataSearchResponse": {
+            "type": "object",
+            "properties": {
+                "class_check": {
+                    "description": "ClassCheck is ok | unavailable.",
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.genreWikidataCandidateResponse"
+                    }
+                }
+            }
+        },
         "internal_modules_admin_transport_http.importWikidataAuthorRequest": {
             "type": "object",
             "properties": {
                 "qid": {
                     "type": "string",
                     "example": "Q7200"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.importWikidataGenreRequest": {
+            "type": "object",
+            "properties": {
+                "qid": {
+                    "type": "string",
+                    "example": "Q132311"
                 }
             }
         },

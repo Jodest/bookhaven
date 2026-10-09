@@ -224,6 +224,10 @@ func (f *fakeMergeAuthorsRepository) GetGenreByQID(ctx context.Context, qid stri
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (f *fakeMergeAuthorsRepository) ListGenresByQIDs(ctx context.Context, qids []string) ([]catalogDomain.Genre, error) {
+	return []catalogDomain.Genre{}, nil
+}
+
 func (f *fakeMergeAuthorsRepository) SetGenreQID(ctx context.Context, id uuid.UUID, qid string) error {
 	return nil
 }

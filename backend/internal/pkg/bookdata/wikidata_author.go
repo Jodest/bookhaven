@@ -109,6 +109,22 @@ func (c *WikidataClient) FetchAuthor(ctx context.Context, qid string) (*External
 		return nil, ErrInvalidQuery
 	}
 
+	entity, err := c.getEntity(ctx, qid)
+	if err != nil {
+		return nil, err
+	}
+	record := parseAuthorEntity(*entity, time.Now())
+	if record == nil {
+		return nil, ErrNotFound
+	}
+	return record, nil
+}
+
+// getEntity fetches one (already validated) entity with getEntities and
+// picks it out of the response: a missing entity or a "no-such-entity"
+// error → ErrNotFound, another API error → ErrInvalidQuery. Shared by
+// FetchAuthor and FetchGenre.
+func (c *WikidataClient) getEntity(ctx context.Context, qid string) (*wbEntity, error) {
 	parsed, err := c.getEntities(ctx, []string{qid})
 	if err != nil {
 		return nil, err
@@ -132,11 +148,7 @@ func (c *WikidataClient) FetchAuthor(ctx context.Context, qid string) (*External
 			entity = e
 		}
 	}
-	record := parseAuthorEntity(entity, time.Now())
-	if record == nil {
-		return nil, ErrNotFound
-	}
-	return record, nil
+	return &entity, nil
 }
 
 // MaxEntitiesPerRequest is the wbgetentities / Commons imageinfo batch cap
@@ -273,18 +285,7 @@ func parseAuthorEntity(entity wbEntity, now time.Time) *ExternalAuthorRecord {
 	if label, ok := entity.Labels["ru"]; ok {
 		record.Name = label.Value
 	}
-	for _, claim := range entity.Claims["P31"] {
-		if claim.Mainsnak.SnakType != "value" || claim.Mainsnak.DataValue == nil {
-			continue
-		}
-		var v wbEntityIDValue
-		if err := json.Unmarshal(claim.Mainsnak.DataValue.Value, &v); err != nil {
-			continue
-		}
-		if wikidataQIDPattern.MatchString(v.ID) {
-			record.InstanceOf = append(record.InstanceOf, v.ID)
-		}
-	}
+	record.InstanceOf = entityIDClaims(entity.Claims["P31"])
 
 	record.BirthDate, record.BirthDateUnusable = selectClaimDate(entity.Claims["P569"], now)
 	record.DeathDate, record.DeathDateUnusable = selectClaimDate(entity.Claims["P570"], now)
@@ -294,4 +295,24 @@ func parseAuthorEntity(entity wbEntity, now time.Time) *ExternalAuthorRecord {
 	}
 	record.PhotoFile = selectClaimFile(entity.Claims["P18"])
 	return record
+}
+
+// entityIDClaims returns the valid QIDs of entity-valued claims (P31,
+// P279, ...); novalue/somevalue snaks and malformed values are skipped.
+// Returns nil when there are none.
+func entityIDClaims(claims []wbEntityClaim) []string {
+	var out []string
+	for _, claim := range claims {
+		if claim.Mainsnak.SnakType != "value" || claim.Mainsnak.DataValue == nil {
+			continue
+		}
+		var v wbEntityIDValue
+		if err := json.Unmarshal(claim.Mainsnak.DataValue.Value, &v); err != nil {
+			continue
+		}
+		if wikidataQIDPattern.MatchString(v.ID) {
+			out = append(out, v.ID)
+		}
+	}
+	return out
 }
