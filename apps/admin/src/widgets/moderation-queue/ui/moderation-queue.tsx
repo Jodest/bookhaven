@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '@bookhaven/ui';
 import { Search } from 'lucide-react';
+import { consumeFlash } from '@/shared/lib';
 import { Pagination } from '@/shared/ui';
 import { useQueueUrlState } from '../model/use-queue-url-state';
 import type {
@@ -56,6 +57,7 @@ export function ModerationQueue<TItem, TParams, TReport extends ModerationStatus
   renderOverlay,
   copy,
   limit = DEFAULT_LIMIT,
+  flashKey,
 }: ModerationQueueProps<TItem, TParams, TReport>) {
   const { state, search, paramsKey, pushParams } = useQueueUrlState(filters, limit);
   const { status, page } = state;
@@ -68,6 +70,16 @@ export function ModerationQueue<TItem, TParams, TReport extends ModerationStatus
   useEffect(() => {
     setSelected(new Set());
   }, [paramsKey]);
+
+  // One-shot success message left by an edit page (opt-in via flashKey).
+  // Only a non-null message touches the banner (strict-mode double effect).
+  useEffect(() => {
+    if (!flashKey) return;
+    const message = consumeFlash(flashKey);
+    if (message) {
+      setFeedback({ type: 'success', message });
+    }
+  }, [flashKey]);
 
   const params = buildParams(state);
   const { data, isLoading, error } = useQuery({

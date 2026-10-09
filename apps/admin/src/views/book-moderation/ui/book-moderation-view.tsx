@@ -1,249 +1,210 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { Search } from 'lucide-react';
-import { adminBooksApi } from '@/entities/book';
-import {
-  AdminBook,
-  AdminBookBulkStatusReport,
+import { usePathname, useSearchParams } from 'next/navigation';
+import type {
+  AdminBookHint,
+  AdminBookQueueItem,
+  AdminBookQueueParams,
   AdminBookStatus,
-  ApiError,
 } from '@bookhaven/api-client';
+import { AuthorStatusBadge } from '@/entities/author';
+import { adminBooksApi, BookStatusBadge } from '@/entities/book';
+import { GenreStatusBadge } from '@/entities/genre';
 import {
-  Button,
-  Input,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@bookhaven/ui';
-import { Pagination } from '@/shared/ui';
+  bookStatusConfirmText,
+  bulkBookStatusConfirmText,
+  bulkBookStatusSummary,
+  useBookStatusMutation,
+} from '@/features/moderate-book';
+import { buildEditHref } from '@/shared/lib';
+import {
+  ModerationQueue,
+  moderationCreatedAtColumn,
+  type ModerationQueueColumn,
+  type ModerationQueueFilter,
+  type ModerationQueueState,
+} from '@/widgets/moderation-queue';
 
-type StatusAction = { ids: string[]; status: Extract<AdminBookStatus, 'published' | 'rejected'> };
+// Book moderation queue (docs/features/book-moderation-ui.md), rendered
+// through the shared widgets/moderation-queue shell.
 
-/**
- * Book moderation queue: every book with status = pending, whatever its
- * source (docs/features/book-status-model.md). Row actions and the
- * "publish this page" header button all go through bulkStatus; the bulk
- * scope is the displayed page (20 rows, under the server cap of 100), not
- * the search.
- */
+const FILTERS: ModerationQueueFilter[] = [
+  {
+    param: 'source',
+    label: 'Источник',
+    options: [
+      { value: '', label: 'Источник: любой' },
+      { value: 'manual', label: 'Вручную' },
+      { value: 'harvested', label: 'Харвестер' },
+    ],
+  },
+];
+
+const MATCH_LABELS: Record<AdminBookHint['match'], string> = {
+  same_isbn: 'тот же ISBN',
+  same_title_author: 'то же название и автор',
+};
+
+const SUCCESS_MESSAGES: Record<AdminBookStatus, (title: string) => string> = {
+  published: (title) => `Книга «${title}» опубликована.`,
+  rejected: (title) => `Книга «${title}» отклонена.`,
+  pending: (title) => `Книга «${title}» возвращена на модерацию.`,
+};
+
+// Filter values are validated by the widget against FILTERS options.
+const buildParams = ({ status, search, page, limit, filters }: ModerationQueueState): AdminBookQueueParams => ({
+  status,
+  source: filters.source as AdminBookQueueParams['source'],
+  search,
+  page,
+  limit,
+});
+
+const Muted = () => <span className="text-muted-foreground">—</span>;
+
+/** "ISBN · год" with only the parts that exist; null when both are empty. */
+function isbnYear(isbn: string | null, year: number | null): string | null {
+  const parts = [isbn, year != null ? String(year) : null].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 export function BookModerationView() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const queryClient = useQueryClient();
+  const statusMutation = useBookStatusMutation();
 
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [feedback, setFeedback] = useState<{
-    type: 'success' | 'error';
-    message: string;
-  } | null>(null);
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-  const activeSearch = searchParams.get('search') || '';
-  const limit = 20;
+  const editHref = (id: string) => buildEditHref(`/catalog/books/${id}/edit`, pathname, searchParams);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'books', 'pending', { search: activeSearch, page }],
-    queryFn: () =>
-      adminBooksApi.list({
-        status: 'pending',
-        search: activeSearch || undefined,
-        page,
-        limit,
-      }),
-  });
-
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['admin', 'books'] });
-    queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
-  };
-
-  const statusMutation = useMutation({
-    mutationFn: ({ ids, status }: StatusAction) => adminBooksApi.bulkStatus(ids, status),
-    onSuccess: (report: AdminBookBulkStatusReport, { status }: StatusAction) => {
-      invalidate();
-      const verb = status === 'published' ? 'Опубликовано' : 'Отклонено';
-      const summary = `${verb} ${report.updated} из ${report.processed}.`;
-      if (report.errors.length > 0) {
-        const sample = report.errors
-          .slice(0, 3)
-          .map((e) => `«${e.title || e.book_id}»: ${e.message}`)
-          .join('; ');
-        setFeedback({
-          type: 'error',
-          message: `${summary} Ошибок: ${report.errors.length} (${sample}).`,
-        });
-      } else {
-        setFeedback({ type: 'success', message: summary });
-      }
+  const columns: ModerationQueueColumn<AdminBookQueueItem>[] = [
+    {
+      id: 'book',
+      header: 'Книга',
+      cellClassName: 'align-top',
+      cell: ({ book }) => {
+        const meta = isbnYear(book.isbn, book.published_year);
+        return (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href={editHref(book.id) as any} className="font-medium hover:underline">
+                {book.title}
+              </Link>
+              <BookStatusBadge status={book.status} />
+            </div>
+            {meta && <div className="text-xs text-muted-foreground">{meta}</div>}
+          </>
+        );
+      },
     },
-    onError: (error) => {
-      const message =
-        error instanceof ApiError
-          ? error.message || 'Не удалось изменить статус.'
-          : 'Не удалось изменить статус.';
-      setFeedback({ type: 'error', message });
+    {
+      id: 'authors',
+      header: 'Авторы',
+      cellClassName: 'align-top text-sm',
+      cell: ({ book }) => (
+        <BookPeopleCell items={book.authors} renderBadge={(status) => <AuthorStatusBadge status={status} />} />
+      ),
     },
-  });
-
-  const handleRowAction = (book: AdminBook, status: StatusAction['status']) => {
-    setFeedback(null);
-    const question =
-      status === 'published'
-        ? `Опубликовать книгу «${book.title}»?`
-        : `Отклонить книгу «${book.title}»?`;
-    if (!confirm(question)) {
-      return;
-    }
-    statusMutation.mutate({ ids: [book.id], status });
-  };
-
-  const pageIds = data?.items.map((b) => b.id) ?? [];
-
-  const handlePublishPage = () => {
-    setFeedback(null);
-    if (!confirm(`Опубликовать все книги на этой странице (${pageIds.length})?`)) {
-      return;
-    }
-    statusMutation.mutate({ ids: pageIds, status: 'published' });
-  };
-
-  const updateParams = (updates: Record<string, string | undefined>) => {
-    const params = new URLSearchParams(searchParams.toString());
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value === undefined || value === '') {
-        params.delete(key);
-      } else {
-        params.set(key, value);
-      }
-    });
-    router.push(`${pathname}?${params.toString()}` as any);
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateParams({ search, page: '1' });
-  };
-
-  const totalPages = data ? Math.ceil(data.total / limit) : 0;
+    {
+      id: 'genres',
+      header: 'Жанры',
+      cellClassName: 'align-top text-sm',
+      cell: ({ book }) => (
+        <BookPeopleCell items={book.genres} renderBadge={(status) => <GenreStatusBadge status={status} />} />
+      ),
+    },
+    {
+      id: 'source',
+      header: 'Источник',
+      cellClassName: 'align-top text-sm',
+      cell: (item) => <SourceCell source={item.book.external_source} externalId={item.external_id} />,
+    },
+    moderationCreatedAtColumn((item: AdminBookQueueItem) => item.created_at),
+    {
+      id: 'similar',
+      header: 'Возможно, та же книга',
+      cellClassName: 'align-top text-sm',
+      cell: (item) => <BookHints hints={item.similar} editHref={editHref} />,
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Книги на проверке</h1>
-        {pageIds.length > 0 && (
-          <Button onClick={handlePublishPage} disabled={statusMutation.isPending}>
-            Опубликовать все на странице ({pageIds.length})
-          </Button>
-        )}
-      </div>
+    <ModerationQueue
+      queryKey={['admin', 'books', 'moderation']}
+      buildParams={buildParams}
+      queryFn={(params) => adminBooksApi.moderationQueue(params)}
+      statusMutation={statusMutation}
+      getId={(item) => item.book.id}
+      getName={(item) => item.book.title}
+      getStatus={(item) => item.book.status}
+      filters={FILTERS}
+      columns={columns}
+      flashKey="catalog.books"
+      copy={{
+        title: 'Модерация книг',
+        searchPlaceholder: 'Поиск по названию или ISBN',
+        loadError: 'Не удалось загрузить очередь книг.',
+        emptyPending: 'Нет книг на модерации',
+        emptyFiltered: 'Книги не найдены',
+        statusErrorFallback: 'Не удалось изменить статус книги.',
+        rowConfirm: (next, item) => bookStatusConfirmText(next, item.book.title),
+        bulkConfirm: (next, items) => bulkBookStatusConfirmText(next, items.length),
+        rowSuccess: (next, title) => SUCCESS_MESSAGES[next](title),
+        bulkSummary: bulkBookStatusSummary,
+      }}
+    />
+  );
+}
 
-      <form onSubmit={handleSearch} className="flex gap-2">
-        <Input
-          placeholder="Поиск по названию, ISBN, описанию"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <Button type="submit" variant="outline" aria-label="Найти">
-          <Search className="h-4 w-4" />
-        </Button>
-      </form>
+interface BookPeopleCellProps<TStatus extends string> {
+  items: { id: string; name: string; status: TStatus }[];
+  renderBadge: (status: TStatus) => ReactNode;
+}
 
-      {feedback && (
-        <div
-          className={`rounded-md p-4 text-sm ${
-            feedback.type === 'success'
-              ? 'bg-green-100 text-green-900'
-              : 'bg-destructive/10 text-destructive'
-          }`}
-        >
-          {feedback.message}
-          <button onClick={() => setFeedback(null)} className="ml-4 underline" type="button">
-            Скрыть
-          </button>
-        </div>
-      )}
+/** Authors or genres: name plus a status badge when not published. */
+function BookPeopleCell<TStatus extends string>({ items, renderBadge }: BookPeopleCellProps<TStatus>) {
+  if (items.length === 0) return <Muted />;
+  return (
+    <ul className="space-y-1">
+      {items.map((entry) => (
+        <li key={entry.id} className="flex flex-wrap items-center gap-1">
+          <span>{entry.name}</span>
+          {entry.status !== 'published' && renderBadge(entry.status)}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
-      {error && (
-        <div className="rounded-md bg-destructive/10 p-4 text-destructive">
-          Не удалось загрузить книги.
-        </div>
-      )}
+function SourceCell({ source, externalId }: { source: string | null; externalId: string | null }) {
+  if (source == null) return <span>Вручную</span>;
+  return (
+    <>
+      <div>{source}</div>
+      {externalId && <div className="font-mono text-xs text-muted-foreground">{externalId}</div>}
+    </>
+  );
+}
 
-      {isLoading ? (
-        <div className="h-64 animate-pulse rounded-lg bg-muted" />
-      ) : data?.items.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
-          Нет книг на проверке.
-        </div>
-      ) : data ? (
-        <>
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Название</TableHead>
-                  <TableHead>Авторы</TableHead>
-                  <TableHead>Жанры</TableHead>
-                  <TableHead className="text-right">Действия</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.items.map((book: AdminBook) => (
-                  <TableRow key={book.id}>
-                    <TableCell className="font-medium">
-                      {book.title}
-                      {book.external_source && (
-                        <div className="text-xs font-normal text-muted-foreground">
-                          {book.external_source}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>{book.authors.map((a) => a.name).join(', ') || '—'}</TableCell>
-                    <TableCell>{book.genres.map((g) => g.name).join(', ') || '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRowAction(book, 'published')}
-                          disabled={statusMutation.isPending}
-                        >
-                          Опубликовать
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRowAction(book, 'rejected')}
-                          disabled={statusMutation.isPending}
-                        >
-                          Отклонить
-                        </Button>
-                        <Link href={`/catalog/books/${book.id}/edit` as any}>
-                          <Button variant="ghost" size="sm">
-                            Редактировать
-                          </Button>
-                        </Link>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={(p) => updateParams({ page: String(p) })}
-          />
-        </>
-      ) : null}
-    </div>
+function BookHints({ hints, editHref }: { hints: AdminBookHint[]; editHref: (id: string) => string }) {
+  if (hints.length === 0) return <Muted />;
+  return (
+    <ul className="space-y-2">
+      {hints.map((hint) => {
+        const meta = isbnYear(hint.book.isbn, hint.book.published_year);
+        return (
+          <li key={hint.book.id} className="space-y-1">
+            <div className="flex flex-wrap items-center gap-1">
+              <Link href={editHref(hint.book.id) as any} className="font-medium hover:underline">
+                {hint.book.title}
+              </Link>
+              <span className="text-xs text-muted-foreground">({MATCH_LABELS[hint.match]})</span>
+              <BookStatusBadge status={hint.book.status} />
+            </div>
+            {meta && <div className="text-xs text-muted-foreground">{meta}</div>}
+          </li>
+        );
+      })}
+    </ul>
   );
 }

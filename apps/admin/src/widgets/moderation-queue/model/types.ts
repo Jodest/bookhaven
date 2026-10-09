@@ -89,4 +89,10 @@ export interface ModerationQueueProps<TItem, TParams, TReport extends Moderation
   copy: ModerationQueueCopy<TItem, TReport>;
   /** Page size; default 20. */
   limit?: number;
+  /**
+   * Optional one-shot flash key (shared/lib flash). When set, a message left
+   * by an edit page under this key is consumed on mount and shown as a
+   * success banner; when unset, sessionStorage is not read.
+   */
+  flashKey?: string;
 }
