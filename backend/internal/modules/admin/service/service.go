@@ -879,6 +879,34 @@ func (s *Service) ListGenres(ctx context.Context, search, status string, page, l
 	return s.repo.ListGenres(ctx, search, status, limit, offset)
 }
 
+// GetAuthor returns an author by ID in any status (admin view). Returns
+// ErrAuthorNotFound when no such author exists (merged duplicates are
+// deleted, so their IDs are not found either).
+func (s *Service) GetAuthor(ctx context.Context, id uuid.UUID) (*catalogDomain.Author, error) {
+	author, err := s.repo.GetAuthorByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAuthorNotFound
+		}
+		return nil, fmt.Errorf("get author: %w", err)
+	}
+	return author, nil
+}
+
+// GetGenre returns a genre by ID in any status (admin view). Returns
+// ErrGenreNotFound when no such genre exists or the ID is a merge alias
+// (the repository hides alias rows).
+func (s *Service) GetGenre(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error) {
+	genre, err := s.repo.GetGenreByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrGenreNotFound
+		}
+		return nil, fmt.Errorf("get genre: %w", err)
+	}
+	return genre, nil
+}
+
 // ListReviews returns paginated reviews for moderation.
 func (s *Service) ListReviews(ctx context.Context, filter repository.ReviewFilter) ([]reviewsDomain.Review, int64, error) {
 	return s.repo.ListReviews(ctx, filter)

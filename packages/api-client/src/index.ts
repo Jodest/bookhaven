@@ -1964,6 +1964,8 @@ export const api = {
           `/api/v1/admin/authors?${new URLSearchParams(queryParams)}`
         );
       },
+      // Any status. Errors: 400 invalid id, 404 unknown (or merged) author.
+      get: (id: string) => fetcher<AdminAuthor>(`/api/v1/admin/authors/${id}`),
       create: (data: AdminAuthorInput) =>
         fetcher<AdminAuthor>('/api/v1/admin/authors', {
           method: 'POST',
@@ -2026,6 +2028,8 @@ export const api = {
           `/api/v1/admin/genres?${new URLSearchParams(queryParams)}`
         );
       },
+      // Any status. Errors: 400 invalid id, 404 unknown genre or merge alias.
+      get: (id: string) => fetcher<AdminGenre>(`/api/v1/admin/genres/${id}`),
       create: (data: AdminGenreInput) =>
         fetcher<AdminGenre>('/api/v1/admin/genres', {
           method: 'POST',
