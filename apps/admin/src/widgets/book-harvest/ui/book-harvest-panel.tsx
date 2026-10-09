@@ -27,7 +27,7 @@ function parseAuthorQIDs(value: string): string[] {
 }
 
 /**
- * Wikidata harvest trigger, the «Харвест из Wikidata» section of /import/books
+ * Wikidata harvest trigger, the /import/books/wikidata sub-page
  * (docs/features/import-by-entity.md). Does not show the jobs list: on success
  * it shows an inline confirmation with a link to the Задачи tab (/import/jobs).
  */

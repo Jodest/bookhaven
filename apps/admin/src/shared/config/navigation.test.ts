@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canAccessSubtab,
   getHomeHref,
   getSectionHref,
+  getTabById,
+  getTabHref,
   getVisibleSections,
+  getVisibleSubtabs,
   navSections,
   resolveNavLocation,
+  type NavSection,
 } from './navigation';
 
 function tabIdOf(pathname: string): string | null | undefined {
@@ -30,6 +35,7 @@ describe('resolveNavLocation', () => {
     ['/import/authors', 'import.authors'],
     ['/import/genres', 'import.genres'],
     ['/import/jobs', 'import.jobs'],
+    ['/import/books/file', 'import.books'],
     ['/users', 'users.list'],
   ])('%s -> %s', (pathname, tabId) => {
     expect(tabIdOf(pathname)).toBe(tabId);
@@ -165,7 +171,121 @@ describe('home and section hrefs', () => {
     expect(getSectionHref(moderation, 'admin')).toBe('/moderation/books');
     expect(getSectionHref(catalog, 'admin')).toBe('/catalog/books');
     expect(getSectionHref(catalog, 'moderator')).toBeNull();
-    expect(getSectionHref(importSection, 'admin')).toBe('/import/books');
+    expect(getSectionHref(importSection, 'admin')).toBe('/import/books/wikidata');
     expect(getSectionHref(importSection, 'moderator')).toBeNull();
+  });
+});
+
+function subtabIdOf(pathname: string, sections?: NavSection[]): string | undefined {
+  const loc = resolveNavLocation(pathname, sections);
+  return loc && !loc.isBasePath ? loc.subtab?.id : undefined;
+}
+
+describe('sub-tabs', () => {
+  const tabs = navSections.flatMap((s) => s.tabs);
+  const importBooks = getTabById('import.books')!;
+
+  it.each([
+    ['/import/books/manual', 'import.books', 'import.books.manual'],
+    ['/import/books/wikidata', 'import.books', 'import.books.wikidata'],
+    ['/import/books/file', 'import.books', 'import.books.file'],
+    ['/import/authors/manual', 'import.authors', 'import.authors.manual'],
+    ['/import/authors/wikidata', 'import.authors', 'import.authors.wikidata'],
+    ['/import/genres/manual', 'import.genres', 'import.genres.manual'],
+    ['/import/genres/wikidata', 'import.genres', 'import.genres.wikidata'],
+  ])('%s -> %s / %s', (pathname, tabId, subtabId) => {
+    expect(tabIdOf(pathname)).toBe(tabId);
+    expect(subtabIdOf(pathname)).toBe(subtabId);
+  });
+
+  it.each([
+    ['/import/books', 'import.books'],
+    ['/import/books/unknown', 'import.books'],
+    ['/import/authors/file', 'import.authors'],
+    ['/import/jobs', 'import.jobs'],
+  ])('%s resolves to %s with no subtab', (pathname, tabId) => {
+    expect(tabIdOf(pathname)).toBe(tabId);
+    expect(subtabIdOf(pathname)).toBeUndefined();
+  });
+
+  it('every tab with sub-tabs defaults (href) to one of its sub-tabs', () => {
+    const withSubtabs = tabs.filter((t) => t.subtabs);
+    expect(withSubtabs.map((t) => t.id)).toEqual(['import.books', 'import.authors', 'import.genres']);
+    for (const tab of withSubtabs) {
+      expect(tab.subtabs!.map((s) => s.href), tab.id).toContain(tab.href);
+    }
+  });
+
+  it('sub-tab order is manual -> wikidata -> file and sub-tabs live under their tab', () => {
+    const order = ['manual', 'wikidata', 'file'];
+    for (const tab of tabs.filter((t) => t.subtabs)) {
+      const methods = tab.subtabs!.map((s) => s.href.split('/').pop()!);
+      expect(methods, tab.id).toEqual(order.filter((m) => methods.includes(m)));
+      for (const subtab of tab.subtabs!) {
+        const nested = subtab.match.every((p) => tab.match.some((tp) => p.startsWith(`${tp}/`)));
+        expect(nested, subtab.id).toBe(true);
+      }
+    }
+    expect(importBooks.subtabs!.map((s) => s.label)).toEqual(['Вручную', 'Wikidata', 'Из файла']);
+  });
+
+  it('sub-tabs inherit the tab roles', () => {
+    expect(getVisibleSubtabs(importBooks, 'admin').map((s) => s.id)).toEqual([
+      'import.books.manual',
+      'import.books.wikidata',
+      'import.books.file',
+    ]);
+    expect(getVisibleSubtabs(importBooks, 'moderator')).toEqual([]);
+    expect(getVisibleSubtabs(importBooks, undefined)).toEqual([]);
+    expect(getVisibleSubtabs(getTabById('import.jobs')!, 'admin')).toEqual([]);
+  });
+
+  it('subtab.roles can only narrow the tab roles', () => {
+    const sections: NavSection[] = [
+      {
+        id: 'import',
+        label: 'Импорт',
+        icon: navSections[0].icon,
+        tabs: [
+          {
+            id: 't',
+            label: 'T',
+            href: '/import/t/a',
+            match: ['/import/t'],
+            roles: ['admin', 'moderator'],
+            subtabs: [
+              { id: 't.a', label: 'A', href: '/import/t/a', match: ['/import/t/a'] },
+              { id: 't.b', label: 'B', href: '/import/t/b', match: ['/import/t/b'], roles: ['admin'] },
+            ],
+          },
+          {
+            id: 'u',
+            label: 'U',
+            href: '/import/u/a',
+            match: ['/import/u'],
+            roles: ['admin'],
+            subtabs: [
+              { id: 'u.a', label: 'A', href: '/import/u/a', match: ['/import/u/a'], roles: ['moderator'] },
+            ],
+          },
+        ],
+      },
+    ];
+    const [t, u] = sections[0].tabs;
+    expect(getVisibleSubtabs(t, 'admin').map((s) => s.id)).toEqual(['t.a', 't.b']);
+    expect(getVisibleSubtabs(t, 'moderator').map((s) => s.id)).toEqual(['t.a']);
+    expect(canAccessSubtab(t, t.subtabs![1], 'moderator')).toBe(false);
+    // A sub-tab cannot widen access beyond its tab.
+    expect(canAccessSubtab(u, u.subtabs![0], 'moderator')).toBe(false);
+    expect(canAccessSubtab(u, u.subtabs![0], 'admin')).toBe(false);
+    expect(subtabIdOf('/import/t/b', sections)).toBe('t.b');
+  });
+
+  it('getTabHref returns the tab default sub-page and throws on unknown ids', () => {
+    expect(getTabHref('import.books')).toBe('/import/books/wikidata');
+    expect(getTabHref('import.authors')).toBe('/import/authors/manual');
+    expect(getTabHref('import.genres')).toBe('/import/genres/manual');
+    expect(getTabById('nope')).toBeNull();
+    expect(() => getTabHref('nope')).toThrow();
   });
 });

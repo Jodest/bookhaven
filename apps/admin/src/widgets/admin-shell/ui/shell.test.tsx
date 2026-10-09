@@ -74,7 +74,7 @@ describe('Shell', () => {
       ['Обзор', '/'],
       ['Модерация', '/moderation/books'],
       ['Каталог', '/catalog/books'],
-      ['Импорт', '/import/books'],
+      ['Импорт', '/import/books/wikidata'],
       ['Пользователи', '/users'],
     ]);
     expect(links[0]).toHaveAttribute('aria-current', 'page');
@@ -100,13 +100,16 @@ describe('Shell', () => {
     expect(screen.getByRole('link', { name: 'Импорт' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('admin on /import/jobs highlights Импорт', () => {
-    setUser('admin');
-    renderShell('/import/jobs');
+  it.each(['/import/jobs', '/import/books/file', '/import/genres/wikidata'])(
+    'admin on %s highlights Импорт',
+    (pathname) => {
+      setUser('admin');
+      renderShell(pathname);
 
-    const active = sidebarLinks().filter((l) => l.getAttribute('aria-current') === 'page');
-    expect(active.map((l) => l.textContent)).toEqual(['Импорт']);
-  });
+      const active = sidebarLinks().filter((l) => l.getAttribute('aria-current') === 'page');
+      expect(active.map((l) => l.textContent)).toEqual(['Импорт']);
+    }
+  );
 
   it('moderator on /moderation/reviews sees only Модерация and the page', () => {
     setUser('moderator');
@@ -128,7 +131,7 @@ describe('Shell', () => {
     expect(screen.queryByText('Доступ запрещен')).not.toBeInTheDocument();
   });
 
-  it.each(['/catalog/books', '/moderation/books', '/users', '/unknown', '/import', '/import/books', '/catalog'])(
+  it.each(['/catalog/books', '/moderation/books', '/users', '/unknown', '/import', '/import/books', '/import/books/file', '/catalog'])(
     'moderator on %s sees admin-only AccessDenied with a link home',
     (pathname) => {
       setUser('moderator');
@@ -215,7 +218,7 @@ describe('Shell', () => {
       ).toHaveAttribute('href', '/moderation/books');
       expect(screen.getByRole('link', { name: 'Импорт, задач в работе: 2' })).toHaveAttribute(
         'href',
-        '/import/books'
+        '/import/books/wikidata'
       );
       expect(screen.getByRole('link', { name: 'Каталог' })).toBeInTheDocument();
     });

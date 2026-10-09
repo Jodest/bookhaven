@@ -33,7 +33,7 @@ export function SectionTabs() {
   if (tabs.length < 2) return null;
 
   return (
-    <nav aria-label={loc.section.label} className="mb-6 flex flex-wrap gap-1 border-b">
+    <nav aria-label={loc.section.label} className="flex flex-wrap gap-1 border-b">
       {tabs.map((tab) => {
         const active = loc.tab?.id === tab.id;
         return (

@@ -8,7 +8,7 @@ import { adminAuthorsApi } from '@/entities/author';
 import { AuthorForm } from '@/features/manage-author';
 
 /**
- * Manual author creation on /import/authors (docs/features/import-by-entity.md),
+ * Manual author creation on /import/authors/manual (docs/features/import-by-entity.md),
  * the create half lifted from the catalog AuthorsView. Authors are created
  * published by the server; the form hides the status field when creating.
  */

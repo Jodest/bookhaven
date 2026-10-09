@@ -81,6 +81,19 @@ describe('WikidataGenreImportPanel', () => {
     expect(screen.getByLabelText('Название жанра в Wikidata')).toBeInTheDocument();
   });
 
+  it('the empty-result hint links «Вручную» to the manual sub-page', async () => {
+    renderView();
+    searchMock.mockResolvedValue({ class_check: 'ok', items: [] });
+    fireEvent.change(screen.getByLabelText('Название жанра в Wikidata'), { target: { value: 'нет такого' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Найти' }));
+
+    const link = await screen.findByRole('link', { name: '«Вручную»' });
+    expect(link).toHaveAttribute('href', '/import/genres/manual');
+    expect(link.parentElement).toHaveTextContent(
+      'Литературных жанров не найдено. Проверьте написание или создайте жанр вручную в разделе «Вручную».'
+    );
+  });
+
   it('imports a candidate, shows the banner with links, invalidates caches and refreshes the search', async () => {
     importMock.mockResolvedValue(importResult());
     const { invalidateSpy } = renderView();

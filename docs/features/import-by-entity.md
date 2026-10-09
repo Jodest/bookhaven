@@ -23,6 +23,8 @@ placeholders).
 
 ## Acceptance Criteria
 
+> Update (#334): the stacked sections below were replaced by one sub-page per import method (`/import/books/{manual,wikidata,file}`, `/import/authors/{manual,wikidata}`, `/import/genres/{manual,wikidata}`) with a sub-tab row. Tab hrefs now point to the default sub-page, bare `/import/{books,authors,genres}` redirect to it, and the old URLs redirect to their exact sub-page (see Redirects below). See [import-method-subpages.md](import-method-subpages.md).
+
 - [x] Импорт tabs are, in order: Книги `/import/books`, Авторы `/import/authors`, Жанры `/import/genres`, Задачи `/import/jobs`. All are `roles: ['admin']`. `/import` redirects to `/import/books`.
 - [x] `/import/books` is one page with stacked sections, in this order: «Вручную» (BookForm create), «Харвест из Wikidata» (current harvest trigger), «Из файла» (current CSV/JSON import).
 - [x] `/import/authors` has the sections «Вручную» (AuthorForm create) and «Wikidata» (current author import). It has no file section.
@@ -44,6 +46,8 @@ placeholders).
 4. Moving code must not change any request payload or error mapping.
 
 ## UX
+
+> Update (#334): the stacked-sections layout described here is superseded by per-method sub-pages with their own h1 and a pill sub-tab row; the «Вручную» empty hints in the Wikidata author/genre panels are now links to the manual sub-page. See [import-method-subpages.md](import-method-subpages.md).
 
 - **Layout pattern (same on all three entity tabs):** the page h1 is «Импорт: книги» / «Импорт: авторы» / «Импорт: жанры». Below it are stacked bordered sections, each with an h2 title and a one-line muted description, in the fixed order Вручную → Wikidata → Файл (absent ones are skipped). Stacked sections were chosen over an in-page switch because they hide no state, keep each section's feedback banner independent, need no query param or typed route, and keep tests simple.
 - The moved components lose their own `<h1>`, because the section h2 replaces it. Their inner layout stays the same.
@@ -106,6 +110,7 @@ Delete `views/book-new` (replaced by the book create section).
 
 **Redirects:** use `async redirects()` in `apps/admin/next.config.js`, with 4 entries, `permanent: false` (later epic phases may move things again):
 `/import/wikidata`→`/import/books`, `/import/file`→`/import/books`, `/import/author`→`/import/authors`, `/catalog/books/new`→`/import/books`.
+- Update (#334): destinations now point to the exact method sub-page: `/import/wikidata`→`/import/books/wikidata`, `/import/file`→`/import/books/file`, `/import/author`→`/import/authors/wikidata`, `/catalog/books/new`→`/import/books/manual`. Three more entries redirect the bare `/import/{books,authors,genres}` paths to the tab default sub-page ([import-method-subpages.md](import-method-subpages.md)).
 - Config redirects need no page files.
 - They are compatible with `typedRoutes`, since redirect sources are only added to the route union and no code links to them.
 - No redirect is needed for `/import/genres` (same URL).

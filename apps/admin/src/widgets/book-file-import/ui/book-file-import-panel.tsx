@@ -19,7 +19,7 @@ import {
 } from '@bookhaven/ui';
 
 /**
- * CSV/JSON book import, the «Из файла» section of /import/books
+ * CSV/JSON book import, the /import/books/file sub-page
  * (docs/features/import-by-entity.md, docs/features/catalog-manual-import.md).
  */
 export function BookFileImportPanel() {

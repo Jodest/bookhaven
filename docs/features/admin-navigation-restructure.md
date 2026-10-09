@@ -83,7 +83,11 @@ interface NavTab {
   href: string;          // where the tab links to (may include a query string)
   match: string[];       // pathname prefixes this tab owns; [] = owns nothing
   roles: StaffRole[];
+  subtabs?: NavSubtab[]; // #334: sub-pages (e.g. import methods); href = default sub-page
 }
+// #334, docs/features/import-method-subpages.md: sub-tabs inherit the tab roles,
+// optional `roles` can only narrow them; resolveNavLocation also returns `subtab`.
+interface NavSubtab { id: string; label: string; href: string; match: string[]; roles?: StaffRole[] }
 interface NavSection {
   id: 'overview' | 'moderation' | 'catalog' | 'import' | 'users';
   label: string;

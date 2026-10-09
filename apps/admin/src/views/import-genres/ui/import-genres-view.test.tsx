@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, type AdminGenre } from '@bookhaven/api-client';
-import { ImportGenresView } from './import-genres-view';
+import { ImportGenresView, type ImportGenresMethod } from './import-genres-view';
 
 const createMock = vi.fn();
 
@@ -28,14 +28,14 @@ function makeGenre(overrides: Partial<AdminGenre> = {}): AdminGenre {
   };
 }
 
-function renderView() {
+function renderView(method: ImportGenresMethod = 'manual') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
   render(
     <QueryClientProvider client={queryClient}>
-      <ImportGenresView />
+      <ImportGenresView method={method} />
     </QueryClientProvider>
   );
   return { invalidateSpy };
@@ -46,16 +46,27 @@ describe('ImportGenresView', () => {
     createMock.mockReset();
   });
 
-  it('renders two sections (Вручную, Wikidata) and no file section', () => {
-    renderView();
+  it('manual renders its h1 and only the create form', () => {
+    renderView('manual');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Импорт: жанры' })).toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      'Вручную',
-      'Wikidata',
-    ]);
-    expect(screen.getByRole('region', { name: 'Wikidata' })).toHaveTextContent('wikidata genre panel');
-    expect(screen.queryByRole('region', { name: 'Из файла' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Импорт жанров: вручную' })).toBeInTheDocument();
+    expect(screen.getByText('Создайте жанр через форму. Он сразу опубликован.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Название *')).toBeInTheDocument();
+    expect(screen.queryByText('wikidata genre panel')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  });
+
+  it('wikidata renders its h1 and only the Wikidata panel', () => {
+    renderView('wikidata');
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Импорт жанров: Wikidata' })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Найдите литературный жанр в Wikidata и импортируйте его. Импортированные жанры ждут модерации.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText('wikidata genre panel')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Название *')).not.toBeInTheDocument();
   });
 
   it('creates a genre with QID and no status, shows the banner and clears the form', async () => {

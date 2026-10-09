@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminAuthor } from '@bookhaven/api-client';
-import { ImportAuthorsView } from './import-authors-view';
+import { ImportAuthorsView, type ImportAuthorsMethod } from './import-authors-view';
 
 const createMock = vi.fn();
 
@@ -34,14 +34,14 @@ function makeAuthor(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
   };
 }
 
-function renderView() {
+function renderView(method: ImportAuthorsMethod = 'manual') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
   render(
     <QueryClientProvider client={queryClient}>
-      <ImportAuthorsView />
+      <ImportAuthorsView method={method} />
     </QueryClientProvider>
   );
   return { invalidateSpy };
@@ -52,16 +52,27 @@ describe('ImportAuthorsView', () => {
     createMock.mockReset();
   });
 
-  it('renders two sections (Вручную, Wikidata) and no file section', () => {
-    renderView();
+  it('manual renders its h1 and only the create form', () => {
+    renderView('manual');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Импорт: авторы' })).toBeInTheDocument();
-    const regions = screen.getAllByRole('region');
-    expect(regions).toHaveLength(2);
-    expect(regions[0]).toBe(screen.getByRole('region', { name: 'Вручную' }));
-    expect(regions[1]).toBe(screen.getByRole('region', { name: 'Wikidata' }));
-    expect(screen.getByRole('region', { name: 'Wikidata' })).toHaveTextContent('wikidata author panel');
-    expect(screen.queryByRole('region', { name: 'Из файла' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Импорт авторов: вручную' })).toBeInTheDocument();
+    expect(screen.getByText('Создайте автора через форму. Он сразу опубликован.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Имя *')).toBeInTheDocument();
+    expect(screen.queryByText('wikidata author panel')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  });
+
+  it('wikidata renders its h1 and only the Wikidata panel', () => {
+    renderView('wikidata');
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Импорт авторов: Wikidata' })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Найдите автора в Wikidata и импортируйте его (с книгами или без). Импортированные авторы ждут модерации.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText('wikidata author panel')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Имя *')).not.toBeInTheDocument();
   });
 
   it('creates an author without status, shows the banner with a catalog link and clears the form', async () => {

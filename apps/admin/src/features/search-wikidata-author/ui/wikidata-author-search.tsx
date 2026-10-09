@@ -12,8 +12,8 @@ interface WikidataAuthorSearchProps {
   search: SearchState;
   /** Action buttons rendered on the right of each candidate card. */
   renderActions: (candidate: AdminHarvestAuthorCandidate) => ReactNode;
-  /** Text shown when a search returned zero candidates. */
-  emptyHint: string;
+  /** Hint shown when a search returned zero candidates (text or inline markup, e.g. a link). */
+  emptyHint: ReactNode;
   inputId?: string;
   label?: string;
 }
@@ -24,7 +24,7 @@ interface WikidataAuthorSearchProps {
  * states and candidate cards (label, description, QID link, "already in
  * BookHaven" marker). Actions per candidate are supplied by the parent.
  *
- * No <form> here: on /import/books the widget is nested in the harvest form, and
+ * No <form> here: on /import/books/wikidata the widget is nested in the harvest form, and
  * nested forms are invalid HTML - Enter-to-search is wired via onKeyDown.
  */
 export function WikidataAuthorSearch({
