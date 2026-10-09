@@ -12,7 +12,7 @@ Books use the same `status` lifecycle as authors and genres. `books.is_hidden` i
 
 ## Out of scope
 
-- A book moderation queue endpoint with context (B3, #313). The existing `/moderation/books` view only gets the minimal adaptation described below.
+- A book moderation queue endpoint with context (B3, #313, see [book-moderation-queue.md](book-moderation-queue.md)). The existing `/moderation/books` view only gets the minimal adaptation described below.
 - Restructuring the import section (F1), redesigning the catalog (F3/F4). Admin UI changes here are minimal adaptations only.
 - Any change to review hiding (`reviews.is_hidden`, review moderation, `ReviewFilter.Visibility`, `/moderation/reviews?visibility=`).
 - Linking book publication to author or genre status.

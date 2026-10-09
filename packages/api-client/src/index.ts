@@ -462,6 +462,43 @@ export interface AdminGenreQueueParams {
   limit?: number;
 }
 
+// Book moderation queue (GET /api/v1/admin/books/moderation,
+// docs/features/book-moderation-queue.md).
+
+/** Compact book of a "possibly the same book" hint (no authors/genres). */
+export interface AdminBookHintBook {
+  id: string;
+  title: string;
+  slug: string;
+  status: AdminBookStatus;
+  isbn: string | null;
+  published_year: number | null;
+  external_source: string | null;
+}
+
+/** Display-only "possibly the same book" suggestion. */
+export interface AdminBookHint {
+  book: AdminBookHintBook;
+  match: 'same_isbn' | 'same_title_author';
+}
+
+export interface AdminBookQueueItem {
+  /** Authors and genres carry their own status. */
+  book: AdminBook;
+  external_id: string | null;
+  created_at: string;
+  similar: AdminBookHint[];
+}
+
+export interface AdminBookQueueParams {
+  /** Defaults to 'pending' on the server. */
+  status?: AdminBookStatus;
+  source?: 'manual' | 'harvested';
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
 export interface AdminGenreBulkStatusRowError {
   genre_id: string;
   name: string;
@@ -1947,6 +1984,17 @@ export const api = {
           method: 'POST',
           body: JSON.stringify({ ids, status }),
         }),
+      moderationQueue: (params?: AdminBookQueueParams) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        if (params?.status) queryParams.status = params.status;
+        if (params?.source) queryParams.source = params.source;
+        if (params?.search) queryParams.search = params.search;
+        return fetcher<PaginatedResponse<AdminBookQueueItem>>(
+          `/api/v1/admin/books/moderation?${new URLSearchParams(queryParams)}`
+        );
+      },
     },
     authors: {
       list: async (params?: {

@@ -497,3 +497,15 @@ func (f *fakeMergeAuthorsRepository) SetBookStatus(ctx context.Context, id uuid.
 func (f *fakeMergeAuthorsRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (int64, error) {
 	return 0, nil
 }
+
+func (f *fakeMergeAuthorsRepository) ListBooksForModeration(ctx context.Context, filter repository.BookModerationFilter) ([]catalogDomain.Book, int64, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeMergeAuthorsRepository) FindBooksByNormalizedISBNs(ctx context.Context, isbns []string, excludeIDs []uuid.UUID) ([]repository.BookHintCandidate, error) {
+	return nil, nil
+}
+
+func (f *fakeMergeAuthorsRepository) FindBooksByAuthorIDs(ctx context.Context, authorIDs, excludeIDs []uuid.UUID) ([]repository.BookHintCandidate, error) {
+	return nil, nil
+}
