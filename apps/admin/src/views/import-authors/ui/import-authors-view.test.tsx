@@ -78,7 +78,7 @@ describe('ImportAuthorsView', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Автор создан');
     expect(screen.getByRole('link', { name: 'Открыть в каталоге' })).toHaveAttribute(
       'href',
-      `/catalog/authors?search=${encodeURIComponent('Новый Автор')}`
+      '/catalog/authors/a1/edit'
     );
     expect(name.value).toBe('');
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'authors'] });

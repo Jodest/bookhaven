@@ -41,13 +41,23 @@ interface BookFormProps {
   onSubmit: (data: AdminBookInput) => Promise<unknown>;
   /**
    * When true, a successful submit resets the form to its defaults instead of
-   * navigating to /catalog/books, and «Отмена» is not rendered (the create
+   * navigating to returnHref, and «Отмена» is not rendered (the create
    * section on /import/books, docs/features/import-by-entity.md).
    */
   stayOnSuccess?: boolean;
+  /**
+   * Where a successful save and «Отмена» navigate (the edit page passes its
+   * safeBackHref-resolved list URL). Ignored when stayOnSuccess is true.
+   */
+  returnHref?: string;
 }
 
-export function BookForm({ initial, onSubmit, stayOnSuccess = false }: BookFormProps) {
+export function BookForm({
+  initial,
+  onSubmit,
+  stayOnSuccess = false,
+  returnHref = '/catalog/books',
+}: BookFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const {
@@ -194,7 +204,7 @@ export function BookForm({ initial, onSubmit, stayOnSuccess = false }: BookFormP
         setLookupError(null);
         return;
       }
-      router.push('/catalog/books' as any);
+      router.push(returnHref as any);
     } catch (error) {
       let message = 'Не удалось сохранить книгу. Проверьте введенные данные.';
       if (error instanceof ApiError) {
@@ -365,7 +375,7 @@ export function BookForm({ initial, onSubmit, stayOnSuccess = false }: BookFormP
           {isSubmitting ? 'Сохранение...' : initial ? 'Сохранить' : 'Создать'}
         </Button>
         {!stayOnSuccess && (
-          <Button type="button" variant="outline" onClick={() => router.push('/catalog/books' as any)}>
+          <Button type="button" variant="outline" onClick={() => router.push(returnHref as any)}>
             Отмена
           </Button>
         )}

@@ -16,8 +16,6 @@ interface AuthorFormProps {
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
   pending: boolean;
-  successMessage: string | null;
-  onDismissSuccess: () => void;
   errorMessage?: string;
 }
 
@@ -28,8 +26,6 @@ export function AuthorForm({
   onSubmit,
   onCancel,
   pending,
-  successMessage,
-  onDismissSuccess,
   errorMessage,
 }: AuthorFormProps) {
   const attribution = editing?.photo_attribution ?? null;
@@ -40,9 +36,6 @@ export function AuthorForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-4 rounded-lg border p-4">
-      <h2 className="font-semibold">
-        {editing ? 'Редактировать автора' : 'Новый автор'}
-      </h2>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="name">Имя *</Label>
@@ -126,14 +119,6 @@ export function AuthorForm({
           </Button>
         )}
       </div>
-      {successMessage && (
-        <div className="rounded-md bg-green-100 p-3 text-sm text-green-900">
-          {successMessage}
-          <button type="button" onClick={onDismissSuccess} className="ml-4 underline">
-            Скрыть
-          </button>
-        </div>
-      )}
       {errorMessage && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
           {errorMessage}
