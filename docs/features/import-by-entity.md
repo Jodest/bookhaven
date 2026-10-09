@@ -52,6 +52,7 @@ placeholders).
   - Book: form resets to create defaults, and a green banner «Книга «{title}» создана» appears with the link «Открыть» → `/catalog/books/{id}/edit`. Invalidate `['admin','books']` (check the key used by books-list).
   - Author: form clears (existing behavior), and the banner «Автор создан» gets the link «Открыть в каталоге» → `/catalog/authors?search={name}`. There is no author detail page until F3.
   - Genre: form clears, and the banner «Жанр создан» gets the link «Открыть в каталоге» → `/catalog/genres?search={name}`.
+  - Update (#316): the author/genre «Открыть в каталоге» links now point to the edit pages `/catalog/authors/{id}/edit` and `/catalog/genres/{id}/edit` ([catalog-unified-lists.md](catalog-unified-lists.md)).
   - Errors show inline, as today (BookForm serverError, author errorMessage, genre 409-QID hint).
 - Copy fixes: the genre import empty hint changes from «…создайте жанр вручную в каталоге.» to «…создайте жанр вручную в разделе «Вручную».» The author import hint gets the same treatment: «…или создайте автора вручную в разделе «Вручную».»
 - Catalog authors/genres pages: the update success banner («Автор обновлен» / «Жанр обновлен») renders at page level, because the form unmounts after save. The catalog gets no replacement "add" link.

@@ -1,257 +1,97 @@
 'use client';
 
-import { useState } from 'react';
-import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { adminAuthorsApi, AuthorStatusBadge, AUTHOR_STATUS_LABELS } from '@/entities/author';
-import { AdminAuthor, AdminAuthorInput, AdminAuthorStatus } from '@bookhaven/api-client';
+import { AdminAuthor, AdminAuthorEnrichmentReport } from '@bookhaven/api-client';
+import { Button } from '@bookhaven/ui';
+import { enrichErrorMessage, enrichItemText, useEnrichAuthors } from '@/features/enrich-author';
+import { useAuthorStatusMutation } from '@/features/moderate-author';
+import { WikidataLink } from '@/shared/ui';
 import {
-  Input,
-  Button,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@bookhaven/ui';
-import { Search } from 'lucide-react';
-import { Pagination } from '@/shared/ui';
-import { AuthorForm } from '@/features/manage-author';
-import { MergeAuthorDialog } from '@/features/merge-author';
+  CatalogList,
+  type CatalogListColumn,
+  type CatalogListState,
+  type CatalogRowContext,
+} from '@/widgets/catalog-list';
 
-const STATUS_FILTER_OPTIONS = [
-  { value: '', label: 'Все статусы' },
-  { value: 'pending', label: AUTHOR_STATUS_LABELS.pending },
-  { value: 'published', label: AUTHOR_STATUS_LABELS.published },
-  { value: 'rejected', label: AUTHOR_STATUS_LABELS.rejected },
+// Catalog authors list (docs/features/catalog-unified-lists.md), rendered
+// through the shared widgets/catalog-list shell. Editing lives on
+// /catalog/authors/[id]/edit; merging lives in Модерация only.
+
+type AuthorsListParams = NonNullable<Parameters<typeof adminAuthorsApi.list>[0]>;
+
+const buildParams = ({ status, search, page, limit }: CatalogListState): AuthorsListParams => ({
+  search,
+  status,
+  page,
+  limit,
+});
+
+const COLUMNS: CatalogListColumn<AdminAuthor>[] = [
+  { id: 'name', header: 'Имя', cell: (author) => <span className="font-medium">{author.name}</span> },
+  { id: 'slug', header: 'Slug', cell: (author) => author.slug },
+  { id: 'qid', header: 'QID', cell: (author) => <WikidataLink qid={author.external_id} /> },
+  { id: 'status', header: 'Статус', cell: (author) => <AuthorStatusBadge status={author.status} /> },
 ];
 
-function parseStatus(value: string | null): AdminAuthorStatus | undefined {
-  return value === 'pending' || value === 'published' || value === 'rejected' ? value : undefined;
-}
-
 export function AuthorsView() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const queryClient = useQueryClient();
+  const statusMutation = useAuthorStatusMutation();
+  const enrichMutation = useEnrichAuthors();
 
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [editing, setEditing] = useState<AdminAuthor | null>(null);
-  const [formData, setFormData] = useState<AdminAuthorInput>({ name: '' });
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [mergingDuplicate, setMergingDuplicate] = useState<AdminAuthor | null>(null);
-  const [mergeSuccessMessage, setMergeSuccessMessage] = useState<string | null>(null);
-
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-  const status = parseStatus(searchParams.get('status'));
-  const limit = 20;
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'authors', { search, page, status }],
-    queryFn: () =>
-      adminAuthorsApi.list({
-        search: search || undefined,
-        page,
-        limit,
-        status,
-      }),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: AdminAuthorInput }) =>
-      adminAuthorsApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'authors'] });
-      setEditing(null);
-      setFormData({ name: '' });
-      setSuccessMessage('Автор обновлен');
-    },
-  });
-
-  const updateParams = (updates: Record<string, string | undefined>) => {
-    const params = new URLSearchParams(searchParams.toString());
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value === undefined || value === '') {
-        params.delete(key);
-      } else {
-        params.set(key, value);
-      }
-    });
-    router.push(`${pathname}?${params.toString()}` as any);
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateParams({ search, page: '1' });
-  };
-
-  // Catalog only edits: creating lives on /import/authors
-  // (docs/features/import-by-entity.md).
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSuccessMessage(null);
-    if (editing) {
-      updateMutation.mutate({ id: editing.id, data: formData });
-    }
-  };
-
-  const startEdit = (author: AdminAuthor) => {
-    setSuccessMessage(null);
-    updateMutation.reset();
-    setEditing(author);
-    setFormData({
-      name: author.name,
-      slug: author.slug,
-      biography: author.biography ?? '',
-      photo_url: author.photo_url ?? '',
-      birth_date: author.birth_date ?? '',
-      death_date: author.death_date ?? '',
-      status: author.status,
+  const handleEnrich = (author: AdminAuthor, ctx: CatalogRowContext) => {
+    ctx.notify(null);
+    enrichMutation.mutate([author.id], {
+      onSuccess: (report: AdminAuthorEnrichmentReport) => {
+        const result = report.items[0];
+        if (!result) return;
+        ctx.notify({
+          type: result.outcome === 'error' ? 'error' : 'success',
+          message: enrichItemText(result, author.name),
+        });
+      },
+      onError: (err) => ctx.notify({ type: 'error', message: enrichErrorMessage(err) }),
     });
   };
-
-  const totalPages = data ? Math.ceil(data.total / limit) : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Авторы</h1>
-      </div>
-
-      {mergeSuccessMessage && (
-        <div className="flex items-center justify-between rounded-md bg-green-100 p-3 text-sm text-green-900">
-          {mergeSuccessMessage}
-          <button
-            type="button"
-            onClick={() => setMergeSuccessMessage(null)}
-            className="ml-4 underline"
+    <CatalogList
+      title="Авторы"
+      headerExtra={
+        <Link href={'/moderation/authors' as any} className="text-sm text-primary hover:underline">
+          Очередь модерации
+        </Link>
+      }
+      entityPath="/catalog/authors"
+      flashKey="catalog.authors"
+      queryKey={['admin', 'authors']}
+      buildParams={buildParams}
+      queryFn={(params) => adminAuthorsApi.list(params)}
+      statusMutation={statusMutation}
+      getId={(author) => author.id}
+      getName={(author) => author.name}
+      getStatus={(author) => author.status}
+      statusLabels={AUTHOR_STATUS_LABELS}
+      columns={COLUMNS}
+      renderRowActions={(author, ctx) =>
+        author.external_id ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={enrichMutation.isPending}
+            onClick={() => handleEnrich(author, ctx)}
           >
-            Скрыть
-          </button>
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="flex items-center justify-between rounded-md bg-green-100 p-3 text-sm text-green-900">
-          {successMessage}
-          <button type="button" onClick={() => setSuccessMessage(null)} className="ml-4 underline">
-            Скрыть
-          </button>
-        </div>
-      )}
-
-      {editing && (
-        <AuthorForm
-          formData={formData}
-          onFieldChange={(patch) => setFormData((prev) => ({ ...prev, ...patch }))}
-          editing={editing}
-          onSubmit={handleSubmit}
-          onCancel={() => {
-            setEditing(null);
-            setFormData({ name: '' });
-            setSuccessMessage(null);
-            updateMutation.reset();
-          }}
-          pending={updateMutation.isPending}
-          successMessage={null}
-          onDismissSuccess={() => setSuccessMessage(null)}
-          errorMessage={updateMutation.error?.message}
-        />
-      )}
-
-      <form onSubmit={handleSearch} className="flex gap-2">
-        <Input
-          placeholder="Поиск по имени"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <Button type="submit" variant="outline">
-          <Search className="h-4 w-4" />
-        </Button>
-        <Select
-          aria-label="Статус"
-          options={STATUS_FILTER_OPTIONS}
-          value={status ?? ''}
-          onChange={(e) => updateParams({ status: e.target.value, page: '1' })}
-          className="w-full md:w-48"
-        />
-      </form>
-
-      {error && (
-        <div className="rounded-md bg-destructive/10 p-4 text-destructive">
-          Не удалось загрузить авторов.
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="h-64 animate-pulse rounded-lg bg-muted" />
-      ) : data?.items.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
-          Авторы не найдены.
-        </div>
-      ) : (
-        <>
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Имя</TableHead>
-                  <TableHead>Slug</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead className="text-right">Действия</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data?.items.map((author: AdminAuthor) => (
-                  <TableRow key={author.id}>
-                    <TableCell className="font-medium">{author.name}</TableCell>
-                    <TableCell>{author.slug}</TableCell>
-                    <TableCell>
-                      <AuthorStatusBadge status={author.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => startEdit(author)}>
-                        Редактировать
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setMergeSuccessMessage(null);
-                          setMergingDuplicate(author);
-                        }}
-                      >
-                        Слить
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={(p) => updateParams({ page: String(p) })}
-          />
-        </>
-      )}
-
-      {mergingDuplicate && (
-        <MergeAuthorDialog
-          duplicate={mergingDuplicate}
-          onClose={() => setMergingDuplicate(null)}
-          onMerged={(booksReassigned) => {
-            setMergingDuplicate(null);
-            setMergeSuccessMessage(
-              `Автор «${mergingDuplicate.name}» слит с каноническим автором. Перенесено книг: ${booksReassigned}.`
-            );
-          }}
-        />
-      )}
-    </div>
+            Обогатить из Wikidata
+          </Button>
+        ) : null
+      }
+      copy={{
+        searchPlaceholder: 'Поиск по имени',
+        loadError: 'Не удалось загрузить авторов.',
+        empty: 'Авторы не найдены.',
+        statusErrorFallback: 'Не удалось снять автора с публикации.',
+        unpublishConfirm: (name) => `Снять автора «${name}» с публикации? Он вернётся в очередь модерации.`,
+        unpublishSuccess: (name) => `Автор «${name}» снят с публикации и возвращён на модерацию.`,
+      }}
+    />
   );
 }

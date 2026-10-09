@@ -36,8 +36,6 @@ function renderForm(author: AdminAuthor | null, formData: AdminAuthorInput) {
       onSubmit={vi.fn()}
       onCancel={vi.fn()}
       pending={false}
-      successMessage={null}
-      onDismissSuccess={vi.fn()}
     />
   );
 }
@@ -62,5 +60,14 @@ describe('AuthorForm photo attribution', () => {
     renderForm(editing({ photo_attribution: null }), { name: 'Лев Толстой', photo_url: 'https://example.com/x.jpg' });
     expect(screen.queryByText(/Фото:/)).not.toBeInTheDocument();
     expect(screen.queryByText('При смене фото атрибуция будет удалена')).not.toBeInTheDocument();
+  });
+});
+
+describe('AuthorForm heading', () => {
+  it('renders no inner heading (the page or section provides it)', () => {
+    renderForm(editing(), { name: 'Лев Толстой' });
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+    renderForm(null, { name: '' });
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
   });
 });
