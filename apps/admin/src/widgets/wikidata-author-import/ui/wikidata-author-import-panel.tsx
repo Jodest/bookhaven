@@ -14,7 +14,7 @@ import {
 import { useWikidataAuthorSearch, WikidataAuthorSearch } from '@/features/search-wikidata-author';
 
 /**
- * Wikidata author import, the «Wikidata» section of /import/authors
+ * Wikidata author import, the /import/authors/wikidata sub-page
  * (docs/features/author-direct-import.md, docs/features/import-by-entity.md):
  * the shared Wikidata author search with per-candidate import actions and a result banner. After
  * every successful import the last search is re-run so the "already in
@@ -105,7 +105,15 @@ export function WikidataAuthorImportPanel() {
             search={search}
             inputId="wikidata-import-search"
             label="Имя автора в Wikidata"
-            emptyHint="Совпадений не найдено. Проверьте написание или создайте автора вручную в разделе «Вручную»."
+            emptyHint={
+              <>
+                Совпадений не найдено. Проверьте написание или создайте автора вручную в разделе{' '}
+                <Link href="/import/authors/manual" className="underline">
+                  «Вручную»
+                </Link>
+                .
+              </>
+            }
             renderActions={renderActions}
           />
         </CardContent>

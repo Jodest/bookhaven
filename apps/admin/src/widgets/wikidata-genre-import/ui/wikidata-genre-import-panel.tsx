@@ -13,7 +13,7 @@ import {
 import { useWikidataGenreSearch, WikidataGenreSearch } from '@/features/search-wikidata-genre';
 
 /**
- * Wikidata genre import, the «Wikidata» section of /import/genres
+ * Wikidata genre import, the /import/genres/wikidata sub-page
  * (docs/features/genre-wikidata-import.md, docs/features/import-by-entity.md): the Wikidata
  * literary-genre search with a per-candidate import action and a result
  * banner. After every successful import the last search is re-run so the
@@ -93,7 +93,15 @@ export function WikidataGenreImportPanel() {
             search={search}
             inputId="wikidata-genre-import-search"
             label="Название жанра в Wikidata"
-            emptyHint="Литературных жанров не найдено. Проверьте написание или создайте жанр вручную в разделе «Вручную»."
+            emptyHint={
+              <>
+                Литературных жанров не найдено. Проверьте написание или создайте жанр вручную в разделе{' '}
+                <Link href="/import/genres/manual" className="underline">
+                  «Вручную»
+                </Link>
+                .
+              </>
+            }
             renderActions={renderActions}
           />
         </CardContent>

@@ -13,7 +13,7 @@ interface CreatedBook {
 }
 
 /**
- * Manual book creation on /import/books (docs/features/import-by-entity.md):
+ * Manual book creation on /import/books/manual (docs/features/import-by-entity.md):
  * the form stays on the page, resets after a successful create and a banner
  * links to the created book.
  */

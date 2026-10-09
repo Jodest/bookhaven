@@ -8,7 +8,7 @@ import { adminGenresApi } from '@/entities/genre';
 import { GenreForm, genreMutationErrorText } from '@/features/manage-genre';
 
 /**
- * Manual genre creation on /import/genres (docs/features/import-by-entity.md),
+ * Manual genre creation on /import/genres/manual (docs/features/import-by-entity.md),
  * the create half lifted from the catalog GenresView. Manually created genres
  * are published right away by the server.
  */

@@ -1,33 +1,46 @@
 'use client';
 
-import { PageSection } from '@/shared/ui';
 import { BookHarvestPanel } from '@/widgets/book-harvest';
 import { BookFileImportPanel } from '@/widgets/book-file-import';
 import { BookCreateSection } from './book-create-section';
 
+export type ImportBooksMethod = 'manual' | 'wikidata' | 'file';
+
+const METHODS: Record<
+  ImportBooksMethod,
+  { title: string; description: string; Panel: () => React.ReactNode }
+> = {
+  manual: {
+    title: 'Импорт книг: вручную',
+    description: 'Создайте книгу через форму.',
+    Panel: BookCreateSection,
+  },
+  wikidata: {
+    title: 'Импорт книг: харвест Wikidata',
+    description: 'Запустите фоновый харвест книг выбранных авторов из Wikidata.',
+    Panel: BookHarvestPanel,
+  },
+  file: {
+    title: 'Импорт книг: из файла',
+    description: 'Загрузите партию книг из файла .csv или .json.',
+    Panel: BookFileImportPanel,
+  },
+};
+
 /**
- * Импорт → Книги (/import/books, docs/features/import-by-entity.md): every way
- * to add books, stacked in the fixed order Вручную → Wikidata → Файл.
+ * Импорт → Книги, one sub-page per method: /import/books/{manual,wikidata,file}
+ * (docs/features/import-method-subpages.md). Sub-tabs come from the section
+ * layout.
  */
-export function ImportBooksView() {
+export function ImportBooksView({ method }: { method: ImportBooksMethod }) {
+  const { title, description, Panel } = METHODS[method];
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Импорт: книги</h1>
-
-      <PageSection title="Вручную" description="Создайте книгу через форму.">
-        <BookCreateSection />
-      </PageSection>
-
-      <PageSection
-        title="Харвест из Wikidata"
-        description="Запустите фоновый харвест книг выбранных авторов из Wikidata."
-      >
-        <BookHarvestPanel />
-      </PageSection>
-
-      <PageSection title="Из файла" description="Загрузите партию книг из файла .csv или .json.">
-        <BookFileImportPanel />
-      </PageSection>
+      <div className="space-y-1">
+        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      <Panel />
     </div>
   );
 }

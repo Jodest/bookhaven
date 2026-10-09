@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AdminAuthor, AdminBook, AdminGenre } from '@bookhaven/api-client';
-import { ImportBooksView } from './import-books-view';
+import { ImportBooksView, type ImportBooksMethod } from './import-books-view';
 
 const pushMock = vi.fn();
 
@@ -61,14 +61,14 @@ function makeBook(overrides: Partial<AdminBook> = {}): AdminBook {
   };
 }
 
-function renderView() {
+function renderView(method: ImportBooksMethod = 'manual') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
   render(
     <QueryClientProvider client={queryClient}>
-      <ImportBooksView />
+      <ImportBooksView method={method} />
     </QueryClientProvider>
   );
   return { invalidateSpy };
@@ -80,17 +80,19 @@ describe('ImportBooksView', () => {
     createMock.mockReset();
   });
 
-  it('renders the page title and three sections in order', () => {
-    renderView();
+  it.each([
+    ['manual', 'Импорт книг: вручную', 'Создайте книгу через форму.'],
+    ['wikidata', 'Импорт книг: харвест Wikidata', 'Запустите фоновый харвест книг выбранных авторов из Wikidata.'],
+    ['file', 'Импорт книг: из файла', 'Загрузите партию книг из файла .csv или .json.'],
+  ] as const)('method %s renders its h1, description and only its panel', (method, title, description) => {
+    renderView(method);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Импорт: книги' })).toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      'Вручную',
-      'Харвест из Wikidata',
-      'Из файла',
-    ]);
-    expect(screen.getByRole('region', { name: 'Харвест из Wikidata' })).toHaveTextContent('harvest panel');
-    expect(screen.getByRole('region', { name: 'Из файла' })).toHaveTextContent('file panel');
+    expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument();
+    expect(screen.getByText(description)).toBeInTheDocument();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(screen.queryByText('harvest panel') !== null).toBe(method === 'wikidata');
+    expect(screen.queryByText('file panel') !== null).toBe(method === 'file');
+    expect(screen.queryByLabelText('Название *') !== null).toBe(method === 'manual');
   });
 
   it('creates a book, shows a banner with a link, resets the form and stays on the page', async () => {

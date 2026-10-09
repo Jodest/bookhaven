@@ -12,8 +12,8 @@ interface WikidataGenreSearchProps {
   search: SearchState;
   /** Action buttons rendered on the right of each candidate card. */
   renderActions: (candidate: AdminGenreWikidataCandidate) => ReactNode;
-  /** Text shown when a search returned zero candidates. */
-  emptyHint: string;
+  /** Hint shown when a search returned zero candidates (text or inline markup, e.g. a link). */
+  emptyHint: ReactNode;
   inputId?: string;
   label?: string;
 }
