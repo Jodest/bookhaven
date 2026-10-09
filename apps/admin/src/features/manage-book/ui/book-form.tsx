@@ -42,7 +42,7 @@ interface BookFormProps {
   /**
    * When true, a successful submit resets the form to its defaults instead of
    * navigating to returnHref, and «Отмена» is not rendered (the create
-   * section on /import/books, docs/features/import-by-entity.md).
+   * section on /import/books/manual, docs/features/import-method-subpages.md).
    */
   stayOnSuccess?: boolean;
   /**

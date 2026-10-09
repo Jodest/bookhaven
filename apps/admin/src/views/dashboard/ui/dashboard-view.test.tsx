@@ -208,7 +208,7 @@ describe('DashboardView', () => {
     );
     expect(within(importGroup).getByRole('link', { name: 'Запустить харвест' })).toHaveAttribute(
       'href',
-      '/import/books'
+      '/import/books/wikidata'
     );
   });
 

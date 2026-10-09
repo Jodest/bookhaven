@@ -56,17 +56,24 @@ describe('SectionTabs', () => {
     expect(screen.getByRole('link', { name: 'Книги' })).not.toHaveAttribute('aria-current');
   });
 
-  it('admin on /import/authors sees import tabs with Авторы active', () => {
-    renderTabs('/import/authors');
+  it('admin on /import/authors/wikidata sees import tabs (default sub-page hrefs) with Авторы active', () => {
+    renderTabs('/import/authors/wikidata');
 
     const links = screen.getAllByRole('link');
     expect(links.map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
-      ['Книги', '/import/books'],
-      ['Авторы', '/import/authors'],
-      ['Жанры', '/import/genres'],
+      ['Книги', '/import/books/wikidata'],
+      ['Авторы', '/import/authors/manual'],
+      ['Жанры', '/import/genres/manual'],
       ['Задачи', '/import/jobs'],
     ]);
     expect(screen.getByRole('link', { name: 'Авторы' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('admin on /import/books/file sees Книги active', () => {
+    renderTabs('/import/books/file');
+
+    expect(screen.getByRole('link', { name: 'Книги' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Задачи' })).not.toHaveAttribute('aria-current');
   });
 
   it('admin on /import/jobs sees import tabs with Задачи active', () => {
@@ -120,7 +127,7 @@ describe('SectionTabs', () => {
 
   it('import Задачи tab shows the in-flight jobs count', () => {
     countersValue = { sections: {}, tabs: { 'import.jobs': 3 } };
-    renderTabs('/import/books');
+    renderTabs('/import/books/wikidata');
 
     expect(screen.getByRole('link', { name: 'Задачи, задач в работе: 3' })).toHaveAttribute(
       'href',
@@ -163,11 +170,11 @@ describe('SectionIndexRedirect', () => {
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
-  it('admin on /import goes to /import/books', () => {
+  it('admin on /import goes to the default books sub-page', () => {
     role = 'admin';
     pathnameValue = '/import';
     render(<SectionIndexRedirect sectionId="import" />);
-    expect(replaceMock).toHaveBeenCalledWith('/import/books');
+    expect(replaceMock).toHaveBeenCalledWith('/import/books/wikidata');
   });
 
   it('moderator on /import is not redirected', () => {

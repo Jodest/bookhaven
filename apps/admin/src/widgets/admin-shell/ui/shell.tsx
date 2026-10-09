@@ -8,6 +8,7 @@ import {
   getSectionHref,
   getVisibleSections,
   getVisibleTabs,
+  canAccessSubtab,
   canAccessTab,
   resolveNavLocation,
 } from '@/shared/config';
@@ -43,7 +44,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const loc = resolveNavLocation(pathname);
   const isAllowed = loc
     ? loc.tab
-      ? canAccessTab(loc.tab, role)
+      ? loc.subtab
+        ? canAccessSubtab(loc.tab, loc.subtab, role)
+        : canAccessTab(loc.tab, role)
       : getVisibleTabs(loc.section, role).length > 0
     : canAccessAdmin;
   const homeHref = getHomeHref(role);

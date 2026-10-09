@@ -12,6 +12,19 @@ import { BookOpen, Download, LayoutDashboard, ShieldCheck, Users, type LucideIco
 
 export type StaffRole = 'admin' | 'moderator';
 
+/**
+ * A sub-page of a tab (e.g. an import method). Inherits the tab's roles;
+ * optional `roles` can only narrow them (see canAccessSubtab).
+ */
+export interface NavSubtab {
+  id: string;
+  label: string;
+  href: string;
+  /** Pathname prefixes this sub-tab owns (longest prefix wins within the tab). */
+  match: string[];
+  roles?: StaffRole[];
+}
+
 export interface NavTab {
   id: string;
   label: string;
@@ -22,6 +35,8 @@ export interface NavTab {
   roles: StaffRole[];
   /** Button label used when this tab is a user's home (e.g. on AccessDenied). */
   homeLabel?: string;
+  /** Sub-pages; when present, `href` must equal one of `subtabs[].href` (the default). */
+  subtabs?: NavSubtab[];
 }
 
 export type NavSectionId = 'overview' | 'moderation' | 'catalog' | 'import' | 'users';
@@ -126,23 +141,74 @@ export const navSections: NavSection[] = [
       {
         id: 'import.books',
         label: 'Книги',
-        href: '/import/books',
+        // Default sub-page; the bare /import/books path redirects here.
+        href: '/import/books/wikidata',
         match: ['/import/books'],
         roles: ['admin'],
+        subtabs: [
+          {
+            id: 'import.books.manual',
+            label: 'Вручную',
+            href: '/import/books/manual',
+            match: ['/import/books/manual'],
+          },
+          {
+            id: 'import.books.wikidata',
+            label: 'Wikidata',
+            href: '/import/books/wikidata',
+            match: ['/import/books/wikidata'],
+          },
+          {
+            id: 'import.books.file',
+            label: 'Из файла',
+            href: '/import/books/file',
+            match: ['/import/books/file'],
+          },
+        ],
       },
       {
         id: 'import.authors',
         label: 'Авторы',
-        href: '/import/authors',
+        // Default sub-page; the bare /import/authors path redirects here.
+        href: '/import/authors/manual',
         match: ['/import/authors'],
         roles: ['admin'],
+        subtabs: [
+          {
+            id: 'import.authors.manual',
+            label: 'Вручную',
+            href: '/import/authors/manual',
+            match: ['/import/authors/manual'],
+          },
+          {
+            id: 'import.authors.wikidata',
+            label: 'Wikidata',
+            href: '/import/authors/wikidata',
+            match: ['/import/authors/wikidata'],
+          },
+        ],
       },
       {
         id: 'import.genres',
         label: 'Жанры',
-        href: '/import/genres',
+        // Default sub-page; the bare /import/genres path redirects here.
+        href: '/import/genres/manual',
         match: ['/import/genres'],
         roles: ['admin'],
+        subtabs: [
+          {
+            id: 'import.genres.manual',
+            label: 'Вручную',
+            href: '/import/genres/manual',
+            match: ['/import/genres/manual'],
+          },
+          {
+            id: 'import.genres.wikidata',
+            label: 'Wikidata',
+            href: '/import/genres/wikidata',
+            match: ['/import/genres/wikidata'],
+          },
+        ],
       },
       { id: 'import.jobs', label: 'Задачи', href: '/import/jobs', match: ['/import/jobs'], roles: ['admin'] },
     ],
@@ -156,7 +222,7 @@ export const navSections: NavSection[] = [
 ];
 
 export type NavLocation =
-  | { section: NavSection; tab: NavTab; isBasePath?: false }
+  | { section: NavSection; tab: NavTab; subtab?: NavSubtab; isBasePath?: false }
   | { section: NavSection; tab?: undefined; isBasePath: true };
 
 /** Prefix `p` matches iff pathname === p or pathname starts with `p/`; `/` matches only `/`. */
@@ -192,7 +258,19 @@ export function resolveNavLocation(
     }
   }
 
-  if (best) return { section: best.section, tab: best.tab };
+  if (best) {
+    let subtab: { subtab: NavSubtab; length: number } | null = null;
+    for (const candidate of best.tab.subtabs ?? []) {
+      for (const prefix of candidate.match) {
+        if (matchesPrefix(path, prefix) && (!subtab || prefix.length > subtab.length)) {
+          subtab = { subtab: candidate, length: prefix.length };
+        }
+      }
+    }
+    return subtab
+      ? { section: best.section, tab: best.tab, subtab: subtab.subtab }
+      : { section: best.section, tab: best.tab };
+  }
 
   const baseSection = sections.find((s) => s.basePath && s.basePath === path);
   if (baseSection) return { section: baseSection, isBasePath: true };
@@ -206,6 +284,30 @@ export function canAccessTab(tab: NavTab, role: string | undefined): boolean {
 
 export function getVisibleTabs(section: NavSection, role: string | undefined): NavTab[] {
   return section.tabs.filter((tab) => canAccessTab(tab, role));
+}
+
+/** A sub-tab is accessible iff its tab is and `subtab.roles` (if set) includes the role. */
+export function canAccessSubtab(tab: NavTab, subtab: NavSubtab, role: string | undefined): boolean {
+  return canAccessTab(tab, role) && (!subtab.roles || (subtab.roles as string[]).includes(role!));
+}
+
+export function getVisibleSubtabs(tab: NavTab, role: string | undefined): NavSubtab[] {
+  return (tab.subtabs ?? []).filter((subtab) => canAccessSubtab(tab, subtab, role));
+}
+
+export function getTabById(id: string, sections: NavSection[] = navSections): NavTab | null {
+  for (const section of sections) {
+    const tab = section.tabs.find((t) => t.id === id);
+    if (tab) return tab;
+  }
+  return null;
+}
+
+/** Href of the tab with `id` (its default sub-page when it has sub-tabs). Throws on unknown ids. */
+export function getTabHref(id: string, sections: NavSection[] = navSections): string {
+  const tab = getTabById(id, sections);
+  if (!tab) throw new Error(`Unknown nav tab: ${id}`);
+  return tab.href;
 }
 
 /** Sections with tabs filtered by role; sections with no visible tabs are dropped. */

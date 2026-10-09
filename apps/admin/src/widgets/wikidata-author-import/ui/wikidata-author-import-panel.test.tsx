@@ -93,6 +93,19 @@ describe('WikidataAuthorImportPanel', () => {
     expect(screen.getByLabelText('Имя автора в Wikidata')).toBeInTheDocument();
   });
 
+  it('the empty-result hint links «Вручную» to the manual sub-page', async () => {
+    renderView();
+    searchMock.mockResolvedValue({ items: [] });
+    fireEvent.change(screen.getByLabelText('Имя автора в Wikidata'), { target: { value: 'Нет такого' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Найти' }));
+
+    const link = await screen.findByRole('link', { name: '«Вручную»' });
+    expect(link).toHaveAttribute('href', '/import/authors/manual');
+    expect(link.parentElement).toHaveTextContent(
+      'Совпадений не найдено. Проверьте написание или создайте автора вручную в разделе «Вручную».'
+    );
+  });
+
   it('imports only the author without triggering a harvest, then refreshes search and caches', async () => {
     importMock.mockResolvedValue(importResult());
     const { invalidateSpy } = renderView();
