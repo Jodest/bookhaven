@@ -119,6 +119,9 @@ type genreResponse struct {
 	WikidataQID *string `json:"wikidata_qid"`
 }
 
+// bookResponse is the admin book payload. PublishedAt is the first time the
+// book became published (null if never); it is read-only and ignored in
+// request bodies (#245).
 type bookResponse struct {
 	ID             string           `json:"id"`
 	Title          string           `json:"title"`
@@ -133,6 +136,7 @@ type bookResponse struct {
 	RatingsCount   int              `json:"ratings_count"`
 	ReviewsCount   int              `json:"reviews_count"`
 	Status         string           `json:"status"`
+	PublishedAt    *time.Time       `json:"published_at"`
 	ExternalSource *string          `json:"external_source,omitempty"`
 	Authors        []authorResponse `json:"authors"`
 	Genres         []genreResponse  `json:"genres"`
@@ -495,6 +499,7 @@ func toBookResponse(b catalogDomain.Book) bookResponse {
 		RatingsCount:   b.RatingsCount,
 		ReviewsCount:   b.ReviewsCount,
 		Status:         b.Status,
+		PublishedAt:    b.PublishedAt,
 		ExternalSource: b.ExternalSource,
 		Authors:        authors,
 		Genres:         genres,

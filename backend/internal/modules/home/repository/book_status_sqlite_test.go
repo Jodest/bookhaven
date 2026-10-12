@@ -22,7 +22,8 @@ CREATE TABLE books (
 	rating REAL DEFAULT 0,
 	ratings_count INTEGER DEFAULT 0,
 	status TEXT NOT NULL DEFAULT 'pending',
-	created_at DATETIME
+	created_at DATETIME,
+	published_at DATETIME
 );
 CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT, avatar_url TEXT);
 CREATE TABLE reviews (
@@ -103,6 +104,46 @@ func TestHomeBookStatus_PoolNewTopRated(t *testing.T) {
 		t.Fatalf("top: %v", err)
 	}
 	onlyPublished(t, "top rated", top, f.published)
+}
+
+// TestHomeNewBooks_OrderByPublishedAt: «Новое в каталоге» orders by the
+// first-publication time (#245), not by creation time; books without one
+// (raw-SQL fixtures) go last.
+func TestHomeNewBooks_OrderByPublishedAt(t *testing.T) {
+	f := newHomeStatusFixture(t)
+	ctx := context.Background()
+	now := time.Now()
+	oldHarvest, recentCreate := uuid.New(), uuid.New()
+	for _, b := range []struct {
+		id                   uuid.UUID
+		createdAt, published time.Time
+	}{
+		// Harvested a month ago, published today: ranks first.
+		{oldHarvest, now.AddDate(0, -1, 0), now.Add(-time.Minute)},
+		// Created and published yesterday.
+		{recentCreate, now.AddDate(0, 0, -1), now.AddDate(0, 0, -1)},
+	} {
+		if err := f.db.Exec("INSERT INTO books (id, cover_url, rating, ratings_count, status, created_at, published_at) VALUES (?, 'c.jpg', 5, 10, 'published', ?, ?)",
+			b.id, b.createdAt, b.published).Error; err != nil {
+			t.Fatalf("insert book: %v", err)
+		}
+	}
+
+	got, err := f.repo.ListNewBookIDs(ctx, 10)
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	// f.published has no published_at (raw-SQL fixture) and a newer
+	// created_at, yet goes last (NULLS LAST).
+	want := []uuid.UUID{oldHarvest, recentCreate, f.published}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("position %d: expected %v, got %v (all: %v)", i, want[i], got[i], got)
+		}
+	}
 }
 
 func TestHomeBookStatus_ReviewsByIDs(t *testing.T) {

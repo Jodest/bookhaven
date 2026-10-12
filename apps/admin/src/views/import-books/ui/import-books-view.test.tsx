@@ -52,6 +52,7 @@ function makeBook(overrides: Partial<AdminBook> = {}): AdminBook {
     ratings_count: 0,
     reviews_count: 0,
     status: 'published',
+    published_at: null,
     external_source: null,
     authors: [],
     genres: [],

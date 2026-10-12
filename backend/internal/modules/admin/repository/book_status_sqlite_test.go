@@ -32,7 +32,8 @@ CREATE TABLE books (
 	external_source TEXT,
 	external_id TEXT,
 	created_at DATETIME,
-	updated_at DATETIME
+	updated_at DATETIME,
+	published_at DATETIME
 );
 CREATE TABLE authors (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', slug TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'published');
 CREATE TABLE genres (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', slug TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', merged_into_id TEXT);
@@ -156,5 +157,131 @@ func TestDashboardCounts_PendingAndRejectedBooks(t *testing.T) {
 	}
 	if stats.Books != 4 || stats.PendingBooks != 2 || stats.RejectedBooks != 1 {
 		t.Fatalf("expected books=4 pending=2 rejected=1, got %+v", stats)
+	}
+}
+
+// readPublishedAt returns the stored first-publication time of a book.
+func readPublishedAt(t *testing.T, db *gorm.DB, id uuid.UUID) *time.Time {
+	t.Helper()
+	var row struct{ PublishedAt *time.Time }
+	if err := db.Raw("SELECT published_at FROM books WHERE id = ?", id).Scan(&row).Error; err != nil {
+		t.Fatalf("select published_at: %v", err)
+	}
+	return row.PublishedAt
+}
+
+func setPublishedAt(t *testing.T, db *gorm.DB, id uuid.UUID, at time.Time) {
+	t.Helper()
+	if err := db.Exec("UPDATE books SET published_at = ? WHERE id = ?", at, id).Error; err != nil {
+		t.Fatalf("set published_at: %v", err)
+	}
+}
+
+// TestUpdateBook_PublishedAt: the first publish through UpdateBook sets the
+// time; unpublish/republish and edits carrying a stale or nil PublishedAt
+// keep it (#245).
+func TestUpdateBook_PublishedAt(t *testing.T) {
+	repo, db := newBookStatusRepo(t)
+	ctx := context.Background()
+	id := insertStatusBook(t, db, catalogDomain.BookStatusPending, nil)
+
+	load := func() *catalogDomain.Book {
+		t.Helper()
+		var b catalogDomain.Book
+		if err := db.First(&b, "id = ?", id).Error; err != nil {
+			t.Fatalf("load book: %v", err)
+		}
+		return &b
+	}
+	update := func(b *catalogDomain.Book) {
+		t.Helper()
+		if err := repo.UpdateBook(ctx, b, nil, nil); err != nil {
+			t.Fatalf("update book: %v", err)
+		}
+	}
+
+	// An edit of a pending book leaves published_at empty.
+	b := load()
+	b.Title = "Правка"
+	update(b)
+	if got := readPublishedAt(t, db, id); got != nil {
+		t.Fatalf("pending edit must not set published_at, got %v", got)
+	}
+
+	// First publish sets it.
+	before := time.Now().Add(-time.Second)
+	b = load()
+	b.Status = catalogDomain.BookStatusPublished
+	update(b)
+	first := readPublishedAt(t, db, id)
+	if first == nil || first.Before(before) {
+		t.Fatalf("first publish must set published_at to now, got %v", first)
+	}
+
+	// Unpublish keeps it.
+	b = load()
+	b.Status = catalogDomain.BookStatusRejected
+	update(b)
+	if got := readPublishedAt(t, db, id); got == nil || !got.Equal(*first) {
+		t.Fatalf("unpublish must keep published_at %v, got %v", first, got)
+	}
+
+	// Republish keeps the original.
+	b = load()
+	b.Status = catalogDomain.BookStatusPublished
+	update(b)
+	if got := readPublishedAt(t, db, id); got == nil || !got.Equal(*first) {
+		t.Fatalf("republish must keep published_at %v, got %v", first, got)
+	}
+
+	// An edit carrying a nil or stale PublishedAt (struct loaded before a
+	// concurrent publish, or a client-sent value) does not overwrite it.
+	stale := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, v := range []*time.Time{nil, &stale} {
+		b = load()
+		b.Title = "Ещё правка"
+		b.PublishedAt = v
+		update(b)
+		if got := readPublishedAt(t, db, id); got == nil || !got.Equal(*first) {
+			t.Fatalf("edit with PublishedAt=%v must keep %v, got %v", v, first, got)
+		}
+	}
+}
+
+// TestSetBookStatus_PublishedAt covers the bulk-status scenario: a bulk
+// publish sets the time for a never-published book, keeps it for a
+// previously published one, and a bulk reject keeps it (#245).
+func TestSetBookStatus_PublishedAt(t *testing.T) {
+	repo, db := newBookStatusRepo(t)
+	ctx := context.Background()
+	never := insertStatusBook(t, db, catalogDomain.BookStatusPending, nil)
+	before := insertStatusBook(t, db, catalogDomain.BookStatusPending, nil)
+	earlier := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+	setPublishedAt(t, db, before, earlier)
+
+	start := time.Now().Add(-time.Second)
+	for _, id := range []uuid.UUID{never, before} {
+		if found, err := repo.SetBookStatus(ctx, id, catalogDomain.BookStatusPublished); err != nil || !found {
+			t.Fatalf("publish: found=%v err=%v", found, err)
+		}
+	}
+	first := readPublishedAt(t, db, never)
+	if first == nil || first.Before(start) {
+		t.Fatalf("never-published book must get now, got %v", first)
+	}
+	if got := readPublishedAt(t, db, before); got == nil || !got.Equal(earlier) {
+		t.Fatalf("previously published book must keep %v, got %v", earlier, got)
+	}
+
+	for _, id := range []uuid.UUID{never, before} {
+		if found, err := repo.SetBookStatus(ctx, id, catalogDomain.BookStatusRejected); err != nil || !found {
+			t.Fatalf("reject: found=%v err=%v", found, err)
+		}
+	}
+	if got := readPublishedAt(t, db, never); got == nil || !got.Equal(*first) {
+		t.Fatalf("reject must keep %v, got %v", first, got)
+	}
+	if got := readPublishedAt(t, db, before); got == nil || !got.Equal(earlier) {
+		t.Fatalf("reject must keep %v, got %v", earlier, got)
 	}
 }

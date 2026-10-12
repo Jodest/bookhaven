@@ -577,6 +577,9 @@ func seedCatalog(db *gorm.DB) error {
 	}
 
 	for _, item := range books {
+		// New seeded books get their first-publication time; existing rows
+		// are not updated (the 000020 backfill covers them).
+		item.book.MarkPublished(time.Now())
 		if err := db.FirstOrCreate(&item.book, catalogDomain.Book{Slug: item.book.Slug}).Error; err != nil {
 			return fmt.Errorf("create book %s: %w", item.book.Slug, err)
 		}

@@ -24,6 +24,9 @@ func TestCreateBook_Status(t *testing.T) {
 		if book.Status != catalogDomain.BookStatusPublished || repo.books[0].Status != catalogDomain.BookStatusPublished {
 			t.Fatalf("expected published, got %q", book.Status)
 		}
+		if repo.books[0].PublishedAt == nil {
+			t.Fatal("a book created published must get its first-publication time")
+		}
 	})
 
 	t.Run("explicit status is kept", func(t *testing.T) {
@@ -35,6 +38,10 @@ func TestCreateBook_Status(t *testing.T) {
 			}
 			if book.Status != st {
 				t.Fatalf("expected %q, got %q", st, book.Status)
+			}
+			// Only a published book gets a first-publication time (#245).
+			if (book.PublishedAt != nil) != (st == catalogDomain.BookStatusPublished) {
+				t.Fatalf("%s: unexpected published_at %v", st, book.PublishedAt)
 			}
 		}
 	})

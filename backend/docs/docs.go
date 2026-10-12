@@ -7049,6 +7049,9 @@ const docTemplate = `{
                 "page_count": {
                     "type": "integer"
                 },
+                "published_at": {
+                    "type": "string"
+                },
                 "published_year": {
                     "type": "integer"
                 },

@@ -7,6 +7,7 @@ import (
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // authorBookStatsJoin attaches per-author linked-books counts. Portable
@@ -207,12 +208,19 @@ func (r *GormRepository) SetAuthorStatus(ctx context.Context, id uuid.UUID, stat
 }
 
 func (r *GormRepository) SetBookStatus(ctx context.Context, id uuid.UUID, status string) (bool, error) {
-	// Updates with an explicit column map (not Save): only status and
-	// updated_at are written; every other book column and the
-	// book_authors/book_genres links stay (book-status-model.md rule 7).
+	// Updates with an explicit column map (not Save): only status,
+	// updated_at and - when publishing - the first-publication time are
+	// written; every other book column and the book_authors/book_genres
+	// links stay (book-status-model.md rule 7). published_at is set once
+	// with COALESCE, so a republished book keeps its original time (#245).
+	now := time.Now()
+	cols := map[string]interface{}{"status": status, "updated_at": now}
+	if status == catalogDomain.BookStatusPublished {
+		cols["published_at"] = gorm.Expr("COALESCE(published_at, ?)", now)
+	}
 	result := r.db.WithContext(ctx).Model(&catalogDomain.Book{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{"status": status, "updated_at": time.Now()})
+		Updates(cols)
 	if result.Error != nil {
 		return false, result.Error
 	}
