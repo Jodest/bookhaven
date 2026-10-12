@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useMutation } from '@tanstack/react-query';
 import { adminBooksApi } from '@/entities/book';
-import { ApiError, ImportReport } from '@bookhaven/api-client';
+import { ApiError, ImportCreatedEntity, ImportReport } from '@bookhaven/api-client';
 import {
   Badge,
   Button,
@@ -130,8 +131,56 @@ export function BookFileImportPanel() {
               </Table>
             </div>
           )}
+
+          <CreatedEntitiesList
+            title="Созданные авторы"
+            entities={report.created_authors ?? []}
+            hrefBase="/catalog/authors"
+          />
+          <CreatedEntitiesList
+            title="Созданные жанры"
+            entities={report.created_genres ?? []}
+            hrefBase="/catalog/genres"
+            note="Новые жанры созданы на модерации и не видны на сайте до публикации."
+          />
         </div>
       )}
     </div>
+  );
+}
+
+interface CreatedEntitiesListProps {
+  title: string;
+  entities: ImportCreatedEntity[];
+  hrefBase: '/catalog/authors' | '/catalog/genres';
+  note?: string;
+}
+
+// CreatedEntitiesList shows the authors/genres the import created, each
+// linked to its edit page. Nothing is rendered for an empty list.
+function CreatedEntitiesList({ title, entities, hrefBase, note }: CreatedEntitiesListProps) {
+  if (entities.length === 0) {
+    return null;
+  }
+  return (
+    <section className="space-y-2 rounded-lg border p-4">
+      <h3 className="text-sm font-semibold">
+        {title} ({entities.length})
+      </h3>
+      {note && <p className="text-sm text-muted-foreground">{note}</p>}
+      <ul className="space-y-1 text-sm">
+        {entities.map((entity) => (
+          <li key={entity.id}>
+            <Link
+              href={`${hrefBase}/${encodeURIComponent(entity.id)}/edit` as any}
+              className="underline"
+            >
+              {entity.name}
+            </Link>{' '}
+            <span className="text-muted-foreground">строка {entity.row}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

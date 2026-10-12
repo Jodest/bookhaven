@@ -389,7 +389,13 @@ func (f *fakeAdminService) ImportBooks(ctx context.Context, rows []adminService.
 	if f.importReport != nil {
 		return *f.importReport
 	}
-	return adminService.ImportReport{Processed: len(rows), Created: len(rows), Errors: []adminService.ImportRowError{}}
+	return adminService.ImportReport{
+		Processed:      len(rows),
+		Created:        len(rows),
+		Errors:         []adminService.ImportRowError{},
+		CreatedAuthors: []adminService.ImportCreatedEntity{},
+		CreatedGenres:  []adminService.ImportCreatedEntity{},
+	}
 }
 
 func (f *fakeAdminService) BulkSetBookStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.BookBulkStatusReport, error) {

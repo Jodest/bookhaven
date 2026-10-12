@@ -61,6 +61,8 @@ describe('BookFileImportPanel', () => {
       created: 1,
       skipped_existing: 1,
       errors: [{ row: 3, title: '', message: 'title is required' }],
+      created_authors: [],
+      created_genres: [],
     });
 
     renderView();
@@ -98,7 +100,14 @@ describe('BookFileImportPanel', () => {
   });
 
   it('offers Опубликованы / На модерации and sends the chosen batch status', async () => {
-    importMock.mockResolvedValue({ processed: 1, created: 1, skipped_existing: 0, errors: [] });
+    importMock.mockResolvedValue({
+      processed: 1,
+      created: 1,
+      skipped_existing: 0,
+      errors: [],
+      created_authors: [],
+      created_genres: [],
+    });
 
     renderView();
 
@@ -117,5 +126,82 @@ describe('BookFileImportPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Импортировать' }));
 
     await waitFor(() => expect(importMock).toHaveBeenCalledWith(file, { status: 'pending' }));
+  });
+
+  async function submitFile() {
+    const file = makeFile('books.csv');
+    fireEvent.change(screen.getByLabelText('Файл (.csv или .json)'), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Импортировать' }));
+    await waitFor(() => expect(importMock).toHaveBeenCalled());
+  }
+
+  it('lists the created authors and genres with edit links, row labels and the pending note', async () => {
+    importMock.mockResolvedValue({
+      processed: 3,
+      created: 2,
+      skipped_existing: 0,
+      errors: [{ row: 3, title: 'Книга', message: 'invalid isbn' }],
+      created_authors: [
+        { id: 'a-1', name: 'Иван Новиков', row: 1 },
+        { id: 'a-2', name: 'Сирота', row: 3 },
+      ],
+      created_genres: [{ id: 'g-1', name: 'киберпанк', row: 2 }],
+    });
+
+    renderView();
+    await submitFile();
+
+    await waitFor(() => expect(screen.getByText('Созданные авторы (2)')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'Иван Новиков' })).toHaveAttribute(
+      'href',
+      '/catalog/authors/a-1/edit'
+    );
+    expect(screen.getByRole('link', { name: 'Сирота' })).toHaveAttribute(
+      'href',
+      '/catalog/authors/a-2/edit'
+    );
+    expect(screen.getByText('строка 3')).toBeInTheDocument();
+
+    expect(screen.getByText('Созданные жанры (1)')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'киберпанк' })).toHaveAttribute(
+      'href',
+      '/catalog/genres/g-1/edit'
+    );
+    expect(screen.getByText('строка 2')).toBeInTheDocument();
+    expect(
+      screen.getByText('Новые жанры созданы на модерации и не видны на сайте до публикации.')
+    ).toBeInTheDocument();
+  });
+
+  it('shows no created lists when nothing was created (or the fields are missing)', async () => {
+    importMock.mockResolvedValueOnce({
+      processed: 1,
+      created: 1,
+      skipped_existing: 0,
+      errors: [],
+      created_authors: [],
+      created_genres: [],
+    });
+
+    renderView();
+    await submitFile();
+
+    await waitFor(() => expect(screen.getByText('Создано: 1')).toBeInTheDocument());
+    expect(screen.queryByText(/Созданные авторы/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Созданные жанры/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Новые жанры созданы на модерации/)).not.toBeInTheDocument();
+  });
+
+  it('tolerates an older backend report without the created fields', async () => {
+    importMock.mockResolvedValueOnce({ processed: 1, created: 1, skipped_existing: 0, errors: [] });
+
+    renderView();
+    await submitFile();
+
+    await waitFor(() => expect(screen.getByText('Создано: 1')).toBeInTheDocument());
+    expect(screen.queryByText(/Созданные авторы/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Созданные жанры/)).not.toBeInTheDocument();
   });
 });
