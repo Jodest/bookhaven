@@ -318,6 +318,9 @@ func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDoma
 		ExternalSource: normalizeOptionalString(input.ExternalSource),
 		ExternalID:     normalizeOptionalString(input.ExternalID),
 	}
+	// A book created published (manual default, published import batch)
+	// gets its first-publication time now; pending books stay nil (#245).
+	book.MarkPublished(time.Now())
 
 	if err := s.repo.CreateBook(ctx, book, authorIDs, genreIDs); err != nil {
 		if isDuplicateKeyError(err) {

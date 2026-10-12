@@ -132,7 +132,7 @@ All rules read **visible books only** (`books.is_hidden = false`). Constants are
 
 ### New in catalog
 
-Visible, `ORDER BY created_at DESC, id DESC LIMIT RowLimit`. A harvested book published from the review queue keeps its harvest-time `created_at`, because there is no `published_at`; see Risks.
+Visible, `ORDER BY published_at DESC NULLS LAST, id DESC LIMIT RowLimit` (#245, OpenSpec change `track-book-publish-time`). `books.published_at` is the first time a book became `published`: set once on any path (manual create, import, single or bulk status change, seed) and never cleared, so unpublishing and republishing does not bump a book. A harvested book published from the review queue now ranks by its publish time, not its harvest time. Books published before migration `000020` were backfilled with `created_at`. `NULLS LAST` keeps raw-SQL fixtures without a time at the end.
 
 ### Top rated
 
@@ -243,7 +243,7 @@ Add swag annotations to the three handlers, the same as in the catalog handler, 
 
 ## Database
 
-No migration. Existing indexes cover the queries: `idx_books_created_at`, `idx_books_rating`, `idx_books_is_hidden`, `idx_reviews_is_hidden`, `idx_shelves_user_id`, the `book_similarities` PK prefix. The calendar's `EXTRACT` on `authors` and the reviews `DISTINCT ON` are sequential scans of small tables, and the payload is cached.
+No migration in the original feature. Migration `000020_books_published_at` (#245) later added `books.published_at` and the partial index `idx_books_published_at (published_at DESC NULLS LAST, id DESC) WHERE status = 'published'` for "Новое в каталоге". Existing indexes cover the other queries: `idx_books_created_at`, `idx_books_rating`, `idx_books_is_hidden`, `idx_reviews_is_hidden`, `idx_shelves_user_id`, the `book_similarities` PK prefix. The calendar's `EXTRACT` on `authors` and the reviews `DISTINCT ON` are sequential scans of small tables, and the payload is cached.
 
 Scaling path, not built now:
 - an expression index on `(EXTRACT(MONTH FROM birth_date), EXTRACT(DAY FROM birth_date))`, and the same for `death_date`;
@@ -523,7 +523,7 @@ Manual (record in the PR):
 - **Spoilers in fresh reviews (#207 not implemented):** a review quote on the most-visited page can spoil a book. Mitigation: a 280-rune excerpt, the minimum length rule, and moderation via the existing review hiding (which takes effect immediately because review rows are hydrated live). Revisit when #207 lands: exclude spoiler-marked reviews.
 - **Sparse data:** with few ratings, top-rated and the strict book-of-the-day pool are empty. The fallback tiers and empty-block hiding keep the page sane, but the "well-rated" promise is weak until the user base grows. The thresholds are constants, so tune them later.
 - **Julian/Gregorian dates:** birth dates of 18th–19th century Russian authors from harvest sources may be stored in either calendar, so a calendar event can be off by 11–13 days. This is a data-quality issue and is accepted. Admins can correct dates.
-- **`created_at` for harvested books:** books published from the review queue show up in "Новое в каталоге" by harvest time, not publish time, so a bulk publish of old harvests may not appear as new. Adding `published_at` needs a migration and is out of scope. Note it as a follow-up if it bothers users.
+- **`created_at` for harvested books (resolved by #245):** books published from the review queue used to show up in "Новое в каталоге" by harvest time. The row now orders by `published_at`. Books published from the queue before migration `000020` keep their harvest-time position (backfill = `created_at`, no status history).
 - **Up to 10 minutes of staleness** for which books are selected, for new books or rating changes. Visibility is always live, so this is accepted.
 - **Cross-module raw SQL** in the `home` repository over other modules' tables: schema changes in shelves, ratings, reviews or similarities must update it. Mitigated by the comment listing the tables read, and by tests on the service contract.
 - **Tier-2 recommendation cost:** up to 3 `ListSimilarBooks` calls per `/home/me` request when precomputed data is sparse. Stage 1 is Redis-cached for 6h, so this is cheap in steady state. The personal response is not cached.

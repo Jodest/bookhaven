@@ -27,7 +27,8 @@ type Repository interface {
 	CreateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error
 	UpdateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error
 	BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
-	// SetBookStatus updates only status (and updated_at) of one book.
+	// SetBookStatus updates only status (and updated_at) of one book, plus
+	// published_at = COALESCE(published_at, now) when publishing (#245).
 	// found is false when no book has that id.
 	SetBookStatus(ctx context.Context, id uuid.UUID, status string) (found bool, err error)
 
@@ -396,8 +397,16 @@ func (r *GormRepository) CreateBook(ctx context.Context, book *catalogDomain.Boo
 
 func (r *GormRepository) UpdateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Omit("Authors", "Genres").Save(book).Error; err != nil {
+		// PublishedAt is never written from the loaded struct: a stale value
+		// could clear or overwrite a time set by a concurrent bulk publish.
+		// It is set once below with COALESCE instead (#245).
+		if err := tx.Omit("Authors", "Genres", "PublishedAt").Save(book).Error; err != nil {
 			return err
+		}
+		if book.Status == catalogDomain.BookStatusPublished {
+			if err := tx.Exec("UPDATE books SET published_at = COALESCE(published_at, ?) WHERE id = ?", time.Now(), book.ID).Error; err != nil {
+				return err
+			}
 		}
 		if err := r.replaceBookAuthors(tx, book.ID, authorIDs); err != nil {
 			return err

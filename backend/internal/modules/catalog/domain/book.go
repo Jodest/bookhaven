@@ -30,9 +30,13 @@ type Book struct {
 	ReviewsCount  int     `gorm:"default:0"`
 	// Status is one of BookStatus*. Go code sets it explicitly on every
 	// create; the DB default (pending) only covers raw SQL inserts.
-	Status  string   `gorm:"type:varchar(20);not null;default:'pending'"`
-	Authors []Author `gorm:"many2many:book_authors;"`
-	Genres  []Genre  `gorm:"many2many:book_genres;"`
+	Status string `gorm:"type:varchar(20);not null;default:'pending'"`
+	// PublishedAt is the first time the book became published (#245); nil
+	// until then. Set once via MarkPublished or a COALESCE update and never
+	// cleared: unpublishing and republishing keep the original time.
+	PublishedAt *time.Time
+	Authors     []Author `gorm:"many2many:book_authors;"`
+	Genres      []Genre  `gorm:"many2many:book_genres;"`
 	// ExternalSource/ExternalID identify the origin record for books
 	// created via an automated harvest (e.g. "wikidata" + a QID), used as
 	// an idempotency key to avoid re-importing the same record. Nil for
@@ -46,6 +50,15 @@ type Book struct {
 // IsPublished reports whether the book is publicly visible.
 func (b Book) IsPublished() bool {
 	return b.Status == BookStatusPublished
+}
+
+// MarkPublished records now as the first-publication time when the book is
+// published and has none yet. An existing time is kept.
+func (b *Book) MarkPublished(now time.Time) {
+	if b.Status == BookStatusPublished && b.PublishedAt == nil {
+		t := now
+		b.PublishedAt = &t
+	}
 }
 
 // IsValidBookStatus reports whether s is one of the known statuses.

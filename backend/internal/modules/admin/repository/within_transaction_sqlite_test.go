@@ -50,7 +50,8 @@ CREATE TABLE books (
 	external_source TEXT,
 	external_id TEXT,
 	created_at DATETIME,
-	updated_at DATETIME
+	updated_at DATETIME,
+	published_at DATETIME
 );
 CREATE TABLE book_authors (book_id TEXT NOT NULL, author_id TEXT NOT NULL, PRIMARY KEY (book_id, author_id));
 CREATE TABLE book_genres (book_id TEXT NOT NULL, genre_id TEXT NOT NULL, PRIMARY KEY (book_id, genre_id));

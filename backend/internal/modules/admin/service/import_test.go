@@ -358,6 +358,9 @@ func TestImportBooks(t *testing.T) {
 		if repo.books[0].Status != catalogDomain.BookStatusPublished {
 			t.Fatalf("expected default batch status published, got %q", repo.books[0].Status)
 		}
+		if repo.books[0].PublishedAt == nil {
+			t.Fatal("expected a published import to set the first-publication time")
+		}
 		if repo.books[0].ExternalSource != nil || repo.books[0].ExternalID != nil {
 			t.Fatalf("expected external_source/external_id to stay nil, got %v / %v", repo.books[0].ExternalSource, repo.books[0].ExternalID)
 		}
@@ -398,6 +401,9 @@ func TestImportBooks(t *testing.T) {
 		for _, b := range repo.books {
 			if b.Status != catalogDomain.BookStatusPending {
 				t.Fatalf("expected every book to be pending per the batch status, got %q", b.Status)
+			}
+			if b.PublishedAt != nil {
+				t.Fatalf("expected a pending import to leave published_at nil, got %v", b.PublishedAt)
 			}
 		}
 	})

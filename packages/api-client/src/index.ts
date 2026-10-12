@@ -318,6 +318,8 @@ export interface AdminBook {
   ratings_count: number;
   reviews_count: number;
   status: AdminBookStatus;
+  /** First time the book became published; null if never. Read-only. */
+  published_at: string | null;
   external_source: string | null;
   authors: AdminAuthor[];
   genres: AdminGenre[];

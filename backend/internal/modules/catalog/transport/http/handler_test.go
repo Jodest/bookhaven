@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/catalog/repository"
@@ -227,7 +228,8 @@ func TestListBooks_RatingMinOutOfRangeIgnored(t *testing.T) {
 
 func TestGetBook_Found(t *testing.T) {
 	h, repo := setupHandler()
-	repo.books = []domain.Book{{ID: uuid.New(), Title: "Book A", Slug: "book-a"}}
+	publishedAt := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	repo.books = []domain.Book{{ID: uuid.New(), Title: "Book A", Slug: "book-a", Status: domain.BookStatusPublished, PublishedAt: &publishedAt}}
 
 	c, rec := newContext(http.MethodGet, "/api/v1/books/book-a")
 	c.SetPath("/api/v1/books/:slug")
@@ -247,6 +249,10 @@ func TestGetBook_Found(t *testing.T) {
 	}
 	if body.Title != "Book A" {
 		t.Fatalf("expected Book A, got %s", body.Title)
+	}
+	// The first-publication time is admin-only (#245).
+	if strings.Contains(rec.Body.String(), "published_at") {
+		t.Fatalf("public book payload must not include published_at: %s", rec.Body.String())
 	}
 }
 

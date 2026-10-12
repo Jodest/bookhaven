@@ -54,7 +54,8 @@ CREATE TABLE books (
 	external_source TEXT,
 	external_id TEXT,
 	created_at DATETIME,
-	updated_at DATETIME
+	updated_at DATETIME,
+	published_at DATETIME
 );
 CREATE TABLE genres (
 	id TEXT PRIMARY KEY,
