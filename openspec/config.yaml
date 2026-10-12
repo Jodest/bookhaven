@@ -17,7 +17,7 @@ context: |
   Public content is Russian-only; catalog entities (books, authors, genres)
   have a status: pending | published | rejected (rejected = tombstone).
   Specs live in openspec/specs/<domain>/<capability>/spec.md. Existing
-  domains: catalog-import, catalog-moderation. Older feature history is in docs/features/*.md
+  domains: catalog-import, catalog-moderation, auth. Older feature history is in docs/features/*.md
   (frozen, not a source of truth for current behavior).
   Spec prose is English; UI strings and error texts shown to users are quoted
   in Russian exactly as rendered.
