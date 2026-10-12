@@ -25,8 +25,21 @@ import (
 // its status (see docs/features/author-status.md rule 5). Harvest uses
 // ResolveOrCreateHarvestAuthors instead.
 func (s *Service) ResolveOrCreateAuthorIDsByNames(ctx context.Context, names []string) ([]string, error) {
+	ids, _, err := s.resolveOrCreateAuthorsByNames(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// resolveOrCreateAuthorsByNames is ResolveOrCreateAuthorIDsByNames that
+// also returns the authors it created, in creation order. On a failure it
+// returns the authors created so far together with the error, so the
+// caller can still report them (they stay in the catalog).
+func (s *Service) resolveOrCreateAuthorsByNames(ctx context.Context, names []string) ([]string, []*catalogDomain.Author, error) {
 	seen := make(map[string]struct{}, len(names))
 	ids := make([]string, 0, len(names))
+	var createdAuthors []*catalogDomain.Author
 
 	for _, name := range names {
 		name = strings.TrimSpace(name)
@@ -38,13 +51,14 @@ func (s *Service) ResolveOrCreateAuthorIDsByNames(ctx context.Context, names []s
 		author, err := s.repo.GetAuthorBySlug(ctx, slug)
 		if err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, fmt.Errorf("lookup author %q: %w", name, err)
+				return nil, createdAuthors, fmt.Errorf("lookup author %q: %w", name, err)
 			}
 			created, createErr := s.CreateAuthor(ctx, AuthorInput{Name: name})
 			if createErr != nil {
-				return nil, fmt.Errorf("create author %q: %w", name, createErr)
+				return nil, createdAuthors, fmt.Errorf("create author %q: %w", name, createErr)
 			}
 			author = created
+			createdAuthors = append(createdAuthors, created)
 		}
 
 		id := author.ID.String()
@@ -55,7 +69,7 @@ func (s *Service) ResolveOrCreateAuthorIDsByNames(ctx context.Context, names []s
 		ids = append(ids, id)
 	}
 
-	return ids, nil
+	return ids, createdAuthors, nil
 }
 
 // AuthorRef is one harvested author reference: a display name plus an
@@ -292,8 +306,21 @@ func (s *Service) createHarvestAuthor(ctx context.Context, name, slug, qid strin
 // whatever the target's status. Harvest uses ResolveOrCreateHarvestGenres
 // instead.
 func (s *Service) ResolveOrCreateGenreIDsByNames(ctx context.Context, names []string) ([]string, error) {
+	ids, _, err := s.resolveOrCreateGenresByNames(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// resolveOrCreateGenresByNames is ResolveOrCreateGenreIDsByNames that also
+// returns the genres it created (only on the not-found branch; an existing
+// or alias match is never counted), in creation order. On a failure it
+// returns the genres created so far together with the error.
+func (s *Service) resolveOrCreateGenresByNames(ctx context.Context, names []string) ([]string, []*catalogDomain.Genre, error) {
 	seen := make(map[string]struct{}, len(names))
 	ids := make([]string, 0, len(names))
+	var createdGenres []*catalogDomain.Genre
 
 	for _, name := range names {
 		name = strings.TrimSpace(name)
@@ -305,17 +332,18 @@ func (s *Service) ResolveOrCreateGenreIDsByNames(ctx context.Context, names []st
 		genre, err := s.repo.GetGenreBySlug(ctx, slug)
 		if err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, fmt.Errorf("lookup genre %q: %w", name, err)
+				return nil, createdGenres, fmt.Errorf("lookup genre %q: %w", name, err)
 			}
 			created, createErr := s.createGenre(ctx, GenreInput{Name: name}, genreIdentity{status: catalogDomain.GenreStatusPending})
 			if createErr != nil {
-				return nil, fmt.Errorf("create genre %q: %w", name, createErr)
+				return nil, createdGenres, fmt.Errorf("create genre %q: %w", name, createErr)
 			}
 			genre = created
+			createdGenres = append(createdGenres, created)
 		} else {
 			target, _, followErr := s.followGenreAlias(ctx, genre)
 			if followErr != nil {
-				return nil, followErr
+				return nil, createdGenres, followErr
 			}
 			genre = target
 		}
@@ -328,7 +356,7 @@ func (s *Service) ResolveOrCreateGenreIDsByNames(ctx context.Context, names []st
 		ids = append(ids, id)
 	}
 
-	return ids, nil
+	return ids, createdGenres, nil
 }
 
 // GenreRef is one harvested genre reference: a display name plus an
