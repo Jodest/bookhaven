@@ -32,6 +32,10 @@ type fakeAdminRepository struct {
 	bookGenreIDs [][]uuid.UUID
 }
 
+func (f *fakeAdminRepository) WithinTransaction(ctx context.Context, fn func(repo adminrepository.Repository) error) error {
+	return fn(f)
+}
+
 var _ adminrepository.Repository = (*fakeAdminRepository)(nil)
 
 func (f *fakeAdminRepository) DashboardCounts(ctx context.Context) (adminrepository.DashboardStats, error) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 )
 
@@ -49,9 +50,10 @@ type ImportReport struct {
 	SkippedExisting int              `json:"skipped_existing"`
 	Errors          []ImportRowError `json:"errors"`
 	// CreatedAuthors / CreatedGenres list every author/genre this import
-	// created, in creation order, each at most once - including those
-	// created while processing a row that then failed or was skipped
-	// (they stay in the catalog). Always present, never nil.
+	// created, in creation order, each at most once. Only rows whose book
+	// was created create authors/genres (a failed or skipped row creates
+	// nothing), so every entry comes from such a row.
+	// Always present, never nil.
 	CreatedAuthors []ImportCreatedEntity `json:"created_authors"`
 	CreatedGenres  []ImportCreatedEntity `json:"created_genres"`
 }
@@ -93,7 +95,9 @@ const (
 // logic is implemented here (NFR-001). Imported books never set
 // ExternalSource/ExternalID (this is not the harvest path) and get
 // defaultStatus (a valid book status; "" means CreateBook's default,
-// published) - there is no per-row status override.
+// published) - there is no per-row status override. A row changes the
+// catalog only when its book is created: each row is fully checked before
+// any write and its writes run in one transaction (see importRow).
 func (s *Service) ImportBooks(ctx context.Context, rows []ImportRowInput, defaultStatus string) ImportReport {
 	report := ImportReport{
 		Processed:      len(rows),
@@ -143,32 +147,24 @@ func (s *Service) ImportBooks(ctx context.Context, rows []ImportRowInput, defaul
 
 // importRow validates, resolves authors/genres, and creates a single row's
 // book. It returns a non-nil error only for *this row's* failure - callers
-// record it and continue with the rest of the batch. The authors/genres it
-// created are returned on every path (success, skip and error), because
-// they stay in the catalog whatever the row's outcome.
+// record it and continue with the rest of the batch.
+//
+// The row is fully checked before anything is written: the no-authors rule
+// first, then prepareNewBook and the ISBN check (CreateBook's own rules, in
+// CreateBook's order, so the slug-existence skip still wins over an invalid
+// ISBN). Only then are the authors, the genres and the book written, in one
+// transaction, so a failure at any step leaves nothing from this row in the
+// catalog. The created authors/genres are therefore returned only on the
+// created outcome; on error or skip the returned importRowCreated is empty.
 func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStatus string) (importOutcome, importRowCreated, error) {
-	var created importRowCreated
+	if !hasNonBlankName(row.Authors) {
+		return 0, importRowCreated{}, errImportNoAuthors
+	}
 
 	language := strings.TrimSpace(row.Language)
 	if language == "" {
 		language = defaultImportLanguage
 	}
-
-	authorIDs, createdAuthors, err := s.resolveOrCreateAuthorsByNames(ctx, row.Authors)
-	created.authors = createdAuthors
-	if err != nil {
-		return 0, created, fmt.Errorf("resolve authors: %w", err)
-	}
-	if len(authorIDs) == 0 {
-		return 0, created, errImportNoAuthors
-	}
-
-	genreIDs, createdGenres, err := s.resolveOrCreateGenresByNames(ctx, row.Genres)
-	created.genres = createdGenres
-	if err != nil {
-		return 0, created, fmt.Errorf("resolve genres: %w", err)
-	}
-
 	input := BookInput{
 		Title:         row.Title,
 		Slug:          row.Slug,
@@ -178,20 +174,69 @@ func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStat
 		PublishedYear: row.PublishedYear,
 		PageCount:     row.PageCount,
 		Language:      language,
-		AuthorIDs:     authorIDs,
-		GenreIDs:      genreIDs,
 	}
-
 	if defaultStatus != "" {
 		status := defaultStatus
 		input.Status = &status
 	}
 
-	if _, err := s.CreateBook(ctx, input); err != nil {
+	// Pre-creation check: nothing has been written yet.
+	if _, err := s.prepareNewBook(ctx, input); err != nil {
 		if errors.Is(err, ErrDuplicateSlug) {
-			return importOutcomeSkipped, created, nil
+			return importOutcomeSkipped, importRowCreated{}, nil
 		}
-		return 0, created, err
+		return 0, importRowCreated{}, err
+	}
+	if _, err := normalizeNewBookISBN(input.ISBN); err != nil {
+		return 0, importRowCreated{}, err
+	}
+
+	var created importRowCreated
+	// bookErr is set only when CreateBook itself fails, so an
+	// ErrDuplicateSlug from author/genre creation (e.g. a concurrent import
+	// creating the same author) stays a row error instead of a skip.
+	var bookErr error
+	err := s.repo.WithinTransaction(ctx, func(txRepo repository.Repository) error {
+		tx := s.withRepo(txRepo)
+
+		authorIDs, createdAuthors, err := tx.resolveOrCreateAuthorsByNames(ctx, row.Authors)
+		if err != nil {
+			return fmt.Errorf("resolve authors: %w", err)
+		}
+		if len(authorIDs) == 0 {
+			return errImportNoAuthors
+		}
+		genreIDs, createdGenres, err := tx.resolveOrCreateGenresByNames(ctx, row.Genres)
+		if err != nil {
+			return fmt.Errorf("resolve genres: %w", err)
+		}
+
+		input.AuthorIDs = authorIDs
+		input.GenreIDs = genreIDs
+		if _, err := tx.CreateBook(ctx, input); err != nil {
+			bookErr = err
+			return err
+		}
+		created = importRowCreated{authors: createdAuthors, genres: createdGenres}
+		return nil
+	})
+	if err != nil {
+		if bookErr != nil && errors.Is(bookErr, ErrDuplicateSlug) {
+			return importOutcomeSkipped, importRowCreated{}, nil
+		}
+		return 0, importRowCreated{}, err
 	}
 	return importOutcomeCreated, created, nil
+}
+
+// hasNonBlankName reports whether names has at least one non-blank entry.
+// A non-blank name always resolves to an author (matched or created) unless
+// a write fails, so this is the DB-free form of "has a resolvable author".
+func hasNonBlankName(names []string) bool {
+	for _, n := range names {
+		if strings.TrimSpace(n) != "" {
+			return true
+		}
+	}
+	return false
 }

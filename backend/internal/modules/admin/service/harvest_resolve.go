@@ -34,8 +34,9 @@ func (s *Service) ResolveOrCreateAuthorIDsByNames(ctx context.Context, names []s
 
 // resolveOrCreateAuthorsByNames is ResolveOrCreateAuthorIDsByNames that
 // also returns the authors it created, in creation order. On a failure it
-// returns the authors created so far together with the error, so the
-// caller can still report them (they stay in the catalog).
+// returns the authors created so far together with the error; whether they
+// stay in the catalog depends on the caller (the file import rolls them back
+// with its row transaction).
 func (s *Service) resolveOrCreateAuthorsByNames(ctx context.Context, names []string) ([]string, []*catalogDomain.Author, error) {
 	seen := make(map[string]struct{}, len(names))
 	ids := make([]string, 0, len(names))
@@ -316,7 +317,8 @@ func (s *Service) ResolveOrCreateGenreIDsByNames(ctx context.Context, names []st
 // resolveOrCreateGenresByNames is ResolveOrCreateGenreIDsByNames that also
 // returns the genres it created (only on the not-found branch; an existing
 // or alias match is never counted), in creation order. On a failure it
-// returns the genres created so far together with the error.
+// returns the genres created so far together with the error (see
+// resolveOrCreateAuthorsByNames for what happens to them).
 func (s *Service) resolveOrCreateGenresByNames(ctx context.Context, names []string) ([]string, []*catalogDomain.Genre, error) {
 	seen := make(map[string]struct{}, len(names))
 	ids := make([]string, 0, len(names))

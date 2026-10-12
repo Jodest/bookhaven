@@ -84,6 +84,10 @@ type fakeRepository struct {
 	listGenresByQIDsCalls int
 }
 
+func (f *fakeRepository) WithinTransaction(ctx context.Context, fn func(repo repository.Repository) error) error {
+	return fn(f)
+}
+
 func (f *fakeRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
 	if f.dashboardErr != nil {
 		return repository.DashboardStats{}, f.dashboardErr

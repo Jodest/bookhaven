@@ -25,6 +25,10 @@ type fakeMergeAuthorsRepository struct {
 	authors []catalogDomain.Author
 }
 
+func (f *fakeMergeAuthorsRepository) WithinTransaction(ctx context.Context, fn func(repo repository.Repository) error) error {
+	return fn(f)
+}
+
 var _ repository.Repository = (*fakeMergeAuthorsRepository)(nil)
 
 func (f *fakeMergeAuthorsRepository) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {

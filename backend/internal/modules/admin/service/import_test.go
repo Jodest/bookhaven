@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
@@ -11,6 +12,7 @@ import (
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -31,6 +33,26 @@ type fakeImportRepository struct {
 	// createAuthorErr, when set, is consulted before each CreateAuthor; a
 	// non-nil result fails that creation (partial resolver failure tests).
 	createAuthorErr func(name string) error
+	// createBookErr, when set, is consulted before each CreateBook; a
+	// non-nil result fails that creation (post-check failure tests).
+	createBookErr func(book *catalogDomain.Book) error
+	// transactions counts WithinTransaction calls.
+	transactions int
+}
+
+// WithinTransaction simulates a real transaction: it snapshots books,
+// authors and genres and restores them when fn fails, so rollback tests
+// observe what a database would.
+func (f *fakeImportRepository) WithinTransaction(ctx context.Context, fn func(repo repository.Repository) error) error {
+	f.transactions++
+	books := append([]catalogDomain.Book(nil), f.books...)
+	authors := append([]catalogDomain.Author(nil), f.authors...)
+	genres := append([]catalogDomain.Genre(nil), f.genres...)
+	if err := fn(f); err != nil {
+		f.books, f.authors, f.genres = books, authors, genres
+		return err
+	}
+	return nil
 }
 
 var _ repository.Repository = (*fakeImportRepository)(nil)
@@ -63,6 +85,11 @@ func (f *fakeImportRepository) GetBookByExternalID(ctx context.Context, source, 
 }
 
 func (f *fakeImportRepository) CreateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error {
+	if f.createBookErr != nil {
+		if err := f.createBookErr(book); err != nil {
+			return err
+		}
+	}
 	f.books = append(f.books, *book)
 	return nil
 }
@@ -491,7 +518,9 @@ func TestImportBooks(t *testing.T) {
 }
 
 // TestImportBooks_CreatedEntities covers the report's created_authors /
-// created_genres (openspec change report-import-created-entities).
+// created_genres (openspec change report-import-created-entities) and the
+// rule that a row changes the catalog only when its book is created
+// (openspec change import-validate-before-create).
 func TestImportBooks_CreatedEntities(t *testing.T) {
 	t.Run("new author and new genre are listed with their row and stored name", func(t *testing.T) {
 		svc, repo := newImportService()
@@ -565,48 +594,143 @@ func TestImportBooks_CreatedEntities(t *testing.T) {
 		}
 	})
 
-	t.Run("author created by a row that then fails validation is listed", func(t *testing.T) {
+	t.Run("a row that fails validation creates no author or genre", func(t *testing.T) {
 		svc, repo := newImportService()
 		badISBN := "123"
 		rows := []ImportRowInput{
 			{Title: "Первая", Authors: []string{"Автор"}},
 			{Title: "Вторая", Authors: []string{"Автор"}},
-			{Title: "Третья", Authors: []string{"Сирота"}, ISBN: &badISBN},
+			{Title: "Третья", Authors: []string{"Сирота"}, Genres: []string{"новый жанр"}, ISBN: &badISBN},
 		}
 
 		report := svc.ImportBooks(context.Background(), rows, "")
 
-		if len(report.Errors) != 1 || report.Errors[0].Row != 3 {
-			t.Fatalf("expected one error on row 3, got %+v", report.Errors)
+		if len(report.Errors) != 1 || report.Errors[0].Row != 3 || report.Errors[0].Message != ErrInvalidISBN.Error() {
+			t.Fatalf("expected one invalid-ISBN error on row 3, got %+v", report.Errors)
 		}
-		if len(report.CreatedAuthors) != 2 {
-			t.Fatalf("expected 2 created authors, got %+v", report.CreatedAuthors)
+		if len(repo.authors) != 1 || repo.authors[0].Name != "Автор" {
+			t.Fatalf("expected only the valid rows' author in the catalog, got %+v", repo.authors)
 		}
-		got := report.CreatedAuthors[1]
-		if got.Name != "Сирота" || got.Row != 3 || got.ID != repo.authors[1].ID.String() {
-			t.Fatalf("unexpected created author for the failed row: %+v", got)
+		if len(repo.genres) != 0 {
+			t.Fatalf("expected no genre created by the failed row, got %+v", repo.genres)
+		}
+		want := []ImportCreatedEntity{{ID: repo.authors[0].ID.String(), Name: "Автор", Row: 1}}
+		if !reflect.DeepEqual(report.CreatedAuthors, want) {
+			t.Fatalf("created_authors = %+v, want %+v", report.CreatedAuthors, want)
+		}
+		if len(report.CreatedGenres) != 0 {
+			t.Fatalf("expected empty created_genres, got %+v", report.CreatedGenres)
+		}
+		if repo.transactions != 2 {
+			t.Fatalf("expected the failed row to open no transaction, got %d transactions", repo.transactions)
 		}
 	})
 
-	t.Run("genre created by a skipped_existing row is listed", func(t *testing.T) {
+	t.Run("a skipped_existing row creates no author or genre", func(t *testing.T) {
 		svc, repo := newImportService()
 		repo.books = append(repo.books, catalogDomain.Book{ID: uuid.New(), Title: "Existing", Slug: "existing-book"})
 		repo.authors = append(repo.authors, catalogDomain.Author{ID: uuid.New(), Name: "Автор", Slug: slugify("Автор"), Status: catalogDomain.AuthorStatusPublished})
 		rows := []ImportRowInput{
 			{Title: "Новая", Authors: []string{"Автор"}},
-			{Title: "Существующая", Slug: "existing-book", Authors: []string{"Автор"}, Genres: []string{"новый жанр"}},
+			{Title: "Существующая", Slug: "existing-book", Authors: []string{"Новый Автор"}, Genres: []string{"новый жанр"}},
 		}
 
 		report := svc.ImportBooks(context.Background(), rows, "")
 
-		if report.SkippedExisting != 1 {
+		if report.SkippedExisting != 1 || report.Created != 1 || len(report.Errors) != 0 {
 			t.Fatalf("expected the second row skipped, got %+v", report)
 		}
-		if len(report.CreatedGenres) != 1 || report.CreatedGenres[0].Row != 2 || report.CreatedGenres[0].Name != "новый жанр" {
-			t.Fatalf("unexpected created_genres: %+v", report.CreatedGenres)
+		if len(repo.genres) != 0 || len(repo.authors) != 1 {
+			t.Fatalf("expected nothing created by the skipped row, got %d genres / %d authors", len(repo.genres), len(repo.authors))
 		}
-		if len(report.CreatedAuthors) != 0 {
-			t.Fatalf("expected no created authors, got %+v", report.CreatedAuthors)
+		if repo.books[0].Title != "Existing" {
+			t.Fatalf("expected the existing book unchanged, got %+v", repo.books[0])
+		}
+		if len(report.CreatedGenres) != 0 || len(report.CreatedAuthors) != 0 {
+			t.Fatalf("expected empty created arrays, got %+v / %+v", report.CreatedAuthors, report.CreatedGenres)
+		}
+	})
+
+	t.Run("a row without authors creates no genre", func(t *testing.T) {
+		svc, repo := newImportService()
+		rows := []ImportRowInput{{Title: "Книга", Authors: []string{" ", ""}, Genres: []string{"новый жанр"}}}
+
+		report := svc.ImportBooks(context.Background(), rows, "")
+
+		if len(report.Errors) != 1 || report.Errors[0].Message != errImportNoAuthors.Error() {
+			t.Fatalf("expected a no-authors row error, got %+v", report.Errors)
+		}
+		if len(repo.genres) != 0 || len(report.CreatedGenres) != 0 {
+			t.Fatalf("expected no genre created, got %+v / %+v", repo.genres, report.CreatedGenres)
+		}
+	})
+
+	t.Run("new author first named on a failed row is listed with the creating row", func(t *testing.T) {
+		svc, repo := newImportService()
+		badISBN := "123"
+		rows := []ImportRowInput{
+			{Title: "Первая", Authors: []string{"Автор"}},
+			{Title: "Вторая", Authors: []string{"Новый Автор"}, ISBN: &badISBN},
+			{Title: "Третья", Authors: []string{"Автор"}},
+			{Title: "Четвёртая", Authors: []string{"Автор"}},
+			{Title: "Пятая", Authors: []string{"Новый Автор"}},
+		}
+
+		report := svc.ImportBooks(context.Background(), rows, "")
+
+		if report.Created != 4 || len(report.Errors) != 1 || report.Errors[0].Row != 2 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if len(repo.authors) != 2 {
+			t.Fatalf("expected 2 authors created, got %+v", repo.authors)
+		}
+		want := []ImportCreatedEntity{
+			{ID: repo.authors[0].ID.String(), Name: "Автор", Row: 1},
+			{ID: repo.authors[1].ID.String(), Name: "Новый Автор", Row: 5},
+		}
+		if !reflect.DeepEqual(report.CreatedAuthors, want) {
+			t.Fatalf("created_authors = %+v, want %+v", report.CreatedAuthors, want)
+		}
+	})
+
+	t.Run("an existing slug with an invalid ISBN is still skipped_existing", func(t *testing.T) {
+		svc, repo := newImportService()
+		repo.books = append(repo.books, catalogDomain.Book{ID: uuid.New(), Title: "Existing", Slug: "existing-book"})
+		badISBN := "123"
+		rows := []ImportRowInput{{Title: "Книга", Slug: "existing-book", Authors: []string{"Новый Автор"}, ISBN: &badISBN}}
+
+		report := svc.ImportBooks(context.Background(), rows, "")
+
+		if report.SkippedExisting != 1 || len(report.Errors) != 0 {
+			t.Fatalf("expected the row skipped, got %+v", report)
+		}
+		if len(repo.authors) != 0 || len(report.CreatedAuthors) != 0 {
+			t.Fatalf("expected no author created, got %+v / %+v", repo.authors, report.CreatedAuthors)
+		}
+	})
+
+	t.Run("valid rows around a failing row are unaffected", func(t *testing.T) {
+		svc, repo := newImportService()
+		rows := []ImportRowInput{
+			{Title: "Первая", Authors: []string{"Первый Автор"}},
+			{Title: "", Authors: []string{"Сирота"}},
+			{Title: "Третья", Authors: []string{"Третий Автор"}},
+		}
+
+		report := svc.ImportBooks(context.Background(), rows, "")
+
+		if report.Created != 2 || len(report.Errors) != 1 || report.Errors[0].Row != 2 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if len(repo.books) != 2 || len(repo.authors) != 2 {
+			t.Fatalf("expected 2 books / 2 authors, got %d / %d", len(repo.books), len(repo.authors))
+		}
+		want := []ImportCreatedEntity{
+			{ID: repo.authors[0].ID.String(), Name: "Первый Автор", Row: 1},
+			{ID: repo.authors[1].ID.String(), Name: "Третий Автор", Row: 3},
+		}
+		if !reflect.DeepEqual(report.CreatedAuthors, want) {
+			t.Fatalf("created_authors = %+v, want %+v", report.CreatedAuthors, want)
 		}
 	})
 
@@ -623,7 +747,7 @@ func TestImportBooks_CreatedEntities(t *testing.T) {
 		}
 	})
 
-	t.Run("partial resolver failure still reports the already-created author", func(t *testing.T) {
+	t.Run("partial resolver failure rolls back the already-created author", func(t *testing.T) {
 		svc, repo := newImportService()
 		repo.createAuthorErr = func(name string) error {
 			if name == "Второй" {
@@ -638,9 +762,78 @@ func TestImportBooks_CreatedEntities(t *testing.T) {
 		if len(report.Errors) != 1 || report.Errors[0].Row != 1 {
 			t.Fatalf("expected a row error, got %+v", report.Errors)
 		}
-		want := []ImportCreatedEntity{{ID: repo.authors[0].ID.String(), Name: "Первый", Row: 1}}
-		if !reflect.DeepEqual(report.CreatedAuthors, want) {
-			t.Fatalf("created_authors = %+v, want %+v", report.CreatedAuthors, want)
+		if len(repo.authors) != 0 || len(repo.books) != 0 {
+			t.Fatalf("expected the row rolled back, got %+v / %+v", repo.authors, repo.books)
+		}
+		if len(report.CreatedAuthors) != 0 {
+			t.Fatalf("expected empty created_authors, got %+v", report.CreatedAuthors)
+		}
+	})
+
+	t.Run("book creation failure rolls back the row's new author and genre", func(t *testing.T) {
+		svc, repo := newImportService()
+		repo.createBookErr = func(book *catalogDomain.Book) error {
+			if book.Title == "Сбой" {
+				return errors.New("db down")
+			}
+			return nil
+		}
+		rows := []ImportRowInput{
+			{Title: "Сбой", Authors: []string{"Иван Новиков"}, Genres: []string{"киберпанк"}},
+			{Title: "Книга", Authors: []string{"Другой Автор"}},
+		}
+
+		report := svc.ImportBooks(context.Background(), rows, "")
+
+		if report.Created != 1 || len(report.Errors) != 1 || report.Errors[0].Row != 1 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+		if len(repo.authors) != 1 || repo.authors[0].Name != "Другой Автор" || len(repo.genres) != 0 {
+			t.Fatalf("expected the failed row rolled back, got %+v / %+v", repo.authors, repo.genres)
+		}
+		want := []ImportCreatedEntity{{ID: repo.authors[0].ID.String(), Name: "Другой Автор", Row: 2}}
+		if !reflect.DeepEqual(report.CreatedAuthors, want) || len(report.CreatedGenres) != 0 {
+			t.Fatalf("unexpected created entities: %+v / %+v", report.CreatedAuthors, report.CreatedGenres)
+		}
+	})
+
+	t.Run("book taken concurrently is skipped_existing and leaves nothing behind", func(t *testing.T) {
+		svc, repo := newImportService()
+		repo.createBookErr = func(book *catalogDomain.Book) error {
+			return &pgconn.PgError{Code: "23505"}
+		}
+		rows := []ImportRowInput{{Title: "Книга", Authors: []string{"Иван Новиков"}, Genres: []string{"киберпанк"}}}
+
+		report := svc.ImportBooks(context.Background(), rows, "")
+
+		if report.SkippedExisting != 1 || report.Created != 0 || len(report.Errors) != 0 {
+			t.Fatalf("expected the row skipped, got %+v", report)
+		}
+		if len(repo.authors) != 0 || len(repo.genres) != 0 || len(repo.books) != 0 {
+			t.Fatalf("expected nothing left behind, got %d authors / %d genres / %d books", len(repo.authors), len(repo.genres), len(repo.books))
+		}
+		if len(report.CreatedAuthors) != 0 || len(report.CreatedGenres) != 0 {
+			t.Fatalf("expected empty created arrays, got %+v / %+v", report.CreatedAuthors, report.CreatedGenres)
+		}
+	})
+
+	t.Run("duplicate slug from author creation is a row error, not a skip", func(t *testing.T) {
+		svc, repo := newImportService()
+		repo.createAuthorErr = func(name string) error {
+			return &pgconn.PgError{Code: "23505"}
+		}
+		rows := []ImportRowInput{{Title: "Книга", Authors: []string{"Иван Новиков"}, Genres: []string{"киберпанк"}}}
+
+		report := svc.ImportBooks(context.Background(), rows, "")
+
+		if report.SkippedExisting != 0 || len(report.Errors) != 1 {
+			t.Fatalf("expected a row error, got %+v", report)
+		}
+		if !strings.Contains(report.Errors[0].Message, ErrDuplicateSlug.Error()) {
+			t.Fatalf("expected the row error to carry the author's duplicate slug, got %q", report.Errors[0].Message)
+		}
+		if len(repo.authors) != 0 || len(repo.genres) != 0 || len(repo.books) != 0 {
+			t.Fatalf("expected nothing left behind, got %d authors / %d genres / %d books", len(repo.authors), len(repo.genres), len(repo.books))
 		}
 	})
 }
