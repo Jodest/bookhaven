@@ -40,7 +40,7 @@ Small/hotfix changes get a single `[fix]` issue instead. The plan (OpenSpec chan
 
 ## OpenSpec pilot
 
-Status: pilot, started 2026-10-09. Framework: [OpenSpec](https://github.com/Fission-AI/OpenSpec) (MIT).
+Status: adopted. Pilot started 2026-10-09; after two `catalog-import` features (#340, #345) it was extended to `catalog-moderation` on 2026-10-12 (#349). Framework: [OpenSpec](https://github.com/Fission-AI/OpenSpec) (MIT).
 
 **Why.** Feature Contracts describe a *change*. After a few iterations nobody can tell how a domain behaves *now* without stacking several contracts plus their "Update (#N)" notes (the import domain had about 12). OpenSpec adds a second layer: living specs of current behavior, updated by merging each change's deltas.
 
@@ -52,7 +52,7 @@ Status: pilot, started 2026-10-09. Framework: [OpenSpec](https://github.com/Fiss
 - `openspec/changes/archive/<date>-<slug>/` — archived changes (history).
 - `openspec/config.yaml` — project context and per-artifact rules, fed to the planner.
 
-**Which format the planner picks.** OpenSpec for changes in a domain that already has specs (pilot domain: `catalog-import` — 7 capabilities: book lookup, file import, Wikidata book harvest, author/genre import, Wikidata matching rules, the admin «Импорт» section). A Feature Contract for everything else. Domains get a baseline spec when they join; old `docs/features/*.md` stay as frozen history and are not migrated.
+**Which format the planner picks.** OpenSpec for changes in a domain that already has specs (`catalog-import` — 7 capabilities: book lookup, file import, Wikidata book harvest, author/genre import, Wikidata matching rules, the admin «Импорт» section; `catalog-moderation` — 6 capabilities: entity status and public visibility, bulk status, moderation queues, duplicate hints, author merge, genre merge). Not yet covered: review moderation, author enrichment from Wikidata, the admin catalog lists/edit forms, and every non-catalog domain. A Feature Contract for everything else. Domains get a baseline spec when they join; old `docs/features/*.md` stay as frozen history and are not migrated.
 
 **Lifecycle inside `/feature`.** Step 4: the planner writes the change → `validate --strict`. Steps 6–8: the developer ticks `tasks.md`, the checks re-run `validate`, review traces every scenario. Step 9: `archive -y` merges the deltas into `openspec/specs/` on the feature branch, so code and spec update reach `main` together through the PR gate.
 
@@ -66,7 +66,7 @@ OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2 show <capability> --type
 
 Bump the pinned version deliberately (OpenSpec releases weekly) and re-run `validate --specs --strict` after a bump.
 
-**Pilot exit criteria.** Run 1–2 real `catalog-import` features through `/feature`. Then decide: extend to other domains (each gets a baseline spec), or roll back (delete `openspec/`, revert the agent/command edits from this PR). Signals to watch: does the planner explore less code, does review catch spec/code drift, how much do archive conflicts and MODIFIED-block copying cost.
+**Pilot outcome.** Both pilot features went through cleanly: deltas validated, review traced every scenario to code, archive updated the living spec in the same PR. One format gotcha: inside a MODIFIED requirement a scenario cannot be renamed, only rewritten under its current name. Decision (2026-10-12): extend domain by domain, each with a baseline spec verified against the code. Rolling back still means deleting `openspec/` and reverting the agent/command edits of #337.
 
 ## Prerequisites (one-time setup)
 
