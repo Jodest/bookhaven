@@ -133,6 +133,15 @@ func NewService(repo repository.Repository, opts ...Option) *Service {
 	return s
 }
 
+// withRepo returns a shallow copy of s that uses repo (e.g. a repository
+// bound to a transaction, see repository.Repository.WithinTransaction).
+// Service holds no mutable per-call state, so the copy is safe to use.
+func (s *Service) withRepo(repo repository.Repository) *Service {
+	c := *s
+	c.repo = repo
+	return &c
+}
+
 // DashboardCounts returns overview counts for the admin dashboard.
 func (s *Service) DashboardCounts(ctx context.Context) (repository.DashboardStats, error) {
 	return s.repo.DashboardCounts(ctx)
@@ -204,17 +213,28 @@ type BookInput struct {
 	AllowNonRussianTitle bool
 }
 
-// CreateBook creates a new book with relationships.
-func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDomain.Book, error) {
+// preparedBook holds the values prepareNewBook derives from a BookInput.
+type preparedBook struct {
+	status string
+	slug   string
+}
+
+// prepareNewBook runs, in order, the checks CreateBook performs before
+// touching author/genre IDs: the status, validateBookInput, the slug
+// derivation and URL-safety check, and the slug-existence check
+// (ErrDuplicateSlug). It writes nothing. It is the single source of truth
+// for those rules, shared by CreateBook and the bulk import's pre-creation
+// check (import.go), so both always agree on a row's outcome.
+func (s *Service) prepareNewBook(ctx context.Context, input BookInput) (preparedBook, error) {
 	status := catalogDomain.BookStatusPublished
 	if input.Status != nil {
 		if !catalogDomain.IsValidBookStatus(*input.Status) {
-			return nil, ErrInvalidBookStatus
+			return preparedBook{}, ErrInvalidBookStatus
 		}
 		status = *input.Status
 	}
 	if err := validateBookInput(input, input.AllowNonRussianTitle); err != nil {
-		return nil, err
+		return preparedBook{}, err
 	}
 
 	slug := strings.TrimSpace(input.Slug)
@@ -222,16 +242,41 @@ func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDoma
 		slug = slugify(input.Title)
 	}
 	if !isURLSafeSlug(slug) {
-		return nil, ErrInvalidSlug
+		return preparedBook{}, ErrInvalidSlug
 	}
 
 	exists, err := s.repo.BookSlugExists(ctx, slug, nil)
 	if err != nil {
-		return nil, fmt.Errorf("check slug: %w", err)
+		return preparedBook{}, fmt.Errorf("check slug: %w", err)
 	}
 	if exists {
-		return nil, ErrDuplicateSlug
+		return preparedBook{}, ErrDuplicateSlug
 	}
+	return preparedBook{status: status, slug: slug}, nil
+}
+
+// normalizeNewBookISBN trims the optional ISBN, maps blank to nil and
+// rejects a non-blank value with an invalid checksum (ErrInvalidISBN). It
+// is CreateBook's last check (after the author/genre ID checks) and is also
+// run by the bulk import's pre-creation check.
+func normalizeNewBookISBN(raw *string) (*string, error) {
+	isbn := normalizeOptionalString(raw)
+	if isbn != nil && *isbn != "" {
+		if !isValidISBN(*isbn) {
+			return nil, ErrInvalidISBN
+		}
+		return isbn, nil
+	}
+	return nil, nil
+}
+
+// CreateBook creates a new book with relationships.
+func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDomain.Book, error) {
+	prepared, err := s.prepareNewBook(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	status, slug := prepared.status, prepared.slug
 
 	authorIDs, err := parseUUIDsUnique(input.AuthorIDs)
 	if err != nil {
@@ -254,13 +299,9 @@ func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDoma
 		return nil, ErrInvalidGenreIDs
 	}
 
-	isbn := normalizeOptionalString(input.ISBN)
-	if isbn != nil && *isbn != "" {
-		if !isValidISBN(*isbn) {
-			return nil, ErrInvalidISBN
-		}
-	} else {
-		isbn = nil
+	isbn, err := normalizeNewBookISBN(input.ISBN)
+	if err != nil {
+		return nil, err
 	}
 
 	book := &catalogDomain.Book{

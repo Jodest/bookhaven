@@ -172,6 +172,13 @@ type Repository interface {
 	// Relationship validation helpers.
 	AuthorsExist(ctx context.Context, ids []uuid.UUID) (bool, error)
 	GenresExist(ctx context.Context, ids []uuid.UUID) (bool, error)
+
+	// WithinTransaction runs fn with a Repository bound to one database
+	// transaction: every call made through that repository runs in it, and
+	// the transaction commits when fn returns nil and rolls back otherwise
+	// (fn's error is returned). Methods that open their own transaction
+	// (e.g. CreateBook) nest as savepoints.
+	WithinTransaction(ctx context.Context, fn func(repo Repository) error) error
 }
 
 // BookFilter defines filtering options for admin book list.
@@ -249,6 +256,13 @@ type GormRepository struct {
 // NewGormRepository creates a new GormRepository.
 func NewGormRepository(db *gorm.DB) Repository {
 	return &GormRepository{db: db}
+}
+
+// WithinTransaction implements Repository.WithinTransaction.
+func (r *GormRepository) WithinTransaction(ctx context.Context, fn func(repo Repository) error) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(&GormRepository{db: tx})
+	})
 }
 
 func (r *GormRepository) DashboardCounts(ctx context.Context) (DashboardStats, error) {

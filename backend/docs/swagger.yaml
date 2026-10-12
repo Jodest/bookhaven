@@ -119,9 +119,10 @@ definitions:
       created_authors:
         description: |-
           CreatedAuthors / CreatedGenres list every author/genre this import
-          created, in creation order, each at most once - including those
-          created while processing a row that then failed or was skipped
-          (they stay in the catalog). Always present, never nil.
+          created, in creation order, each at most once. Only rows whose book
+          was created create authors/genres (a failed or skipped row creates
+          nothing), so every entry comes from such a row.
+          Always present, never nil.
         items:
           $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.ImportCreatedEntity'
         type: array
