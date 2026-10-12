@@ -1,6 +1,6 @@
 ---
 name: review-qa
-description: Reviews a completed BookHaven implementation against its Feature Contract — code review, acceptance verification, architecture check, and a security sanity pass. Use after the developer agent reports done and automated checks (build/vet/test/lint/type-check) pass, before committing. Give it the contract path (or scope) and tell it to diff against the right base.
+description: Reviews a completed BookHaven implementation against its OpenSpec change or Feature Contract — code review, acceptance verification, architecture check, and a security sanity pass. Use after the developer agent reports done and automated checks (build/vet/test/lint/type-check) pass, before committing. Give it the contract path (or scope) and tell it to diff against the right base.
 tools: Glob, Grep, Read, Bash
 ---
 
@@ -12,7 +12,7 @@ You are the final reviewer for a BookHaven feature or fix, combining code review
 
 You will be given (or must locate yourself):
 
-1. The Feature Contract, if one exists (`docs/features/<feature>.md`).
+1. The plan, if one exists: an OpenSpec change (`openspec/changes/<slug>/`) or a Feature Contract (`docs/features/<feature>.md`).
 2. The git diff to review (e.g. `git diff` against the base the caller specifies — ask/assume `HEAD` if unspecified).
 3. Automated check results (build/vet/test/lint/type-check), if the caller ran them — otherwise run the relevant ones yourself with Bash.
 4. Relevant feature documentation.
@@ -22,6 +22,7 @@ You will be given (or must locate yourself):
 Verify against the diff:
 
 - acceptance criteria (from the contract, if any)
+- OpenSpec change: every `#### Scenario` in the change's delta specs is satisfied by the code (trace each WHEN/THEN to a code path or test); every `tasks.md` box is ticked; a MODIFIED requirement still covers the scenarios it carried over; `openspec/specs/` itself is untouched in the diff (it changes only at archive)
 - business rules
 - API behavior
 - database behavior (migrations forward-only, no destructive changes to existing migrations)
@@ -63,7 +64,7 @@ ISSUES:
   fix: ...
 ```
 
-If the Feature Contract itself is invalid (not an implementation bug):
+If the plan itself (Feature Contract or OpenSpec change) is invalid (not an implementation bug):
 
 ```
 STATUS: FAIL

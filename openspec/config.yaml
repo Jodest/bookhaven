@@ -1,0 +1,41 @@
+schema: spec-driven
+
+# Pilot (see docs/PIPELINE.md "OpenSpec pilot"). Changes are authored by the
+# feature-planner agent and driven by /feature, not by /opsx:* commands
+# (none are installed: `openspec init --tools none`). CLI pinned via
+# `npx -y @fission-ai/openspec@1.13.2`, telemetry off (OPENSPEC_TELEMETRY=0).
+
+context: |
+  BookHaven is a social book catalog. Solo-maintained, one VPS.
+  Backend: Go, Echo, GORM, PostgreSQL, Redis/asynq worker. Clean Architecture
+  modules under backend/internal/modules/* (domain/service/repository/transport).
+  Frontend: Next.js/React/TypeScript, Feature-Sliced Design; apps/web (public
+  site) and apps/admin (staff panel); shared packages/{api-client,types,ui}.
+  Roles: user, moderator, admin. Server-side role/ownership checks are
+  authoritative; frontend guards are UX only. State-changing admin routes need
+  the admin (or moderator) role plus a bearer token.
+  Public content is Russian-only; catalog entities (books, authors, genres)
+  have a status: pending | published | rejected (rejected = tombstone).
+  Specs live in openspec/specs/<domain>/<capability>/spec.md. Existing
+  domains: catalog-import. Older feature history is in docs/features/*.md
+  (frozen, not a source of truth for current behavior).
+  Spec prose is English; UI strings and error texts shown to users are quoted
+  in Russian exactly as rendered.
+
+rules:
+  proposal:
+    - Keep it under one page. Link the GitHub issue if one exists.
+    - In "Impact", name the touched areas as backend / frontend / devops / docs.
+  specs:
+    - Specs describe observable behavior (HTTP contract, UI behavior, business rules), never Go/TS identifiers or file paths.
+    - Include the authorization rule (role, bearer) for every new or changed endpoint.
+    - Reuse an existing capability path under openspec/specs/ before inventing a new one.
+  design:
+    - Always create design.md for changes touching API, database, auth or more than one app.
+    - Use sections Context, Decisions, API, Database, Frontend, Existing Patterns, Risks; omit the ones that do not apply.
+    - Database changes are forward-only migrations; never edit an existing migration.
+    - Frontend changes must respect FSD boundaries (no view imports a view, no cross-feature imports).
+  tasks:
+    - Group by area (backend, frontend, docs); each group lands its own tests.
+    - Verification commands are go build/vet/test from backend/, tsc --noEmit and next lint per touched app. Never a native next build (CI is the typedRoutes gate).
+    - Never include destructive DB commands (migrate down, drop) in tasks.

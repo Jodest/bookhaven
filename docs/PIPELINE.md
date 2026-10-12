@@ -10,7 +10,8 @@ How feature work moves from request to production in this repo, and what to set 
 |------|------|
 | `.claude/commands/f.md` | `/f` — universal entry point. Classifies a request and routes it. |
 | `.claude/commands/feature.md` | `/feature` — the full pipeline engine: plan → GitHub issue tracking → implement → check → review → PR into `dev` → PR into `main`. `/f` delegates feature-shaped work here; you can also invoke it directly. |
-| `.claude/agents/feature-planner.md` | Business/UX/architecture analysis → Feature Contract (`docs/features/<feature>.md`). |
+| `.claude/agents/feature-planner.md` | Business/UX/architecture analysis → an OpenSpec change (`openspec/changes/<slug>/`) for domains with living specs, otherwise a Feature Contract (`docs/features/<feature>.md`). |
+| `openspec/` | OpenSpec pilot: living specs (`specs/<domain>/<capability>/spec.md`), in-flight changes (`changes/<slug>/`), archive (`changes/archive/`), project context/rules (`config.yaml`). See "OpenSpec pilot" below. |
 | `.claude/agents/developer.md` | Implementation (backend/frontend/migrations/tests). |
 | `.claude/agents/review-qa.md` | Code review, acceptance/security/QA pass on the diff. |
 | `.claude/agents/devops.md` | Infra-as-code only (Dockerfiles, compose, Caddy, CI/CD workflows). Never touches the real server or a real cloud API. |
@@ -32,10 +33,40 @@ No agent ever merges a PR or pushes directly to `main`/`dev`. You review and mer
 ## GitHub issue tracking
 
 Every normal-workflow feature gets:
-- one epic issue (`[epic] <feature>`), body links to the Feature Contract at `docs/features/<feature>.md`
+- one epic issue (`[epic] <feature>`), body links to the plan: the OpenSpec change `openspec/changes/<slug>/` or the Feature Contract `docs/features/<feature>.md`
 - one sub-issue per touched area, tagged `[backend]` / `[frontend]` / `[devops]`, referencing the epic
 
-Small/hotfix changes get a single `[fix]` issue instead. The Feature Contract stays the source of truth for *what* to build; issues exist for status/traceability, not as a second spec.
+Small/hotfix changes get a single `[fix]` issue instead. The plan (OpenSpec change or Feature Contract) stays the source of truth for *what* to build; issues exist for status/traceability, not as a second spec.
+
+## OpenSpec pilot
+
+Status: pilot, started 2026-10-09. Framework: [OpenSpec](https://github.com/Fission-AI/OpenSpec) (MIT).
+
+**Why.** Feature Contracts describe a *change*. After a few iterations nobody can tell how a domain behaves *now* without stacking several contracts plus their "Update (#N)" notes (the import domain had about 12). OpenSpec adds a second layer: living specs of current behavior, updated by merging each change's deltas.
+
+**What was adopted and what wasn't.** Only the artifact format and the CLI. Orchestration stays in `/feature`: GitHub issues, the `dev`→`main` gate, mechanical checks, the independent `review-qa` pass. `openspec init --tools none` was used, so no `/opsx:*` commands or OpenSpec skills are installed. They would compete with `/f` and skip all of the above.
+
+**Layout.**
+- `openspec/specs/<domain>/<capability>/spec.md` — current behavior: `### Requirement` (SHALL/MUST) + `#### Scenario` (WHEN/THEN). Observable behavior only, no code identifiers.
+- `openspec/changes/<slug>/` — a planned change: `proposal.md`, delta `specs/` (`ADDED / MODIFIED / REMOVED / RENAMED Requirements`), `design.md` (the old contract's API/DB/Frontend/Patterns detail), `tasks.md`.
+- `openspec/changes/archive/<date>-<slug>/` — archived changes (history).
+- `openspec/config.yaml` — project context and per-artifact rules, fed to the planner.
+
+**Which format the planner picks.** OpenSpec for changes in a domain that already has specs (pilot domain: `catalog-import` — 7 capabilities: book lookup, file import, Wikidata book harvest, author/genre import, Wikidata matching rules, the admin «Импорт» section). A Feature Contract for everything else. Domains get a baseline spec when they join; old `docs/features/*.md` stay as frozen history and are not migrated.
+
+**Lifecycle inside `/feature`.** Step 4: the planner writes the change → `validate --strict`. Steps 6–8: the developer ticks `tasks.md`, the checks re-run `validate`, review traces every scenario. Step 9: `archive -y` merges the deltas into `openspec/specs/` on the feature branch, so code and spec update reach `main` together through the PR gate.
+
+**CLI.** Always pinned and with telemetry off, no global install and no devDependency (a root devDependency changed the frontend lockfile resolution and would have entered the Docker images):
+
+```bash
+OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2 validate --specs --strict   # all living specs
+OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2 list --specs                # capability inventory
+OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2 show <capability> --type spec
+```
+
+Bump the pinned version deliberately (OpenSpec releases weekly) and re-run `validate --specs --strict` after a bump.
+
+**Pilot exit criteria.** Run 1–2 real `catalog-import` features through `/feature`. Then decide: extend to other domains (each gets a baseline spec), or roll back (delete `openspec/`, revert the agent/command edits from this PR). Signals to watch: does the planner explore less code, does review catch spec/code drift, how much do archive conflicts and MODIFIED-block copying cost.
 
 ## Prerequisites (one-time setup)
 
