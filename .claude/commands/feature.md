@@ -11,6 +11,16 @@ Parse `$ARGUMENTS` for the quoted feature request text and the optional flags `-
 
 This command is also the engine behind `/f`'s feature-routing and resume handling — see `.claude/commands/f.md`. If you were invoked with a resume-style request instead of a fresh feature request (e.g. "PR #12 in dev merged, continue" or "main PR #14 approved and merged"), skip to **Resuming after the dev PR is merged** or **Resuming after the main PR is merged** below instead of Step 1.
 
+## OpenSpec (pilot)
+
+Some domains are specified as living OpenSpec specs under `openspec/specs/` (see `docs/PIPELINE.md` → "OpenSpec pilot"). The planner then returns `FORMAT: openspec` and a change folder `openspec/changes/<slug>/` instead of a Feature Contract. Run the CLI only through this pinned, telemetry-off invocation (referred to as `$OPENSPEC` below):
+
+```bash
+OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2
+```
+
+Never use `/opsx:*` commands (none are installed) and never edit `openspec/specs/` by hand — main specs change only through `archive` in Step 9.
+
 ## Step 0 — Prerequisites check
 
 Run `gh auth status`. If `gh` is missing or not authenticated, STOP immediately and report:
@@ -52,7 +62,9 @@ Skip for `--small`.
 
 Invoke the `feature-planner` subagent (Agent tool, `subagent_type: "feature-planner"`) with the full feature request as its prompt — it starts with zero context, so give it the complete request text, not a summary.
 
-- If it returns `STATUS: READY`, continue to Step 5 with the `CONTRACT` path and `SUMMARY` it reports.
+- If it returns `STATUS: READY`, continue with the `FORMAT`, `PLAN` path and `SUMMARY` it reports.
+  - `FORMAT: openspec` — run `$OPENSPEC validate <slug> --strict`. If it reports errors, re-invoke the planner once with the plan path and the exact validator output; if it still fails, STOP and report. Then continue to Step 5.
+  - `FORMAT: contract` — continue to Step 5.
 - If it returns `STATUS: BLOCKED`, STOP and report the reason.
 
 ## Step 5 — GitHub issue tracking
@@ -67,8 +79,8 @@ EPIC_URL=$(gh issue create --title "[epic] <feature>" \
 ## Summary
 <2-3 bullets from the planner SUMMARY>
 
-## Contract
-docs/features/<feature>.md
+## Plan
+<PLAN path: openspec/changes/<slug>/ or docs/features/<feature>.md>
 EOF
 )")
 ```
@@ -103,7 +115,7 @@ gh project item-edit --id "$ITEM_ID" --field-id <status-field-id> --project-id <
 
 Invoke the `developer` subagent (Agent tool, `subagent_type: "developer"`). Give it:
 
-- the Feature Contract path from Step 4 (normal workflow), or the raw feature request verbatim (small/hotfix workflow) — it cannot read your conversation, so include the actual request text, not just a reference to it;
+- the plan path and format from Step 4 (normal workflow) — for an OpenSpec change, tell it to tick `tasks.md` checkboxes as it goes and not to run `archive`; or the raw feature request verbatim (small/hotfix workflow) — it cannot read your conversation, so include the actual request text, not just a reference to it;
 - explicit instruction not to commit.
 
 - If it returns `STATUS: IMPLEMENTED`, continue to Step 7.
@@ -115,6 +127,7 @@ Run yourself (do not delegate) only the checks relevant to what changed:
 
 - Backend touched: from `backend/`, run `go build ./...`, `go vet ./...`, `go test ./...`.
 - Frontend touched (`apps/web` and/or `apps/admin`): run `tsc --noEmit` and `next lint` for each touched app. On Windows, invoke the app's `node_modules/.bin/next` shim directly (e.g. `cd apps/admin && ./node_modules/.bin/next lint`) rather than `pnpm run`, which can fail to resolve the POSIX shim through cmd.exe.
+- OpenSpec change: run `$OPENSPEC validate <slug> --strict` (the developer may have adjusted delta specs).
 - Always run `git diff --check` (whitespace/conflict-marker sanity).
 
 If any check fails, go back to Step 6 with the failure output. Do not invoke the reviewer until every relevant mechanical check passes.
@@ -123,7 +136,7 @@ If any check fails, go back to Step 6 with the failure output. Do not invoke the
 
 Invoke the `review-qa` subagent (Agent tool, `subagent_type: "review-qa"`). Give it, inline in the prompt (it has zero context):
 
-- the Feature Contract content or path (normal workflow), or the original request (small/hotfix workflow);
+- the plan path and format (normal workflow) — for an OpenSpec change, tell it to verify every scenario in the change's delta specs and that `tasks.md` is fully ticked — or the original request (small/hotfix workflow);
 - the full `git diff` output for the changed files;
 - the Step 7 automated check results.
 
@@ -137,7 +150,13 @@ Track review/fix cycles (Steps 6-8). After 3 failed cycles, STOP and report the 
 
 After a PASS, verify yourself (do not invoke another agent):
 
-- `docs/features/<feature>.md` exists or was appropriately updated (normal workflow);
+- contract format: `docs/features/<feature>.md` exists or was appropriately updated (normal workflow);
+- OpenSpec format: every `tasks.md` checkbox is ticked (`$OPENSPEC status --change <slug>`), then archive the change so the updated main specs ship in the same commit as the code:
+  ```bash
+  $OPENSPEC archive <slug> -y
+  $OPENSPEC validate --specs --strict
+  ```
+  `archive` merges the deltas into `openspec/specs/` and moves the change to `openspec/changes/archive/<date>-<slug>/`. If it refuses (for example, a MODIFIED block would drop scenarios), go back to Step 6 with its output — never pass `--no-validate`. Archiving on the feature branch is deliberate: an agent never commits to `main`, so this is the only point where the spec update can travel with its code through the PR gate;
 - `docs/ROADMAP.md` reflects the feature's current status.
 
 ## Step 10 — Commit
