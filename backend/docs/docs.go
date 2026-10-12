@@ -6621,7 +6621,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "created_authors": {
-                    "description": "CreatedAuthors / CreatedGenres list every author/genre this import\ncreated, in creation order, each at most once - including those\ncreated while processing a row that then failed or was skipped\n(they stay in the catalog). Always present, never nil.",
+                    "description": "CreatedAuthors / CreatedGenres list every author/genre this import\ncreated, in creation order, each at most once. Only rows whose book\nwas created create authors/genres (a failed or skipped row creates\nnothing), so every entry comes from such a row.\nAlways present, never nil.",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.ImportCreatedEntity"
