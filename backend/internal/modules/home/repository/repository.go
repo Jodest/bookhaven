@@ -87,7 +87,8 @@ type Repository interface {
 	// ListAnniversaryBooks returns visible books whose age (year -
 	// published_year) is a positive multiple of step, best first.
 	ListAnniversaryBooks(ctx context.Context, year, step, limit int) ([]AnniversaryRow, error)
-	// ListNewBookIDs returns the newest visible books (created_at DESC).
+	// ListNewBookIDs returns the most recently first-published visible
+	// books (published_at DESC NULLS LAST, id DESC; #245).
 	ListNewBookIDs(ctx context.Context, limit int) ([]uuid.UUID, error)
 	// ListTopRatedBookIDs returns the best-rated visible books.
 	ListTopRatedBookIDs(ctx context.Context, minRating float64, minCount, limit int) ([]uuid.UUID, error)
@@ -301,7 +302,7 @@ func (r *GormRepository) ListAnniversaryBooks(ctx context.Context, year, step, l
 func (r *GormRepository) ListNewBookIDs(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	var rows []idRow
 	if err := r.db.WithContext(ctx).
-		Raw("SELECT id FROM books WHERE status = 'published' ORDER BY created_at DESC, id DESC LIMIT ?", limit).
+		Raw("SELECT id FROM books WHERE status = 'published' ORDER BY published_at DESC NULLS LAST, id DESC LIMIT ?", limit).
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}

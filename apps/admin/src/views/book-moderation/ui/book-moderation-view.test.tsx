@@ -62,6 +62,7 @@ function makeBook(overrides: Partial<AdminBook> = {}): AdminBook {
     ratings_count: 0,
     reviews_count: 0,
     status: 'pending',
+    published_at: null,
     external_source: 'wikidata',
     authors: [makeAuthor(), makeAuthor({ id: 'a2', name: 'Неизвестный соавтор', status: 'pending' })],
     genres: [makeGenre({ status: 'pending' })],

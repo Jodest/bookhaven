@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	adminService "github.com/bookhaven/backend/internal/modules/admin/service"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
@@ -238,5 +239,47 @@ func TestBulkSetBookStatus_Auth(t *testing.T) {
 		if rec.Code != tc.want {
 			t.Fatalf("%s: expected %d, got %d", tc.name, tc.want, rec.Code)
 		}
+	}
+}
+
+// TestGetBook_PublishedAt: the admin book payload always carries
+// published_at - null for a never-published book, the time otherwise (#245).
+func TestGetBook_PublishedAt(t *testing.T) {
+	at := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	pendingID, publishedID := uuid.New(), uuid.New()
+	h, svc := setupHandler()
+	svc.books = []catalogDomain.Book{
+		{ID: pendingID, Title: "Черновик", Status: catalogDomain.BookStatusPending},
+		{ID: publishedID, Title: "Книга", Status: catalogDomain.BookStatusPublished, PublishedAt: &at},
+	}
+
+	get := func(id uuid.UUID) map[string]json.RawMessage {
+		t.Helper()
+		c, rec := newContext(http.MethodGet, "/api/v1/admin/books/"+id.String(), nil)
+		c.SetParamNames("id")
+		c.SetParamValues(id.String())
+		setAdminUser(c)
+		if err := h.GetBook(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var body map[string]json.RawMessage
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return body
+	}
+
+	pending := get(pendingID)
+	if raw, ok := pending["published_at"]; !ok || string(raw) != "null" {
+		t.Fatalf("pending book: expected published_at null, got %q (present=%v)", raw, ok)
+	}
+
+	published := get(publishedID)
+	var got time.Time
+	if err := json.Unmarshal(published["published_at"], &got); err != nil || !got.Equal(at) {
+		t.Fatalf("published book: expected published_at %v, got %s err=%v", at, published["published_at"], err)
 	}
 }
