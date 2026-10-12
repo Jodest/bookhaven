@@ -645,6 +645,18 @@ export interface ImportReport {
   created: number;
   skipped_existing: number;
   errors: ImportRowError[];
+  // Authors/genres this import created, in creation order, each at most
+  // once - including those created by rows that then failed or were skipped.
+  created_authors: ImportCreatedEntity[];
+  created_genres: ImportCreatedEntity[];
+}
+
+// ImportCreatedEntity is one author or genre created by a book file import:
+// its ID, stored name and the 1-based data row that created it.
+export interface ImportCreatedEntity {
+  id: string;
+  name: string;
+  row: number;
 }
 
 export interface AdminBookBulkStatusRowError {

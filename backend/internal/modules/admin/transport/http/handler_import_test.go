@@ -171,6 +171,12 @@ func TestImportBooks_EmptyFile_NotAnError(t *testing.T) {
 	if len(svc.lastImportRows) != 0 {
 		t.Fatalf("expected 0 rows, got %d", len(svc.lastImportRows))
 	}
+	body := rec.Body.String()
+	for _, want := range []string{`"created_authors":[]`, `"created_genres":[]`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected %s in the report, got %s", want, body)
+		}
+	}
 }
 
 func TestImportBooks_StatusFormField(t *testing.T) {

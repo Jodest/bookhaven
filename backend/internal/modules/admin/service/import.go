@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 )
 
 // defaultImportLanguage is applied to a row when its language field is
@@ -46,6 +48,26 @@ type ImportReport struct {
 	Created         int              `json:"created"`
 	SkippedExisting int              `json:"skipped_existing"`
 	Errors          []ImportRowError `json:"errors"`
+	// CreatedAuthors / CreatedGenres list every author/genre this import
+	// created, in creation order, each at most once - including those
+	// created while processing a row that then failed or was skipped
+	// (they stay in the catalog). Always present, never nil.
+	CreatedAuthors []ImportCreatedEntity `json:"created_authors"`
+	CreatedGenres  []ImportCreatedEntity `json:"created_genres"`
+}
+
+// ImportCreatedEntity is one author or genre created by an import: its ID,
+// its stored name, and the 1-based data row whose processing created it.
+type ImportCreatedEntity struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Row  int    `json:"row"`
+}
+
+// importRowCreated holds the entities created while processing one row.
+type importRowCreated struct {
+	authors []*catalogDomain.Author
+	genres  []*catalogDomain.Genre
 }
 
 // ImportRowError describes a single failed row. Row is 1-based over data
@@ -73,10 +95,33 @@ const (
 // defaultStatus (a valid book status; "" means CreateBook's default,
 // published) - there is no per-row status override.
 func (s *Service) ImportBooks(ctx context.Context, rows []ImportRowInput, defaultStatus string) ImportReport {
-	report := ImportReport{Processed: len(rows), Errors: []ImportRowError{}}
+	report := ImportReport{
+		Processed:      len(rows),
+		Errors:         []ImportRowError{},
+		CreatedAuthors: []ImportCreatedEntity{},
+		CreatedGenres:  []ImportCreatedEntity{},
+	}
+	seenAuthors := make(map[string]struct{})
+	seenGenres := make(map[string]struct{})
 
 	for i, row := range rows {
-		outcome, err := s.importRow(ctx, row, defaultStatus)
+		outcome, created, err := s.importRow(ctx, row, defaultStatus)
+		for _, a := range created.authors {
+			id := a.ID.String()
+			if _, ok := seenAuthors[id]; ok {
+				continue
+			}
+			seenAuthors[id] = struct{}{}
+			report.CreatedAuthors = append(report.CreatedAuthors, ImportCreatedEntity{ID: id, Name: a.Name, Row: i + 1})
+		}
+		for _, g := range created.genres {
+			id := g.ID.String()
+			if _, ok := seenGenres[id]; ok {
+				continue
+			}
+			seenGenres[id] = struct{}{}
+			report.CreatedGenres = append(report.CreatedGenres, ImportCreatedEntity{ID: id, Name: g.Name, Row: i + 1})
+		}
 		if err != nil {
 			report.Errors = append(report.Errors, ImportRowError{
 				Row:     i + 1,
@@ -98,24 +143,30 @@ func (s *Service) ImportBooks(ctx context.Context, rows []ImportRowInput, defaul
 
 // importRow validates, resolves authors/genres, and creates a single row's
 // book. It returns a non-nil error only for *this row's* failure - callers
-// record it and continue with the rest of the batch.
-func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStatus string) (importOutcome, error) {
+// record it and continue with the rest of the batch. The authors/genres it
+// created are returned on every path (success, skip and error), because
+// they stay in the catalog whatever the row's outcome.
+func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStatus string) (importOutcome, importRowCreated, error) {
+	var created importRowCreated
+
 	language := strings.TrimSpace(row.Language)
 	if language == "" {
 		language = defaultImportLanguage
 	}
 
-	authorIDs, err := s.ResolveOrCreateAuthorIDsByNames(ctx, row.Authors)
+	authorIDs, createdAuthors, err := s.resolveOrCreateAuthorsByNames(ctx, row.Authors)
+	created.authors = createdAuthors
 	if err != nil {
-		return 0, fmt.Errorf("resolve authors: %w", err)
+		return 0, created, fmt.Errorf("resolve authors: %w", err)
 	}
 	if len(authorIDs) == 0 {
-		return 0, errImportNoAuthors
+		return 0, created, errImportNoAuthors
 	}
 
-	genreIDs, err := s.ResolveOrCreateGenreIDsByNames(ctx, row.Genres)
+	genreIDs, createdGenres, err := s.resolveOrCreateGenresByNames(ctx, row.Genres)
+	created.genres = createdGenres
 	if err != nil {
-		return 0, fmt.Errorf("resolve genres: %w", err)
+		return 0, created, fmt.Errorf("resolve genres: %w", err)
 	}
 
 	input := BookInput{
@@ -138,9 +189,9 @@ func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStat
 
 	if _, err := s.CreateBook(ctx, input); err != nil {
 		if errors.Is(err, ErrDuplicateSlug) {
-			return importOutcomeSkipped, nil
+			return importOutcomeSkipped, created, nil
 		}
-		return 0, err
+		return 0, created, err
 	}
-	return importOutcomeCreated, nil
+	return importOutcomeCreated, created, nil
 }

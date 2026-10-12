@@ -6600,11 +6600,38 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_bookhaven_backend_internal_modules_admin_service.ImportCreatedEntity": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "row": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_bookhaven_backend_internal_modules_admin_service.ImportReport": {
             "type": "object",
             "properties": {
                 "created": {
                     "type": "integer"
+                },
+                "created_authors": {
+                    "description": "CreatedAuthors / CreatedGenres list every author/genre this import\ncreated, in creation order, each at most once - including those\ncreated while processing a row that then failed or was skipped\n(they stay in the catalog). Always present, never nil.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.ImportCreatedEntity"
+                    }
+                },
+                "created_genres": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_admin_service.ImportCreatedEntity"
+                    }
                 },
                 "errors": {
                     "type": "array",
