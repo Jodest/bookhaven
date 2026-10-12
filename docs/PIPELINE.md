@@ -40,7 +40,7 @@ Small/hotfix changes get a single `[fix]` issue instead. The plan (OpenSpec chan
 
 ## OpenSpec pilot
 
-Status: adopted. Pilot started 2026-10-09; after two `catalog-import` features (#340, #345) it was extended to `catalog-moderation` (#349) and `auth` (#357) on 2026-10-12. Framework: [OpenSpec](https://github.com/Fission-AI/OpenSpec) (MIT).
+Status: adopted. Pilot started 2026-10-09; after two `catalog-import` features (#340, #345) it was extended to `catalog-moderation` (#349) `auth` (#357) and `reviews` (#360) on 2026-10-12. Framework: [OpenSpec](https://github.com/Fission-AI/OpenSpec) (MIT).
 
 **Why.** Feature Contracts describe a *change*. After a few iterations nobody can tell how a domain behaves *now* without stacking several contracts plus their "Update (#N)" notes (the import domain had about 12). OpenSpec adds a second layer: living specs of current behavior, updated by merging each change's deltas.
 
@@ -52,7 +52,7 @@ Status: adopted. Pilot started 2026-10-09; after two `catalog-import` features (
 - `openspec/changes/archive/<date>-<slug>/` — archived changes (history).
 - `openspec/config.yaml` — project context and per-artifact rules, fed to the planner.
 
-**Which format the planner picks.** OpenSpec for changes in a domain that already has specs (`catalog-import` — 7 capabilities: book lookup, file import, Wikidata book harvest, author/genre import, Wikidata matching rules, the admin «Импорт» section; `catalog-moderation` — 6 capabilities: entity status and public visibility, bulk status, moderation queues, duplicate hints, author merge, genre merge; `auth` — 5 capabilities: registration, session (login, tokens, refresh, logout), email verification, password reset, authorization (bearer/cookie, roles, page guards)). Not yet covered: review moderation, author enrichment from Wikidata, the admin catalog lists/edit forms, user profiles and admin user management, and the reader domains (shelves, lists, ratings, reviews, home, notifications, challenges). A Feature Contract for everything else. Domains get a baseline spec when they join; old `docs/features/*.md` stay as frozen history and are not migrated.
+**Which format the planner picks.** OpenSpec for changes in a domain that already has specs (`catalog-import` — 7 capabilities: book lookup, file import, Wikidata book harvest, author/genre import, Wikidata matching rules, the admin «Импорт» section; `catalog-moderation` — 6 capabilities: entity status and public visibility, bulk status, moderation queues, duplicate hints, author merge, genre merge; `auth` — 5 capabilities: registration, session (login, tokens, refresh, logout), email verification, password reset, authorization (bearer/cookie, roles, page guards); `reviews` — 5 capabilities: book ratings, book reviews, review likes, review moderation, review-like notifications). Not yet covered: author enrichment from Wikidata, the admin catalog lists/edit forms, user profiles and admin user management, and the reader domains (shelves, lists, home, reading challenges). A Feature Contract for everything else. Domains get a baseline spec when they join; old `docs/features/*.md` stay as frozen history and are not migrated.
 
 **Lifecycle inside `/feature`.** Step 4: the planner writes the change → `validate --strict`. Steps 6–8: the developer ticks `tasks.md`, the checks re-run `validate`, review traces every scenario. Step 9: `archive -y` merges the deltas into `openspec/specs/` on the feature branch, so code and spec update reach `main` together through the PR gate.
 
