@@ -21,7 +21,7 @@ Endpoints with optional authentication (for example public shelves and lists, bo
 - **THEN** the shelf is returned as for an anonymous visitor
 
 ### Requirement: Roles
-Every user SHALL have one role: `user`, `moderator` or `admin`. Admin endpoints MUST require the `admin` role, except review moderation, which allows `admin` and `moderator`. An authenticated user without the required role MUST get 403.
+Every user SHALL have one role: `user`, `contributor`, `moderator` or `admin`. Admin endpoints MUST require the `admin` role, except review moderation, which allows `admin` and `moderator`. An authenticated user without the required role MUST get 403. `contributor` currently grants nothing beyond `user`.
 
 #### Scenario: Reader calls an admin endpoint
 - **WHEN** a user with the role `user` calls `GET /api/v1/admin/books`
@@ -30,6 +30,10 @@ Every user SHALL have one role: `user`, `moderator` or `admin`. Admin endpoints 
 #### Scenario: Moderator moderates reviews
 - **WHEN** a moderator hides a review through the admin API
 - **THEN** the request is allowed
+
+#### Scenario: Contributor calls an admin endpoint
+- **WHEN** a user with the role `contributor` calls `GET /api/v1/admin/reviews`
+- **THEN** the response is 403
 
 ### Requirement: Bearer header for state-changing admin requests
 State-changing admin requests SHALL require the access token in an `Authorization: Bearer` header, in addition to authentication and role; a cookie-only request MUST get 401 «bearer token required» (or «invalid authorization header» for a malformed header). This protects cookie sessions against cross-site request forgery. Admin reads MAY use the cookie alone. The admin app MUST send the bearer header on its non-GET admin requests, keeping the current access token across page reloads.
