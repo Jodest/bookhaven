@@ -70,6 +70,8 @@ func TestUpdateAuthor_AutoHarvest(t *testing.T) {
 		{name: "clear is allowed", withQID: true, initial: true, input: boolPtr(false), want: false},
 		{name: "clear allowed without QID", initial: true, input: boolPtr(false), want: false},
 		{name: "set without QID rejected", input: boolPtr(true), wantErr: ErrAutoHarvestRequiresQID},
+		{name: "already flagged without QID keeps flag", initial: true, input: boolPtr(true), want: true},
+		{name: "omitted on flagged author without QID", initial: true, input: nil, want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

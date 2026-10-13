@@ -108,7 +108,7 @@ For real durability, uncomment the `rclone` line in the script and configure an 
 
 ## Background jobs (worker)
 
-The `worker` container runs three asynq servers (harvest, `email`, `similarity`; a fourth, `harvest_schedule`, only when the scheduled harvest is on) plus an in-process `asynq.Scheduler`. The harvest server processes exactly one harvest job at a time (`Concurrency: 1`, #191), manual and scheduled jobs alike. The scheduler enqueues the daily similar-books recompute (`similarity:recompute` on the `similarity` queue, 03:30 UTC; see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md)). The recompute reads shelves/ratings, builds the "readers also read" ranking and fully replaces the `book_similarities` table in one transaction. Books without rows keep the stage-1 content-based list, so an empty table is always safe.
+The `worker` container runs three asynq servers (harvest, `email`, `similarity`; plus `harvest_schedule` only when the scheduled harvest is on and `ai_moderation` only when AI pre-moderation is on) plus an in-process `asynq.Scheduler`. The harvest server processes exactly one harvest job at a time (`Concurrency: 1`, #191), manual and scheduled jobs alike. The scheduler enqueues the daily similar-books recompute (`similarity:recompute` on the `similarity` queue, 03:30 UTC; see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md)). The recompute reads shelves/ratings, builds the "readers also read" ranking and fully replaces the `book_similarities` table in one transaction. Books without rows keep the stage-1 content-based list, so an empty table is always safe.
 
 > **Do not run more than one worker replica** without moving the scheduler out of the worker. Prod runs exactly one (`container_name: bookhaven-worker`). The task's `asynq.Unique(6h)` rejects a duplicate enqueue if two schedulers ever run, but that is a safety net, not a design.
 
@@ -131,6 +131,31 @@ Off by default. When `HARVEST_SCHEDULE_ENABLED=true`, the scheduler enqueues a `
 | `HARVEST_SCHEDULE_BATCH` | Max authors per run. Default `10`, clamped to 1..50; a non-integer value means the default. |
 
 The same single-replica rule applies: two workers would double the ticks. The tick's `asynq.Unique(1h)` and the "scheduled job already queued" check are a safety net only. Check `docker compose -f docker-compose.prod.yml logs worker` for `scheduled harvest enabled` and `scheduled harvest job queued`.
+
+### AI pre-moderation of books
+
+Off by default. AI moderation is active only when `AI_MODERATION_ENABLED=true` **and** `ANTHROPIC_API_KEY` is set (a flag without a key logs `AI_MODERATION_ENABLED is set but ANTHROPIC_API_KEY is empty; AI moderation disabled`; otherwise the worker logs `AI moderation disabled`). When active, the worker runs its own asynq server for it (queue `ai_moderation`, `Concurrency: 1`, at least 500 ms between model calls) and the scheduler enqueues `ai_moderation:sweep` on `AI_MODERATION_CRON` (UTC). A sweep gives up to `AI_MODERATION_BATCH` pending books a verdict (no verdict first, then oldest first; also books whose verdict has an older prompt version or that were edited after it). Admins can also queue a check from `/moderation/books` («Проверить ИИ (N)», «Проверить ИИ все непроверенные», up to 1000 books). Verdicts (`publish` / `reject` / `needs_human` with reason codes) live in `book_ai_verdicts`; the model never edits a book and nothing is published automatically. A temporary API failure (429, 5xx, 529 overloaded, network) stores nothing and stops the run; the next run continues.
+
+**Both `backend` (api) and `worker` need the flag and the key.** The api never calls the model, but it uses the same switch for `GET /admin/books/ai-review/status` and the trigger endpoint (503 when off), so the UI only offers buttons the worker would act on. `ANTHROPIC_API_KEY` is a secret: keep it in `.env` only, never commit it; it is never logged.
+
+| Variable | Meaning |
+|---|---|
+| `AI_MODERATION_ENABLED` | `true` turns AI moderation on (with a key). Default `false`, also in dev and CI. |
+| `ANTHROPIC_API_KEY` | Anthropic API key. Empty = off. |
+| `AI_MODERATION_MODEL` | Exact model id. Default `claude-haiku-5-5`; `claude-sonnet-5-5` is about 20x more expensive. No date-suffixed ids. |
+| `AI_MODERATION_CRON` | Cron spec of the sweep, UTC. Default `*/30 * * * *`. An invalid spec makes the worker exit at startup. |
+| `AI_MODERATION_BATCH` | Max books per scheduled sweep. Default `50`, clamped to 1..200; a non-integer value means the default. |
+
+The single-replica rule applies here too: two workers would double the sweeps (the sweep's `asynq.Unique(1h)` is a safety net only). Check `docker compose -f docker-compose.prod.yml logs worker` for `AI moderation enabled`, `AI verdict stored` and `AI sweep finished`.
+
+Cost (assumptions: about 2,200 input tokens per book — a ~1,500-token system prompt without caching plus ~700 tokens of book JSON — and about 400 output tokens including low-effort thinking):
+
+| Model | Input / 1000 books | Output / 1000 books | Total / 1000 books |
+|---|---|---|---|
+| `claude-haiku-5-5` ($0.10 / $0.50 per 1M) | 2.2M tok → $0.22 | 0.4M tok → $0.20 | **≈ $0.42** (≤ $0.60 worst case) |
+| `claude-sonnet-5-5` ($2 / $10 per 1M) | $4.40 | $4.00 | **≈ $8.40** |
+
+Upper bound with the defaults: 50 books × 48 sweeps per day = 2,400 books per day, about $1 per day on Haiku; in practice the inflow is the daily harvest (tens of books). Token counts are stored per verdict, so the real spend is one query away: `SELECT model, sum(input_tokens), sum(output_tokens) FROM book_ai_verdicts GROUP BY model;` (note that a recomputed verdict replaces the previous row, so this counts the latest computation per book).
 
 ## Email (SMTP)
 

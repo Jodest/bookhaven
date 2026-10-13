@@ -55,6 +55,7 @@ export function ModerationQueue<TItem, TParams, TReport extends ModerationStatus
   renderRowActions,
   renderBulkActions,
   renderOverlay,
+  renderToolbar,
   copy,
   limit = DEFAULT_LIMIT,
   flashKey,
@@ -98,6 +99,10 @@ export function ModerationQueue<TItem, TParams, TReport extends ModerationStatus
   const controls: ModerationQueueControls = {
     notify: setFeedback,
     clearSelection: () => setSelected(new Set()),
+    select: (ids) => {
+      const onPage = new Set(items.map(getId));
+      setSelected(new Set(ids.filter((id) => onPage.has(id))));
+    },
   };
 
   const errorText = (err: unknown) =>
@@ -219,6 +224,8 @@ export function ModerationQueue<TItem, TParams, TReport extends ModerationStatus
           />
         ))}
       </form>
+
+      {renderToolbar?.(items, state, controls)}
 
       {feedback && (
         <div

@@ -33,9 +33,11 @@ export function AuthorForm({
   // (docs/features/author-wikidata-enrichment.md rule 7).
   const photoChanged =
     !!attribution && (formData.photo_url ?? '').trim() !== (editing?.photo_url ?? '').trim();
-  // The scheduled harvest queries Wikidata by QID, so the flag needs one
-  // (the server answers 422 otherwise).
+  // The scheduled harvest queries Wikidata by QID, so switching the flag on
+  // needs one (the server answers 422 otherwise). An already flagged author
+  // without a QID keeps the checkbox clickable so the flag can be cleared.
   const hasQid = editing?.external_source === 'wikidata' && !!editing?.external_id;
+  const autoHarvestDisabled = !hasQid && !editing?.auto_harvest;
 
   return (
     <form onSubmit={onSubmit} className="space-y-4 rounded-lg border p-4">
@@ -122,8 +124,13 @@ export function AuthorForm({
               id="auto_harvest"
               className="h-4 w-4"
               checked={formData.auto_harvest ?? editing.auto_harvest}
-              disabled={!hasQid}
-              onChange={(e) => onFieldChange({ auto_harvest: e.target.checked })}
+              disabled={autoHarvestDisabled}
+              // Only a value that differs from the loaded one is sent.
+              onChange={(e) =>
+                onFieldChange({
+                  auto_harvest: e.target.checked === editing.auto_harvest ? undefined : e.target.checked,
+                })
+              }
             />
             <Label htmlFor="auto_harvest">Автоматически пополнять книги из Wikidata</Label>
           </div>

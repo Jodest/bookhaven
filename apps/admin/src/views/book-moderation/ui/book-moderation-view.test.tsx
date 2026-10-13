@@ -17,12 +17,16 @@ vi.mock('next/navigation', () => ({
 
 const queueMock = vi.fn();
 const bulkStatusMock = vi.fn();
+const aiReviewMock = vi.fn();
+const aiReviewStatusMock = vi.fn();
 
 vi.mock('@/entities/book', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/book')>()),
   adminBooksApi: {
     moderationQueue: (...args: unknown[]) => queueMock(...args),
     bulkStatus: (...args: unknown[]) => bulkStatusMock(...args),
+    aiReview: (...args: unknown[]) => aiReviewMock(...args),
+    aiReviewStatus: (...args: unknown[]) => aiReviewStatusMock(...args),
   },
 }));
 
@@ -93,6 +97,21 @@ function makeItem(overrides: Partial<AdminBookQueueItem> = {}): AdminBookQueueIt
         match: 'same_isbn',
       },
     ],
+    ai_verdict: null,
+    ...overrides,
+  };
+}
+
+function makeVerdict(overrides: Partial<NonNullable<AdminBookQueueItem['ai_verdict']>> = {}) {
+  return {
+    verdict: 'publish' as const,
+    reason_codes: [],
+    reason: 'Проблем не найдено.',
+    confidence: 0.95,
+    model: 'claude-haiku-5-5',
+    prompt_version: 1,
+    created_at: '2026-10-13T10:00:00Z',
+    stale: false,
     ...overrides,
   };
 }
@@ -138,6 +157,9 @@ describe('BookModerationView', () => {
     pushMock.mockReset();
     queueMock.mockReset();
     bulkStatusMock.mockReset();
+    aiReviewMock.mockReset();
+    aiReviewStatusMock.mockReset();
+    aiReviewStatusMock.mockResolvedValue({ enabled: true, model: 'claude-haiku-5-5', prompt_version: 1, needs_review: 7 });
     queueMock.mockResolvedValue({ items: [makeItem(), secondItem], total: 2, page: 1, limit: 20 });
   });
 
@@ -152,6 +174,7 @@ describe('BookModerationView', () => {
     expect(queueMock).toHaveBeenCalledWith({
       status: 'pending',
       source: undefined,
+      ai: undefined,
       search: undefined,
       page: 1,
       limit: 20,
@@ -166,6 +189,7 @@ describe('BookModerationView', () => {
     expect(queueMock).toHaveBeenCalledWith({
       status: 'rejected',
       source: 'harvested',
+      ai: undefined,
       search: 'x',
       page: 2,
       limit: 20,
@@ -282,7 +306,8 @@ describe('BookModerationView', () => {
     queueMock.mockResolvedValue({ items: [secondItem], total: 1, page: 1, limit: 20 });
     renderView();
     await loaded();
-    expect(within(rowOf('Анна Каренина')).getAllByText('—')).toHaveLength(3);
+    // Hints, authors, genres and the «ИИ» column (no verdict).
+    expect(within(rowOf('Анна Каренина')).getAllByText('—')).toHaveLength(4);
   });
 
   it('row publish: confirm, bulkStatus with one id, success message', async () => {
@@ -387,5 +412,173 @@ describe('BookModerationView', () => {
     await loaded();
     expect(screen.getByText('Книга «Война и мир» сохранена.')).toBeInTheDocument();
     expect(consumeFlash('catalog.books')).toBeNull();
+  });
+  it('passes the ai filter from the URL and pushes it on change', async () => {
+    searchParamsValue = new URLSearchParams('ai=needs_human');
+    renderView();
+    await loaded();
+    expect(queueMock).toHaveBeenCalledWith(expect.objectContaining({ ai: 'needs_human' }));
+
+    const select = screen.getByRole('combobox', { name: 'ИИ' });
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'ИИ: любой',
+      'ИИ: опубликовать',
+      'ИИ: отклонить',
+      'ИИ: нужен человек',
+      'ИИ: без проверки',
+    ]);
+    fireEvent.change(select, { target: { value: 'none' } });
+    expect(pushMock).toHaveBeenLastCalledWith('/moderation/books?ai=none');
+  });
+
+  it('drops an unknown ai value', async () => {
+    searchParamsValue = new URLSearchParams('ai=maybe');
+    renderView();
+    await loaded();
+    expect(queueMock).toHaveBeenCalledWith(expect.objectContaining({ ai: undefined }));
+  });
+
+  it('renders the AI verdict column', async () => {
+    queueMock.mockResolvedValue({
+      items: [
+        makeItem({
+          ai_verdict: makeVerdict({
+            verdict: 'reject',
+            reason_codes: ['duplicate'],
+            reason: 'Уже есть.',
+            confidence: 0.81,
+            stale: true,
+          }),
+        }),
+        secondItem,
+      ],
+      total: 2,
+      page: 1,
+      limit: 20,
+    });
+    renderView();
+    await loaded();
+    const row = rowOf('Война и мир');
+    const cell = within(row).getByText('81%').closest('td') as HTMLElement;
+    expect(within(cell).getByText('Отклонить')).toBeInTheDocument();
+    expect(within(cell).getByText('дубликат')).toBeInTheDocument();
+    expect(within(cell).getByText('Уже есть.')).toBeInTheDocument();
+    expect(within(cell).getByText('устарел')).toBeInTheDocument();
+  });
+
+  it('confident selection only selects the right rows and publishes nothing', async () => {
+    const third = makeItem({
+      book: makeBook({ id: 'b3', title: 'Детство', isbn: null }),
+      similar: [],
+      ai_verdict: makeVerdict({ stale: true }),
+    });
+    const fourth = makeItem({
+      book: makeBook({ id: 'b4', title: 'Отрочество', isbn: null }),
+      similar: [],
+      ai_verdict: makeVerdict({ confidence: 0.5 }),
+    });
+    queueMock.mockResolvedValue({
+      items: [
+        makeItem({ ai_verdict: makeVerdict() }), // has a duplicate hint
+        { ...secondItem, ai_verdict: makeVerdict() },
+        third,
+        fourth,
+      ],
+      total: 4,
+      page: 1,
+      limit: 20,
+    });
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    renderView();
+    await loaded();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать уверенные «Опубликовать» (1)' }));
+    expect(screen.getByRole('checkbox', { name: 'Выбрать «Анна Каренина»' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Выбрать «Война и мир»' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Выбрать «Детство»' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Выбрать «Отрочество»' })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Опубликовать выбранные (1)' })).toBeInTheDocument();
+    expect(bulkStatusMock).not.toHaveBeenCalled();
+    expect(aiReviewMock).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('«Проверить ИИ (N)» posts the selected ids and shows the queued message', async () => {
+    aiReviewMock.mockResolvedValue({ task_id: 't1' });
+    renderView();
+    await loaded();
+    expect(await screen.findByText('Без проверки ИИ: 7')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Выбрать все на странице' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить ИИ (2)' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText('Проверка ИИ поставлена в очередь. Вердикты появятся через несколько минут.')
+      ).toBeInTheDocument()
+    );
+    expect(aiReviewMock).toHaveBeenCalledWith({ book_ids: ['b1', 'b2'] });
+    expect(bulkStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('«Проверить ИИ все непроверенные» confirms, queues and maps 409', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    aiReviewMock.mockRejectedValueOnce(new ApiError(409, 'Conflict', 'AI review already queued'));
+    renderView();
+    await loaded();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Проверить ИИ все непроверенные' }));
+    expect(confirmSpy).toHaveBeenCalledWith('Отправить на проверку ИИ все непроверенные книги (7)?');
+    await waitFor(() => expect(screen.getByText('Проверка ИИ уже в очереди.')).toBeInTheDocument());
+    expect(aiReviewMock).toHaveBeenCalledWith({ all_unreviewed: true });
+
+    confirmSpy.mockReturnValue(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить ИИ все непроверенные' }));
+    expect(aiReviewMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the check controls when AI moderation is disabled; verdicts and the filter remain', async () => {
+    aiReviewStatusMock.mockResolvedValue({
+      enabled: false,
+      model: 'claude-haiku-5-5',
+      prompt_version: 1,
+      needs_review: 3,
+    });
+    queueMock.mockResolvedValue({
+      items: [
+        makeItem({ ai_verdict: makeVerdict({ verdict: 'needs_human', reason_codes: ['insufficient_data'] }) }),
+        { ...secondItem, ai_verdict: makeVerdict() },
+      ],
+      total: 2,
+      page: 1,
+      limit: 20,
+    });
+    renderView();
+    await loaded();
+    await waitFor(() => expect(aiReviewStatusMock).toHaveBeenCalled());
+
+    expect(screen.getByText('Нужен человек')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'ИИ' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Выбрать уверенные «Опубликовать» (1)' })).toBeInTheDocument();
+    expect(screen.queryByText(/Без проверки ИИ/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Проверить ИИ все непроверенные' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Выбрать все на странице' }));
+    expect(screen.queryByRole('button', { name: /Проверить ИИ \(/ })).not.toBeInTheDocument();
+  });
+
+  it('shows no AI controls outside the pending tab', async () => {
+    searchParamsValue = new URLSearchParams('status=published');
+    queueMock.mockResolvedValue({
+      items: [{ ...secondItem, book: { ...secondItem.book, status: 'published' }, ai_verdict: makeVerdict() }],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+    renderView();
+    await loaded();
+    await waitFor(() => expect(aiReviewStatusMock).toHaveBeenCalled());
+    expect(screen.queryByText(/Без проверки ИИ/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Выбрать уверенные/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Выбрать все на странице' }));
+    expect(screen.queryByRole('button', { name: /Проверить ИИ \(/ })).not.toBeInTheDocument();
   });
 });

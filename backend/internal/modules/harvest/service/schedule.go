@@ -95,8 +95,10 @@ func NewScheduleTick(enqueuer ScheduleEnqueuer, inspector ScheduleInspector, aut
 // HandleTask runs one scheduled-harvest tick:
 //  1. skip if a scheduled harvest job is still pending, active or retrying;
 //  2. pick up to batch eligible authors (none → nothing to do);
-//  3. queue one harvest job for their QIDs (trigger "scheduled");
-//  4. only then stamp the authors' last auto-harvest time (a stamp failure
+//  3. leave out (and log) authors whose stored QID is malformed; when none
+//     is left, stamp the picked authors and stop without queueing;
+//  4. queue one harvest job for the valid QIDs (trigger "scheduled");
+//  5. only then stamp all picked authors' last auto-harvest time (a stamp failure
 //     is logged, not returned: the queued job blocks the next run anyway
 //     and re-harvesting is idempotent).
 //
@@ -122,11 +124,27 @@ func (t *ScheduleTick) HandleTask(ctx context.Context, _ *asynq.Task) error {
 		return nil
 	}
 
+	// Every picked author is stamped (after a successful enqueue, or right
+	// away when nothing is queued), but only authors with a well-formed QID
+	// go into the job: one malformed stored QID must not fail every run.
 	qids := make([]string, 0, len(candidates))
 	ids := make([]uuid.UUID, 0, len(candidates))
 	for _, c := range candidates {
-		qids = append(qids, c.QID)
 		ids = append(ids, c.ID)
+		if !bookdata.IsWikidataQID(c.QID) {
+			t.log.Warn("scheduled harvest: skipping author with a malformed QID",
+				zap.String("author_id", c.ID.String()), zap.String("qid", c.QID))
+			continue
+		}
+		qids = append(qids, c.QID)
+	}
+
+	if len(qids) == 0 {
+		if err := t.authors.MarkAuthorsAutoHarvested(ctx, ids, now); err != nil {
+			t.log.Error("scheduled harvest: failed to stamp authors with malformed QIDs", zap.Error(err))
+		}
+		t.log.Info("scheduled harvest: no author with a valid QID, nothing queued")
+		return nil
 	}
 
 	query, err := bookdata.BuildAuthorListQuery(qids, 0)

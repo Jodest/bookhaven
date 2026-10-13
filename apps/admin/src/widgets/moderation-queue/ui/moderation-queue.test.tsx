@@ -373,6 +373,25 @@ describe('ModerationQueue', () => {
     expect(screen.queryByText('Готово')).not.toBeInTheDocument();
   });
 
+  it('renderToolbar gets the page items and state; select() checks exactly the given rows on the page', async () => {
+    const toolbar = vi.fn((items: Thing[], state: ModerationQueueState, controls: ModerationQueueControls) => (
+      <button type="button" onClick={() => controls.select(['t2', 'not-on-page'])}>
+        Выбрать Бету ({items.length}, {state.status})
+      </button>
+    ));
+    renderQueue({ renderToolbar: toolbar });
+    await loaded();
+
+    expect(toolbar).toHaveBeenLastCalledWith(things, expect.objectContaining({ status: 'pending' }), expect.anything());
+    fireEvent.click(screen.getByLabelText('Выбрать «Альфа»'));
+    fireEvent.click(screen.getByRole('button', { name: 'Выбрать Бету (2, pending)' }));
+
+    expect(screen.getByLabelText('Выбрать «Альфа»')).not.toBeChecked();
+    expect(screen.getByLabelText('Выбрать «Бета»')).toBeChecked();
+    expect(screen.getByText('Выбрано: 1')).toBeInTheDocument();
+    expect(bulkMock).not.toHaveBeenCalled();
+  });
+
   it('shows the skeleton while loading and the load error on rejection', async () => {
     let reject: (err: Error) => void = () => {};
     queryFnMock.mockReturnValue(

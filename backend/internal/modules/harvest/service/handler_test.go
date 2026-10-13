@@ -1169,3 +1169,24 @@ func (f *fakeAdminRepository) FindBooksByNormalizedISBNs(ctx context.Context, is
 func (f *fakeAdminRepository) FindBooksByAuthorIDs(ctx context.Context, authorIDs, excludeIDs []uuid.UUID) ([]adminrepository.BookHintCandidate, error) {
 	return nil, nil
 }
+
+// AI verdict repository stubs (unused by the harvest tests).
+func (f *fakeAdminRepository) UpsertBookAIVerdict(ctx context.Context, v adminrepository.BookAIVerdict) error {
+	return nil
+}
+
+func (f *fakeAdminRepository) GetBookAIVerdicts(ctx context.Context, bookIDs []uuid.UUID) (map[uuid.UUID]adminrepository.BookAIVerdict, error) {
+	return map[uuid.UUID]adminrepository.BookAIVerdict{}, nil
+}
+
+func (f *fakeAdminRepository) ListAIReviewCandidateIDs(ctx context.Context, limit, promptVersion int) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (f *fakeAdminRepository) CountAIReviewCandidates(ctx context.Context, promptVersion int) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeAdminRepository) LoadBooksForReview(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Book, error) {
+	return nil, nil
+}

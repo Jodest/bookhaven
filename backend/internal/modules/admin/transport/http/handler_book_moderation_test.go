@@ -43,11 +43,13 @@ func TestListBookModerationQueue_Shape(t *testing.T) {
 	}
 	hint := repository.BookHintCandidate{ID: uuid.New(), Title: "Война и мир", Slug: "voyna-i-mir-2", Status: catalogDomain.BookStatusPublished, ISBN: &isbn}
 	svc.bookQueueItems = []adminService.BookQueueItem{
-		{Book: book, Similar: []adminService.BookHint{{Book: hint, Match: adminService.BookMatchSameISBN}}},
+		{Book: book, Similar: []adminService.BookHint{{Book: hint, Match: adminService.BookMatchSameISBN}},
+			AIVerdict: &adminService.BookAIVerdictView{Verdict: "publish", Reason: "Всё в порядке.", Confidence: 0.93,
+				Model: "claude-haiku-5-5", PromptVersion: 1, CreatedAt: created, Stale: true}},
 		{Book: catalogDomain.Book{ID: uuid.New(), Title: "Стихи", Status: catalogDomain.BookStatusPending}, Similar: []adminService.BookHint{}},
 	}
 
-	c, rec := newContext(http.MethodGet, "/api/v1/admin/books/moderation?status=rejected&source=harvested&search=мир&page=2&limit=500", nil)
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books/moderation?status=rejected&source=harvested&ai=publish&search=мир&page=2&limit=500", nil)
 	setAdminUser(c)
 	if err := h.ListBookModerationQueue(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -56,7 +58,7 @@ func TestListBookModerationQueue_Shape(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	f := svc.lastBookQueueFilter
-	if f.Status != "rejected" || f.Source != "harvested" || f.Search != "мир" || svc.lastBookQueuePage != 2 || svc.lastBookQueueLimit != 50 {
+	if f.Status != "rejected" || f.Source != "harvested" || f.AI != "publish" || f.Search != "мир" || svc.lastBookQueuePage != 2 || svc.lastBookQueueLimit != 50 {
 		t.Fatalf("unexpected params passed: %+v page=%d limit=%d", f, svc.lastBookQueuePage, svc.lastBookQueueLimit)
 	}
 
@@ -79,8 +81,16 @@ func TestListBookModerationQueue_Shape(t *testing.T) {
 		it.Similar[0].Book.Status != "published" || it.Similar[0].Book.ISBN == nil || *it.Similar[0].Book.ISBN != isbn {
 		t.Fatalf("unexpected hints: %+v", it.Similar)
 	}
+	v := it.AIVerdict
+	if v == nil || v.Verdict != "publish" || v.Reason != "Всё в порядке." || v.Confidence != 0.93 || v.Model != "claude-haiku-5-5" ||
+		v.PromptVersion != 1 || !v.CreatedAt.Equal(created) || !v.Stale {
+		t.Fatalf("unexpected ai_verdict: %+v", v)
+	}
+	if body.Items[1].AIVerdict != nil {
+		t.Fatalf("expected null ai_verdict, got %+v", body.Items[1].AIVerdict)
+	}
 	raw := rec.Body.String()
-	for _, want := range []string{`"similar":[]`, `"external_id":null`, `"published_year":null`, `"external_source":null`} {
+	for _, want := range []string{`"reason_codes":[]`, `"ai_verdict":null`, `"similar":[]`, `"external_id":null`, `"published_year":null`, `"external_source":null`} {
 		if !strings.Contains(raw, want) {
 			t.Fatalf("expected %s in %s", want, raw)
 		}
@@ -97,6 +107,16 @@ func TestListBookModerationQueue_Errors(t *testing.T) {
 	}
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid moderation filter: source must be manual or harvested") {
 		t.Fatalf("expected 400 with message, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	svc.bookQueueErr = fmt.Errorf("%w: ai must be publish, reject, needs_human or none", adminService.ErrInvalidModerationFilter)
+	c, rec = newContext(http.MethodGet, "/api/v1/admin/books/moderation?ai=maybe", nil)
+	setAdminUser(c)
+	if err := h.ListBookModerationQueue(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest || svc.lastBookQueueFilter.AI != "maybe" {
+		t.Fatalf("expected 400 for a bad ai filter, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	svc.bookQueueErr = errors.New("db down")

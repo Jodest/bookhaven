@@ -128,8 +128,8 @@ describe('AuthorEditView', () => {
       birth_date: '1828-09-09',
       death_date: '',
       status: 'pending',
-      auto_harvest: false,
     });
+    expect('auto_harvest' in updateMock.mock.calls[0][1]).toBe(false);
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'authors'] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'dashboard'] });
     expect(consumeFlash('catalog.authors')).toBe('Автор «Лев Николаевич Толстой» сохранён.');
@@ -147,6 +147,32 @@ describe('AuthorEditView', () => {
     await waitFor(() => expect(updateMock).toHaveBeenCalled());
     expect(updateMock.mock.calls[0][0]).toBe('a1');
     expect(updateMock.mock.calls[0][1]).toMatchObject({ auto_harvest: true });
+  });
+
+  it('sends no auto_harvest when only the biography of a flagged author changed', async () => {
+    getMock.mockResolvedValue(makeAuthor({ auto_harvest: true }));
+    updateMock.mockResolvedValue(makeAuthor({ auto_harvest: true }));
+    renderView();
+
+    fireEvent.change(await screen.findByLabelText('Биография'), { target: { value: 'Новая биография' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalled());
+    expect(updateMock.mock.calls[0][1]).toMatchObject({ biography: 'Новая биография' });
+    expect(JSON.stringify(updateMock.mock.calls[0][1])).not.toContain('auto_harvest');
+  });
+
+  it('clears the flag of a flagged author without a QID', async () => {
+    const author = makeAuthor({ external_source: null, external_id: null, auto_harvest: true });
+    getMock.mockResolvedValue(author);
+    updateMock.mockResolvedValue({ ...author, auto_harvest: false });
+    renderView();
+
+    fireEvent.click(await screen.findByLabelText('Автоматически пополнять книги из Wikidata'));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalled());
+    expect(updateMock.mock.calls[0][1]).toMatchObject({ auto_harvest: false });
   });
 
   it('shows a save error inline and stays on the page', async () => {

@@ -3,6 +3,7 @@ package http
 import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	adminhttp "github.com/bookhaven/backend/internal/modules/admin/transport/http"
+	aimodhttp "github.com/bookhaven/backend/internal/modules/aimoderation/transport/http"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	cataloghttp "github.com/bookhaven/backend/internal/modules/catalog/transport/http"
 	harvesthttp "github.com/bookhaven/backend/internal/modules/harvest/transport/http"
@@ -113,12 +114,21 @@ func RegisterRoutes(
 	api.GET("/home/me", homeHandler.GetMyHome, authMiddleware)
 }
 
+// AIModerationDeps configures the AI moderation trigger/status endpoints:
+// Active is config.AIModerationActive() (the switch the worker uses too),
+// Model the configured model id. The API never calls the model.
+type AIModerationDeps struct {
+	Active bool
+	Model  string
+}
+
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
 // harvestEnqueuer/harvestInspector are the small interfaces the new
 // harvest/transport/http.Handler depends on (satisfied by a real
 // *asynq.Client/*asynq.Inspector in production, see cmd/api/main.go) - kept
 // as separate parameters rather than folding harvest into adminService so
-// the admin module itself stays free of an asynq dependency.
+// the admin module itself stays free of an asynq dependency. The AI
+// moderation trigger reuses harvestEnqueuer (the shared asynq client).
 func RegisterAdminRoutes(
 	e *echo.Echo,
 	adminService *adminservice.Service,
@@ -126,6 +136,7 @@ func RegisterAdminRoutes(
 	harvestEnqueuer harvesthttp.TaskEnqueuer,
 	harvestInspector harvesthttp.TaskInspector,
 	harvestAuthorSearcher harvesthttp.AuthorSearcher,
+	aiModeration AIModerationDeps,
 ) {
 	admin := e.Group("/api/v1/admin", authMiddleware)
 
@@ -133,6 +144,7 @@ func RegisterAdminRoutes(
 	// adminService doubles as the search's ExistingAuthorFinder ("already in
 	// BookHaven" markers, docs/features/author-direct-import.md).
 	harvestHandler := harvesthttp.NewHandler(harvestEnqueuer, harvestInspector, harvestAuthorSearcher, adminService)
+	aiReviewHandler := aimodhttp.NewHandler(harvestEnqueuer, adminService, aiModeration.Active, aiModeration.Model)
 
 	adminRole := middleware.RequireRole(usersdomain.RoleAdmin)
 	adminOrModerator := middleware.RequireRole(usersdomain.RoleAdmin, usersdomain.RoleModerator)
@@ -148,6 +160,8 @@ func RegisterAdminRoutes(
 	books.POST("/import", adminHandler.ImportBooks, requireBearer, echomiddleware.BodyLimit(adminhttp.ImportMaxRequestBody))
 	books.POST("/bulk-status", adminHandler.BulkSetBookStatus, requireBearer)
 	books.GET("/moderation", adminHandler.ListBookModerationQueue)
+	books.POST("/ai-review", aiReviewHandler.TriggerAIReview, requireBearer)
+	books.GET("/ai-review/status", aiReviewHandler.AIReviewStatus)
 	books.GET("/:id", adminHandler.GetBook)
 	books.PATCH("/:id", adminHandler.UpdateBook, requireBearer)
 

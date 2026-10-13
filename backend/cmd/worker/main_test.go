@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bookhaven/backend/internal/config"
+	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
 	"github.com/hibiken/asynq"
@@ -126,5 +127,65 @@ func TestScheduleServerConfig(t *testing.T) {
 	}
 	if !reflect.DeepEqual(c.Queues, map[string]int{"harvest_schedule": 1}) {
 		t.Errorf("Queues = %v, want map[harvest_schedule:1]", c.Queues)
+	}
+}
+
+func TestRegisterSchedules_AIModerationSweepWhenActive(t *testing.T) {
+	f := &fakeRegistrar{}
+	cfg := &config.Config{AIModerationEnabled: true, AnthropicAPIKey: "sk-test", AIModerationCron: "*/30 * * * *", AIModerationBatch: 50}
+	if err := registerSchedules(f, cfg); err != nil {
+		t.Fatalf("registerSchedules: %v", err)
+	}
+	if len(f.regs) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	}
+	r := f.regs[1]
+	if r.cronspec != "*/30 * * * *" || r.task.Type() != aimodservice.TaskTypeSweep {
+		t.Errorf("sweep registration = %q %q", r.cronspec, r.task.Type())
+	}
+	if string(r.task.Payload()) != `{"max":50,"trigger":"scheduled"}` {
+		t.Errorf("sweep payload = %s", r.task.Payload())
+	}
+	var queue string
+	for _, o := range r.opts {
+		if o.Type() == asynq.QueueOpt {
+			queue = o.Value().(string)
+		}
+	}
+	if queue != "ai_moderation" {
+		t.Errorf("sweep queue = %q, want ai_moderation", queue)
+	}
+}
+
+func TestRegisterSchedules_AIModerationInactive(t *testing.T) {
+	for name, cfg := range map[string]*config.Config{
+		"flag off":   {AnthropicAPIKey: "sk-test", AIModerationCron: "*/30 * * * *", AIModerationBatch: 50},
+		"key absent": {AIModerationEnabled: true, AIModerationCron: "*/30 * * * *", AIModerationBatch: 50},
+	} {
+		f := &fakeRegistrar{}
+		if err := registerSchedules(f, cfg); err != nil {
+			t.Fatalf("%s: registerSchedules: %v", name, err)
+		}
+		if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+			t.Fatalf("%s: expected only the similarity schedule, got %+v", name, f.regs)
+		}
+	}
+}
+
+func TestRegisterSchedules_InvalidAIModerationCronFails(t *testing.T) {
+	f := &fakeRegistrar{errFor: "bad"}
+	cfg := &config.Config{AIModerationEnabled: true, AnthropicAPIKey: "sk-test", AIModerationCron: "bad", AIModerationBatch: 50}
+	if err := registerSchedules(f, cfg); err == nil {
+		t.Fatal("expected an error for an invalid AI moderation cron spec")
+	}
+}
+
+func TestAIModerationServerConfig(t *testing.T) {
+	c := aiModerationServerConfig(nil)
+	if c.Concurrency != 1 {
+		t.Errorf("Concurrency = %d, want 1", c.Concurrency)
+	}
+	if !reflect.DeepEqual(c.Queues, map[string]int{"ai_moderation": 1}) {
+		t.Errorf("Queues = %v, want map[ai_moderation:1]", c.Queues)
 	}
 }
