@@ -488,21 +488,63 @@ export interface AdminBookHint {
   match: 'same_isbn' | 'same_title_author';
 }
 
+export type AdminBookAIVerdictValue = 'publish' | 'reject' | 'needs_human';
+
+/**
+ * AI pre-moderation verdict of a book (openspec capability
+ * catalog-moderation/ai-verdicts). Only classifies: nothing is published
+ * automatically.
+ */
+export interface AdminBookAIVerdict {
+  verdict: AdminBookAIVerdictValue;
+  /** Machine reason codes; never null ([] for publish). */
+  reason_codes: string[];
+  /** Short Russian explanation; render as plain text only. */
+  reason: string;
+  /** 0..1 */
+  confidence: number;
+  model: string;
+  prompt_version: number;
+  created_at: string;
+  /** The prompt version or the book's data changed since the verdict. */
+  stale: boolean;
+}
+
 export interface AdminBookQueueItem {
   /** Authors and genres carry their own status. */
   book: AdminBook;
   external_id: string | null;
   created_at: string;
   similar: AdminBookHint[];
+  /** null when the book has no AI verdict. */
+  ai_verdict: AdminBookAIVerdict | null;
 }
 
 export interface AdminBookQueueParams {
   /** Defaults to 'pending' on the server. */
   status?: AdminBookStatus;
   source?: 'manual' | 'harvested';
+  /** AI verdict filter; 'none' = books without a verdict. */
+  ai?: AdminBookAIVerdictValue | 'none';
   search?: string;
   page?: number;
   limit?: number;
+}
+
+/** Body of POST /admin/books/ai-review: exactly one form. */
+export type AdminBookAIReviewRequest = { book_ids: string[] } | { all_unreviewed: true };
+
+export interface AdminBookAIReviewResponse {
+  task_id: string;
+}
+
+export interface AdminBookAIReviewStatus {
+  /** AI moderation is switched on and has an API key. */
+  enabled: boolean;
+  model: string;
+  prompt_version: number;
+  /** Pending books the next sweep would pick. */
+  needs_review: number;
 }
 
 export interface AdminGenreBulkStatusRowError {
@@ -2019,11 +2061,19 @@ export const api = {
         if (params?.limit !== undefined) queryParams.limit = String(params.limit);
         if (params?.status) queryParams.status = params.status;
         if (params?.source) queryParams.source = params.source;
+        if (params?.ai) queryParams.ai = params.ai;
         if (params?.search) queryParams.search = params.search;
         return fetcher<PaginatedResponse<AdminBookQueueItem>>(
           `/api/v1/admin/books/moderation?${new URLSearchParams(queryParams)}`
         );
       },
+      // Errors: 400 bad body, 409 already queued, 503 AI moderation disabled.
+      aiReview: (body: AdminBookAIReviewRequest) =>
+        fetcher<AdminBookAIReviewResponse>('/api/v1/admin/books/ai-review', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }),
+      aiReviewStatus: () => fetcher<AdminBookAIReviewStatus>('/api/v1/admin/books/ai-review/status'),
     },
     authors: {
       list: async (params?: {

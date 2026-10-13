@@ -79,6 +79,17 @@ type fakeRepository struct {
 	lastHintAuthorIDs []uuid.UUID
 	lastHintExclude   []uuid.UUID
 
+	// AI verdicts (book_ai_verdict_test.go): aiVerdicts backs the verdict
+	// upsert/get; reviewBooks backs LoadBooksForReview; aiCandidateIDs /
+	// aiCandidateCount back the sweep candidate queries.
+	aiVerdicts           map[uuid.UUID]repository.BookAIVerdict
+	upsertAIVerdictErr   error
+	reviewBooks          []catalogDomain.Book
+	aiCandidateIDs       []uuid.UUID
+	aiCandidateCount     int64
+	lastAICandidateLimit int
+	lastAIPromptVersion  int
+
 	// listGenresByQIDsErr / listGenresByQIDsCalls back the genre
 	// Wikidata search markers (genre_import_test.go).
 	listGenresByQIDsErr   error

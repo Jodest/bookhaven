@@ -99,6 +99,25 @@ describe('AuthorForm auto-harvest flag', () => {
     expect(screen.getByText('Нужен Wikidata QID')).toBeInTheDocument();
   });
 
+  it('a flagged author without a QID can be unticked', () => {
+    const onFieldChange = vi.fn();
+    renderForm(editing({ external_source: null, external_id: null, auto_harvest: true }), { name: 'Лев Толстой' }, onFieldChange);
+    const checkbox = screen.getByLabelText(LABEL);
+    expect(checkbox).toBeEnabled();
+    expect(checkbox).toBeChecked();
+    expect(screen.getByText('Нужен Wikidata QID')).toBeInTheDocument();
+
+    fireEvent.click(checkbox);
+    expect(onFieldChange).toHaveBeenCalledWith({ auto_harvest: false });
+  });
+
+  it('toggling back to the loaded value drops the field', () => {
+    const onFieldChange = vi.fn();
+    renderForm(editing(), { name: 'Лев Толстой', auto_harvest: true }, onFieldChange);
+    fireEvent.click(screen.getByLabelText(LABEL));
+    expect(onFieldChange).toHaveBeenCalledWith({ auto_harvest: undefined });
+  });
+
   it('shows the last automatic harvest date', () => {
     renderForm(editing({ auto_harvest: true, last_auto_harvested_at: '2026-10-13T04:00:00Z' }), {
       name: 'Лев Толстой',

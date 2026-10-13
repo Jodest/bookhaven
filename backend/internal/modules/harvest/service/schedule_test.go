@@ -367,3 +367,59 @@ func TestPayloadMeta_LegacyAndUnknown(t *testing.T) {
 		}
 	}
 }
+
+func TestScheduleTick_SkipsMalformedQIDs(t *testing.T) {
+	id1, id2, id3 := uuid.New(), uuid.New(), uuid.New()
+	enq := &fakeScheduleEnqueuer{}
+	src := &fakeAuthorSource{candidates: []adminservice.AutoHarvestCandidate{
+		{ID: id1, QID: "Q7200"}, {ID: id2, QID: "7200"}, {ID: id3, QID: "Q1183296"},
+	}}
+
+	if err := newTestTick(enq, &fakeScheduleInspector{}, src, 10).HandleTask(context.Background(), NewScheduleTickTask()); err != nil {
+		t.Fatalf("HandleTask: %v", err)
+	}
+	if len(enq.tasks) != 1 {
+		t.Fatalf("expected 1 enqueue, got %d", len(enq.tasks))
+	}
+	var p HarvestPayload
+	if err := json.Unmarshal(enq.tasks[0].Payload(), &p); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if !reflect.DeepEqual(p.AuthorQIDs, []string{"Q7200", "Q1183296"}) {
+		t.Errorf("job QIDs = %v", p.AuthorQIDs)
+	}
+	if strings.Contains(p.SPARQLQuery, "wd:7200") || !strings.Contains(p.SPARQLQuery, "wd:Q7200 wd:Q1183296") {
+		t.Errorf("malformed QID leaked into the query: %s", p.SPARQLQuery)
+	}
+	if !reflect.DeepEqual(src.marked, []uuid.UUID{id1, id2, id3}) {
+		t.Errorf("stamped %v, want all three", src.marked)
+	}
+}
+
+func TestScheduleTick_OnlyMalformedQIDs(t *testing.T) {
+	id1, id2 := uuid.New(), uuid.New()
+	enq := &fakeScheduleEnqueuer{}
+	src := &fakeAuthorSource{candidates: []adminservice.AutoHarvestCandidate{{ID: id1, QID: "7200"}, {ID: id2, QID: "wd:Q1"}}}
+
+	if err := newTestTick(enq, &fakeScheduleInspector{}, src, 10).HandleTask(context.Background(), NewScheduleTickTask()); err != nil {
+		t.Fatalf("HandleTask: %v", err)
+	}
+	if len(enq.tasks) != 0 {
+		t.Fatalf("expected no enqueue, got %d", len(enq.tasks))
+	}
+	if !reflect.DeepEqual(src.marked, []uuid.UUID{id1, id2}) || !src.markedAt.Equal(tickNow) {
+		t.Errorf("stamped %v at %v", src.marked, src.markedAt)
+	}
+}
+
+func TestScheduleTick_MixedBatchEnqueueFailureStampsNothing(t *testing.T) {
+	enq := &fakeScheduleEnqueuer{err: errors.New("redis down")}
+	src := &fakeAuthorSource{candidates: []adminservice.AutoHarvestCandidate{{ID: uuid.New(), QID: "Q7200"}, {ID: uuid.New(), QID: "bad"}}}
+
+	if err := newTestTick(enq, &fakeScheduleInspector{}, src, 10).HandleTask(context.Background(), NewScheduleTickTask()); err == nil {
+		t.Fatal("expected the enqueue error")
+	}
+	if src.markCalls != 0 {
+		t.Fatalf("authors must not be stamped after a failed enqueue")
+	}
+}

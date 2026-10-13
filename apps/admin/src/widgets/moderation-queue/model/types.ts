@@ -41,6 +41,8 @@ export interface ModerationQueueFilter {
 export interface ModerationQueueControls {
   notify: (feedback: ModerationFeedback | null) => void;
   clearSelection: () => void;
+  /** Replaces the selection with the given ids that are on the current page. */
+  select: (ids: string[]) => void;
 }
 
 export interface ModerationRowContext extends ModerationQueueControls {
@@ -86,6 +88,12 @@ export interface ModerationQueueProps<TItem, TParams, TReport extends Moderation
   renderRowActions?: (item: TItem, ctx: ModerationRowContext) => ReactNode;
   renderBulkActions?: (selected: TItem[], controls: ModerationQueueControls) => ReactNode;
   renderOverlay?: (controls: ModerationQueueControls) => ReactNode;
+  /** Optional toolbar above the table (below the filters), given the current page's items. */
+  renderToolbar?: (
+    pageItems: TItem[],
+    state: ModerationQueueState,
+    controls: ModerationQueueControls
+  ) => ReactNode;
   copy: ModerationQueueCopy<TItem, TReport>;
   /** Page size; default 20. */
   limit?: number;

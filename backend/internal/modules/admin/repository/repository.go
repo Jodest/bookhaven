@@ -165,6 +165,24 @@ type Repository interface {
 	// authorIDs returns an empty slice without a query.
 	FindBooksByAuthorIDs(ctx context.Context, authorIDs, excludeIDs []uuid.UUID) ([]BookHintCandidate, error)
 
+	// AI pre-moderation verdicts (see book_ai_verdict.go).
+	// UpsertBookAIVerdict inserts or replaces the book's verdict; created_at
+	// is set to the DB's current time either way.
+	UpsertBookAIVerdict(ctx context.Context, v BookAIVerdict) error
+	// GetBookAIVerdicts returns the verdicts of bookIDs keyed by book id
+	// (books without one are absent). Empty bookIDs makes no query.
+	GetBookAIVerdicts(ctx context.Context, bookIDs []uuid.UUID) (map[uuid.UUID]BookAIVerdict, error)
+	// ListAIReviewCandidateIDs returns up to limit pending books without a
+	// verdict, with a verdict of another prompt version, or updated after
+	// their verdict: books without a verdict first, then oldest first.
+	ListAIReviewCandidateIDs(ctx context.Context, limit, promptVersion int) ([]uuid.UUID, error)
+	// CountAIReviewCandidates counts the books ListAIReviewCandidateIDs
+	// would pick without a limit.
+	CountAIReviewCandidates(ctx context.Context, promptVersion int) (int64, error)
+	// LoadBooksForReview loads the books with ids (any status) with
+	// authors and genres preloaded; unknown ids are absent.
+	LoadBooksForReview(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Book, error)
+
 	// Reviews moderation.
 	ListReviews(ctx context.Context, filter ReviewFilter) ([]reviewsDomain.Review, int64, error)
 	GetReviewByID(ctx context.Context, id uuid.UUID) (*reviewsDomain.Review, error)

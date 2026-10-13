@@ -246,6 +246,12 @@ LIMIT 5`, escaped, escaped)
 // case-sensitive), e.g. "Q7200".
 var wikidataQIDPattern = regexp.MustCompile(`^Q[0-9]+$`)
 
+// IsWikidataQID reports whether s is a bare Wikidata entity QID matching
+// ^Q[0-9]+$ (case-sensitive, no "wd:" prefix).
+func IsWikidataQID(s string) bool {
+	return wikidataQIDPattern.MatchString(s)
+}
+
 const (
 	// defaultAuthorListLimit is applied by BuildAuthorListQuery when the
 	// caller passes limit <= 0.

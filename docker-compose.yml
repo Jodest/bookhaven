@@ -66,6 +66,14 @@ services:
       REDIS_URL: redis:6379
       # Public web origin used for links in emails (e.g. /verify-email).
       WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
+      # AI pre-moderation (off by default; the api only reports status and
+      # queues checks, it never calls the model). Needs the same flag and key
+      # as the worker, otherwise the UI hides the «Проверить ИИ» buttons.
+      AI_MODERATION_ENABLED: ${AI_MODERATION_ENABLED:-false}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_MODERATION_MODEL: ${AI_MODERATION_MODEL:-claude-haiku-5-5}
+      AI_MODERATION_CRON: ${AI_MODERATION_CRON:-*/30 * * * *}
+      AI_MODERATION_BATCH: ${AI_MODERATION_BATCH:-50}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     volumes:
@@ -96,6 +104,13 @@ services:
       HARVEST_SCHEDULE_ENABLED: ${HARVEST_SCHEDULE_ENABLED:-false}
       HARVEST_SCHEDULE_CRON: ${HARVEST_SCHEDULE_CRON:-0 4 * * *}
       HARVEST_SCHEDULE_BATCH: ${HARVEST_SCHEDULE_BATCH:-10}
+      # AI pre-moderation of pending books (off by default; also needs
+      # ANTHROPIC_API_KEY). The worker runs the sweep and the model calls.
+      AI_MODERATION_ENABLED: ${AI_MODERATION_ENABLED:-false}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_MODERATION_MODEL: ${AI_MODERATION_MODEL:-claude-haiku-5-5}
+      AI_MODERATION_CRON: ${AI_MODERATION_CRON:-*/30 * * * *}
+      AI_MODERATION_BATCH: ${AI_MODERATION_BATCH:-50}
     volumes:
       - ./backend:/app
       - go-cache:/go/pkg/mod

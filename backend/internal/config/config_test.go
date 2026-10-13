@@ -213,3 +213,61 @@ func TestLoad_HarvestScheduleParsing(t *testing.T) {
 		}
 	}
 }
+
+func setAIModerationEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	setSMTPEnv(t, nil)
+	for _, k := range []string{"AI_MODERATION_ENABLED", "ANTHROPIC_API_KEY", "AI_MODERATION_MODEL", "AI_MODERATION_CRON", "AI_MODERATION_BATCH"} {
+		t.Setenv(k, "")
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestLoad_AIModerationDefaults(t *testing.T) {
+	setAIModerationEnv(t, nil)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AIModerationEnabled || cfg.AIModerationActive() {
+		t.Error("AI moderation must be off by default")
+	}
+	if cfg.AIModerationModel != "claude-haiku-5-5" || cfg.AIModerationCron != "*/30 * * * *" || cfg.AIModerationBatch != 50 {
+		t.Errorf("unexpected defaults: %q %q %d", cfg.AIModerationModel, cfg.AIModerationCron, cfg.AIModerationBatch)
+	}
+}
+
+func TestLoad_AIModerationActiveAndParsing(t *testing.T) {
+	cases := []struct {
+		enabled, key, batch string
+		wantActive          bool
+		wantBatch           int
+	}{
+		{enabled: "true", key: "sk-test", batch: "10", wantActive: true, wantBatch: 10},
+		{enabled: "true", key: "  ", batch: "abc", wantActive: false, wantBatch: 50},
+		{enabled: "false", key: "sk-test", batch: "0", wantActive: false, wantBatch: 1},
+		{enabled: "", key: "sk-test", batch: "201", wantActive: false, wantBatch: 200},
+		{enabled: "1", key: "sk-test", batch: "200", wantActive: true, wantBatch: 200},
+	}
+	for _, tc := range cases {
+		setAIModerationEnv(t, map[string]string{"AI_MODERATION_ENABLED": tc.enabled, "ANTHROPIC_API_KEY": tc.key, "AI_MODERATION_BATCH": tc.batch})
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.AIModerationActive() != tc.wantActive || cfg.AIModerationBatch != tc.wantBatch {
+			t.Errorf("enabled=%q key=%q batch=%q: got active=%v batch=%d", tc.enabled, tc.key, tc.batch, cfg.AIModerationActive(), cfg.AIModerationBatch)
+		}
+	}
+
+	setAIModerationEnv(t, map[string]string{"AI_MODERATION_MODEL": " claude-sonnet-5-5 ", "AI_MODERATION_CRON": " 0 * * * * "})
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AIModerationModel != "claude-sonnet-5-5" || cfg.AIModerationCron != "0 * * * *" {
+		t.Errorf("unexpected model/cron: %q %q", cfg.AIModerationModel, cfg.AIModerationCron)
+	}
+}
