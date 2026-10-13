@@ -1,7 +1,8 @@
 schema: spec-driven
 
-# Pilot (see docs/PIPELINE.md "OpenSpec pilot"). Changes are authored by the
-# feature-planner agent and driven by /feature, not by /opsx:* commands
+# Standard workflow since 2026-10-13 (see docs/PIPELINE.md "OpenSpec"). Changes
+# are authored by the feature-planner agent (or, for --small fixes, by the
+# /feature orchestrator) and driven by /feature, not by /opsx:* commands
 # (none are installed: `openspec init --tools none`). CLI pinned via
 # `npx -y @fission-ai/openspec@1.13.2`, telemetry off (OPENSPEC_TELEMETRY=0).
 

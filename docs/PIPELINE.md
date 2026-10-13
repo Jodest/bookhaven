@@ -11,7 +11,7 @@ How feature work moves from request to production in this repo, and what to set 
 | `.claude/commands/f.md` | `/f` — universal entry point. Classifies a request and routes it. |
 | `.claude/commands/feature.md` | `/feature` — the full pipeline engine: plan → GitHub issue tracking → implement → check → review → PR into `dev` → PR into `main`. `/f` delegates feature-shaped work here; you can also invoke it directly. |
 | `.claude/agents/feature-planner.md` | Business/UX/architecture analysis → an OpenSpec change (`openspec/changes/<slug>/`) for domains with living specs, otherwise a Feature Contract (`docs/features/<feature>.md`). |
-| `openspec/` | OpenSpec pilot: living specs (`specs/<domain>/<capability>/spec.md`), in-flight changes (`changes/<slug>/`), archive (`changes/archive/`), project context/rules (`config.yaml`). See "OpenSpec pilot" below. |
+| `openspec/` | OpenSpec: living specs (`specs/<domain>/<capability>/spec.md`), in-flight changes (`changes/<slug>/`), archive (`changes/archive/`), project context/rules (`config.yaml`). See "OpenSpec" below. |
 | `.claude/agents/developer.md` | Implementation (backend/frontend/migrations/tests). |
 | `.claude/agents/review-qa.md` | Code review, acceptance/security/QA pass on the diff. |
 | `.claude/agents/devops.md` | Infra-as-code only (Dockerfiles, compose, Caddy, CI/CD workflows). Never touches the real server or a real cloud API. |
@@ -38,35 +38,87 @@ Every normal-workflow feature gets:
 
 Small/hotfix changes get a single `[fix]` issue instead. The plan (OpenSpec change or Feature Contract) stays the source of truth for *what* to build; issues exist for status/traceability, not as a second spec.
 
-## OpenSpec pilot
+## OpenSpec
 
-Status: adopted. Pilot started 2026-10-09; after two `catalog-import` features (#340, #345) it was extended to `catalog-moderation` (#349) `auth` (#357), `reviews` (#360) and `collections` (#363) on 2026-10-12, and to `users` (#369), `home` and `reading-challenges` (#372), and `catalog-admin` plus Wikidata author enrichment (#375) on 2026-10-13. Framework: [OpenSpec](https://github.com/Fission-AI/OpenSpec) (MIT).
+Status: standard workflow since 2026-10-13. Every product area has a living spec, and every behavior change goes through an OpenSpec change. Framework: [OpenSpec](https://github.com/Fission-AI/OpenSpec) (MIT).
 
-**Why.** Feature Contracts describe a *change*. After a few iterations nobody can tell how a domain behaves *now* without stacking several contracts plus their "Update (#N)" notes (the import domain had about 12). OpenSpec adds a second layer: living specs of current behavior, updated by merging each change's deltas.
+**Why.** Feature Contracts describe a *change*. After a few iterations nobody can tell how a domain behaves *now* without stacking several contracts plus their "Update (#N)" notes (the import domain had about 12). OpenSpec keeps a second layer: living specs of current behavior, updated by merging each change's deltas in the same PR as the code.
 
-**What was adopted and what wasn't.** Only the artifact format and the CLI. Orchestration stays in `/feature`: GitHub issues, the `dev`→`main` gate, mechanical checks, the independent `review-qa` pass. `openspec init --tools none` was used, so no `/opsx:*` commands or OpenSpec skills are installed. They would compete with `/f` and skip all of the above.
+**What is used and what isn't.** Only the artifact format and the CLI. Orchestration stays in `/feature`: GitHub issues, the `dev`→`main` gate, mechanical checks, the independent `review-qa` pass. `openspec init --tools none` was used, so no `/opsx:*` commands or OpenSpec skills are installed. They would compete with `/f` and skip all of the above.
 
-**Layout.**
-- `openspec/specs/<domain>/<capability>/spec.md` — current behavior: `### Requirement` (SHALL/MUST) + `#### Scenario` (WHEN/THEN). Observable behavior only, no code identifiers.
-- `openspec/changes/<slug>/` — a planned change: `proposal.md`, delta `specs/` (`ADDED / MODIFIED / REMOVED / RENAMED Requirements`), `design.md` (the old contract's API/DB/Frontend/Patterns detail), `tasks.md`.
+### Layout
+
+- `openspec/specs/<domain>/<capability>/spec.md` — current behavior: `### Requirement` (SHALL/MUST) + `#### Scenario` (WHEN/THEN). Observable behavior only, no code identifiers. **This is where to look to learn how something works today.**
+- `openspec/changes/<slug>/` — a change in flight: `proposal.md`, delta `specs/` (`ADDED / MODIFIED / REMOVED / RENAMED Requirements`), `design.md` (API/DB/frontend detail), `tasks.md`.
 - `openspec/changes/archive/<date>-<slug>/` — archived changes (history).
 - `openspec/config.yaml` — project context and per-artifact rules, fed to the planner.
+- `docs/features/*.md` — older Feature Contracts, kept as frozen history and never updated.
 
-**Which format the planner picks.** OpenSpec for changes in a domain that already has specs (`catalog-import` — 8 capabilities: book lookup, file import, Wikidata book harvest, author/genre import, Wikidata matching rules, the admin «Импорт» section, Wikidata author enrichment; `catalog-moderation` — 6 capabilities: entity status and public visibility, bulk status, moderation queues, duplicate hints, author merge, genre merge; `auth` — 5 capabilities: registration, session (login, tokens, refresh, logout), email verification, password reset, authorization (bearer/cookie, roles, page guards); `reviews` — 5 capabilities: book ratings, book reviews, review likes, review moderation, review-like notifications; `collections` — 5 capabilities: shelves, shelf books, lists, list books, public collections; `users` — 4 capabilities: own profile, public profile, the admin user list, admin role change; `home` — 6 capabilities: home page (payload, cache, layout), book of the day, literary calendar, catalog rows, random book, personal blocks; `reading-challenges` — 2 capabilities: goals, progress; `catalog-admin` — 5 capabilities: dashboard, catalog lists, book editing, author editing, genre editing). Every product area now has a living spec; a Feature Contract only for work outside them. Domains get a baseline spec when they join; old `docs/features/*.md` stay as frozen history and are not migrated.
+### Domains
 
-**Lifecycle inside `/feature`.** Step 4: the planner writes the change → `validate --strict`. Steps 6–8: the developer ticks `tasks.md`, the checks re-run `validate`, review traces every scenario. Step 9: `archive -y` merges the deltas into `openspec/specs/` on the feature branch, so code and spec update reach `main` together through the PR gate.
+| Domain | Capabilities |
+|---|---|
+| `catalog-import` | book lookup, book file import, Wikidata book harvest, Wikidata author import, Wikidata genre import, Wikidata matching rules, the admin «Импорт» section, Wikidata author enrichment |
+| `catalog-moderation` | entity status and public visibility, bulk status, moderation queues, duplicate hints, author merge, genre merge |
+| `catalog-admin` | dashboard, catalog lists, book editing, author editing, genre editing |
+| `auth` | registration, session (login, tokens, refresh, logout), email verification, password reset, authorization (bearer/cookie, roles, page guards) |
+| `users` | own profile, public profile, admin user list, admin role change |
+| `reviews` | book ratings, book reviews, review likes, review moderation, review-like notifications |
+| `collections` | shelves, shelf books, lists, list books, public collections |
+| `home` | home page (payload, cache, layout), book of the day, literary calendar, catalog rows, random book, personal blocks |
+| `reading-challenges` | goals, progress |
 
-**CLI.** Always pinned and with telemetry off, no global install and no devDependency (a root devDependency changed the frontend lockfile resolution and would have entered the Docker images):
+A Feature Contract is used only for work outside these domains (for example infra or tooling). A new product area gets a baseline spec, verified against the code, before or together with its first change.
+
+### How to run a task
+
+Nothing OpenSpec-specific to type: start work through `/f` as always.
+
+| What you want | What to type |
+|---|---|
+| A feature or behavior change | `/f "<request>"` |
+| A small local fix, no planning | `/f "<request>" --small` |
+| An urgent fix straight into `main` | `/f "<request>" --hotfix` |
+| A dry run without commit or PR | `/f "<request>" --no-commit` |
+| An existing GitHub issue | `/f #379` (or "do #379"): the issue is reused, not duplicated |
+| Pick from the backlog | `/backlog-next` (ranks the open `proposal` issues and asks) |
+
+After each merge tell `/f` what happened ("PR #N in dev merged", then "PR #N in main merged") and it continues.
+
+### Lifecycle inside `/feature`
+
+1. **Plan (Step 4).** The planner finds the affected domain and writes `openspec/changes/<slug>/`; the orchestrator runs `validate <slug> --strict`. For `--small` there is no planner: if the fix alters specified behavior, the orchestrator writes a minimal change folder itself (proposal, delta, tasks) and validates it.
+2. **Issues (Step 5).** An epic plus area sub-issues, or one `[fix]` issue; an existing issue named in the request is reused.
+3. **Implementation (Step 6).** The developer implements and ticks `tasks.md`; it never archives.
+4. **Checks (Step 7).** Build, vet, tests, type-check, lint, `validate <slug> --strict`, `git diff --check`.
+5. **Review (Step 8).** `review-qa` traces every delta scenario to code or tests and checks that `tasks.md` is complete.
+6. **Archive (Step 9).** `archive <slug> -y` merges the deltas into `openspec/specs/` on the feature branch, then `validate --specs --strict`. Code and spec update reach `dev` and `main` in the same PR.
+
+### Rules
+
+- Never edit `openspec/specs/` by hand. Living specs change only through a change and `archive`, including fixes to a spec's own mistakes (for example `auth-roles-contributor`).
+- A MODIFIED requirement keeps every existing scenario **under its exact name**; the CLI treats a renamed scenario as dropped. Rewrite WHEN/THEN under the old name and add new scenarios alongside.
+- Baseline specs describe current behavior as-is, bugs included; the bug is filed as an issue and fixed through a normal change (for example #366, #378).
+- No `/opsx:*` commands, no global install, no devDependency.
+
+### CLI
+
+Always pinned and with telemetry off. No global install and no devDependency: a root devDependency changed the frontend lockfile resolution and would have entered the Docker images.
 
 ```bash
 OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2 validate --specs --strict   # all living specs
 OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2 list --specs                # capability inventory
 OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2 show <capability> --type spec
+OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2 validate <slug> --strict    # one change
 ```
 
 Bump the pinned version deliberately (OpenSpec releases weekly) and re-run `validate --specs --strict` after a bump.
 
-**Pilot outcome.** Both pilot features went through cleanly: deltas validated, review traced every scenario to code, archive updated the living spec in the same PR. One format gotcha: inside a MODIFIED requirement a scenario cannot be renamed, only rewritten under its current name. Decision (2026-10-12): extend domain by domain, each with a baseline spec verified against the code. Rolling back still means deleting `openspec/` and reverting the agent/command edits of #337.
+### History
+
+- 2026-10-09: pilot started on `catalog-import` (#337); two features went through cleanly (#340, #345).
+- 2026-10-12: decision to extend domain by domain, each with a baseline spec verified against the code: `catalog-moderation` (#349), `auth` (#357), `reviews` (#360), `collections` (#363).
+- 2026-10-13: `users` (#369), `home` and `reading-challenges` (#372), `catalog-admin` and Wikidata author enrichment (#375). First fixes through changes: #366, #378. Pilot ended and OpenSpec documented as the standard workflow (#392).
 
 ## Prerequisites (one-time setup)
 
@@ -130,7 +182,7 @@ status-done-id:         <status-done-id>
 
 ## Flags on `/feature`
 
-- `--small` — skip planning and the epic/sub-issue split; one `[fix]` issue instead.
+- `--small` — skip planning and the epic/sub-issue split; one `[fix]` issue instead. If the fix alters specified behavior, the orchestrator still writes a minimal OpenSpec change (see "OpenSpec" → Lifecycle).
 - `--hotfix` — skip the `dev` gate; PR goes straight into `main` (still requires review, still never auto-merged).
 - `--no-commit` — dry run: implement, check, review, then stop. No issue, no branch push, no PR.
 
