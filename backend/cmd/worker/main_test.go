@@ -189,3 +189,13 @@ func TestAIModerationServerConfig(t *testing.T) {
 		t.Errorf("Queues = %v, want map[ai_moderation:1]", c.Queues)
 	}
 }
+
+func TestAICuratorServerConfig(t *testing.T) {
+	c := aiCuratorServerConfig(nil)
+	if c.Concurrency != 1 {
+		t.Errorf("Concurrency = %d, want 1", c.Concurrency)
+	}
+	if !reflect.DeepEqual(c.Queues, map[string]int{"ai_curator": 1}) {
+		t.Errorf("Queues = %v, want map[ai_curator:1]", c.Queues)
+	}
+}

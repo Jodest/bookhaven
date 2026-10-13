@@ -9,3 +9,5 @@ export {
   enrichmentNotesText,
   importEnrichmentSuffix,
 } from './lib/enrichment-text';
+export { authorToInput } from './lib/author-to-input';
+export { WikidataAuthorCandidateCard } from './ui/wikidata-author-candidate-card';

@@ -44,6 +44,14 @@
 // assumes a single worker replica (the sweep's asynq.Unique is a defense in
 // depth only). When not active, neither the sweep schedule nor its server
 // is set up and the model is never called.
+//
+// AI curator of author import lists (AI_CURATOR_ENABLED and the shared
+// ANTHROPIC_API_KEY, off by default; see internal/modules/aicurator): admins
+// queue ai_curator:curate from the API; it runs on its own server (queue
+// ai_curator, Concurrency 1), makes one model call per request for author
+// names and resolves each name through the same WikidataClient (and so the
+// same rate limiter) as the harvest. Nothing is imported or published.
+// When not active, its server is not set up and the model is never called.
 package main
 
 import (
@@ -56,6 +64,8 @@ import (
 	"github.com/bookhaven/backend/internal/config"
 	adminrepository "github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
+	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
+	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
@@ -160,8 +170,12 @@ func main() {
 		harvestInspector *asynq.Inspector
 		scheduleSrv      *asynq.Server
 		aiSrv            *asynq.Server
+		curatorSrv       *asynq.Server
 	)
 	shutdownServers := func() {
+		if curatorSrv != nil {
+			curatorSrv.Shutdown()
+		}
 		if aiSrv != nil {
 			aiSrv.Shutdown()
 		}
@@ -218,6 +232,34 @@ func main() {
 			logger.Warn("AI_MODERATION_ENABLED is set but ANTHROPIC_API_KEY is empty; AI moderation disabled")
 		}
 		logger.Info("AI moderation disabled")
+	}
+
+	// AI curator: only when switched on and a key is set. The resolver
+	// shares the harvest's wikidataClient so all Wikidata calls go through
+	// one rate limiter.
+	if cfg.AICuratorActive() {
+		client := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.AICuratorModel)
+		resolver := curatorservice.NewResolver(wikidataClient, wikidataClient, adminservice.IsImportableAuthorRecord)
+		curatorHandlers := curatorservice.NewHandlers(curatorrepository.NewGormRepository(db), client, cfg.AICuratorModel, resolver, logger)
+
+		curatorMux := asynq.NewServeMux()
+		curatorMux.HandleFunc(curatorservice.TaskTypeCurate, curatorHandlers.HandleCurate)
+
+		curatorSrv = asynq.NewServer(redisOpt, aiCuratorServerConfig(zapAsynqLogger{logger}))
+		if err := curatorSrv.Start(curatorMux); err != nil {
+			curatorSrv = nil
+			shutdownServers()
+			logger.Fatal("failed to start AI curator asynq server", zap.Error(err))
+		}
+		// Never log the API key.
+		logger.Info("AI curation enabled",
+			zap.String("task", curatorservice.TaskTypeCurate),
+			zap.String("model", cfg.AICuratorModel))
+	} else {
+		if cfg.AICuratorEnabled {
+			logger.Warn("AI_CURATOR_ENABLED is set but ANTHROPIC_API_KEY is empty; AI curation disabled")
+		}
+		logger.Info("AI curation disabled")
 	}
 
 	scheduler := asynq.NewScheduler(
@@ -296,6 +338,18 @@ func aiModerationServerConfig(logger asynq.Logger) asynq.Config {
 	return asynq.Config{
 		Queues: map[string]int{
 			aimodservice.QueueName: 1,
+		},
+		Concurrency: 1,
+		Logger:      logger,
+	}
+}
+
+// aiCuratorServerConfig is the config of the AI curator server (its own
+// queue, Concurrency 1: one curation request at a time).
+func aiCuratorServerConfig(logger asynq.Logger) asynq.Config {
+	return asynq.Config{
+		Queues: map[string]int{
+			curatorservice.QueueName: 1,
 		},
 		Concurrency: 1,
 		Logger:      logger,

@@ -956,6 +956,190 @@ definitions:
       name:
         type: string
     type: object
+  internal_modules_aicurator_transport_http.createCurationRequest:
+    properties:
+      max_names:
+        type: integer
+      prompt:
+        type: string
+    type: object
+  internal_modules_aicurator_transport_http.curationCandidateResponse:
+    properties:
+      id:
+        type: string
+      match_status:
+        enum:
+        - pending
+        - matched
+        - ambiguous
+        - not_found
+        - error
+        type: string
+      name:
+        type: string
+      note:
+        type: string
+      options:
+        items:
+          $ref: '#/definitions/internal_modules_aicurator_transport_http.curationOptionResponse'
+        type: array
+      position:
+        type: integer
+    type: object
+  internal_modules_aicurator_transport_http.curationCreatorResponse:
+    properties:
+      id:
+        type: string
+      username:
+        type: string
+    type: object
+  internal_modules_aicurator_transport_http.curationDetailResponse:
+    properties:
+      candidates:
+        items:
+          $ref: '#/definitions/internal_modules_aicurator_transport_http.curationCandidateResponse'
+        type: array
+      candidates_resolved:
+        type: integer
+      candidates_total:
+        description: |-
+          CandidatesTotal / CandidatesResolved drive the progress «Проверено в
+          Wikidata: X из Y».
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        $ref: '#/definitions/internal_modules_aicurator_transport_http.curationCreatorResponse'
+      error_code:
+        enum:
+        - model_refusal
+        - model_truncated
+        - invalid_output
+        - model_error
+        - enqueue_failed
+        - timeout
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      input_tokens:
+        type: integer
+      max_names:
+        type: integer
+      model:
+        type: string
+      output_tokens:
+        type: integer
+      prompt:
+        type: string
+      prompt_version:
+        type: integer
+      status:
+        enum:
+        - queued
+        - running
+        - done
+        - failed
+        type: string
+    type: object
+  internal_modules_aicurator_transport_http.curationExistingAuthorResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_modules_aicurator_transport_http.curationOptionResponse:
+    properties:
+      description:
+        type: string
+      existing:
+        allOf:
+        - $ref: '#/definitions/internal_modules_aicurator_transport_http.curationExistingAuthorResponse'
+        description: |-
+          Existing is the catalog author now carrying this QID, or null (also
+          null when the lookup failed).
+      label:
+        type: string
+      qid:
+        type: string
+    type: object
+  internal_modules_aicurator_transport_http.curationStatusResponse:
+    properties:
+      active_request_id:
+        type: string
+      daily_limit:
+        type: integer
+      default_names:
+        type: integer
+      enabled:
+        description: 'Enabled: the flag and the API key are both set.'
+        type: boolean
+      max_names:
+        type: integer
+      max_prompt_length:
+        type: integer
+      model:
+        type: string
+      prompt_version:
+        type: integer
+      used_today:
+        type: integer
+    type: object
+  internal_modules_aicurator_transport_http.curationSummaryResponse:
+    properties:
+      candidates_resolved:
+        type: integer
+      candidates_total:
+        description: |-
+          CandidatesTotal / CandidatesResolved drive the progress «Проверено в
+          Wikidata: X из Y».
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        $ref: '#/definitions/internal_modules_aicurator_transport_http.curationCreatorResponse'
+      error_code:
+        enum:
+        - model_refusal
+        - model_truncated
+        - invalid_output
+        - model_error
+        - enqueue_failed
+        - timeout
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      max_names:
+        type: integer
+      model:
+        type: string
+      prompt:
+        type: string
+      prompt_version:
+        type: integer
+      status:
+        enum:
+        - queued
+        - running
+        - done
+        - failed
+        type: string
+    type: object
+  internal_modules_aicurator_transport_http.listCurationRequestsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_aicurator_transport_http.curationSummaryResponse'
+        type: array
+    type: object
   internal_modules_aimoderation_transport_http.aiReviewRequest:
     properties:
       all_unreviewed:
@@ -2121,6 +2305,213 @@ info:
   title: BookHaven API
   version: "1.0"
 paths:
+  /admin/ai-curator/requests:
+    get:
+      description: Требуется роль admin. 20 последних запросов всех администраторов,
+        новые первыми. Запрос в статусе queued/running без прогресса больше часа показывается
+        как failed с error_code timeout. Работает и при выключенном подборе.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aicurator_transport_http.listCurationRequestsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Недавние запросы подбора авторов ИИ (админ)
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. prompt — описание, каких
+        авторов не хватает (1–500 символов после обрезки пробелов), max_names — сколько
+        имён предложить (1–30, по умолчанию 20). Запрос сохраняется в статусе queued
+        и обрабатывается воркером: модель предлагает только имена, каждое проверяется
+        по Wikidata. Ничего не импортируется и не публикуется автоматически. 503 —
+        подбор выключен; 400 — неверный prompt или max_names; 409 — у администратора
+        уже есть активный запрос (request_id); 429 — исчерпан дневной лимит (20 запросов
+        за 24 часа); 502 — не удалось поставить задачу в очередь (запрос помечается
+        failed / enqueue_failed).'
+      parameters:
+      - description: prompt и необязательный max_names
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_aicurator_transport_http.createCurationRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/internal_modules_aicurator_transport_http.curationSummaryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "429":
+          description: Too Many Requests
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создать запрос на подбор авторов ИИ (админ)
+      tags:
+      - admin
+  /admin/ai-curator/requests/{id}:
+    get:
+      description: 'Требуется роль admin. Кандидаты в порядке ответа модели; у каждого
+        match_status (pending, matched, ambiguous, not_found, error) и options — люди
+        из Wikidata с русской меткой (qid, label, description). Поле existing вычисляется
+        при чтении: автор BookHaven с этим QID (id, name, slug, status) или null.
+        Имя и note — мнение модели, только для показа как обычный текст. Ничего не
+        выбирается автоматически.'
+      parameters:
+      - description: ID запроса (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aicurator_transport_http.curationDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Запрос подбора авторов ИИ с кандидатами (админ)
+      tags:
+      - admin
+  /admin/ai-curator/status:
+    get:
+      description: Требуется роль admin. enabled — включён ли подбор (флаг AI_CURATOR_ENABLED
+        и ключ API заданы), model — модель, prompt_version — версия промпта, лимиты
+        (max_prompt_length, max_names, default_names, daily_limit), used_today — число
+        запросов текущего администратора за последние 24 часа, active_request_id —
+        его активный (в очереди или выполняется) запрос или null.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aicurator_transport_http.curationStatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Статус подбора авторов ИИ (админ)
+      tags:
+      - admin
   /admin/authors:
     get:
       description: Требуется роль admin

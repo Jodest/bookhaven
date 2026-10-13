@@ -61,19 +61,31 @@ describe('SectionSubtabs', () => {
     expect(screen.getByRole('link', { name: 'Wikidata' })).not.toHaveAttribute('aria-current');
   });
 
-  it.each([
-    ['/import/authors/manual', 'authors'],
-    ['/import/genres/wikidata', 'genres'],
-  ])('%s shows two pills (no file import)', (pathname, entity) => {
-    renderSubtabs(pathname);
+  it('genres shows two pills (no file import, no AI curation)', () => {
+    renderSubtabs('/import/genres/wikidata');
 
     expect(pills()).toEqual([
-      ['Вручную', `/import/${entity}/manual`],
-      ['Wikidata', `/import/${entity}/wikidata`],
+      ['Вручную', '/import/genres/manual'],
+      ['Wikidata', '/import/genres/wikidata'],
     ]);
     const active = screen.getAllByRole('link').filter((l) => l.getAttribute('aria-current') === 'page');
-    expect(active.map((l) => l.getAttribute('href'))).toEqual([pathname]);
+    expect(active.map((l) => l.getAttribute('href'))).toEqual(['/import/genres/wikidata']);
   });
+
+  it.each(['/import/authors/manual', '/import/authors/wikidata', '/import/authors/ai'])(
+    '%s shows three author pills in order (no file import)',
+    (pathname) => {
+      renderSubtabs(pathname);
+
+      expect(pills()).toEqual([
+        ['Вручную', '/import/authors/manual'],
+        ['Wikidata', '/import/authors/wikidata'],
+        ['Подбор ИИ', '/import/authors/ai'],
+      ]);
+      const active = screen.getAllByRole('link').filter((l) => l.getAttribute('aria-current') === 'page');
+      expect(active.map((l) => l.getAttribute('href'))).toEqual([pathname]);
+    }
+  );
 
   it.each(['/import', '/import/jobs', '/catalog/books', '/moderation/books', '/', '/users', '/unknown'])(
     'admin on %s renders nothing',

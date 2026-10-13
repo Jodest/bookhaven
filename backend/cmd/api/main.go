@@ -12,6 +12,8 @@ import (
 	"github.com/bookhaven/backend/internal/infrastructure/validator"
 	adminrepository "github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
+	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
+	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
 	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
@@ -133,7 +135,8 @@ func main() {
 
 	// Shared asynq.Client for every task the api enqueues: admin
 	// harvest-trigger jobs (see docs/features/admin-harvest-trigger.md), AI
-	// review checks (modules/aimoderation) and transactional emails
+	// review checks (modules/aimoderation), AI curation requests
+	// (modules/aicurator) and transactional emails
 	// (internal/pkg/mailer). The Inspector serves the
 	// admin harvest status endpoints.
 	taskClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
@@ -232,7 +235,10 @@ func main() {
 
 	// Admin routes
 	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, taskClient, harvestInspector, wikidataClient,
-		httptransport.AIModerationDeps{Active: cfg.AIModerationActive(), Model: cfg.AIModerationModel})
+		httptransport.AIModerationDeps{Active: cfg.AIModerationActive(), Model: cfg.AIModerationModel},
+		httptransport.AICuratorDeps{Service: curatorservice.NewService(
+			curatorrepository.NewGormRepository(db), adminService, cfg.AICuratorActive(), cfg.AICuratorModel,
+			curatorservice.WithLogger(logger))})
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)

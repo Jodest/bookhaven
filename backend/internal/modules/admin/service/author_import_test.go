@@ -330,3 +330,25 @@ func TestFindAuthorsByWikidataQIDs(t *testing.T) {
 		}
 	})
 }
+
+func TestIsImportableAuthorRecord(t *testing.T) {
+	tests := []struct {
+		name   string
+		record *bookdata.ExternalAuthorRecord
+		want   bool
+	}{
+		{"human", &bookdata.ExternalAuthorRecord{QID: "Q991", Name: "Фёдор Достоевский", InstanceOf: []string{"Q5"}}, true},
+		{"collective pseudonym", &bookdata.ExternalAuthorRecord{QID: "Q1", Name: "Козьма Прутков", InstanceOf: []string{"Q16017119"}}, true},
+		{"pseudonym", &bookdata.ExternalAuthorRecord{QID: "Q2", Name: "Пётр Иванов", InstanceOf: []string{"Q61002"}}, true},
+		{"novel", &bookdata.ExternalAuthorRecord{QID: "Q3", Name: "Обломов", InstanceOf: []string{"Q7725634"}}, false},
+		{"empty ru label", &bookdata.ExternalAuthorRecord{QID: "Q4", Name: "  ", InstanceOf: []string{"Q5"}}, false},
+		{"latin-only label", &bookdata.ExternalAuthorRecord{QID: "Q5", Name: "Ursula K. Le Guin", InstanceOf: []string{"Q5"}}, false},
+		{"no instance of", &bookdata.ExternalAuthorRecord{QID: "Q6", Name: "Иван Гончаров"}, false},
+		{"nil", nil, false},
+	}
+	for _, tt := range tests {
+		if got := IsImportableAuthorRecord(tt.record); got != tt.want {
+			t.Errorf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}

@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdminAuthorInput, ApiError } from '@bookhaven/api-client';
-import { adminAuthorsApi } from '@/entities/author';
+import { adminAuthorsApi, authorToInput } from '@/entities/author';
 import { DASHBOARD_QUERY_KEY } from '@/entities/dashboard';
-import { AuthorForm, authorToInput } from '@/features/manage-author';
+import { AuthorForm } from '@/features/manage-author';
 import { safeBackHref, setFlash } from '@/shared/lib';
 import { EditPageHeader } from '@/shared/ui';
 

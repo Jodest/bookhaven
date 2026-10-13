@@ -271,3 +271,60 @@ func TestLoad_AIModerationActiveAndParsing(t *testing.T) {
 		t.Errorf("unexpected model/cron: %q %q", cfg.AIModerationModel, cfg.AIModerationCron)
 	}
 }
+
+func setAICuratorEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	setSMTPEnv(t, nil)
+	for _, k := range []string{"AI_CURATOR_ENABLED", "AI_CURATOR_MODEL", "ANTHROPIC_API_KEY", "AI_MODERATION_ENABLED"} {
+		t.Setenv(k, "")
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestLoad_AICurator(t *testing.T) {
+	setAICuratorEnv(t, nil)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AICuratorEnabled || cfg.AICuratorActive() {
+		t.Error("AI curation must be off by default")
+	}
+	if cfg.AICuratorModel != "claude-haiku-5-5" {
+		t.Errorf("default model = %q", cfg.AICuratorModel)
+	}
+
+	cases := []struct {
+		enabled, key string
+		wantActive   bool
+	}{
+		{"true", "", false},
+		{"true", "   ", false},
+		{"false", "sk-test", false},
+		{"true", "sk-test", true},
+	}
+	for _, tc := range cases {
+		setAICuratorEnv(t, map[string]string{"AI_CURATOR_ENABLED": tc.enabled, "ANTHROPIC_API_KEY": tc.key})
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.AICuratorActive() != tc.wantActive {
+			t.Errorf("enabled=%q key=%q: active=%v", tc.enabled, tc.key, cfg.AICuratorActive())
+		}
+		if cfg.AIModerationActive() {
+			t.Errorf("the curator flag must not switch on AI moderation")
+		}
+	}
+
+	setAICuratorEnv(t, map[string]string{"AI_CURATOR_MODEL": " claude-sonnet-5-5 "})
+	if cfg, _ := Load(); cfg.AICuratorModel != "claude-sonnet-5-5" {
+		t.Errorf("model = %q", cfg.AICuratorModel)
+	}
+	setAICuratorEnv(t, map[string]string{"AI_CURATOR_MODEL": "   "})
+	if cfg, _ := Load(); cfg.AICuratorModel != "claude-haiku-5-5" {
+		t.Errorf("blank model = %q", cfg.AICuratorModel)
+	}
+}

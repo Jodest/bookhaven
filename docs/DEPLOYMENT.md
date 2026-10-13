@@ -108,7 +108,7 @@ For real durability, uncomment the `rclone` line in the script and configure an 
 
 ## Background jobs (worker)
 
-The `worker` container runs three asynq servers (harvest, `email`, `similarity`; plus `harvest_schedule` only when the scheduled harvest is on and `ai_moderation` only when AI pre-moderation is on) plus an in-process `asynq.Scheduler`. The harvest server processes exactly one harvest job at a time (`Concurrency: 1`, #191), manual and scheduled jobs alike. The scheduler enqueues the daily similar-books recompute (`similarity:recompute` on the `similarity` queue, 03:30 UTC; see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md)). The recompute reads shelves/ratings, builds the "readers also read" ranking and fully replaces the `book_similarities` table in one transaction. Books without rows keep the stage-1 content-based list, so an empty table is always safe.
+The `worker` container runs three asynq servers (harvest, `email`, `similarity`; plus `harvest_schedule` only when the scheduled harvest is on, `ai_moderation` only when AI pre-moderation is on and `ai_curator` only when AI author curation is on) plus an in-process `asynq.Scheduler`. The harvest server processes exactly one harvest job at a time (`Concurrency: 1`, #191), manual and scheduled jobs alike. The scheduler enqueues the daily similar-books recompute (`similarity:recompute` on the `similarity` queue, 03:30 UTC; see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md)). The recompute reads shelves/ratings, builds the "readers also read" ranking and fully replaces the `book_similarities` table in one transaction. Books without rows keep the stage-1 content-based list, so an empty table is always safe.
 
 > **Do not run more than one worker replica** without moving the scheduler out of the worker. Prod runs exactly one (`container_name: bookhaven-worker`). The task's `asynq.Unique(6h)` rejects a duplicate enqueue if two schedulers ever run, but that is a safety net, not a design.
 
@@ -156,6 +156,28 @@ Cost (assumptions: about 2,200 input tokens per book — a ~1,500-token system p
 | `claude-sonnet-5-5` ($2 / $10 per 1M) | $4.40 | $4.00 | **≈ $8.40** |
 
 Upper bound with the defaults: 50 books × 48 sweeps per day = 2,400 books per day, about $1 per day on Haiku; in practice the inflow is the daily harvest (tens of books). Token counts are stored per verdict, so the real spend is one query away: `SELECT model, sum(input_tokens), sum(output_tokens) FROM book_ai_verdicts GROUP BY model;` (note that a recomputed verdict replaces the previous row, so this counts the latest computation per book).
+
+### AI author curation
+
+Off by default. The AI curator (Импорт → Авторы → «Подбор ИИ», `/import/authors/ai`) is active only when `AI_CURATOR_ENABLED=true` **and** `ANTHROPIC_API_KEY` is set — the same key as AI pre-moderation, but a separate switch, so either feature can be turned on or rolled back alone. A flag without a key logs `AI_CURATOR_ENABLED is set but ANTHROPIC_API_KEY is empty; AI curation disabled`; otherwise the worker logs `AI curation disabled`. When active, the worker runs its own asynq server (queue `ai_curator`, `Concurrency: 1`, one request at a time) for `ai_curator:curate`: one model call per request returns at most N author **names**, and each name is resolved through the worker's shared `WikidataClient` (the same rate limiter as the harvest), keeping only people with a Russian label. The model never supplies catalog data; admins take candidates through the existing author import / harvest / `auto_harvest` flows and everything lands `pending`. Limits: prompt ≤ 500 characters, 1–30 names (default 20), one active request per admin, 20 requests per admin per rolling 24 h.
+
+**Both `backend` (api) and `worker` need the flag and the key.** The api never calls the model; it stores the request and queues the task, and uses the same switch for `GET /admin/ai-curator/status` and `POST /admin/ai-curator/requests` (503 when off). If only the api has the flag, requests stay queued and show as failed/`timeout` after one hour.
+
+| Variable | Meaning |
+|---|---|
+| `AI_CURATOR_ENABLED` | `true` turns AI curation on (with `ANTHROPIC_API_KEY`). Default `false`, also in dev and CI. |
+| `AI_CURATOR_MODEL` | Exact model id. Default `claude-haiku-5-5` (hallucinated names are filtered by the Wikidata check); `claude-sonnet-5-5` if recall is poor. Blank means the default. |
+
+Requests and their candidates live in `ai_curation_requests` / `ai_curation_candidates` (migration 000023) and are deleted after **30 days** (the purge runs at the start of every curate task; catalog data is never touched). Check `docker compose -f docker-compose.prod.yml logs worker` for `AI curation enabled`, `AI curation model answer` and `AI curation finished`; the prompt text is never logged.
+
+Cost per request (assumptions: about 0.9k input tokens — a ~700-token cached system prompt plus the request — and about 2.4k output tokens for 30 names including low-effort thinking):
+
+| Model | Per request | 20 requests/day (the per-admin limit) |
+|---|---|---|
+| `claude-haiku-5-5` ($0.10 / $0.50 per 1M) | ≈ $0.0013 | ≈ $0.03 |
+| `claude-sonnet-5-5` ($2 / $10 per 1M) | ≈ $0.026 | ≈ $0.52 |
+
+Token counts are stored per request: `SELECT model, sum(input_tokens), sum(output_tokens) FROM ai_curation_requests GROUP BY model;` (only the last 30 days are kept).
 
 ## Email (SMTP)
 

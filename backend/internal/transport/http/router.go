@@ -3,6 +3,7 @@ package http
 import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	adminhttp "github.com/bookhaven/backend/internal/modules/admin/transport/http"
+	aicuratorhttp "github.com/bookhaven/backend/internal/modules/aicurator/transport/http"
 	aimodhttp "github.com/bookhaven/backend/internal/modules/aimoderation/transport/http"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	cataloghttp "github.com/bookhaven/backend/internal/modules/catalog/transport/http"
@@ -122,6 +123,14 @@ type AIModerationDeps struct {
 	Model  string
 }
 
+// AICuratorDeps configures the AI curator endpoints (/admin/ai-curator):
+// Service is the aicurator service (it carries config.AICuratorActive()
+// and the model id; the API never calls the model). Its task is queued on
+// the shared asynq client.
+type AICuratorDeps struct {
+	Service aicuratorhttp.CurationService
+}
+
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
 // harvestEnqueuer/harvestInspector are the small interfaces the new
 // harvest/transport/http.Handler depends on (satisfied by a real
@@ -137,6 +146,7 @@ func RegisterAdminRoutes(
 	harvestInspector harvesthttp.TaskInspector,
 	harvestAuthorSearcher harvesthttp.AuthorSearcher,
 	aiModeration AIModerationDeps,
+	aiCurator AICuratorDeps,
 ) {
 	admin := e.Group("/api/v1/admin", authMiddleware)
 
@@ -200,4 +210,13 @@ func RegisterAdminRoutes(
 	harvest.GET("/jobs", harvestHandler.ListHarvestJobs)
 	harvest.GET("/jobs/:id", harvestHandler.GetHarvestJob)
 	harvest.GET("/authors/search", harvestHandler.SearchAuthors)
+
+	if aiCurator.Service != nil {
+		curatorHandler := aicuratorhttp.NewHandler(harvestEnqueuer, aiCurator.Service)
+		curator := admin.Group("/ai-curator", adminRole)
+		curator.GET("/status", curatorHandler.CurationStatus)
+		curator.POST("/requests", curatorHandler.CreateCurationRequest, requireBearer)
+		curator.GET("/requests", curatorHandler.ListCurationRequests)
+		curator.GET("/requests/:id", curatorHandler.GetCurationRequest)
+	}
 }
