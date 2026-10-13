@@ -199,8 +199,9 @@ type BookInput struct {
 	// unchanged. Any non-nil invalid value is ErrInvalidBookStatus.
 	Status *string
 	// ExternalSource/ExternalID identify the origin record for books
-	// created via an automated harvest (e.g. "wikidata" + a QID). Left nil
-	// by existing callers (regular admin create/update flows).
+	// created via an automated harvest (e.g. "wikidata" + a QID). Applied
+	// on create only; UpdateBook ignores them and keeps the stored values.
+	// Left nil by the regular admin create flow.
 	ExternalSource *string
 	ExternalID     *string
 	// AllowNonRussianTitle lifts only the ErrTitleNotRussian check (for
@@ -415,8 +416,8 @@ func (s *Service) UpdateBook(ctx context.Context, id uuid.UUID, input BookInput)
 	if input.Status != nil {
 		book.Status = *input.Status
 	}
-	book.ExternalSource = normalizeOptionalString(input.ExternalSource)
-	book.ExternalID = normalizeOptionalString(input.ExternalID)
+	// ExternalSource/ExternalID are deliberately not touched: they are set
+	// once at creation by the harvest and must survive admin edits.
 
 	if err := s.repo.UpdateBook(ctx, book, authorIDs, genreIDs); err != nil {
 		if isDuplicateKeyError(err) {

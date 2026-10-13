@@ -29,11 +29,11 @@ A book SHALL have a non-empty title written mainly in Cyrillic (at least half of
 - **THEN** the response is 409 and nothing changes
 
 ### Requirement: External source on update
-An update SHALL write the book's external source and id from the request. The admin form does not send them, so saving a harvested book in the admin clears its external source and id: the book loses the «Импортировано» mark and is no longer recognised as already harvested.
+An update SHALL keep the book's stored external source and id: they are set only when a harvest creates the book, and no admin edit, status change or other update may change or clear them. A harvested book therefore keeps the «Импортировано» mark and stays recognised as already harvested after any number of admin edits.
 
 #### Scenario: Editing a harvested book
 - **WHEN** an admin fixes the description of a book that came from a Wikidata harvest and saves
-- **THEN** the book no longer has an external source
+- **THEN** the book keeps its external source and id, and a later harvest of the same work skips it
 
 ### Requirement: Book edit page
 The admin app SHALL provide `/catalog/books/{id}/edit` «Редактирование книги» with the book form: «Название *», «Название на латинице допустимо», «Slug» («Автоматически из названия»), «ISBN», «Описание», «URL обложки», «Год издания», «Количество страниц», «Язык *», «Авторы», «Жанры» and «Статус». Selected authors and genres that are not published are listed with their status under the pickers. Changing the status asks «Вы уверены, что хотите сменить статус на «<status>» у этой книги?». After saving, the admin returns to the list they came from. Errors show «Книга с таким slug уже существует.», the hint to tick «Название на латинице допустимо» for a non-Russian title, the server's own message for other rule violations, «Ошибка сервера. Попробуйте позже.» or «Не удалось сохранить книгу. Проверьте введенные данные.». An unknown book shows «Книга не найдена.».
