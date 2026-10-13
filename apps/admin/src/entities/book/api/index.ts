@@ -9,4 +9,6 @@ export const adminBooksApi = {
   import: api.admin.books.import,
   bulkStatus: api.admin.books.bulkStatus,
   moderationQueue: api.admin.books.moderationQueue,
+  aiReview: api.admin.books.aiReview,
+  aiReviewStatus: api.admin.books.aiReviewStatus,
 };

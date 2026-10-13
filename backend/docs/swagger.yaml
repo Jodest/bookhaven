@@ -356,6 +356,31 @@ definitions:
       title:
         type: string
     type: object
+  internal_modules_admin_transport_http.bookAIVerdictResponse:
+    properties:
+      confidence:
+        type: number
+      created_at:
+        type: string
+      model:
+        type: string
+      prompt_version:
+        type: integer
+      reason:
+        type: string
+      reason_codes:
+        items:
+          type: string
+        type: array
+      stale:
+        description: |-
+          Stale is true when the prompt version or the book's data changed
+          since the verdict was computed.
+        type: boolean
+      verdict:
+        description: Verdict is publish | reject | needs_human.
+        type: string
+    type: object
   internal_modules_admin_transport_http.bookHintBookResponse:
     properties:
       external_source:
@@ -383,6 +408,10 @@ definitions:
     type: object
   internal_modules_admin_transport_http.bookQueueItemResponse:
     properties:
+      ai_verdict:
+        allOf:
+        - $ref: '#/definitions/internal_modules_admin_transport_http.bookAIVerdictResponse'
+        description: AIVerdict is null when the book has no AI verdict.
       book:
         $ref: '#/definitions/internal_modules_admin_transport_http.bookResponse'
       created_at:
@@ -926,6 +955,34 @@ definitions:
         type: string
       name:
         type: string
+    type: object
+  internal_modules_aimoderation_transport_http.aiReviewRequest:
+    properties:
+      all_unreviewed:
+        type: boolean
+      book_ids:
+        items:
+          type: string
+        type: array
+    type: object
+  internal_modules_aimoderation_transport_http.aiReviewResponse:
+    properties:
+      task_id:
+        type: string
+    type: object
+  internal_modules_aimoderation_transport_http.aiReviewStatusResponse:
+    properties:
+      enabled:
+        type: boolean
+      model:
+        type: string
+      needs_review:
+        description: |-
+          NeedsReview is the number of pending books the periodic sweep would
+          pick (no verdict, an older prompt version or updated after it).
+        type: integer
+      prompt_version:
+        type: integer
     type: object
   internal_modules_auth_transport_http.authResponse:
     properties:
@@ -2870,6 +2927,107 @@ paths:
       summary: Обновить книгу (админ)
       tags:
       - admin
+  /admin/books/ai-review:
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Ровно одно из: book_ids (1–100
+        UUID, дубли убираются; проверяются заново только книги на модерации, даже
+        со свежим вердиктом) или all_unreviewed: true (одна проверка всех непроверенных
+        книг на модерации, не более 1000). Вердикты вычисляет воркер; книги не публикуются
+        автоматически. 503, если ИИ-модерация выключена; 409, если проверка всех непроверенных
+        уже в очереди.'
+      parameters:
+      - description: book_ids или all_unreviewed
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_aimoderation_transport_http.aiReviewRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/internal_modules_aimoderation_transport_http.aiReviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Поставить ИИ-проверку книг в очередь (админ)
+      tags:
+      - admin
+  /admin/books/ai-review/status:
+    get:
+      description: Требуется роль admin. enabled — включена ли ИИ-модерация (флаг
+        и ключ API заданы), model — модель, prompt_version — текущая версия промпта,
+        needs_review — число книг на модерации, которые возьмёт ближайшая проверка
+        (без вердикта, со старой версией промпта или изменённые после вердикта).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aimoderation_transport_http.aiReviewStatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Статус ИИ-модерации книг (админ)
+      tags:
+      - admin
   /admin/books/bulk-status:
     post:
       consumes:
@@ -3049,9 +3207,10 @@ paths:
   /admin/books/moderation:
     get:
       description: Требуется роль admin. Книги с заданным статусом (по умолчанию pending),
-        новые сверху, с авторами и жанрами (с их статусами), источником, external_id
-        и подсказками «возможно, та же книга» (same_isbn / same_title_author, только
-        для отображения).
+        новые сверху, с авторами и жанрами (с их статусами), источником, external_id,
+        подсказками «возможно, та же книга» (same_isbn / same_title_author, только
+        для отображения) и ИИ-вердиктом ai_verdict (null, если книга не проверялась;
+        stale = вердикт устарел).
       parameters:
       - description: 'Статус: pending (по умолчанию) / published / rejected'
         in: query
@@ -3060,6 +3219,10 @@ paths:
       - description: 'Источник: manual / harvested'
         in: query
         name: source
+        type: string
+      - description: 'ИИ-вердикт: publish / reject / needs_human / none (без вердикта)'
+        in: query
+        name: ai
         type: string
       - description: Полнотекстовый поиск (название, ISBN, описание)
         in: query

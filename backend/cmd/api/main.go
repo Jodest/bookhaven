@@ -132,8 +132,9 @@ func main() {
 		homeservice.WithLogger(logger))
 
 	// Shared asynq.Client for every task the api enqueues: admin
-	// harvest-trigger jobs (see docs/features/admin-harvest-trigger.md) and
-	// transactional emails (internal/pkg/mailer). The Inspector serves the
+	// harvest-trigger jobs (see docs/features/admin-harvest-trigger.md), AI
+	// review checks (modules/aimoderation) and transactional emails
+	// (internal/pkg/mailer). The Inspector serves the
 	// admin harvest status endpoints.
 	taskClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
 	defer taskClient.Close()
@@ -230,7 +231,8 @@ func main() {
 	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, authMiddleware, optionalAuth)
 
 	// Admin routes
-	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, taskClient, harvestInspector, wikidataClient)
+	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, taskClient, harvestInspector, wikidataClient,
+		httptransport.AIModerationDeps{Active: cfg.AIModerationActive(), Model: cfg.AIModerationModel})
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)

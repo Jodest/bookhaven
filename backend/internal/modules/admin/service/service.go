@@ -505,8 +505,9 @@ type AuthorInput struct {
 	// ignores it and always creates a published author.
 	Status *string
 	// AutoHarvest is applied by UpdateAuthor only (nil = unchanged);
-	// CreateAuthor ignores it (new authors are never flagged). true needs a
-	// Wikidata QID (ErrAutoHarvestRequiresQID).
+	// CreateAuthor ignores it (new authors are never flagged). Switching it
+	// on (true for an unflagged author) needs a Wikidata QID
+	// (ErrAutoHarvestRequiresQID).
 	AutoHarvest *bool
 }
 
@@ -606,7 +607,9 @@ func (s *Service) UpdateAuthor(ctx context.Context, id uuid.UUID, input AuthorIn
 	if input.Status != nil && !catalogDomain.IsValidAuthorStatus(*input.Status) {
 		return nil, ErrInvalidAuthorStatus
 	}
-	if input.AutoHarvest != nil && *input.AutoHarvest && !hasWikidataQID(*author) {
+	// Only switching the flag on needs a QID: re-sending true for an already
+	// flagged author (e.g. one whose QID was removed by hand) must not fail.
+	if input.AutoHarvest != nil && *input.AutoHarvest && !author.AutoHarvest && !hasWikidataQID(*author) {
 		return nil, ErrAutoHarvestRequiresQID
 	}
 

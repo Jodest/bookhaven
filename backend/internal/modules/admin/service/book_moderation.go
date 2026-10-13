@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
+	aimodDomain "github.com/bookhaven/backend/internal/modules/aimoderation/domain"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/google/uuid"
 )
@@ -93,13 +94,17 @@ type BookHint struct {
 type BookQueueItem struct {
 	Book    catalogDomain.Book
 	Similar []BookHint
+	// AIVerdict is the book's AI pre-moderation verdict, nil when it has
+	// none.
+	AIVerdict *BookAIVerdictView
 }
 
 // ListBookModerationQueue returns one page of the book moderation queue
 // (default status pending, newest first) with authors/genres preloaded and
-// "possibly the same book" hints. Hints use at most two extra queries per
-// page (ISBN candidates, shared-author candidates), consider books of any
-// status and are recomputed on every call.
+// "possibly the same book" hints and AI verdicts. Hints use at most two
+// extra queries per page (ISBN candidates, shared-author candidates),
+// consider books of any status and are recomputed on every call; verdicts
+// add one query.
 func (s *Service) ListBookModerationQueue(ctx context.Context, filter repository.BookModerationFilter, page, limit int) ([]BookQueueItem, int64, error) {
 	if filter.Status == "" {
 		filter.Status = catalogDomain.BookStatusPending
@@ -111,6 +116,11 @@ func (s *Service) ListBookModerationQueue(ctx context.Context, filter repository
 	case "", "manual", "harvested":
 	default:
 		return nil, 0, fmt.Errorf("%w: source must be manual or harvested", ErrInvalidModerationFilter)
+	}
+	switch filter.AI {
+	case "", AIFilterNone, aimodDomain.VerdictPublish, aimodDomain.VerdictReject, aimodDomain.VerdictNeedsHuman:
+	default:
+		return nil, 0, fmt.Errorf("%w: ai must be publish, reject, needs_human or none", ErrInvalidModerationFilter)
 	}
 
 	if page <= 0 {
@@ -134,6 +144,34 @@ func (s *Service) ListBookModerationQueue(ctx context.Context, filter repository
 		return items, total, nil
 	}
 
+	hints, err := s.bookHintsFor(ctx, books)
+	if err != nil {
+		return nil, 0, err
+	}
+	verdicts, err := s.aiVerdictViews(ctx, books)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i, b := range books {
+		items = append(items, BookQueueItem{
+			Book:      b,
+			Similar:   hints[i],
+			AIVerdict: verdicts[b.ID],
+		})
+	}
+	return items, total, nil
+}
+
+// bookHintsFor computes the "possibly the same book" hints of books (with
+// authors preloaded), index-aligned with books. It uses at most two
+// queries (ISBN candidates, shared-author candidates), considers books of
+// any status, and is shared by the queue and the AI review input so both
+// see the same hints.
+func (s *Service) bookHintsFor(ctx context.Context, books []catalogDomain.Book) ([][]BookHint, error) {
+	out := make([][]BookHint, len(books))
+	if len(books) == 0 {
+		return out, nil
+	}
 	ids := make([]uuid.UUID, 0, len(books))
 	isbnSet := map[string]struct{}{}
 	isbns := []string{}
@@ -161,25 +199,21 @@ func (s *Service) ListBookModerationQueue(ctx context.Context, filter repository
 
 	byISBN, err := s.repo.FindBooksByNormalizedISBNs(ctx, isbns, ids)
 	if err != nil {
-		return nil, 0, fmt.Errorf("find books by isbn: %w", err)
+		return nil, fmt.Errorf("find books by isbn: %w", err)
 	}
 	byAuthor, err := s.repo.FindBooksByAuthorIDs(ctx, authorIDs, ids)
 	if err != nil {
-		return nil, 0, fmt.Errorf("find books by author: %w", err)
+		return nil, fmt.Errorf("find books by author: %w", err)
 	}
 
 	// Candidate pool: both query results plus the page's own rows, so two
 	// duplicates on the same page hint at each other. Rows returned by
 	// both queries are merged (author ids unioned).
 	pool := mergeBookCandidates(byISBN, byAuthor, pageRows)
-
-	for i, b := range books {
-		items = append(items, BookQueueItem{
-			Book:    b,
-			Similar: buildBookHints(pageRows[i], pool),
-		})
+	for i := range books {
+		out[i] = buildBookHints(pageRows[i], pool)
 	}
-	return items, total, nil
+	return out, nil
 }
 
 // bookHintCandidateOf converts a page book (with preloaded authors) into a

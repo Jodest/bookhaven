@@ -10,8 +10,9 @@ import type {
   AdminBookStatus,
 } from '@bookhaven/api-client';
 import { AuthorStatusBadge } from '@/entities/author';
-import { adminBooksApi, BookStatusBadge } from '@/entities/book';
+import { adminBooksApi, AiVerdictCell, BookStatusBadge } from '@/entities/book';
 import { GenreStatusBadge } from '@/entities/genre';
+import { AiReviewSelectedButton, AiReviewToolbar, useAiReviewStatus } from '@/features/ai-review-books';
 import {
   bookStatusConfirmText,
   bulkBookStatusConfirmText,
@@ -40,6 +41,17 @@ const FILTERS: ModerationQueueFilter[] = [
       { value: 'harvested', label: 'Харвестер' },
     ],
   },
+  {
+    param: 'ai',
+    label: 'ИИ',
+    options: [
+      { value: '', label: 'ИИ: любой' },
+      { value: 'publish', label: 'ИИ: опубликовать' },
+      { value: 'reject', label: 'ИИ: отклонить' },
+      { value: 'needs_human', label: 'ИИ: нужен человек' },
+      { value: 'none', label: 'ИИ: без проверки' },
+    ],
+  },
 ];
 
 const MATCH_LABELS: Record<AdminBookHint['match'], string> = {
@@ -57,6 +69,7 @@ const SUCCESS_MESSAGES: Record<AdminBookStatus, (title: string) => string> = {
 const buildParams = ({ status, search, page, limit, filters }: ModerationQueueState): AdminBookQueueParams => ({
   status,
   source: filters.source as AdminBookQueueParams['source'],
+  ai: filters.ai as AdminBookQueueParams['ai'],
   search,
   page,
   limit,
@@ -74,6 +87,8 @@ export function BookModerationView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const statusMutation = useBookStatusMutation();
+  const aiStatus = useAiReviewStatus();
+  const aiEnabled = aiStatus.data?.enabled ?? false;
 
   const editHref = (id: string) => buildEditHref(`/catalog/books/${id}/edit`, pathname, searchParams);
 
@@ -126,6 +141,12 @@ export function BookModerationView() {
       cellClassName: 'align-top text-sm',
       cell: (item) => <BookHints hints={item.similar} editHref={editHref} />,
     },
+    {
+      id: 'ai',
+      header: 'ИИ',
+      cellClassName: 'align-top text-sm max-w-xs',
+      cell: (item) => <AiVerdictCell verdict={item.ai_verdict} />,
+    },
   ];
 
   return (
@@ -139,6 +160,26 @@ export function BookModerationView() {
       getStatus={(item) => item.book.status}
       filters={FILTERS}
       columns={columns}
+      renderToolbar={(pageItems, state, controls) =>
+        state.status === 'pending' ? (
+          <AiReviewToolbar
+            pageItems={pageItems}
+            enabled={aiEnabled}
+            needsReview={aiStatus.data?.needs_review ?? 0}
+            onSelect={controls.select}
+            notify={controls.notify}
+          />
+        ) : null
+      }
+      renderBulkActions={(selected, controls) =>
+        aiEnabled && selected.every((item) => item.book.status === 'pending') ? (
+          <AiReviewSelectedButton
+            selected={selected}
+            notify={controls.notify}
+            clearSelection={controls.clearSelection}
+          />
+        ) : null
+      }
       flashKey="catalog.books"
       copy={{
         title: 'Модерация книг',

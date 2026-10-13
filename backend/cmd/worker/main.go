@@ -32,6 +32,18 @@
 // schedule, this assumes a single worker replica; the tick's asynq.Unique
 // and its "scheduled job already queued" check are a defense in depth only.
 // When disabled, neither the tick schedule nor its server is set up.
+//
+// AI pre-moderation (AI_MODERATION_ENABLED and ANTHROPIC_API_KEY, off by
+// default; see internal/modules/aimoderation): the scheduler enqueues an
+// ai_moderation:sweep on AI_MODERATION_CRON (UTC, every 30 minutes by
+// default) that gives up to AI_MODERATION_BATCH pending books an AI
+// verdict; admins can also queue ai_moderation:review_books and a manual
+// sweep from the API. Both run on their own server (queue ai_moderation,
+// Concurrency 1), so model calls are serialized and paced. Verdicts only
+// classify: nothing is published or edited. Like the other schedules this
+// assumes a single worker replica (the sweep's asynq.Unique is a defense in
+// depth only). When not active, neither the sweep schedule nor its server
+// is set up and the model is never called.
 package main
 
 import (
@@ -44,10 +56,12 @@ import (
 	"github.com/bookhaven/backend/internal/config"
 	adminrepository "github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
+	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
+	"github.com/bookhaven/backend/internal/pkg/llm"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
@@ -145,8 +159,12 @@ func main() {
 		harvestClient    *asynq.Client
 		harvestInspector *asynq.Inspector
 		scheduleSrv      *asynq.Server
+		aiSrv            *asynq.Server
 	)
 	shutdownServers := func() {
+		if aiSrv != nil {
+			aiSrv.Shutdown()
+		}
 		if scheduleSrv != nil {
 			scheduleSrv.Shutdown()
 		}
@@ -179,6 +197,29 @@ func main() {
 		logger.Info("scheduled harvest disabled")
 	}
 
+	// AI pre-moderation: only when switched on and a key is set.
+	if cfg.AIModerationActive() {
+		client := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.AIModerationModel)
+		reviewer := aimodservice.NewReviewer(client, adminService, cfg.AIModerationModel, logger)
+		aiHandlers := aimodservice.NewHandlers(reviewer, adminService, logger)
+
+		aiMux := asynq.NewServeMux()
+		aiMux.HandleFunc(aimodservice.TaskTypeSweep, aiHandlers.HandleSweep)
+		aiMux.HandleFunc(aimodservice.TaskTypeReviewBooks, aiHandlers.HandleReviewBooks)
+
+		aiSrv = asynq.NewServer(redisOpt, aiModerationServerConfig(zapAsynqLogger{logger}))
+		if err := aiSrv.Start(aiMux); err != nil {
+			aiSrv = nil
+			shutdownServers()
+			logger.Fatal("failed to start AI moderation asynq server", zap.Error(err))
+		}
+	} else {
+		if cfg.AIModerationEnabled {
+			logger.Warn("AI_MODERATION_ENABLED is set but ANTHROPIC_API_KEY is empty; AI moderation disabled")
+		}
+		logger.Info("AI moderation disabled")
+	}
+
 	scheduler := asynq.NewScheduler(
 		redisOpt,
 		&asynq.SchedulerOpts{
@@ -203,6 +244,15 @@ func main() {
 			zap.String("task", harvestservice.TaskTypeHarvestScheduleTick),
 			zap.String("cron", cfg.HarvestScheduleCron),
 			zap.Int("batch", cfg.HarvestScheduleBatch),
+			zap.String("location", "UTC"))
+	}
+	if cfg.AIModerationActive() {
+		// Never log the API key.
+		logger.Info("AI moderation enabled",
+			zap.String("task", aimodservice.TaskTypeSweep),
+			zap.String("cron", cfg.AIModerationCron),
+			zap.Int("batch", cfg.AIModerationBatch),
+			zap.String("model", cfg.AIModerationModel),
 			zap.String("location", "UTC"))
 	}
 
@@ -240,6 +290,18 @@ func scheduleServerConfig(logger asynq.Logger) asynq.Config {
 	}
 }
 
+// aiModerationServerConfig is the config of the AI moderation server (its
+// own queue, Concurrency 1: one model call at a time).
+func aiModerationServerConfig(logger asynq.Logger) asynq.Config {
+	return asynq.Config{
+		Queues: map[string]int{
+			aimodservice.QueueName: 1,
+		},
+		Concurrency: 1,
+		Logger:      logger,
+	}
+}
+
 // similarityCronSpec runs the similar-books recompute daily at 03:30 (the
 // scheduler's Location is UTC).
 const similarityCronSpec = "30 3 * * *"
@@ -252,20 +314,33 @@ type scheduleRegistrar interface {
 
 // registerSchedules registers all periodic tasks: the similarity recompute
 // always, the scheduled-harvest tick only when cfg enables it (on
-// cfg.HarvestScheduleCron; an invalid spec fails here).
+// cfg.HarvestScheduleCron) and the AI moderation sweep only when
+// cfg.AIModerationActive() (on cfg.AIModerationCron); an invalid spec
+// fails here.
 func registerSchedules(s scheduleRegistrar, cfg *config.Config) error {
 	if _, err := s.Register(similarityCronSpec,
 		catalogservice.NewRecomputeSimilaritiesTask(),
 		catalogservice.RecomputeTaskOptions()...); err != nil {
 		return err
 	}
-	if cfg == nil || !cfg.HarvestScheduleEnabled {
+	if cfg == nil {
 		return nil
 	}
-	if _, err := s.Register(cfg.HarvestScheduleCron,
-		harvestservice.NewScheduleTickTask(),
-		harvestservice.ScheduleTickOptions()...); err != nil {
-		return fmt.Errorf("register scheduled harvest (%q): %w", cfg.HarvestScheduleCron, err)
+	if cfg.HarvestScheduleEnabled {
+		if _, err := s.Register(cfg.HarvestScheduleCron,
+			harvestservice.NewScheduleTickTask(),
+			harvestservice.ScheduleTickOptions()...); err != nil {
+			return fmt.Errorf("register scheduled harvest (%q): %w", cfg.HarvestScheduleCron, err)
+		}
+	}
+	if cfg.AIModerationActive() {
+		task, err := aimodservice.NewSweepTask(cfg.AIModerationBatch, aimodservice.TriggerScheduled)
+		if err != nil {
+			return err
+		}
+		if _, err := s.Register(cfg.AIModerationCron, task, aimodservice.ScheduledSweepOptions()...); err != nil {
+			return fmt.Errorf("register AI moderation sweep (%q): %w", cfg.AIModerationCron, err)
+		}
 	}
 	return nil
 }

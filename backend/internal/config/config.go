@@ -42,6 +42,25 @@ type Config struct {
 	HarvestScheduleEnabled bool
 	HarvestScheduleCron    string
 	HarvestScheduleBatch   int
+
+	// AI pre-moderation of pending books (worker computes verdicts, API
+	// exposes trigger/status; see internal/modules/aimoderation). Active
+	// only when AI_MODERATION_ENABLED is true and ANTHROPIC_API_KEY is set
+	// (AIModerationActive); both api and worker need both. The key is a
+	// secret: never log it. AIModerationModel is the exact model id;
+	// AIModerationCron is a UTC cron spec; AIModerationBatch is the max
+	// books per sweep (1..200).
+	AIModerationEnabled bool
+	AnthropicAPIKey     string
+	AIModerationModel   string
+	AIModerationCron    string
+	AIModerationBatch   int
+}
+
+// AIModerationActive reports whether AI moderation is switched on and has
+// an API key.
+func (c *Config) AIModerationActive() bool {
+	return c.AIModerationEnabled && strings.TrimSpace(c.AnthropicAPIKey) != ""
 }
 
 // Scheduled harvest defaults and bounds.
@@ -49,6 +68,14 @@ const (
 	DefaultHarvestScheduleCron  = "0 4 * * *"
 	DefaultHarvestScheduleBatch = 10
 	MaxHarvestScheduleBatch     = 50
+)
+
+// AI moderation defaults and bounds.
+const (
+	DefaultAIModerationModel = "claude-haiku-5-5"
+	DefaultAIModerationCron  = "*/30 * * * *"
+	DefaultAIModerationBatch = 50
+	MaxAIModerationBatch     = 200
 )
 
 // defaultMailFrom is used when MAIL_FROM is unset (dev / Mailpit).
@@ -80,6 +107,15 @@ func Load() (*Config, error) {
 	cfg.HarvestScheduleEnabled = parseBoolEnv("HARVEST_SCHEDULE_ENABLED")
 	cfg.HarvestScheduleCron = strings.TrimSpace(getEnv("HARVEST_SCHEDULE_CRON", DefaultHarvestScheduleCron))
 	cfg.HarvestScheduleBatch = parseHarvestScheduleBatch(getEnv("HARVEST_SCHEDULE_BATCH", ""))
+
+	cfg.AIModerationEnabled = parseBoolEnv("AI_MODERATION_ENABLED")
+	cfg.AnthropicAPIKey = strings.TrimSpace(getEnv("ANTHROPIC_API_KEY", ""))
+	cfg.AIModerationModel = strings.TrimSpace(getEnv("AI_MODERATION_MODEL", DefaultAIModerationModel))
+	if cfg.AIModerationModel == "" {
+		cfg.AIModerationModel = DefaultAIModerationModel
+	}
+	cfg.AIModerationCron = strings.TrimSpace(getEnv("AI_MODERATION_CRON", DefaultAIModerationCron))
+	cfg.AIModerationBatch = parseClampedInt(getEnv("AI_MODERATION_BATCH", ""), DefaultAIModerationBatch, MaxAIModerationBatch)
 
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
 	if err != nil || smtpPort <= 0 || smtpPort > 65535 {
@@ -131,15 +167,21 @@ func parseBoolEnv(key string) bool {
 // (or unset) value is the default, anything else is clamped to
 // 1..MaxHarvestScheduleBatch.
 func parseHarvestScheduleBatch(raw string) int {
+	return parseClampedInt(raw, DefaultHarvestScheduleBatch, MaxHarvestScheduleBatch)
+}
+
+// parseClampedInt parses a batch-size env value: a non-integer (or unset)
+// value is def, anything else is clamped to 1..max.
+func parseClampedInt(raw string, def, max int) int {
 	n, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil {
-		return DefaultHarvestScheduleBatch
+		return def
 	}
 	if n < 1 {
 		return 1
 	}
-	if n > MaxHarvestScheduleBatch {
-		return MaxHarvestScheduleBatch
+	if n > max {
+		return max
 	}
 	return n
 }

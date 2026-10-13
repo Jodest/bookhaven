@@ -1041,6 +1041,151 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/books/ai-review": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Ровно одно из: book_ids (1–100 UUID, дубли убираются; проверяются заново только книги на модерации, даже со свежим вердиктом) или all_unreviewed: true (одна проверка всех непроверенных книг на модерации, не более 1000). Вердикты вычисляет воркер; книги не публикуются автоматически. 503, если ИИ-модерация выключена; 409, если проверка всех непроверенных уже в очереди.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Поставить ИИ-проверку книг в очередь (админ)",
+                "parameters": [
+                    {
+                        "description": "book_ids или all_unreviewed",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aimoderation_transport_http.aiReviewRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aimoderation_transport_http.aiReviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/books/ai-review/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. enabled — включена ли ИИ-модерация (флаг и ключ API заданы), model — модель, prompt_version — текущая версия промпта, needs_review — число книг на модерации, которые возьмёт ближайшая проверка (без вердикта, со старой версией промпта или изменённые после вердикта).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Статус ИИ-модерации книг (админ)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aimoderation_transport_http.aiReviewStatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/books/bulk-status": {
             "post": {
                 "security": [
@@ -1304,7 +1449,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Требуется роль admin. Книги с заданным статусом (по умолчанию pending), новые сверху, с авторами и жанрами (с их статусами), источником, external_id и подсказками «возможно, та же книга» (same_isbn / same_title_author, только для отображения).",
+                "description": "Требуется роль admin. Книги с заданным статусом (по умолчанию pending), новые сверху, с авторами и жанрами (с их статусами), источником, external_id, подсказками «возможно, та же книга» (same_isbn / same_title_author, только для отображения) и ИИ-вердиктом ai_verdict (null, если книга не проверялась; stale = вердикт устарел).",
                 "produces": [
                     "application/json"
                 ],
@@ -1323,6 +1468,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Источник: manual / harvested",
                         "name": "source",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ИИ-вердикт: publish / reject / needs_human / none (без вердикта)",
+                        "name": "ai",
                         "in": "query"
                     },
                     {
@@ -6960,6 +7111,40 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.bookAIVerdictResponse": {
+            "type": "object",
+            "properties": {
+                "confidence": {
+                    "type": "number"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt_version": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "stale": {
+                    "description": "Stale is true when the prompt version or the book's data changed\nsince the verdict was computed.",
+                    "type": "boolean"
+                },
+                "verdict": {
+                    "description": "Verdict is publish | reject | needs_human.",
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_admin_transport_http.bookHintBookResponse": {
             "type": "object",
             "properties": {
@@ -7001,6 +7186,14 @@ const docTemplate = `{
         "internal_modules_admin_transport_http.bookQueueItemResponse": {
             "type": "object",
             "properties": {
+                "ai_verdict": {
+                    "description": "AIVerdict is null when the book has no AI verdict.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.bookAIVerdictResponse"
+                        }
+                    ]
+                },
                 "book": {
                     "$ref": "#/definitions/internal_modules_admin_transport_http.bookResponse"
                 },
@@ -7797,6 +7990,46 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_aimoderation_transport_http.aiReviewRequest": {
+            "type": "object",
+            "properties": {
+                "all_unreviewed": {
+                    "type": "boolean"
+                },
+                "book_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "internal_modules_aimoderation_transport_http.aiReviewResponse": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aimoderation_transport_http.aiReviewStatusResponse": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "needs_review": {
+                    "description": "NeedsReview is the number of pending books the periodic sweep would\npick (no verdict, an older prompt version or updated after it).",
+                    "type": "integer"
+                },
+                "prompt_version": {
+                    "type": "integer"
                 }
             }
         },

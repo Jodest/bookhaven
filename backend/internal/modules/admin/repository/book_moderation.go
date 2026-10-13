@@ -17,10 +17,13 @@ const bookHintAuthorRowCap = 2000
 // BookModerationFilter defines filtering options for the book moderation
 // queue. Status is a valid book status or "" (any); Source is "" (any),
 // "manual" or "harvested" (same semantics as BookFilter.Source). Search
-// uses the same full-text condition as ListBooks (Postgres-only).
+// uses the same full-text condition as ListBooks (Postgres-only). AI is ""
+// (any), "none" (no AI verdict) or a verdict value (publish, reject,
+// needs_human; stale or not).
 type BookModerationFilter struct {
 	Status string
 	Source string
+	AI     string
 	Search string
 	Limit  int
 	Offset int
@@ -77,6 +80,14 @@ func (r *GormRepository) ListBooksForModeration(ctx context.Context, filter Book
 		query = query.Where("books.external_source IS NULL")
 	case "harvested":
 		query = query.Where("books.external_source IS NOT NULL")
+	}
+	switch filter.AI {
+	case "":
+	case "none":
+		// 1:1 join (book_id is the verdicts PK), so Count stays exact.
+		query = query.Joins("LEFT JOIN book_ai_verdicts v ON v.book_id = books.id").Where("v.book_id IS NULL")
+	default:
+		query = query.Joins("LEFT JOIN book_ai_verdicts v ON v.book_id = books.id").Where("v.verdict = ?", filter.AI)
 	}
 	if filter.Search != "" {
 		query = query.Where(

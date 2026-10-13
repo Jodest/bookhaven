@@ -330,6 +330,44 @@ type bookQueueItemResponse struct {
 	ExternalID *string            `json:"external_id"`
 	CreatedAt  time.Time          `json:"created_at"`
 	Similar    []bookHintResponse `json:"similar"`
+	// AIVerdict is null when the book has no AI verdict.
+	AIVerdict *bookAIVerdictResponse `json:"ai_verdict"`
+}
+
+// bookAIVerdictResponse is a book's AI pre-moderation verdict (openspec
+// capability catalog-moderation/ai-verdicts). ReasonCodes is never null.
+type bookAIVerdictResponse struct {
+	// Verdict is publish | reject | needs_human.
+	Verdict       string    `json:"verdict"`
+	ReasonCodes   []string  `json:"reason_codes"`
+	Reason        string    `json:"reason"`
+	Confidence    float64   `json:"confidence"`
+	Model         string    `json:"model"`
+	PromptVersion int       `json:"prompt_version"`
+	CreatedAt     time.Time `json:"created_at"`
+	// Stale is true when the prompt version or the book's data changed
+	// since the verdict was computed.
+	Stale bool `json:"stale"`
+}
+
+func toBookAIVerdictResponse(v *adminService.BookAIVerdictView) *bookAIVerdictResponse {
+	if v == nil {
+		return nil
+	}
+	codes := v.ReasonCodes
+	if codes == nil {
+		codes = []string{}
+	}
+	return &bookAIVerdictResponse{
+		Verdict:       v.Verdict,
+		ReasonCodes:   codes,
+		Reason:        v.Reason,
+		Confidence:    v.Confidence,
+		Model:         v.Model,
+		PromptVersion: v.PromptVersion,
+		CreatedAt:     v.CreatedAt,
+		Stale:         v.Stale,
+	}
 }
 
 type listBookQueueResponse struct {
@@ -1612,12 +1650,13 @@ func (h *Handler) ListGenreModerationQueue(c echo.Context) error {
 
 // ListBookModerationQueue godoc
 // @Summary Очередь модерации книг (админ)
-// @Description Требуется роль admin. Книги с заданным статусом (по умолчанию pending), новые сверху, с авторами и жанрами (с их статусами), источником, external_id и подсказками «возможно, та же книга» (same_isbn / same_title_author, только для отображения).
+// @Description Требуется роль admin. Книги с заданным статусом (по умолчанию pending), новые сверху, с авторами и жанрами (с их статусами), источником, external_id, подсказками «возможно, та же книга» (same_isbn / same_title_author, только для отображения) и ИИ-вердиктом ai_verdict (null, если книга не проверялась; stale = вердикт устарел).
 // @Tags admin
 // @Produce json
 // @Security BearerAuth
 // @Param status query string false "Статус: pending (по умолчанию) / published / rejected"
 // @Param source query string false "Источник: manual / harvested"
+// @Param ai query string false "ИИ-вердикт: publish / reject / needs_human / none (без вердикта)"
 // @Param search query string false "Полнотекстовый поиск (название, ISBN, описание)"
 // @Param page query int false "Номер страницы"
 // @Param limit query int false "Размер страницы, максимум 50"
@@ -1637,6 +1676,7 @@ func (h *Handler) ListBookModerationQueue(c echo.Context) error {
 	filter := repository.BookModerationFilter{
 		Status: c.QueryParam("status"),
 		Source: c.QueryParam("source"),
+		AI:     c.QueryParam("ai"),
 		Search: c.QueryParam("search"),
 	}
 
@@ -1670,6 +1710,7 @@ func (h *Handler) ListBookModerationQueue(c echo.Context) error {
 			ExternalID: q.Book.ExternalID,
 			CreatedAt:  q.Book.CreatedAt,
 			Similar:    similar,
+			AIVerdict:  toBookAIVerdictResponse(q.AIVerdict),
 		})
 	}
 
