@@ -39,11 +39,15 @@ State-changing admin requests SHALL require the access token in an `Authorizatio
 - **THEN** the response is 401 and nothing changes
 
 ### Requirement: Web page guards
-The web app SHALL send a visitor with neither an `access_token` nor a `has_session` cookie from `/profile…` and `/shelves…` to `/login?redirect=<path>`; a `has_session` cookie alone lets the page load so the app can refresh the session. A visitor with an `access_token` cookie opening `/login` or `/register` MUST be redirected to `/profile`. `/verify-email`, `/forgot-password` and `/reset-password` MUST stay reachable whether signed in or not.
+The web app SHALL send a visitor with neither an `access_token` nor a `has_session` cookie from `/profile…` and `/shelves…` to `/login?redirect=<path>`, except the public pages `/profile/{id}` (a reader's public profile) and `/shelves/public/{id}`, which MUST open for everyone; a `has_session` cookie alone lets a guarded page load so the app can refresh the session. A visitor with an `access_token` cookie opening `/login` or `/register` MUST be redirected to `/profile`. `/verify-email`, `/forgot-password` and `/reset-password` MUST stay reachable whether signed in or not.
 
 #### Scenario: Anonymous visitor opens shelves
 - **WHEN** a visitor without session cookies opens `/shelves`
 - **THEN** they are redirected to `/login?redirect=/shelves`
+
+#### Scenario: Anonymous visitor opens a public profile
+- **WHEN** a visitor without session cookies opens `/profile/{id}` of a reader
+- **THEN** the reader's public profile is shown without a redirect
 
 ### Requirement: Admin app access
 Every admin page except `/login` SHALL redirect a visitor with neither an `access_token` nor a `has_session` cookie to `/login?redirect=<path>`. Only `admin` and `moderator` users may use the admin app: any other signed-in user MUST see «Доступ запрещен» («У вас недостаточно прав для доступа к панели администратора.»). Sections are shown according to role (a moderator sees review moderation only), and when the server answers 403 to a request on the current page, the page shows that the server rejected the request for lack of rights.
