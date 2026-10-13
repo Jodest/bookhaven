@@ -6,6 +6,11 @@ import type { NextRequest } from 'next/server';
 // have to work logged in and logged out, in any browser, and the forgot form
 // is harmless for a logged-in user.
 const protectedRoutes = ['/profile', '/shelves'];
+// Public pages under the protected prefixes: a reader's public profile
+// (`/profile/{id}`) and a public shelf (`/shelves/public/{id}`). The API
+// serves both anonymously, so they open for everyone. `/profile` itself (the
+// user's own profile), `/shelves` and `/shelves/{id}` stay guarded.
+const publicRoutePrefixes = ['/profile/', '/shelves/public/'];
 const authRoutes = ['/login', '/register'];
 
 export function middleware(request: NextRequest) {
@@ -19,7 +24,11 @@ export function middleware(request: NextRequest) {
   // instead of hard-redirecting at the Edge before React ever mounts.
   const hasSession = Boolean(request.cookies.get('has_session')?.value);
 
-  if (protectedRoutes.some((route) => pathname.startsWith(route)) && !isAuthenticated && !hasSession) {
+  const isProtected =
+    protectedRoutes.some((route) => pathname.startsWith(route)) &&
+    !publicRoutePrefixes.some((prefix) => pathname.startsWith(prefix));
+
+  if (isProtected && !isAuthenticated && !hasSession) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname + search);
     return NextResponse.redirect(loginUrl);
