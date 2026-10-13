@@ -11,15 +11,15 @@ Parse `$ARGUMENTS` for the quoted feature request text and the optional flags `-
 
 This command is also the engine behind `/f`'s feature-routing and resume handling — see `.claude/commands/f.md`. If you were invoked with a resume-style request instead of a fresh feature request (e.g. "PR #12 in dev merged, continue" or "main PR #14 approved and merged"), skip to **Resuming after the dev PR is merged** or **Resuming after the main PR is merged** below instead of Step 1.
 
-## OpenSpec (pilot)
+## OpenSpec
 
-Some domains are specified as living OpenSpec specs under `openspec/specs/` (see `docs/PIPELINE.md` → "OpenSpec pilot"). The planner then returns `FORMAT: openspec` and a change folder `openspec/changes/<slug>/` instead of a Feature Contract. Run the CLI only through this pinned, telemetry-off invocation (referred to as `$OPENSPEC` below):
+Every product area is specified as living OpenSpec specs under `openspec/specs/` (see `docs/PIPELINE.md` → "OpenSpec"). For a change in one of those domains the planner returns `FORMAT: openspec` and a change folder `openspec/changes/<slug>/` instead of a Feature Contract. Run the CLI only through this pinned, telemetry-off invocation (referred to as `$OPENSPEC` below):
 
 ```bash
 OPENSPEC_TELEMETRY=0 npx -y @fission-ai/openspec@1.13.2
 ```
 
-Never use `/opsx:*` commands (none are installed) and never edit `openspec/specs/` by hand — main specs change only through `archive` in Step 9.
+Never use `/opsx:*` commands (none are installed) and never edit `openspec/specs/` by hand — main specs change only through `archive` in Step 9. That includes fixing a mistake in a living spec: write a small change folder whose delta corrects it, validate, archive.
 
 ## Step 0 — Prerequisites check
 
@@ -58,7 +58,7 @@ git checkout -b <prefix>/<slug>
 
 ## Step 4 — Planning (normal workflow only)
 
-Skip for `--small`.
+Skip the planner for `--small`. If a `--small` change alters behavior described in `openspec/specs/`, write a minimal change folder yourself instead — `openspec/changes/<slug>/` with `proposal.md` (why, what changes, issue link), the delta spec (usually one MODIFIED requirement that keeps every existing scenario name) and `tasks.md` — and run `$OPENSPEC validate <slug> --strict`. The rest of the workflow then treats it like a planner-made change (developer ticks `tasks.md`, review traces the scenarios, Step 9 archives it). A `--small` change that alters no specified behavior needs no change folder.
 
 Invoke the `feature-planner` subagent (Agent tool, `subagent_type: "feature-planner"`) with the full feature request as its prompt — it starts with zero context, so give it the complete request text, not a summary.
 
@@ -70,6 +70,8 @@ Invoke the `feature-planner` subagent (Agent tool, `subagent_type: "feature-plan
 ## Step 5 — GitHub issue tracking
 
 Skip entirely if `--no-commit` was passed (dry run — nothing gets tracked or pushed).
+
+If the request names an existing open issue (e.g. "do #379"), reuse it instead of creating new ones: it is the issue for the small/hotfix workflow, or the epic for the normal workflow (create only the missing sub-issues and link them from it).
 
 **Normal workflow** — create an epic + one sub-issue per touched area, inferred from the planner's `SUMMARY` (`backend`, `frontend`, `devops`):
 
@@ -115,7 +117,7 @@ gh project item-edit --id "$ITEM_ID" --field-id <status-field-id> --project-id <
 
 Invoke the `developer` subagent (Agent tool, `subagent_type: "developer"`). Give it:
 
-- the plan path and format from Step 4 (normal workflow) — for an OpenSpec change, tell it to tick `tasks.md` checkboxes as it goes and not to run `archive`; or the raw feature request verbatim (small/hotfix workflow) — it cannot read your conversation, so include the actual request text, not just a reference to it;
+- the plan path and format from Step 4 (normal workflow, or a small change with a change folder) — for an OpenSpec change, tell it to tick `tasks.md` checkboxes as it goes and not to run `archive`; or the raw feature request verbatim (small/hotfix workflow, always included even when there is a change folder) — it cannot read your conversation, so include the actual request text, not just a reference to it;
 - explicit instruction not to commit.
 
 - If it returns `STATUS: IMPLEMENTED`, continue to Step 7.

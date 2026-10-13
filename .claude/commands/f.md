@@ -31,6 +31,8 @@ A social book catalog: Go/Echo/GORM/PostgreSQL backend (Clean Architecture modul
 - If it returns `STATUS: DONE` and the change touched tracked files (Dockerfiles, compose files, workflows, deploy scripts), the change still needs to go through the same branch → PR → dev → main gate: create the branch, commit, and open the PR yourself following Steps 3 and 10-11 of `.claude/commands/feature.md` (skip planning/issue-tracking/developer/review — devops already did the work and self-validated).
 - If it returns `STATUS: NEEDS_HUMAN_ACTION`, relay that to the user verbatim — do not attempt the blocked action yourself.
 
+**Work on an existing open issue** — the request names an open issue to implement (e.g. "do #379", "/f #379") **→** read it with `gh issue view <N>`, classify its content like any other request (feature → plain `feature.md`, isolated fix → `--small`) and run `.claude/commands/feature.md` with the issue's title and body as the request; Step 5 reuses that issue instead of creating a new one.
+
 **Resume signal** — the request references an existing PR or issue number and says it was merged/approved/closed (e.g. "PR #12 in dev merged, continue", "main PR #14 approved and merged", "issue #9 done") **→** go straight to the matching section of `.claude/commands/feature.md`:
 - "in dev merged" / "dev PR merged" → **Resuming after the dev PR is merged**
 - "in main merged" / "main PR approved" / "approved and merged" → **Resuming after the main PR is merged**
