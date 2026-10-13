@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
@@ -82,6 +83,17 @@ type fakeRepository struct {
 	// Wikidata search markers (genre_import_test.go).
 	listGenresByQIDsErr   error
 	listGenresByQIDsCalls int
+
+	// Scheduled harvest (auto_harvest_test.go): autoHarvestCandidates is
+	// returned by ListAutoHarvestCandidates as-is (selection is covered by
+	// the SQLite repository test); the last arguments and marks are kept.
+	autoHarvestCandidates []catalogDomain.Author
+	autoHarvestErr        error
+	autoHarvestLimit      int
+	autoHarvestNotAfter   time.Time
+	markedAutoHarvested   []uuid.UUID
+	markedAutoHarvestedAt time.Time
+	markAutoHarvestErr    error
 }
 
 func (f *fakeRepository) WithinTransaction(ctx context.Context, fn func(repo repository.Repository) error) error {

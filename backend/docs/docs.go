@@ -107,7 +107,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Требуется роль admin и Bearer-токен",
+                "description": "Требуется роль admin и Bearer-токен. Автор создаётся опубликованным; status и auto_harvest игнорируются.",
                 "consumes": [
                     "application/json"
                 ],
@@ -661,7 +661,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Требуется роль admin и Bearer-токен",
+                "description": "Требуется роль admin и Bearer-токен. Необязательные status и auto_harvest при отсутствии в теле не меняются. auto_harvest: true для автора без Wikidata QID - 422.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2612,7 +2612,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Требуется роль admin. Источник данных - состояние очереди asynq/Redis, а не отдельная таблица в БД; список ограничен 50 задачами на состояние и сгруппирован по состоянию (active, retry, pending, completed, archived), не единой хронологией.",
+                "description": "Требуется роль admin. Источник данных - состояние очереди asynq/Redis, а не отдельная таблица в БД; список ограничен 50 задачами на состояние и сгруппирован по состоянию (active, retry, pending, completed, archived), не единой хронологией. У каждой задачи trigger (manual | scheduled) и author_qids (QID авторов, возможно пустой список).",
                 "produces": [
                     "application/json"
                 ],
@@ -6897,6 +6897,10 @@ const docTemplate = `{
         "internal_modules_admin_transport_http.authorResponse": {
             "type": "object",
             "properties": {
+                "auto_harvest": {
+                    "description": "AutoHarvest is the scheduled-harvest opt-in.",
+                    "type": "boolean"
+                },
                 "biography": {
                     "type": "string"
                 },
@@ -6913,6 +6917,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "last_auto_harvested_at": {
+                    "description": "LastAutoHarvestedAt (RFC 3339, read-only) is when the worker last\nqueued a scheduled harvest covering the author; null if never.",
                     "type": "string"
                 },
                 "name": {
@@ -7132,6 +7140,10 @@ const docTemplate = `{
         "internal_modules_admin_transport_http.createUpdateAuthorRequest": {
             "type": "object",
             "properties": {
+                "auto_harvest": {
+                    "description": "AutoHarvest opts the author into the scheduled Wikidata harvest; it\nis applied on PATCH only (omitted = unchanged) and needs a Wikidata\nQID when true (422 otherwise). Ignored on POST.",
+                    "type": "boolean"
+                },
                 "biography": {
                     "type": "string"
                 },
@@ -8272,6 +8284,13 @@ const docTemplate = `{
         "internal_modules_harvest_transport_http.harvestJobResponse": {
             "type": "object",
             "properties": {
+                "author_qids": {
+                    "description": "AuthorQIDs are the harvested author QIDs; [] when unknown.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "id": {
                     "type": "string"
                 },
@@ -8292,6 +8311,14 @@ const docTemplate = `{
                 },
                 "state": {
                     "type": "string"
+                },
+                "trigger": {
+                    "description": "Trigger is how the job was started: \"manual\" (admin trigger,\ncmd/harvest, or a job queued before the field existed) or\n\"scheduled\" (the worker's scheduled harvest).",
+                    "type": "string",
+                    "enum": [
+                        "manual",
+                        "scheduled"
+                    ]
                 },
                 "type": {
                     "type": "string"

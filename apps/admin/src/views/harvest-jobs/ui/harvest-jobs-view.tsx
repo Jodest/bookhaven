@@ -2,7 +2,12 @@
 
 import { Fragment, useState } from 'react';
 import Link from 'next/link';
-import { harvestJobStateBadgeVariant, useHarvestJobs } from '@/entities/harvest';
+import {
+  harvestJobAuthorsLabel,
+  harvestJobStateBadgeVariant,
+  harvestJobTriggerLabel,
+  useHarvestJobs,
+} from '@/entities/harvest';
 import { AdminHarvestJob } from '@bookhaven/api-client';
 import {
   Badge,
@@ -92,7 +97,7 @@ function JobReportRow({ job }: { job: AdminHarvestJob }) {
 
   return (
     <TableRow>
-      <TableCell colSpan={4} className="space-y-4 bg-muted/30">
+      <TableCell colSpan={5} className="space-y-4 bg-muted/30">
         {errors.length > 0 && (
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">Ошибки</h3>
@@ -197,6 +202,7 @@ export function HarvestJobsView() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Статус</TableHead>
+                <TableHead>Запуск</TableHead>
                 <TableHead>Результат</TableHead>
                 <TableHead />
               </TableRow>
@@ -204,7 +210,7 @@ export function HarvestJobsView() {
             <TableBody>
               {jobs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground">
                     Нет задач
                   </TableCell>
                 </TableRow>
@@ -214,12 +220,23 @@ export function HarvestJobsView() {
                   !!job.result &&
                   (job.result.errors.length > 0 || job.result.skipped_records.length > 0);
                 const isExpanded = expandedJobIds.has(job.id);
+                const authorsLabel = harvestJobAuthorsLabel(job);
                 return (
                   <Fragment key={job.id}>
                     <TableRow>
                       <TableCell className="font-mono text-xs">{job.id.slice(0, 12)}</TableCell>
                       <TableCell>
                         <Badge variant={harvestJobStateBadgeVariant(job.state)}>{job.state}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <Badge variant={job.trigger === 'scheduled' ? 'default' : 'outline'}>
+                            {harvestJobTriggerLabel(job)}
+                          </Badge>
+                          {authorsLabel && (
+                            <div className="text-xs text-muted-foreground">{authorsLabel}</div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <JobResultCell job={job} />

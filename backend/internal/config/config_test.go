@@ -142,3 +142,74 @@ func TestLoad_ProductionRequiresExplicitWebBaseURL(t *testing.T) {
 		t.Errorf("WebBaseURL = %q", cfg.WebBaseURL)
 	}
 }
+
+func setHarvestScheduleEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	setSMTPEnv(t, nil)
+	for _, k := range []string{"HARVEST_SCHEDULE_ENABLED", "HARVEST_SCHEDULE_CRON", "HARVEST_SCHEDULE_BATCH"} {
+		t.Setenv(k, "")
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestLoad_HarvestScheduleDefaults(t *testing.T) {
+	setHarvestScheduleEnv(t, nil)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.HarvestScheduleEnabled {
+		t.Error("scheduled harvest must be off by default")
+	}
+	if cfg.HarvestScheduleCron != "0 4 * * *" {
+		t.Errorf("HarvestScheduleCron = %q, want 0 4 * * *", cfg.HarvestScheduleCron)
+	}
+	if cfg.HarvestScheduleBatch != 10 {
+		t.Errorf("HarvestScheduleBatch = %d, want 10", cfg.HarvestScheduleBatch)
+	}
+}
+
+func TestLoad_HarvestScheduleConfigured(t *testing.T) {
+	setHarvestScheduleEnv(t, map[string]string{
+		"HARVEST_SCHEDULE_ENABLED": "true",
+		"HARVEST_SCHEDULE_CRON":    " 15 5 * * 1 ",
+		"HARVEST_SCHEDULE_BATCH":   "25",
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !cfg.HarvestScheduleEnabled || cfg.HarvestScheduleCron != "15 5 * * 1" || cfg.HarvestScheduleBatch != 25 {
+		t.Errorf("unexpected schedule config: %v %q %d", cfg.HarvestScheduleEnabled, cfg.HarvestScheduleCron, cfg.HarvestScheduleBatch)
+	}
+}
+
+func TestLoad_HarvestScheduleParsing(t *testing.T) {
+	cases := []struct {
+		enabled     string
+		batch       string
+		wantEnabled bool
+		wantBatch   int
+	}{
+		{enabled: "yes", batch: "abc", wantEnabled: false, wantBatch: 10},
+		{enabled: "1", batch: "0", wantEnabled: true, wantBatch: 1},
+		{enabled: "false", batch: "-5", wantEnabled: false, wantBatch: 1},
+		{enabled: "TRUE", batch: "51", wantEnabled: true, wantBatch: 50},
+		{enabled: "", batch: "1000", wantEnabled: false, wantBatch: 50},
+		{enabled: "", batch: "50", wantEnabled: false, wantBatch: 50},
+	}
+	for _, tc := range cases {
+		setHarvestScheduleEnv(t, map[string]string{"HARVEST_SCHEDULE_ENABLED": tc.enabled, "HARVEST_SCHEDULE_BATCH": tc.batch})
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.HarvestScheduleEnabled != tc.wantEnabled || cfg.HarvestScheduleBatch != tc.wantBatch {
+			t.Errorf("enabled=%q batch=%q: got %v %d, want %v %d", tc.enabled, tc.batch, cfg.HarvestScheduleEnabled, cfg.HarvestScheduleBatch, tc.wantEnabled, tc.wantBatch)
+		}
+	}
+}

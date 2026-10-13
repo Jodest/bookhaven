@@ -91,6 +91,11 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       MAIL_FROM: BookHaven <noreply@bookhaven.local>
+      # Scheduled harvest of flagged authors (off by default: no surprise
+      # outbound Wikidata/Open Library traffic in dev). Single worker only.
+      HARVEST_SCHEDULE_ENABLED: ${HARVEST_SCHEDULE_ENABLED:-false}
+      HARVEST_SCHEDULE_CRON: ${HARVEST_SCHEDULE_CRON:-0 4 * * *}
+      HARVEST_SCHEDULE_BATCH: ${HARVEST_SCHEDULE_BATCH:-10}
     volumes:
       - ./backend:/app
       - go-cache:/go/pkg/mod

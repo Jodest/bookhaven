@@ -99,6 +99,41 @@ describe('HarvestJobsView', () => {
     authorLinks.forEach((link) => expect(link).toHaveAttribute('href', '/moderation/authors'));
   });
 
+  it('shows the «Запуск» column: «Авто» with the author count for scheduled jobs, «Вручную» otherwise', async () => {
+    listJobsMock.mockResolvedValue({
+      items: [
+        {
+          id: 'job-scheduled',
+          queue: 'harvest',
+          state: 'pending',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          trigger: 'scheduled',
+          author_qids: ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10'],
+        },
+        {
+          id: 'job-manual',
+          queue: 'harvest',
+          state: 'pending',
+          type: 'harvest:wikidata_query',
+          max_retry: 3,
+          retried: 0,
+          trigger: 'manual',
+          author_qids: [],
+        },
+      ],
+    });
+
+    renderView();
+
+    expect(await screen.findByRole('columnheader', { name: 'Запуск' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Авто')).toBeInTheDocument());
+    expect(screen.getByText('Авторов: 10')).toBeInTheDocument();
+    expect(screen.getByText('Вручную')).toBeInTheDocument();
+    expect(screen.getAllByText(/^Авторов:/)).toHaveLength(1);
+  });
+
   it('shows the author enrichment counters of a completed job when present', async () => {
     listJobsMock.mockResolvedValue({
       items: [

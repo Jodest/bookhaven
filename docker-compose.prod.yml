@@ -72,6 +72,11 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      # Scheduled harvest of flagged authors (off by default). Run exactly
+      # one worker replica: the scheduler lives in the worker.
+      HARVEST_SCHEDULE_ENABLED: ${HARVEST_SCHEDULE_ENABLED:-false}
+      HARVEST_SCHEDULE_CRON: ${HARVEST_SCHEDULE_CRON:-0 4 * * *}
+      HARVEST_SCHEDULE_BATCH: ${HARVEST_SCHEDULE_BATCH:-10}
     depends_on:
       postgres:
         condition: service_healthy

@@ -33,6 +33,9 @@ export function AuthorForm({
   // (docs/features/author-wikidata-enrichment.md rule 7).
   const photoChanged =
     !!attribution && (formData.photo_url ?? '').trim() !== (editing?.photo_url ?? '').trim();
+  // The scheduled harvest queries Wikidata by QID, so the flag needs one
+  // (the server answers 422 otherwise).
+  const hasQid = editing?.external_source === 'wikidata' && !!editing?.external_id;
 
   return (
     <form onSubmit={onSubmit} className="space-y-4 rounded-lg border p-4">
@@ -109,6 +112,29 @@ export function AuthorForm({
           onChange={(e) => onFieldChange({ biography: e.target.value })}
         />
       </div>
+      {/* Scheduled-harvest opt-in: existing authors only (the server
+          ignores it on create). */}
+      {editing && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="auto_harvest"
+              className="h-4 w-4"
+              checked={formData.auto_harvest ?? editing.auto_harvest}
+              disabled={!hasQid}
+              onChange={(e) => onFieldChange({ auto_harvest: e.target.checked })}
+            />
+            <Label htmlFor="auto_harvest">Автоматически пополнять книги из Wikidata</Label>
+          </div>
+          {!hasQid && <p className="text-xs text-muted-foreground">Нужен Wikidata QID</p>}
+          <p className="text-xs text-muted-foreground">
+            {editing.last_auto_harvested_at
+              ? `Последний автоматический харвест: ${new Date(editing.last_auto_harvested_at).toLocaleDateString('ru-RU')}`
+              : 'Ещё не выполнялся'}
+          </p>
+        </div>
+      )}
       <div className="flex gap-2">
         <Button type="submit" disabled={pending}>
           {editing ? 'Сохранить' : 'Создать'}

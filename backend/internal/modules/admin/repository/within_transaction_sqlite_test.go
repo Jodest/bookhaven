@@ -30,6 +30,8 @@ CREATE TABLE authors (
 	photo_license TEXT,
 	photo_license_url TEXT,
 	photo_source_url TEXT,
+	auto_harvest BOOLEAN NOT NULL DEFAULT false,
+	last_auto_harvested_at DATETIME,
 	created_at DATETIME,
 	updated_at DATETIME
 );

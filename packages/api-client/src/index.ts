@@ -344,6 +344,10 @@ export interface AdminAuthor {
   external_id: string | null;
   /** Commons attribution of a Wikidata-enriched photo; null otherwise. */
   photo_attribution: AuthorPhotoAttribution | null;
+  /** Opt-in to the worker's scheduled Wikidata harvest (needs a QID). */
+  auto_harvest: boolean;
+  /** RFC 3339 time of the last scheduled harvest (read-only); null if never. */
+  last_auto_harvested_at: string | null;
 }
 
 export type AdminGenreStatus = 'pending' | 'published' | 'rejected';
@@ -598,6 +602,11 @@ export interface AdminAuthorInput {
   death_date?: string | null;
   /** Applied on update only (omitted = unchanged); ignored on create. */
   status?: AdminAuthorStatus;
+  /**
+   * Scheduled-harvest opt-in. Applied on update only (omitted = unchanged);
+   * ignored on create. true on an author without a Wikidata QID is a 422.
+   */
+  auto_harvest?: boolean;
 }
 
 export interface AdminGenreInput {
@@ -699,6 +708,8 @@ export interface AdminHarvestTriggerResponse {
 // For pending/retry jobs, result is typically absent (nothing has been
 // written yet, or - for retry - reflects the previous failed attempt, which
 // the admin UI intentionally does not surface as progress).
+export type AdminHarvestJobTrigger = 'manual' | 'scheduled';
+
 export interface AdminHarvestJob {
   id: string;
   queue: string;
@@ -707,6 +718,10 @@ export interface AdminHarvestJob {
   max_retry: number;
   retried: number;
   last_error?: string;
+  /** How the job was started; legacy and CLI jobs report 'manual'. */
+  trigger: AdminHarvestJobTrigger;
+  /** Harvested author QIDs; [] when unknown. */
+  author_qids: string[];
   result?: {
     processed: number;
     total: number;

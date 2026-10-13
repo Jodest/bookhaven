@@ -82,6 +82,11 @@ type authorResponse struct {
 	// PhotoAttribution is the Wikimedia Commons attribution of a photo
 	// filled by Wikidata enrichment; null for manual photos.
 	PhotoAttribution *photoAttributionResponse `json:"photo_attribution"`
+	// AutoHarvest is the scheduled-harvest opt-in.
+	AutoHarvest bool `json:"auto_harvest"`
+	// LastAutoHarvestedAt (RFC 3339, read-only) is when the worker last
+	// queued a scheduled harvest covering the author; null if never.
+	LastAutoHarvestedAt *string `json:"last_auto_harvested_at"`
 }
 
 // photoAttributionResponse is the Commons attribution of an author photo.
@@ -238,6 +243,10 @@ type createUpdateAuthorRequest struct {
 	// Status (pending | published | rejected) is applied on PATCH only;
 	// omitted = unchanged. Ignored on POST (new authors are published).
 	Status *string `json:"status,omitempty"`
+	// AutoHarvest opts the author into the scheduled Wikidata harvest; it
+	// is applied on PATCH only (omitted = unchanged) and needs a Wikidata
+	// QID when true (422 otherwise). Ignored on POST.
+	AutoHarvest *bool `json:"auto_harvest,omitempty"`
 }
 
 // mergeAuthorsRequest is the body of POST /admin/authors/:id/merge.
@@ -456,8 +465,19 @@ func toAuthorResponse(a catalogDomain.Author) authorResponse {
 		ExternalSource: a.ExternalSource,
 		ExternalID:     a.ExternalID,
 
-		PhotoAttribution: toPhotoAttributionResponse(a),
+		PhotoAttribution:    toPhotoAttributionResponse(a),
+		AutoHarvest:         a.AutoHarvest,
+		LastAutoHarvestedAt: formatTimestamp(a.LastAutoHarvestedAt),
 	}
+}
+
+// formatTimestamp renders an optional timestamp as RFC 3339 (UTC), or nil.
+func formatTimestamp(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.UTC().Format(time.RFC3339)
+	return &s
 }
 
 func toGenreResponse(g catalogDomain.Genre) genreResponse {
@@ -904,7 +924,7 @@ func (h *Handler) GetAuthor(c echo.Context) error {
 
 // CreateAuthor godoc
 // @Summary Создать автора (админ)
-// @Description Требуется роль admin и Bearer-токен
+// @Description Требуется роль admin и Bearer-токен. Автор создаётся опубликованным; status и auto_harvest игнорируются.
 // @Tags admin
 // @Accept json
 // @Produce json
@@ -951,7 +971,7 @@ func (h *Handler) CreateAuthor(c echo.Context) error {
 
 // UpdateAuthor godoc
 // @Summary Обновить автора (админ)
-// @Description Требуется роль admin и Bearer-токен
+// @Description Требуется роль admin и Bearer-токен. Необязательные status и auto_harvest при отсутствии в теле не меняются. auto_harvest: true для автора без Wikidata QID - 422.
 // @Tags admin
 // @Accept json
 // @Produce json
@@ -981,13 +1001,14 @@ func (h *Handler) UpdateAuthor(c echo.Context) error {
 	}
 
 	author, err := h.service.UpdateAuthor(ctx, id, adminService.AuthorInput{
-		Name:      req.Name,
-		Slug:      req.Slug,
-		Biography: req.Biography,
-		PhotoURL:  req.PhotoURL,
-		BirthDate: req.BirthDate,
-		DeathDate: req.DeathDate,
-		Status:    req.Status,
+		Name:        req.Name,
+		Slug:        req.Slug,
+		Biography:   req.Biography,
+		PhotoURL:    req.PhotoURL,
+		BirthDate:   req.BirthDate,
+		DeathDate:   req.DeathDate,
+		Status:      req.Status,
+		AutoHarvest: req.AutoHarvest,
 	})
 	if err != nil {
 		switch {
@@ -997,7 +1018,8 @@ func (h *Handler) UpdateAuthor(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		case errors.Is(err, adminService.ErrInvalidAuthorName),
 			errors.Is(err, adminService.ErrInvalidSlug),
-			errors.Is(err, adminService.ErrInvalidDate):
+			errors.Is(err, adminService.ErrInvalidDate),
+			errors.Is(err, adminService.ErrAutoHarvestRequiresQID):
 			return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		case errors.Is(err, adminService.ErrDuplicateSlug):
 			return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})

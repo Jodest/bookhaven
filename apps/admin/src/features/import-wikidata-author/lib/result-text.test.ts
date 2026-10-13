@@ -16,6 +16,8 @@ function author(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
     external_source: 'wikidata',
     external_id: 'Q7200',
     photo_attribution: null,
+    auto_harvest: false,
+    last_auto_harvested_at: null,
     ...overrides,
   };
 }
