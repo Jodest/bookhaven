@@ -309,6 +309,9 @@ definitions:
     type: object
   internal_modules_admin_transport_http.authorResponse:
     properties:
+      auto_harvest:
+        description: AutoHarvest is the scheduled-harvest opt-in.
+        type: boolean
       biography:
         type: string
       birth_date:
@@ -320,6 +323,11 @@ definitions:
       external_source:
         type: string
       id:
+        type: string
+      last_auto_harvested_at:
+        description: |-
+          LastAutoHarvestedAt (RFC 3339, read-only) is when the worker last
+          queued a scheduled harvest covering the author; null if never.
         type: string
       name:
         type: string
@@ -466,6 +474,12 @@ definitions:
     type: object
   internal_modules_admin_transport_http.createUpdateAuthorRequest:
     properties:
+      auto_harvest:
+        description: |-
+          AutoHarvest opts the author into the scheduled Wikidata harvest; it
+          is applied on PATCH only (omitted = unchanged) and needs a Wikidata
+          QID when true (422 otherwise). Ignored on POST.
+        type: boolean
       biography:
         type: string
       birth_date:
@@ -1234,6 +1248,11 @@ definitions:
     type: object
   internal_modules_harvest_transport_http.harvestJobResponse:
     properties:
+      author_qids:
+        description: AuthorQIDs are the harvested author QIDs; [] when unknown.
+        items:
+          type: string
+        type: array
       id:
         type: string
       last_error:
@@ -1247,6 +1266,15 @@ definitions:
       retried:
         type: integer
       state:
+        type: string
+      trigger:
+        description: |-
+          Trigger is how the job was started: "manual" (admin trigger,
+          cmd/harvest, or a job queued before the field existed) or
+          "scheduled" (the worker's scheduled harvest).
+        enum:
+        - manual
+        - scheduled
         type: string
       type:
         type: string
@@ -2095,7 +2123,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Требуется роль admin и Bearer-токен
+      description: Требуется роль admin и Bearer-токен. Автор создаётся опубликованным;
+        status и auto_harvest игнорируются.
       parameters:
       - description: Данные автора
         in: body
@@ -2199,7 +2228,9 @@ paths:
     patch:
       consumes:
       - application/json
-      description: Требуется роль admin и Bearer-токен
+      description: 'Требуется роль admin и Bearer-токен. Необязательные status и auto_harvest
+        при отсутствии в теле не меняются. auto_harvest: true для автора без Wikidata
+        QID - 422.'
       parameters:
       - description: ID автора
         in: path
@@ -3789,6 +3820,8 @@ paths:
       description: Требуется роль admin. Источник данных - состояние очереди asynq/Redis,
         а не отдельная таблица в БД; список ограничен 50 задачами на состояние и сгруппирован
         по состоянию (active, retry, pending, completed, archived), не единой хронологией.
+        У каждой задачи trigger (manual | scheduled) и author_qids (QID авторов, возможно
+        пустой список).
       produces:
       - application/json
       responses:

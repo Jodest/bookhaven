@@ -24,6 +24,15 @@
 // design intent (each task constructs/uses its own client instances).
 // Serializing harvest-queue processing keeps that throttling guarantee true
 // without adding a second, duplicate throttling layer in this package.
+// The worker sets Concurrency 1 explicitly (asynq defaults to NumCPU, #191).
+//
+// Harvest jobs are started manually (POST /admin/harvest, cmd/harvest) or by
+// the scheduled harvest (see schedule.go): the worker's scheduler enqueues a
+// TaskTypeHarvestScheduleTick task on its own queue (ScheduleQueueName),
+// whose handler picks a batch of flagged authors and queues one ordinary
+// harvest job for them. HarvestPayload records the trigger and author QIDs
+// for the admin jobs list; processing is identical for both triggers, so
+// scheduled jobs also create only pending books and never publish anything.
 //
 // This package does not talk to the admin repository directly - it only
 // calls exported adminservice.Service methods, so it does not need to know
@@ -62,8 +71,27 @@ const QueueName = "harvest"
 const wikidataSourceName = "wikidata"
 
 // HarvestPayload is the JSON task payload for TaskTypeHarvestWikidataQuery.
+// Trigger and AuthorQIDs are job metadata for the admin jobs list (how the
+// job was started and which author QIDs it covers); HandleTask ignores
+// them. Both are absent in jobs queued before they existed and in
+// cmd/harvest jobs (reported as manual with no authors).
 type HarvestPayload struct {
-	SPARQLQuery string `json:"sparql_query"`
+	SPARQLQuery string   `json:"sparql_query"`
+	Trigger     string   `json:"trigger,omitempty"`
+	AuthorQIDs  []string `json:"author_qids,omitempty"`
+}
+
+// Harvest job triggers (HarvestPayload.Trigger).
+const (
+	TriggerManual    = "manual"
+	TriggerScheduled = "scheduled"
+)
+
+// HarvestMeta is the optional job metadata NewHarvestTask stores in the
+// payload.
+type HarvestMeta struct {
+	Trigger    string
+	AuthorQIDs []string
 }
 
 // HarvestResult is the JSON result written via task.ResultWriter().Write.
@@ -459,15 +487,30 @@ func enrichRecord(ctx context.Context, rec *bookdata.ExternalBookRecord, enrich 
 // this task type (see docs/features/async-harvest-queue.md Business
 // Rules). Both cmd/harvest (enqueue) and tests use this so those options
 // can't drift out of sync.
-func NewHarvestTask(sparqlQuery string) (*asynq.Task, error) {
-	payload, err := json.Marshal(HarvestPayload{SPARQLQuery: sparqlQuery})
+//
+// meta is optional (at most the first value is used): it records the
+// trigger and author QIDs in the payload; omitted, the payload carries the
+// query only (cmd/harvest).
+func NewHarvestTask(sparqlQuery string, meta ...HarvestMeta) (*asynq.Task, error) {
+	p := HarvestPayload{SPARQLQuery: sparqlQuery}
+	if len(meta) > 0 {
+		p.Trigger = meta[0].Trigger
+		p.AuthorQIDs = meta[0].AuthorQIDs
+	}
+	payload, err := json.Marshal(p)
 	if err != nil {
 		return nil, fmt.Errorf("harvest: marshal payload: %w", err)
 	}
-	return asynq.NewTask(TaskTypeHarvestWikidataQuery, payload,
+	return asynq.NewTask(TaskTypeHarvestWikidataQuery, payload, HarvestTaskOptions()...), nil
+}
+
+// HarvestTaskOptions are the fixed options of every harvest task (manual,
+// scheduled or cmd/harvest), applied by NewHarvestTask.
+func HarvestTaskOptions() []asynq.Option {
+	return []asynq.Option{
 		asynq.Queue(QueueName),
 		asynq.MaxRetry(3),
-		asynq.Timeout(30*time.Minute),
-		asynq.Retention(24*time.Hour),
-	), nil
+		asynq.Timeout(30 * time.Minute),
+		asynq.Retention(24 * time.Hour),
+	}
 }

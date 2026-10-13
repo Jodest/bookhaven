@@ -40,6 +40,8 @@ function makeAuthor(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
     external_source: null,
     external_id: null,
     photo_attribution: null,
+    auto_harvest: false,
+    last_auto_harvested_at: null,
     ...overrides,
   };
 }
@@ -126,10 +128,25 @@ describe('AuthorEditView', () => {
       birth_date: '1828-09-09',
       death_date: '',
       status: 'pending',
+      auto_harvest: false,
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'authors'] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'dashboard'] });
     expect(consumeFlash('catalog.authors')).toBe('Автор «Лев Николаевич Толстой» сохранён.');
+  });
+
+  it('sends auto_harvest: true after ticking the checkbox on an author with a QID', async () => {
+    const author = makeAuthor({ external_source: 'wikidata', external_id: 'Q7243' });
+    getMock.mockResolvedValue(author);
+    updateMock.mockResolvedValue({ ...author, auto_harvest: true });
+    renderView();
+
+    fireEvent.click(await screen.findByLabelText('Автоматически пополнять книги из Wikidata'));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalled());
+    expect(updateMock.mock.calls[0][0]).toBe('a1');
+    expect(updateMock.mock.calls[0][1]).toMatchObject({ auto_harvest: true });
   });
 
   it('shows a save error inline and stays on the page', async () => {

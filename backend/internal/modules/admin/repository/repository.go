@@ -92,6 +92,16 @@ type Repository interface {
 	// condition. A fill with no parts is a no-op.
 	FillAuthorEnrichment(ctx context.Context, id uuid.UUID, fill AuthorEnrichmentFill) error
 
+	// Scheduled harvest (openspec change add-scheduled-harvest).
+	// ListAutoHarvestCandidates returns up to limit flagged, published
+	// authors with a Wikidata QID whose last_auto_harvested_at is NULL or
+	// <= notAfter, never-harvested first, then oldest, then name, then id.
+	ListAutoHarvestCandidates(ctx context.Context, limit int, notAfter time.Time) ([]catalogDomain.Author, error)
+	// MarkAuthorsAutoHarvested sets last_auto_harvested_at = at on the
+	// given authors in one UPDATE (updated_at untouched). Empty ids is a
+	// no-op.
+	MarkAuthorsAutoHarvested(ctx context.Context, ids []uuid.UUID, at time.Time) error
+
 	// Genres. Alias rows (merged_into_id set, see
 	// docs/features/genre-moderation-queue.md) are hidden from ListGenres,
 	// GetGenreByID, GenresExist and the dashboard count, but GetGenreBySlug,
@@ -546,7 +556,10 @@ func (r *GormRepository) CreateAuthor(ctx context.Context, author *catalogDomain
 }
 
 func (r *GormRepository) UpdateAuthor(ctx context.Context, author *catalogDomain.Author) error {
-	return r.db.WithContext(ctx).Save(author).Error
+	// last_auto_harvested_at is owned by the worker's schedule tick
+	// (MarkAuthorsAutoHarvested): never write it back from a loaded
+	// struct, so a tick stamp landing between load and save survives.
+	return r.db.WithContext(ctx).Omit("LastAutoHarvestedAt").Save(author).Error
 }
 
 func (r *GormRepository) AuthorSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {

@@ -41,6 +41,8 @@ function makeAuthor(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
     external_source: null,
     external_id: null,
     photo_attribution: null,
+    auto_harvest: false,
+    last_auto_harvested_at: null,
     ...overrides,
   };
 }

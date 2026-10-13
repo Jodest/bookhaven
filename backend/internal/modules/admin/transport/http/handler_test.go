@@ -58,6 +58,7 @@ type fakeAdminService struct {
 
 	lastAuthorStatusFilter string
 	lastAuthorInput        *adminService.AuthorInput
+	lastCreateAuthorInput  *adminService.AuthorInput
 
 	lastGenreStatusFilter string
 	lastGenreInput        *adminService.GenreInput
@@ -285,6 +286,7 @@ func (f *fakeAdminService) CreateAuthor(ctx context.Context, input adminService.
 	if input.DeathDate != nil && *input.DeathDate == "not-a-date" {
 		return nil, adminService.ErrInvalidDate
 	}
+	f.lastCreateAuthorInput = &input
 	author := catalogDomain.Author{ID: uuid.New(), Name: input.Name, Slug: "author"}
 	f.authors = append(f.authors, author)
 	return &author, nil
@@ -303,9 +305,15 @@ func (f *fakeAdminService) UpdateAuthor(ctx context.Context, id uuid.UUID, input
 	}
 	for i := range f.authors {
 		if f.authors[i].ID == id {
+			if input.AutoHarvest != nil && *input.AutoHarvest && f.authors[i].ExternalID == nil {
+				return nil, adminService.ErrAutoHarvestRequiresQID
+			}
 			f.authors[i].Name = input.Name
 			if input.Status != nil {
 				f.authors[i].Status = *input.Status
+			}
+			if input.AutoHarvest != nil {
+				f.authors[i].AutoHarvest = *input.AutoHarvest
 			}
 			return &f.authors[i], nil
 		}

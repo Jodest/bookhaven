@@ -100,6 +100,12 @@ type harvestJobResponse struct {
 	Retried   int                           `json:"retried"`
 	LastError string                        `json:"last_error,omitempty"`
 	Result    *harvestservice.HarvestResult `json:"result,omitempty"`
+	// Trigger is how the job was started: "manual" (admin trigger,
+	// cmd/harvest, or a job queued before the field existed) or
+	// "scheduled" (the worker's scheduled harvest).
+	Trigger string `json:"trigger" enums:"manual,scheduled"`
+	// AuthorQIDs are the harvested author QIDs; [] when unknown.
+	AuthorQIDs []string `json:"author_qids"`
 }
 
 func toHarvestJobResponse(info *asynq.TaskInfo) harvestJobResponse {
@@ -112,6 +118,7 @@ func toHarvestJobResponse(info *asynq.TaskInfo) harvestJobResponse {
 		Retried:   info.Retried,
 		LastError: info.LastErr,
 	}
+	resp.Trigger, resp.AuthorQIDs = harvestservice.PayloadMeta(info.Payload)
 	// A TaskInfo.Result that fails to unmarshal is treated as absent, not a
 	// server error - defensive only, not expected to trigger in practice
 	// (Result is untyped []byte from asynq's perspective, but this handler
@@ -154,7 +161,10 @@ func (h *Handler) TriggerHarvest(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to build harvest query"})
 	}
 
-	task, err := harvestservice.NewHarvestTask(query)
+	task, err := harvestservice.NewHarvestTask(query, harvestservice.HarvestMeta{
+		Trigger:    harvestservice.TriggerManual,
+		AuthorQIDs: normalizeQIDs(req.AuthorQIDs),
+	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to build harvest task"})
 	}
@@ -176,13 +186,33 @@ func (h *Handler) TriggerHarvest(c echo.Context) error {
 	})
 }
 
+// normalizeQIDs trims the requested QIDs and drops blanks and duplicates,
+// keeping the order (the same normalization BuildAuthorListQuery applies;
+// it has already validated the format).
+func normalizeQIDs(qids []string) []string {
+	out := make([]string, 0, len(qids))
+	seen := make(map[string]struct{}, len(qids))
+	for _, q := range qids {
+		q = strings.TrimSpace(q)
+		if q == "" {
+			continue
+		}
+		if _, ok := seen[q]; ok {
+			continue
+		}
+		seen[q] = struct{}{}
+		out = append(out, q)
+	}
+	return out
+}
+
 type listHarvestJobsResponse struct {
 	Items []harvestJobResponse `json:"items"`
 }
 
 // ListHarvestJobs godoc
 // @Summary Список задач харвеста (недавние)
-// @Description Требуется роль admin. Источник данных - состояние очереди asynq/Redis, а не отдельная таблица в БД; список ограничен 50 задачами на состояние и сгруппирован по состоянию (active, retry, pending, completed, archived), не единой хронологией.
+// @Description Требуется роль admin. Источник данных - состояние очереди asynq/Redis, а не отдельная таблица в БД; список ограничен 50 задачами на состояние и сгруппирован по состоянию (active, retry, pending, completed, archived), не единой хронологией. У каждой задачи trigger (manual | scheduled) и author_qids (QID авторов, возможно пустой список).
 // @Tags admin
 // @Produce json
 // @Security BearerAuth

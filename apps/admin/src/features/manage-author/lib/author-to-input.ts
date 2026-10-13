@@ -10,5 +10,6 @@ export function authorToInput(author: AdminAuthor): AdminAuthorInput {
     birth_date: author.birth_date ?? '',
     death_date: author.death_date ?? '',
     status: author.status,
+    auto_harvest: author.auto_harvest,
   };
 }
