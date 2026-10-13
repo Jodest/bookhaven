@@ -32,7 +32,7 @@ A user's public profile SHALL list their shelves that hold at least one publishe
 - **THEN** the shelf does not appear on their public profile
 
 ### Requirement: Public pages
-The web app SHALL provide `/shelves/public/{id}` («Полка», «На этой полке пока нет книг», «Полка не найдена») and `/lists/public/{id}` («Публичный список», «В этом списке пока нет книг», «Список не найден или недоступен»), linked from the public profile. Because every page under `/shelves` is guarded (see `auth/authorization`), a visitor without any session cookie who opens `/shelves/public/{id}` is sent to the login page first; `/lists/public/{id}` opens for everyone.
+The web app SHALL provide `/shelves/public/{id}` («Полка», «На этой полке пока нет книг», «Полка не найдена») and `/lists/public/{id}` («Публичный список», «В этом списке пока нет книг», «Список не найден или недоступен»), linked from the public profile. Both pages MUST open for everyone, signed in or not (see `auth/authorization`).
 
 #### Scenario: Anonymous visitor follows a public list link
 - **WHEN** a visitor who is not signed in opens `/lists/public/{id}` of a public list
@@ -40,4 +40,4 @@ The web app SHALL provide `/shelves/public/{id}` («Полка», «На это�
 
 #### Scenario: Anonymous visitor follows a public shelf link
 - **WHEN** a visitor without session cookies opens `/shelves/public/{id}`
-- **THEN** they are redirected to `/login?redirect=/shelves/public/{id}`
+- **THEN** the shelf is shown without a redirect to login

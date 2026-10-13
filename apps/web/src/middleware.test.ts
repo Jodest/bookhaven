@@ -52,4 +52,27 @@ describe('middleware', () => {
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toContain('/login');
   });
+
+  it('lets a public profile through with no auth cookies', () => {
+    const response = middleware(makeRequest('/profile/some-id'));
+
+    expect(response.status).not.toBe(307);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
+  it('lets a public shelf /shelves/public/{id} through with no auth cookies', () => {
+    const response = middleware(makeRequest('/shelves/public/some-id'));
+
+    expect(response.status).not.toBe(307);
+    expect(response.headers.get('location')).toBeNull();
+  });
+
+  it('still redirects an own shelf /shelves/{id} to /login with the redirect param', () => {
+    const response = middleware(makeRequest('/shelves/some-id'));
+
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get('location') ?? '');
+    expect(location.pathname).toBe('/login');
+    expect(location.searchParams.get('redirect')).toBe('/shelves/some-id');
+  });
 });
