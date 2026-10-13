@@ -739,6 +739,33 @@ func TestUpdateBook_ChangedLatinTitle(t *testing.T) {
 	})
 }
 
+func TestUpdateBook_KeepsExternalSource(t *testing.T) {
+	// The admin form never sends external_source/external_id; an update
+	// must keep them so a harvested book stays recognised (#378).
+	svc, repo := newService()
+	ctx := context.Background()
+
+	id := uuid.New()
+	repo.books = []catalogDomain.Book{{
+		ID: id, Title: "Книга", Slug: "kniga", Language: "ru",
+		ExternalSource: strPtr("wikidata"), ExternalID: strPtr("Q123"),
+	}}
+
+	desc := "Новое описание"
+	book, err := svc.UpdateBook(ctx, id, BookInput{Title: "Книга", Slug: "kniga", Language: "ru", Description: &desc})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for name, b := range map[string]*catalogDomain.Book{"returned": book, "stored": &repo.books[0]} {
+		if b.ExternalSource == nil || *b.ExternalSource != "wikidata" {
+			t.Fatalf("%s book: expected external source %q, got %v", name, "wikidata", b.ExternalSource)
+		}
+		if b.ExternalID == nil || *b.ExternalID != "Q123" {
+			t.Fatalf("%s book: expected external id %q, got %v", name, "Q123", b.ExternalID)
+		}
+	}
+}
+
 func TestCreateAuthor_Valid(t *testing.T) {
 	svc, repo := newService()
 	ctx := context.Background()
