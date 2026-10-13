@@ -6,3 +6,4 @@ export {
   countInFlightHarvestJobs,
   harvestJobStateBadgeVariant,
 } from './lib/job-state';
+export { harvestJobTriggerLabel, harvestJobAuthorsLabel } from './lib/job-trigger';

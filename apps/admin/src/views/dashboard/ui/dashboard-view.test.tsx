@@ -43,6 +43,8 @@ function job(id: string, state: string, extra: Partial<AdminHarvestJob> = {}): A
     type: 'harvest:wikidata_query',
     max_retry: 3,
     retried: 0,
+    trigger: 'manual',
+    author_qids: [],
     ...extra,
   };
 }

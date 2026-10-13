@@ -321,6 +321,8 @@ describe('BookForm author picker status', () => {
     external_source: null,
     external_id: null,
     photo_attribution: null,
+    auto_harvest: false,
+    last_auto_harvested_at: null,
   });
 
   afterEach(() => {

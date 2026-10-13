@@ -15,7 +15,16 @@ const stats: AdminDashboard = {
 };
 
 function job(id: string, state: string): AdminHarvestJob {
-  return { id, queue: 'harvest', state, type: 'harvest:wikidata_query', max_retry: 3, retried: 0 };
+  return {
+    id,
+    queue: 'harvest',
+    state,
+    type: 'harvest:wikidata_query',
+    max_retry: 3,
+    retried: 0,
+    trigger: 'manual',
+    author_qids: [],
+  };
 }
 
 const jobs = [

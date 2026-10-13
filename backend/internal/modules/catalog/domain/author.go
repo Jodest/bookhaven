@@ -43,9 +43,15 @@ type Author struct {
 	PhotoLicense    *string `gorm:"type:varchar(100)"`
 	PhotoLicenseURL *string `gorm:"column:photo_license_url"`
 	PhotoSourceURL  *string `gorm:"column:photo_source_url"`
-	Books           []Book  `gorm:"many2many:book_authors;"`
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// AutoHarvest opts the author into the worker's scheduled Wikidata
+	// harvest (admin-set; requires a Wikidata QID). LastAutoHarvestedAt is
+	// stamped by the schedule tick only after it queued a scheduled job
+	// covering the author; nil = never auto-harvested.
+	AutoHarvest         bool `gorm:"not null;default:false"`
+	LastAutoHarvestedAt *time.Time
+	Books               []Book `gorm:"many2many:book_authors;"`
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // IsPublished reports whether the author is publicly visible.

@@ -43,6 +43,9 @@ var (
 	ErrInvalidDate           = errors.New("date is invalid")
 	ErrInvalidAuthorIDs      = errors.New("one or more author IDs are invalid")
 	ErrInvalidGenreIDs       = errors.New("one or more genre IDs are invalid")
+	// ErrAutoHarvestRequiresQID: auto_harvest = true on an author without
+	// a Wikidata QID (the scheduled harvest queries Wikidata by QID).
+	ErrAutoHarvestRequiresQID = errors.New("author has no Wikidata QID")
 )
 
 // Service provides admin-only business logic.
@@ -501,6 +504,10 @@ type AuthorInput struct {
 	// Status is applied by UpdateAuthor only (nil = unchanged); CreateAuthor
 	// ignores it and always creates a published author.
 	Status *string
+	// AutoHarvest is applied by UpdateAuthor only (nil = unchanged);
+	// CreateAuthor ignores it (new authors are never flagged). true needs a
+	// Wikidata QID (ErrAutoHarvestRequiresQID).
+	AutoHarvest *bool
 }
 
 // authorIdentity is the creation-time status and optional external
@@ -599,6 +606,9 @@ func (s *Service) UpdateAuthor(ctx context.Context, id uuid.UUID, input AuthorIn
 	if input.Status != nil && !catalogDomain.IsValidAuthorStatus(*input.Status) {
 		return nil, ErrInvalidAuthorStatus
 	}
+	if input.AutoHarvest != nil && *input.AutoHarvest && !hasWikidataQID(*author) {
+		return nil, ErrAutoHarvestRequiresQID
+	}
 
 	slug := strings.TrimSpace(input.Slug)
 	if slug == "" {
@@ -633,6 +643,9 @@ func (s *Service) UpdateAuthor(ctx context.Context, id uuid.UUID, input AuthorIn
 	author.PhotoURL = newPhoto
 	if input.Status != nil {
 		author.Status = *input.Status
+	}
+	if input.AutoHarvest != nil {
+		author.AutoHarvest = *input.AutoHarvest
 	}
 	if input.BirthDate != nil {
 		t, err := parseDate(*input.BirthDate)
@@ -674,6 +687,13 @@ func sameOptionalString(a, b *string) bool {
 		bv = strings.TrimSpace(*b)
 	}
 	return av == bv
+}
+
+// hasWikidataQID reports whether the author carries a Wikidata QID (the
+// precondition for auto_harvest).
+func hasWikidataQID(a catalogDomain.Author) bool {
+	return a.ExternalSource != nil && *a.ExternalSource == catalogDomain.AuthorExternalSourceWikidata &&
+		a.ExternalID != nil && strings.TrimSpace(*a.ExternalID) != ""
 }
 
 func validateAuthorInput(input AuthorInput) error {

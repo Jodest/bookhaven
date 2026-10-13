@@ -34,7 +34,22 @@ type Config struct {
 	// WebBaseURL is the public origin of the web app (no trailing slash),
 	// used to build absolute links in emails (e.g. /verify-email).
 	WebBaseURL string
+
+	// Scheduled harvest of flagged authors (worker only; see
+	// internal/modules/harvest/service ScheduleTick). Off unless
+	// HARVEST_SCHEDULE_ENABLED is true. HarvestScheduleCron is a UTC cron
+	// spec; HarvestScheduleBatch is the max authors per run (1..50).
+	HarvestScheduleEnabled bool
+	HarvestScheduleCron    string
+	HarvestScheduleBatch   int
 }
+
+// Scheduled harvest defaults and bounds.
+const (
+	DefaultHarvestScheduleCron  = "0 4 * * *"
+	DefaultHarvestScheduleBatch = 10
+	MaxHarvestScheduleBatch     = 50
+)
 
 // defaultMailFrom is used when MAIL_FROM is unset (dev / Mailpit).
 const defaultMailFrom = "BookHaven <noreply@bookhaven.local>"
@@ -61,6 +76,10 @@ func Load() (*Config, error) {
 		MailFrom:       getEnv("MAIL_FROM", defaultMailFrom),
 		WebBaseURL:     strings.TrimRight(strings.TrimSpace(getEnv("WEB_BASE_URL", defaultWebBaseURL)), "/"),
 	}
+
+	cfg.HarvestScheduleEnabled = parseBoolEnv("HARVEST_SCHEDULE_ENABLED")
+	cfg.HarvestScheduleCron = strings.TrimSpace(getEnv("HARVEST_SCHEDULE_CRON", DefaultHarvestScheduleCron))
+	cfg.HarvestScheduleBatch = parseHarvestScheduleBatch(getEnv("HARVEST_SCHEDULE_BATCH", ""))
 
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
 	if err != nil || smtpPort <= 0 || smtpPort > 65535 {
@@ -100,6 +119,29 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// parseBoolEnv reads a boolean env var; unset or unparsable means false.
+func parseBoolEnv(key string) bool {
+	v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(key)))
+	return err == nil && v
+}
+
+// parseHarvestScheduleBatch parses HARVEST_SCHEDULE_BATCH: a non-integer
+// (or unset) value is the default, anything else is clamped to
+// 1..MaxHarvestScheduleBatch.
+func parseHarvestScheduleBatch(raw string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return DefaultHarvestScheduleBatch
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > MaxHarvestScheduleBatch {
+		return MaxHarvestScheduleBatch
+	}
+	return n
 }
 
 func splitEnv(value string) []string {

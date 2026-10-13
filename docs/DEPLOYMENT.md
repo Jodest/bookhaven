@@ -108,7 +108,7 @@ For real durability, uncomment the `rclone` line in the script and configure an 
 
 ## Background jobs (worker)
 
-The `worker` container runs three asynq servers (harvest, `email`, `similarity`) plus an in-process `asynq.Scheduler`. The scheduler enqueues the daily similar-books recompute (`similarity:recompute` on the `similarity` queue, 03:30 UTC; see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md)). The recompute reads shelves/ratings, builds the "readers also read" ranking and fully replaces the `book_similarities` table in one transaction. Books without rows keep the stage-1 content-based list, so an empty table is always safe.
+The `worker` container runs three asynq servers (harvest, `email`, `similarity`; a fourth, `harvest_schedule`, only when the scheduled harvest is on) plus an in-process `asynq.Scheduler`. The harvest server processes exactly one harvest job at a time (`Concurrency: 1`, #191), manual and scheduled jobs alike. The scheduler enqueues the daily similar-books recompute (`similarity:recompute` on the `similarity` queue, 03:30 UTC; see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md)). The recompute reads shelves/ratings, builds the "readers also read" ranking and fully replaces the `book_similarities` table in one transaction. Books without rows keep the stage-1 content-based list, so an empty table is always safe.
 
 > **Do not run more than one worker replica** without moving the scheduler out of the worker. Prod runs exactly one (`container_name: bookhaven-worker`). The task's `asynq.Unique(6h)` rejects a duplicate enqueue if two schedulers ever run, but that is a safety net, not a design.
 
@@ -119,6 +119,18 @@ docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/similarity 
 ```
 
 It prints the run stats and exits non-zero on error. If the worker is unhealthy (see the known config issue with the worker's environment), the nightly run never fires and every book silently stays on the stage-1 list: check `docker compose -f docker-compose.prod.yml logs worker` for `asynq scheduler started` and `similar books recomputed`.
+
+### Scheduled harvest
+
+Off by default. When `HARVEST_SCHEDULE_ENABLED=true`, the scheduler enqueues a `harvest:schedule_tick` task (queue `harvest_schedule`) on `HARVEST_SCHEDULE_CRON` (UTC). The tick picks up to `HARVEST_SCHEDULE_BATCH` authors that an admin flagged «Автоматически пополнять книги из Wikidata», that are published and have a Wikidata QID, and that were not auto-harvested in the last 30 days (never-harvested first, then the oldest). It queues **one** ordinary harvest job for them (shown as «Авто» on `/import/jobs`). Everything that job creates is `pending` and goes through `/moderation/books`; nothing is published automatically. A run is skipped while an earlier scheduled job is still pending, active or retrying. Worst case per run: one SPARQL query plus up to 500 Open Library lookups, throttled at about 1 request per second.
+
+| Variable | Meaning |
+|---|---|
+| `HARVEST_SCHEDULE_ENABLED` | `true` turns the scheduled harvest on. Default `false` (in dev too: no surprise outbound traffic). When off the worker logs `scheduled harvest disabled`. |
+| `HARVEST_SCHEDULE_CRON` | Cron spec, UTC. Default `0 4 * * *` (30 min after the similarity recompute). An invalid spec makes the worker exit at startup. |
+| `HARVEST_SCHEDULE_BATCH` | Max authors per run. Default `10`, clamped to 1..50; a non-integer value means the default. |
+
+The same single-replica rule applies: two workers would double the ticks. The tick's `asynq.Unique(1h)` and the "scheduled job already queued" check are a safety net only. Check `docker compose -f docker-compose.prod.yml logs worker` for `scheduled harvest enabled` and `scheduled harvest job queued`.
 
 ## Email (SMTP)
 
