@@ -1015,6 +1015,111 @@ const API_URL =
 
 let accessToken: string | null = null;
 
+// ---- Curated collections (openspec collections/*) ----
+
+export type CuratedCollectionKind = 'manual';
+
+export interface CuratedCollectionGenre {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/** Public collection summary (index item and detail header). */
+export interface CuratedCollection {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  kind: CuratedCollectionKind;
+  size: number;
+  /** Number of public places, at most `size`. */
+  shown_count: number;
+  source: string | null;
+  source_url: string | null;
+  genre: CuratedCollectionGenre | null;
+  cover_urls: string[];
+}
+
+export interface CuratedCollectionPlace {
+  /** Global 1-based place, stable across pages. */
+  place: number;
+  book: Book;
+}
+
+export interface CuratedCollectionDetail {
+  collection: CuratedCollection;
+  items: CuratedCollectionPlace[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface AdminCuratedCollection {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  kind: CuratedCollectionKind;
+  size: number;
+  source: string | null;
+  source_url: string | null;
+  genre: { id: string; name: string; slug: string; status: AdminGenreStatus } | null;
+  is_published: boolean;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminCuratedCollectionListItem {
+  id: string;
+  slug: string;
+  title: string;
+  kind: CuratedCollectionKind;
+  size: number;
+  is_published: boolean;
+  books_count: number;
+  shown_count: number;
+  updated_at: string;
+}
+
+export type AdminCuratedItemState = 'ranked' | 'reserve' | 'hidden';
+
+export interface AdminCuratedCollectionItem {
+  position: number;
+  /** 1..size for ranked items, null otherwise. */
+  place: number | null;
+  state: AdminCuratedItemState;
+  book: {
+    id: string;
+    title: string;
+    slug: string;
+    status: AdminBookStatus;
+    cover_url: string | null;
+    authors: { id: string; name: string }[];
+  };
+}
+
+export interface AdminCuratedCollectionDetail extends AdminCuratedCollection {
+  books_count: number;
+  shown_count: number;
+  items: AdminCuratedCollectionItem[];
+}
+
+export interface AdminCuratedCollectionInput {
+  title?: string;
+  size?: number;
+  slug?: string;
+  description?: string;
+  /** Empty string clears. */
+  source?: string;
+  /** Empty string clears. */
+  source_url?: string;
+  /** null clears on update. */
+  genre_id?: string | null;
+  is_published?: boolean;
+}
+
 export function setAccessToken(token: string | null): void {
   accessToken = token;
 }
@@ -2137,6 +2242,22 @@ export const api = {
       };
     },
   },
+  collections: {
+    list: () => fetcher<{ items: CuratedCollection[]; total: number }>('/api/v1/collections'),
+    get: async (slug: string, params?: { page?: number; limit?: number }) => {
+      const queryParams: Record<string, string> = {};
+      if (params?.page !== undefined) queryParams.page = String(params.page);
+      if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+      const query = new URLSearchParams(queryParams).toString();
+      const raw = await fetcher<Omit<CuratedCollectionDetail, 'items'> & {
+        items: { place: number; book: RawBookListItem }[];
+      }>(`/api/v1/collections/${encodeURIComponent(slug)}${query ? `?${query}` : ''}`);
+      return {
+        ...raw,
+        items: raw.items.map((it) => ({ place: it.place, book: normalizeBookListItem(it.book) })),
+      } as CuratedCollectionDetail;
+    },
+  },
   admin: {
     dashboard: () => fetcher<AdminDashboard>('/api/v1/admin/dashboard'),
     books: {
@@ -2461,5 +2582,42 @@ export const api = {
           body: JSON.stringify({}),
         }),
     },
+    collections: {
+      list: () =>
+        fetcher<{ items: AdminCuratedCollectionListItem[]; total: number }>('/api/v1/admin/collections'),
+      get: (id: string) => fetcher<AdminCuratedCollectionDetail>(`/api/v1/admin/collections/${id}`),
+      // Errors: 400 field, 409 slug already exists.
+      create: (data: AdminCuratedCollectionInput) =>
+        fetcher<AdminCuratedCollection>('/api/v1/admin/collections', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      update: (id: string, data: AdminCuratedCollectionInput) =>
+        fetcher<AdminCuratedCollection>(`/api/v1/admin/collections/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+      remove: (id: string) =>
+        fetcher<{ status: string }>(`/api/v1/admin/collections/${id}`, { method: 'DELETE' }),
+      // Errors: 404 book/collection, 409 book already in collection,
+      // 422 book is rejected / collection is full.
+      addBook: (id: string, bookId: string, position?: number) =>
+        fetcher<{ status: string }>(`/api/v1/admin/collections/${id}/books`, {
+          method: 'POST',
+          body: JSON.stringify(position === undefined ? { book_id: bookId } : { book_id: bookId, position }),
+        }),
+      removeBook: (id: string, bookId: string) =>
+        fetcher<{ status: string }>(`/api/v1/admin/collections/${id}/books/${bookId}`, {
+          method: 'DELETE',
+        }),
+      moveBook: (id: string, bookId: string, position: number) =>
+        fetcher<{ status: string }>(`/api/v1/admin/collections/${id}/books/${bookId}/position`, {
+          method: 'PUT',
+          body: JSON.stringify({ position }),
+        }),
+    },
   },
 };
+
+export const collectionsApi = api.collections;
+export const adminCollectionsApi = api.admin.collections;

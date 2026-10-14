@@ -65,7 +65,7 @@ describe('Shell', () => {
     countersValue = { sections: {}, tabs: {} };
   });
 
-  it('admin on / sees five sections, Обзор active, and the page', () => {
+  it('admin on / sees six sections, Обзор active, and the page', () => {
     setUser('admin');
     renderShell('/');
 
@@ -74,6 +74,7 @@ describe('Shell', () => {
       ['Обзор', '/'],
       ['Модерация', '/moderation/books'],
       ['Каталог', '/catalog/books'],
+      ['Подборки', '/collections'],
       ['Импорт', '/import/books/wikidata'],
       ['Пользователи', '/users'],
     ]);
@@ -120,6 +121,7 @@ describe('Shell', () => {
     expect(links[0]).toHaveTextContent('Модерация');
     expect(links[0]).toHaveAttribute('href', '/moderation/reviews');
     expect(screen.getByText('page content')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Подборки' })).not.toBeInTheDocument();
   });
 
   it('moderator on / is redirected to /moderation/reviews without AccessDenied', () => {

@@ -46,7 +46,7 @@ func TestAIDescriptionsRoutes_RoleAndBearer(t *testing.T) {
 	stub := &stubDescriptions{}
 	enq := &countingEnqueuer{}
 	RegisterAdminRoutes(e, adminservice.NewService(nil), fakeAuth, enq, nil, nil,
-		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{Service: stub})
+		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{Service: stub}, nil)
 
 	do := func(method, path, role, bearer, body string) int {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))

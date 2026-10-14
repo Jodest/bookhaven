@@ -1,4 +1,12 @@
-import { BookOpen, Download, LayoutDashboard, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
+import {
+  BookOpen,
+  Download,
+  LayoutDashboard,
+  ListOrdered,
+  ShieldCheck,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 
 /**
  * Single source of truth for admin navigation: sidebar sections, section tabs
@@ -39,7 +47,7 @@ export interface NavTab {
   subtabs?: NavSubtab[];
 }
 
-export type NavSectionId = 'overview' | 'moderation' | 'catalog' | 'import' | 'users';
+export type NavSectionId = 'overview' | 'moderation' | 'catalog' | 'collections' | 'import' | 'users';
 
 export interface NavSection {
   id: NavSectionId;
@@ -135,6 +143,20 @@ export const navSections: NavSection[] = [
         label: 'Жанры',
         href: '/catalog/genres',
         match: ['/catalog/genres'],
+        roles: ['admin'],
+      },
+    ],
+  },
+  {
+    id: 'collections',
+    label: 'Подборки',
+    icon: ListOrdered,
+    tabs: [
+      {
+        id: 'collections.list',
+        label: 'Подборки',
+        href: '/collections',
+        match: ['/collections'],
         roles: ['admin'],
       },
     ],
