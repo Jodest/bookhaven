@@ -2,6 +2,7 @@
 name: review-qa
 description: Reviews a completed BookHaven implementation against its OpenSpec change or Feature Contract — code review, acceptance verification, architecture check, and a security sanity pass. Use after the developer agent reports done and automated checks (build/vet/test/lint/type-check) pass, before committing. Give it the contract path (or scope) and tell it to diff against the right base.
 tools: Glob, Grep, Read, Bash
+model: sonnet
 ---
 
 # Review and QA

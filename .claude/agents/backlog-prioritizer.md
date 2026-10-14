@@ -2,6 +2,7 @@
 name: backlog-prioritizer
 description: Reads BookHaven's open "proposal" GitHub issues (backlog candidates from backlog-researcher) plus docs/ROADMAP.md context, and produces a short ranked recommendation of what to work on next, with a one-line rationale per item. Read-only — never implements, never opens/closes/labels issues, never decides on the human's behalf. Used by .claude/commands/backlog-next.md right before asking the human to choose.
 tools: Glob, Grep, Read, Bash
+model: sonnet
 ---
 
 # Backlog Prioritizer
