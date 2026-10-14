@@ -15,6 +15,298 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/admin/ai-curator/requests": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. 20 последних запросов всех администраторов, новые первыми. Запрос в статусе queued/running без прогресса больше часа показывается как failed с error_code timeout. Работает и при выключенном подборе.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Недавние запросы подбора авторов ИИ (админ)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aicurator_transport_http.listCurationRequestsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. prompt — описание, каких авторов не хватает (1–500 символов после обрезки пробелов), max_names — сколько имён предложить (1–30, по умолчанию 20). Запрос сохраняется в статусе queued и обрабатывается воркером: модель предлагает только имена, каждое проверяется по Wikidata. Ничего не импортируется и не публикуется автоматически. 503 — подбор выключен; 400 — неверный prompt или max_names; 409 — у администратора уже есть активный запрос (request_id); 429 — исчерпан дневной лимит (20 запросов за 24 часа); 502 — не удалось поставить задачу в очередь (запрос помечается failed / enqueue_failed).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Создать запрос на подбор авторов ИИ (админ)",
+                "parameters": [
+                    {
+                        "description": "prompt и необязательный max_names",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aicurator_transport_http.createCurationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aicurator_transport_http.curationSummaryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/ai-curator/requests/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Кандидаты в порядке ответа модели; у каждого match_status (pending, matched, ambiguous, not_found, error) и options — люди из Wikidata с русской меткой (qid, label, description). Поле existing вычисляется при чтении: автор BookHaven с этим QID (id, name, slug, status) или null. Имя и note — мнение модели, только для показа как обычный текст. Ничего не выбирается автоматически.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Запрос подбора авторов ИИ с кандидатами (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID запроса (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aicurator_transport_http.curationDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/ai-curator/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. enabled — включён ли подбор (флаг AI_CURATOR_ENABLED и ключ API заданы), model — модель, prompt_version — версия промпта, лимиты (max_prompt_length, max_names, default_names, daily_limit), used_today — число запросов текущего администратора за последние 24 часа, active_request_id — его активный (в очереди или выполняется) запрос или null.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Статус подбора авторов ИИ (админ)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aicurator_transport_http.curationStatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/authors": {
             "get": {
                 "security": [
@@ -7990,6 +8282,268 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_aicurator_transport_http.createCurationRequest": {
+            "type": "object",
+            "properties": {
+                "max_names": {
+                    "type": "integer"
+                },
+                "prompt": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aicurator_transport_http.curationCandidateResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "match_status": {
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "matched",
+                        "ambiguous",
+                        "not_found",
+                        "error"
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "note": {
+                    "type": "string"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aicurator_transport_http.curationOptionResponse"
+                    }
+                },
+                "position": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aicurator_transport_http.curationCreatorResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aicurator_transport_http.curationDetailResponse": {
+            "type": "object",
+            "properties": {
+                "candidates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aicurator_transport_http.curationCandidateResponse"
+                    }
+                },
+                "candidates_resolved": {
+                    "type": "integer"
+                },
+                "candidates_total": {
+                    "description": "CandidatesTotal / CandidatesResolved drive the progress «Проверено в\nWikidata: X из Y».",
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "$ref": "#/definitions/internal_modules_aicurator_transport_http.curationCreatorResponse"
+                },
+                "error_code": {
+                    "type": "string",
+                    "enum": [
+                        "model_refusal",
+                        "model_truncated",
+                        "invalid_output",
+                        "model_error",
+                        "enqueue_failed",
+                        "timeout"
+                    ]
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "input_tokens": {
+                    "type": "integer"
+                },
+                "max_names": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "output_tokens": {
+                    "type": "integer"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "prompt_version": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "done",
+                        "failed"
+                    ]
+                }
+            }
+        },
+        "internal_modules_aicurator_transport_http.curationExistingAuthorResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aicurator_transport_http.curationOptionResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "existing": {
+                    "description": "Existing is the catalog author now carrying this QID, or null (also\nnull when the lookup failed).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_aicurator_transport_http.curationExistingAuthorResponse"
+                        }
+                    ]
+                },
+                "label": {
+                    "type": "string"
+                },
+                "qid": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aicurator_transport_http.curationStatusResponse": {
+            "type": "object",
+            "properties": {
+                "active_request_id": {
+                    "type": "string"
+                },
+                "daily_limit": {
+                    "type": "integer"
+                },
+                "default_names": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "description": "Enabled: the flag and the API key are both set.",
+                    "type": "boolean"
+                },
+                "max_names": {
+                    "type": "integer"
+                },
+                "max_prompt_length": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt_version": {
+                    "type": "integer"
+                },
+                "used_today": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aicurator_transport_http.curationSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "candidates_resolved": {
+                    "type": "integer"
+                },
+                "candidates_total": {
+                    "description": "CandidatesTotal / CandidatesResolved drive the progress «Проверено в\nWikidata: X из Y».",
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "$ref": "#/definitions/internal_modules_aicurator_transport_http.curationCreatorResponse"
+                },
+                "error_code": {
+                    "type": "string",
+                    "enum": [
+                        "model_refusal",
+                        "model_truncated",
+                        "invalid_output",
+                        "model_error",
+                        "enqueue_failed",
+                        "timeout"
+                    ]
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "max_names": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "prompt_version": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "done",
+                        "failed"
+                    ]
+                }
+            }
+        },
+        "internal_modules_aicurator_transport_http.listCurationRequestsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aicurator_transport_http.curationSummaryResponse"
+                    }
                 }
             }
         },

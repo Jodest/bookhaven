@@ -819,6 +819,82 @@ export interface AdminAuthorImportResult {
   enrichment: AdminAuthorImportEnrichment | null;
 }
 
+// AI curator of author import lists (/api/v1/admin/ai-curator, openspec
+// capability catalog-import/ai-author-curation). The model proposes author
+// names only; every option comes from Wikidata. Nothing is imported or
+// published automatically.
+
+export type AdminCurationStatusValue = 'queued' | 'running' | 'done' | 'failed';
+
+export type AdminCurationMatchStatus = 'pending' | 'matched' | 'ambiguous' | 'not_found' | 'error';
+
+export type AdminCurationErrorCode =
+  | 'model_refusal'
+  | 'model_truncated'
+  | 'invalid_output'
+  | 'model_error'
+  | 'enqueue_failed'
+  | 'timeout';
+
+export interface AdminCurationStatus {
+  /** AI curation is switched on and has an API key. */
+  enabled: boolean;
+  model: string;
+  prompt_version: number;
+  max_prompt_length: number;
+  max_names: number;
+  default_names: number;
+  daily_limit: number;
+  /** The caller's requests in the last 24 hours. */
+  used_today: number;
+  /** The caller's queued/running request, or null. */
+  active_request_id: string | null;
+}
+
+export interface AdminCurationCreateInput {
+  prompt: string;
+  /** 1..30; omitted means 20. */
+  max_names?: number;
+}
+
+export interface AdminCurationRequestSummary {
+  id: string;
+  prompt: string;
+  max_names: number;
+  status: AdminCurationStatusValue;
+  error_code: AdminCurationErrorCode | null;
+  model: string;
+  prompt_version: number;
+  created_by: { id: string; username: string } | null;
+  created_at: string;
+  finished_at: string | null;
+  candidates_total: number;
+  candidates_resolved: number;
+}
+
+// AdminCurationOption is structurally an AdminHarvestAuthorCandidate, so the
+// Wikidata author import hook accepts it as is.
+export interface AdminCurationOption extends AdminHarvestAuthorCandidate {
+  description: string;
+}
+
+export interface AdminCurationCandidate {
+  id: string;
+  position: number;
+  /** Proposed by the model; display-only plain text. */
+  name: string;
+  /** The model's short note; display-only plain text. */
+  note: string;
+  match_status: AdminCurationMatchStatus;
+  options: AdminCurationOption[];
+}
+
+export interface AdminCurationRequest extends AdminCurationRequestSummary {
+  input_tokens: number;
+  output_tokens: number;
+  candidates: AdminCurationCandidate[];
+}
+
 // Genre import from Wikidata (docs/features/genre-wikidata-import.md).
 
 // AdminGenreExistingMarker is the "already in BookHaven" marker of a genre
@@ -2267,6 +2343,18 @@ export const api = {
             `/api/v1/admin/harvest/authors/search?${new URLSearchParams({ q })}`
           ),
       },
+    },
+    aiCurator: {
+      status: () => fetcher<AdminCurationStatus>('/api/v1/admin/ai-curator/status'),
+      // Errors: 400 bad prompt/max_names, 409 active request, 429 daily
+      // limit, 502 queueing failed, 503 AI curation disabled.
+      create: (body: AdminCurationCreateInput) =>
+        fetcher<AdminCurationRequestSummary>('/api/v1/admin/ai-curator/requests', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }),
+      list: () => fetcher<{ items: AdminCurationRequestSummary[] }>('/api/v1/admin/ai-curator/requests'),
+      get: (id: string) => fetcher<AdminCurationRequest>(`/api/v1/admin/ai-curator/requests/${id}`),
     },
   },
 };

@@ -74,6 +74,11 @@ services:
       AI_MODERATION_MODEL: ${AI_MODERATION_MODEL:-claude-haiku-5-5}
       AI_MODERATION_CRON: ${AI_MODERATION_CRON:-*/30 * * * *}
       AI_MODERATION_BATCH: ${AI_MODERATION_BATCH:-50}
+      # AI curator of author import lists (off by default; shares
+      # ANTHROPIC_API_KEY). The api stores requests and queues them; it needs
+      # the same flag as the worker, otherwise requests end as timeout.
+      AI_CURATOR_ENABLED: ${AI_CURATOR_ENABLED:-false}
+      AI_CURATOR_MODEL: ${AI_CURATOR_MODEL:-claude-haiku-5-5}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     volumes:
@@ -111,6 +116,10 @@ services:
       AI_MODERATION_MODEL: ${AI_MODERATION_MODEL:-claude-haiku-5-5}
       AI_MODERATION_CRON: ${AI_MODERATION_CRON:-*/30 * * * *}
       AI_MODERATION_BATCH: ${AI_MODERATION_BATCH:-50}
+      # AI curator of author import lists (off by default; shares
+      # ANTHROPIC_API_KEY). The worker makes the model and Wikidata calls.
+      AI_CURATOR_ENABLED: ${AI_CURATOR_ENABLED:-false}
+      AI_CURATOR_MODEL: ${AI_CURATOR_MODEL:-claude-haiku-5-5}
     volumes:
       - ./backend:/app
       - go-cache:/go/pkg/mod

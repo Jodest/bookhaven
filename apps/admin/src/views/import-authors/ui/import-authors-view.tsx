@@ -1,9 +1,10 @@
 'use client';
 
+import { AiAuthorCurationPanel } from '@/widgets/ai-author-curation';
 import { WikidataAuthorImportPanel } from '@/widgets/wikidata-author-import';
 import { AuthorCreateSection } from './author-create-section';
 
-export type ImportAuthorsMethod = 'manual' | 'wikidata';
+export type ImportAuthorsMethod = 'manual' | 'wikidata' | 'ai';
 
 const METHODS: Record<
   ImportAuthorsMethod,
@@ -20,10 +21,16 @@ const METHODS: Record<
       'Найдите автора в Wikidata и импортируйте его (с книгами или без). Импортированные авторы ждут модерации.',
     Panel: WikidataAuthorImportPanel,
   },
+  ai: {
+    title: 'Подбор ИИ',
+    description:
+      'Опишите, каких авторов не хватает: ИИ предложит имена, каждое проверяется по Wikidata. Выберите нужных и импортируйте их — они ждут модерации, ничего не публикуется автоматически.',
+    Panel: AiAuthorCurationPanel,
+  },
 };
 
 /**
- * Импорт → Авторы, one sub-page per method: /import/authors/{manual,wikidata}
+ * Импорт → Авторы, one sub-page per method: /import/authors/{manual,wikidata,ai}
  * (docs/features/import-method-subpages.md). Authors have no file import.
  */
 export function ImportAuthorsView({ method }: { method: ImportAuthorsMethod }) {

@@ -117,10 +117,10 @@ func (s *Service) ImportWikidataAuthor(ctx context.Context, qid string) (*Author
 	}
 
 	name := strings.TrimSpace(record.Name)
-	if name == "" || !IsRussianText(name) {
-		return nil, ErrNoRussianLabel
-	}
-	if !isImportablePerson(record.InstanceOf) {
+	if !IsImportableAuthorRecord(record) {
+		if !hasImportableRussianLabel(record.Name) {
+			return nil, ErrNoRussianLabel
+		}
 		return nil, ErrNotAPerson
 	}
 
@@ -169,6 +169,23 @@ func (s *Service) FindAuthorsByWikidataQIDs(ctx context.Context, qids []string) 
 		}
 	}
 	return out, nil
+}
+
+// IsImportableAuthorRecord reports whether a fetched Wikidata entity can be
+// imported as an author: it has a Russian label (non-empty after trim and
+// passing IsRussianText) and its P31 holds an allowed person type (human,
+// pseudonym, collective pseudonym). ImportWikidataAuthor and the AI
+// curator's Wikidata resolution both use it, so they never disagree.
+func IsImportableAuthorRecord(record *bookdata.ExternalAuthorRecord) bool {
+	if record == nil {
+		return false
+	}
+	return hasImportableRussianLabel(record.Name) && isImportablePerson(record.InstanceOf)
+}
+
+func hasImportableRussianLabel(label string) bool {
+	name := strings.TrimSpace(label)
+	return name != "" && IsRussianText(name)
 }
 
 func isImportablePerson(instanceOf []string) bool {
