@@ -48,3 +48,15 @@ export function formatRatingSummary(rating: number, ratingsCount: number): strin
   const value = rating.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   return `${value} · ${ratingsCount} ${pluralRu(ratingsCount, ['оценка', 'оценки', 'оценок'])}`;
 }
+
+const moscowLongDateFormatter = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'Europe/Moscow',
+});
+
+/** Formats an ISO timestamp as "14 октября 2026" in Moscow time (the site's day). */
+export function formatTimestampLongDate(iso: string): string {
+  return moscowLongDateFormatter.format(new Date(iso)).replace(/\s*г\.$/, '');
+}

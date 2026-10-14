@@ -132,6 +132,17 @@ Off by default. When `HARVEST_SCHEDULE_ENABLED=true`, the scheduler enqueues a `
 
 The same single-replica rule applies: two workers would double the ticks. The tick's `asynq.Unique(1h)` and the "scheduled job already queued" check are a safety net only. Check `docker compose -f docker-compose.prod.yml logs worker` for `scheduled harvest enabled` and `scheduled harvest job queued`.
 
+### Automatic collections
+
+**On by default**, unlike the harvest schedule: without it automatic «Подборки» (kind `auto`) never refresh. The scheduler enqueues a `curated:recompute_auto` task (queue `curated`, its own server with Concurrency 1) on `AUTO_COLLECTIONS_SCHEDULE_CRON` (UTC). The task recomputes the stored snapshot of every automatic collection, draft or published, from ratings and the «Прочитано» / «Хочу прочитать» / «Читаю» shelves, and keeps each book's previous position for the «↑/↓/Новинка» indicators. It makes no external calls and costs one aggregate query per collection. A collection that fails keeps its old snapshot and does not stop the others (see the worker log `curated: scheduled recompute failed`). Admins can also press «Пересчитать сейчас» on a collection (`POST /api/v1/admin/collections/{id}/recompute`), which works whether or not the schedule is on.
+
+| Variable | Meaning |
+|---|---|
+| `AUTO_COLLECTIONS_SCHEDULE_ENABLED` | Default `true`; unset or unparsable also means on. Only an explicit falsy value (`false`, `0`) turns it off, e.g. in dev or tests. When off the worker logs `scheduled auto collections recompute disabled` and automatic collections change only through admin actions. |
+| `AUTO_COLLECTIONS_SCHEDULE_CRON` | Cron spec, UTC. Default `0 1 * * *` (04:00 MSK, before the 03:30 UTC similarity recompute). An invalid spec makes the worker exit at startup. |
+
+The single-replica rule applies here too: two workers would run the recompute twice (harmless, the second only moves the movement baseline). The task's `asynq.Unique(1h)` is a safety net only.
+
 ### AI pre-moderation of books
 
 Off by default. AI moderation is active only when `AI_MODERATION_ENABLED=true` **and** `ANTHROPIC_API_KEY` is set (a flag without a key logs `AI_MODERATION_ENABLED is set but ANTHROPIC_API_KEY is empty; AI moderation disabled`; otherwise the worker logs `AI moderation disabled`). When active, the worker runs its own asynq server for it (queue `ai_moderation`, `Concurrency: 1`, at least 500 ms between model calls) and the scheduler enqueues `ai_moderation:sweep` on `AI_MODERATION_CRON` (UTC). A sweep gives up to `AI_MODERATION_BATCH` pending books a verdict (no verdict first, then oldest first; also books whose verdict has an older prompt version or that were edited after it). Admins can also queue a check from `/moderation/books` («Проверить ИИ (N)», «Проверить ИИ все непроверенные», up to 1000 books). Verdicts (`publish` / `reject` / `needs_human` with reason codes) live in `book_ai_verdicts`; the model never edits a book and nothing is published automatically. A temporary API failure (429, 5xx, 529 overloaded, network) stores nothing and stops the run; the next run continues.

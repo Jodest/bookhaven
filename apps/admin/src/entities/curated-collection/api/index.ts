@@ -6,6 +6,7 @@ export const adminCollectionsApi = {
   create: api.admin.collections.create,
   update: api.admin.collections.update,
   remove: api.admin.collections.remove,
+  recompute: api.admin.collections.recompute,
   addBook: api.admin.collections.addBook,
   removeBook: api.admin.collections.removeBook,
   moveBook: api.admin.collections.moveBook,

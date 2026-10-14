@@ -62,8 +62,13 @@ function detail(overrides: Partial<CuratedCollectionDetail> = {}): CuratedCollec
       source_url: 'https://bbc.co.uk/bigread',
       genre: { id: 'g1', name: 'Роман', slug: 'roman' },
       cover_urls: [],
+      rule: null,
+      computed_at: null,
     },
-    items: [{ place: 51, book: book('1') }, { place: 52, book: book('2', { rating: 3, ratingsCount: 0 }) }],
+    items: [
+      { place: 51, movement: null, book: book('1') },
+      { place: 52, movement: null, book: book('2', { rating: 3, ratingsCount: 0 }) },
+    ],
     total: 100,
     page: 2,
     limit: 50,
@@ -116,7 +121,13 @@ describe('CollectionDetailView (/top/{slug})', () => {
   it('does not link an unpublished author', async () => {
     getMock.mockResolvedValue(
       detail({
-        items: [{ place: 1, book: book('1', { authors: [{ id: 'a', name: 'Аноним', slug: null } as never] }) }],
+        items: [
+          {
+            place: 1,
+            movement: null,
+            book: book('1', { authors: [{ id: 'a', name: 'Аноним', slug: null } as never] }),
+          },
+        ],
         total: 1,
       })
     );
@@ -140,6 +151,62 @@ describe('CollectionDetailView (/top/{slug})', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Назад' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     expect(pushMock).toHaveBeenCalledWith('/top/top');
+  });
+
+  describe('automatic collections', () => {
+    function autoDetail(): CuratedCollectionDetail {
+      const base = detail();
+      return detail({
+        collection: {
+          ...base.collection,
+          kind: 'auto',
+          source: null,
+          source_url: null,
+          rule: { metric: 'trending', period_days: 30, min_ratings: null, confidence: null },
+          computed_at: '2026-10-14T01:00:00Z',
+        },
+        items: [
+          { place: 1, movement: { direction: 'up', by: 3 }, book: book('1') },
+          { place: 2, movement: { direction: 'down', by: 2 }, book: book('2') },
+          { place: 3, movement: { direction: 'new', by: 0 }, book: book('3') },
+          { place: 4, movement: { direction: 'same', by: 0 }, book: book('4') },
+        ],
+        total: 4,
+        page: 1,
+      });
+    }
+
+    it('shows movement badges for up, down and new, nothing for same', async () => {
+      getMock.mockResolvedValue(autoDetail());
+      renderView();
+      await waitFor(() => expect(screen.getByText('↑3')).toBeInTheDocument());
+      expect(screen.getByText('↓2')).toBeInTheDocument();
+      expect(screen.getByText('Новинка')).toBeInTheDocument();
+      expect(screen.getByLabelText('Поднялась на 3')).toBeInTheDocument();
+      expect(screen.getByLabelText('Опустилась на 2')).toBeInTheDocument();
+      expect(screen.getByLabelText('Новинка в подборке')).toBeInTheDocument();
+      expect(screen.getAllByText(/^(↑|↓)\d+$|^Новинка$/)).toHaveLength(3);
+    });
+
+    it('shows the automatic caption', async () => {
+      getMock.mockResolvedValue(autoDetail());
+      renderView();
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            'Составлена автоматически по активности читателей за последние 30 дн. Обновлено 14 октября 2026.'
+          )
+        ).toBeInTheDocument()
+      );
+    });
+
+    it('a manual collection has no caption and no badges', async () => {
+      getMock.mockResolvedValue(detail());
+      renderView();
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Топ-100' })).toBeInTheDocument());
+      expect(screen.queryByText(/Составлена автоматически/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^(↑|↓)\d+$|^Новинка$/)).not.toBeInTheDocument();
+    });
   });
 
   it('shows «Подборка не найдена» for a 404', async () => {

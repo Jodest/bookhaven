@@ -32,9 +32,13 @@ vi.mock('@/entities/genre', async (importOriginal) => ({
   adminGenresApi: { list: vi.fn().mockResolvedValue({ items: [{ id: 'g1', name: 'Фантастика' }], total: 1 }) },
 }));
 
-// The book panel has its own tests.
+// The book panel and the snapshot widget have their own tests.
 vi.mock('@/widgets/collection-books', () => ({
   CollectionBooks: () => <div data-testid="books-panel" />,
+}));
+
+vi.mock('@/widgets/collection-snapshot', () => ({
+  CollectionSnapshot: () => <div data-testid="snapshot-panel" />,
 }));
 
 function detail(overrides: Partial<AdminCuratedCollectionDetail> = {}): AdminCuratedCollectionDetail {
@@ -50,6 +54,9 @@ function detail(overrides: Partial<AdminCuratedCollectionDetail> = {}): AdminCur
     genre: null,
     is_published: true,
     published_at: null,
+    rule: null,
+    computed_at: null,
+    baseline_at: null,
     created_at: '',
     updated_at: '',
     books_count: 100,
@@ -125,6 +132,84 @@ describe('CollectionEditView', () => {
       expect(updateMock).toHaveBeenCalledWith('c1', expect.objectContaining({ genre_id: null, source: '', title: 'Топ-100' }))
     );
     await waitFor(() => expect(screen.getByText('Подборка сохранена.')).toBeInTheDocument());
+  });
+
+  it('an automatic collection shows the snapshot panel and the kind read-only', async () => {
+    getMock.mockResolvedValue(
+      detail({
+        kind: 'auto',
+        shown_count: 40,
+        rule: { metric: 'weighted_rating', period_days: null, min_ratings: 3, confidence: 10 },
+        computed_at: '2026-10-14T01:00:00Z',
+      })
+    );
+    renderView();
+    await waitFor(() => expect(screen.getByTestId('snapshot-panel')).toBeInTheDocument());
+    expect(screen.queryByTestId('books-panel')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Правилу соответствуют только 40 из 100 книг');
+    expect(screen.getByText('Авто')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Показатель')).toHaveValue('weighted_rating');
+    expect(screen.getByLabelText('Минимум оценок')).toHaveValue(3);
+    expect(screen.getByLabelText('Порог доверия (m)')).toHaveValue(10);
+  });
+
+  it('saving an automatic collection resends the rule but not the kind', async () => {
+    getMock.mockResolvedValue(
+      detail({
+        kind: 'auto',
+        rule: { metric: 'trending', period_days: 30, min_ratings: null, confidence: null },
+      })
+    );
+    updateMock.mockResolvedValue(detail({ kind: 'auto' }));
+    renderView();
+    await waitFor(() => expect(screen.getByLabelText('Период, дней')).toHaveValue(30));
+    expect(screen.queryByLabelText('Минимум оценок')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(updateMock).toHaveBeenCalled());
+    const body = updateMock.mock.calls[0][1];
+    expect(body.rule).toEqual({ metric: 'trending', period_days: 30 });
+    expect(body).not.toHaveProperty('kind');
+  });
+
+  it('new mode creates an automatic collection with the default weighted rule', async () => {
+    createMock.mockResolvedValue(detail({ id: 'auto-id', kind: 'auto' }));
+    renderView('new');
+
+    expect(screen.queryByLabelText('Показатель')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/Автоматическая — по правилу/));
+    expect(screen.getByLabelText('Минимум оценок')).toHaveValue(3);
+    expect(screen.getByLabelText('Порог доверия (m)')).toHaveValue(10);
+    expect(
+      screen.getByText('Чем больше m, тем сильнее рейтинг книг с малым числом оценок тянется к среднему по сайту')
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Название'), { target: { value: 'Лучшее' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/collections/auto-id'));
+    expect(createMock).toHaveBeenCalledWith({
+      title: 'Лучшее',
+      size: 100,
+      is_published: false,
+      kind: 'auto',
+      rule: { metric: 'weighted_rating', period_days: null, min_ratings: 3, confidence: 10 },
+    });
+  });
+
+  it('trending prefills the 30-day period and hides the weighted fields', () => {
+    renderView('new');
+    fireEvent.click(screen.getByLabelText(/Автоматическая — по правилу/));
+    fireEvent.change(screen.getByLabelText('Показатель'), { target: { value: 'trending' } });
+    expect(screen.getByLabelText('Период, дней')).toHaveValue(30);
+    expect(screen.queryByLabelText('Минимум оценок')).not.toBeInTheDocument();
+  });
+
+  it('blocks submit on an out-of-range rule value', () => {
+    renderView('new');
+    fireEvent.click(screen.getByLabelText(/Автоматическая — по правилу/));
+    fireEvent.change(screen.getByLabelText('Период, дней'), { target: { value: '5000' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('Период: от 1 до 3650 дней');
+    expect(screen.getByRole('button', { name: 'Создать' })).toBeDisabled();
   });
 
   it('delete asks for confirmation first', async () => {

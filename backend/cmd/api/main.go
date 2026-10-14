@@ -235,7 +235,7 @@ func main() {
 	optionalAuth := middleware.OptionalAuth(authService, usersRepo)
 
 	// Public + protected routes
-	curatedService := curatedservice.NewService(curatedrepository.NewGormRepository(db))
+	curatedService := curatedservice.NewService(curatedrepository.NewGormRepository(db)).WithLogger(logger)
 	// AI descriptions (openspec catalog-admin/ai-descriptions): one
 	// repository backs the public fallback reader and the admin service.
 	aiDescriptionsRepo := aidescrepository.NewGormRepository(db)
