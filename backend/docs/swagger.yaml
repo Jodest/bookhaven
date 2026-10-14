@@ -1813,6 +1813,42 @@ definitions:
       title:
         type: string
     type: object
+  internal_modules_curated_transport_http.bulkAddRequest:
+    properties:
+      book_ids:
+        items:
+          type: string
+        type: array
+      position:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.bulkAddResponse:
+    properties:
+      added:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.bulkAddedResponse'
+        type: array
+      books_count:
+        type: integer
+      skipped:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.bulkSkippedResponse'
+        type: array
+    type: object
+  internal_modules_curated_transport_http.bulkAddedResponse:
+    properties:
+      book_id:
+        type: string
+      position:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.bulkSkippedResponse:
+    properties:
+      book_id:
+        type: string
+      reason:
+        type: string
+    type: object
   internal_modules_curated_transport_http.collectionDetailResponse:
     properties:
       collection:
@@ -1896,6 +1932,83 @@ definitions:
     properties:
       position:
         type: integer
+    type: object
+  internal_modules_curated_transport_http.pasteBookResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.adminAuthorResponse'
+        type: array
+      cover_url:
+        type: string
+      id:
+        type: string
+      in_collection:
+        type: boolean
+      published_year:
+        type: integer
+      slug:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.pasteCountsResponse:
+    properties:
+      ambiguous:
+        type: integer
+      duplicate:
+        type: integer
+      found:
+        type: integer
+      in_collection:
+        type: integer
+      invalid:
+        type: integer
+      not_found:
+        type: integer
+      rejected:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.pasteLineResponse:
+    properties:
+      author:
+        type: string
+      book:
+        $ref: '#/definitions/internal_modules_curated_transport_http.pasteBookResponse'
+      candidates:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.pasteBookResponse'
+        type: array
+      duplicate_of:
+        type: integer
+      line:
+        type: integer
+      status:
+        type: string
+      text:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.pastePreviewRequest:
+    properties:
+      text:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.pastePreviewResponse:
+    properties:
+      books_count:
+        type: integer
+      counts:
+        $ref: '#/definitions/internal_modules_curated_transport_http.pasteCountsResponse'
+      free_slots:
+        type: integer
+      lines:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.pasteLineResponse'
+        type: array
     type: object
   internal_modules_curated_transport_http.placedBookResponse:
     properties:
@@ -4765,6 +4878,104 @@ paths:
       security:
       - BearerAuth: []
       summary: Переместить книгу на позицию
+      tags:
+      - admin-collections
+  /admin/collections/{id}/books/bulk:
+    post:
+      consumes:
+      - application/json
+      description: Книги добавляются одним блоком в заданном порядке, в конец или
+        на позицию. Неизвестные, отклонённые, повторы и уже добавленные пропускаются;
+        если оставшихся больше свободных мест (максимум 1000 книг) - 422 и ничего
+        не добавляется
+      parameters:
+      - description: ID подборки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Список книг и необязательная позиция
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_curated_transport_http.bulkAddRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.bulkAddResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Добавить выбранные книги каталога в подборку списком
+      tags:
+      - admin-collections
+  /admin/collections/{id}/books/paste/preview:
+    post:
+      consumes:
+      - application/json
+      description: 'Только чтение: каждая непустая строка сопоставляется с каталогом,
+        ничего не создаётся и не добавляется. Не более 500 строк и 100000 символов'
+      parameters:
+      - description: ID подборки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Текст со списком книг
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_curated_transport_http.pastePreviewRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.pastePreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Разобрать вставленный список книг (предпросмотр)
       tags:
       - admin-collections
   /admin/dashboard:

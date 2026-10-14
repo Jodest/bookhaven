@@ -36,6 +36,7 @@ var (
 	ErrSlugTaken          = errors.New("slug already exists")
 	ErrInvalidGenre       = errors.New("invalid genre_id")
 	ErrInvalidPosition    = errors.New("invalid position")
+	ErrTooManyLines       = errors.New("too many lines (max 500)")
 )
 
 // Collection is a BookHaven-owned ranked collection of catalog books.

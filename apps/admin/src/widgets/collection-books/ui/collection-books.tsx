@@ -7,6 +7,7 @@ import { Button, Input, Label } from '@bookhaven/ui';
 import { adminBooksApi, BookStatusBadge } from '@/entities/book';
 import { ITEM_STATE_LABELS } from '@/entities/curated-collection';
 import { bookErrorText, useCollectionBookMutations } from '@/features/edit-collection-books';
+import { PasteBooksPanel } from '@/features/paste-collection-books';
 
 const SEARCH_LIMIT = 10;
 
@@ -107,6 +108,7 @@ export function CollectionBooks({ collection }: CollectionBooksProps) {
   const { add, remove, move } = useCollectionBookMutations(collection.id);
   const [draft, setDraft] = useState('');
   const [term, setTerm] = useState('');
+  const [pasteOpen, setPasteOpen] = useState(false);
 
   const search = useQuery({
     queryKey: ['admin', 'books', 'collection-search', term],
@@ -174,6 +176,18 @@ export function CollectionBooks({ collection }: CollectionBooksProps) {
           </ul>
         )}
       </section>
+
+      <div className="space-y-3">
+        <Button
+          type="button"
+          variant="outline"
+          aria-expanded={pasteOpen}
+          onClick={() => setPasteOpen((open) => !open)}
+        >
+          Вставить список
+        </Button>
+        {pasteOpen && <PasteBooksPanel collectionId={collection.id} />}
+      </div>
 
       {error && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
 
