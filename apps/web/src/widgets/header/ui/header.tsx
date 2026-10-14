@@ -38,6 +38,9 @@ export function Header({ notificationSlot }: HeaderProps) {
           <Button variant="ghost" asChild>
             <Link href="/books">Каталог</Link>
           </Button>
+          <Button variant="ghost" asChild>
+            <Link href="/top">Подборки</Link>
+          </Button>
 
           {!isLoading && (
             <>

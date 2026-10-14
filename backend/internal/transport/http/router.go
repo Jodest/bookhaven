@@ -8,6 +8,8 @@ import (
 	aimodhttp "github.com/bookhaven/backend/internal/modules/aimoderation/transport/http"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	cataloghttp "github.com/bookhaven/backend/internal/modules/catalog/transport/http"
+	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
+	curatedhttp "github.com/bookhaven/backend/internal/modules/curated/transport/http"
 	harvesthttp "github.com/bookhaven/backend/internal/modules/harvest/transport/http"
 	homeservice "github.com/bookhaven/backend/internal/modules/home/service"
 	homehttp "github.com/bookhaven/backend/internal/modules/home/transport/http"
@@ -45,6 +47,7 @@ func RegisterRoutes(
 	readingChallengesService *readingchallengesservice.Service,
 	notificationsService *notificationsservice.Service,
 	homeService *homeservice.Service,
+	curatedService *curatedservice.Service,
 	authMiddleware echo.MiddlewareFunc,
 	optionalAuth echo.MiddlewareFunc,
 	aiDescriptions cataloghttp.AIDescriptionReader,
@@ -121,6 +124,11 @@ func RegisterRoutes(
 	api.GET("/home", homeHandler.GetHome)
 	api.GET("/home/random", homeHandler.RandomBook)
 	api.GET("/home/me", homeHandler.GetMyHome, authMiddleware)
+
+	// Curated collections (openspec collections/curated-collections): public.
+	curatedHandler := curatedhttp.NewHandler(curatedService)
+	api.GET("/collections", curatedHandler.ListPublic)
+	api.GET("/collections/:slug", curatedHandler.GetPublic)
 }
 
 // AIModerationDeps configures the AI moderation trigger/status endpoints:
@@ -164,6 +172,7 @@ func RegisterAdminRoutes(
 	aiModeration AIModerationDeps,
 	aiCurator AICuratorDeps,
 	aiDescriptions AIDescriptionsDeps,
+	curatedService *curatedservice.Service,
 ) {
 	admin := e.Group("/api/v1/admin", authMiddleware)
 
@@ -227,6 +236,17 @@ func RegisterAdminRoutes(
 	harvest.GET("/jobs", harvestHandler.ListHarvestJobs)
 	harvest.GET("/jobs/:id", harvestHandler.GetHarvestJob)
 	harvest.GET("/authors/search", harvestHandler.SearchAuthors)
+
+	curatedHandler := curatedhttp.NewHandler(curatedService)
+	collections := admin.Group("/collections", adminRole)
+	collections.GET("", curatedHandler.AdminList)
+	collections.POST("", curatedHandler.AdminCreate, requireBearer)
+	collections.GET("/:id", curatedHandler.AdminGet)
+	collections.PATCH("/:id", curatedHandler.AdminUpdate, requireBearer)
+	collections.DELETE("/:id", curatedHandler.AdminDelete, requireBearer)
+	collections.POST("/:id/books", curatedHandler.AdminAddBook, requireBearer)
+	collections.DELETE("/:id/books/:bookId", curatedHandler.AdminRemoveBook, requireBearer)
+	collections.PUT("/:id/books/:bookId/position", curatedHandler.AdminMoveBook, requireBearer)
 
 	if aiCurator.Service != nil {
 		curatorHandler := aicuratorhttp.NewHandler(harvestEnqueuer, aiCurator.Service)

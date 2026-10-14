@@ -37,6 +37,9 @@ describe('resolveNavLocation', () => {
     ['/import/genres', 'import.genres'],
     ['/import/jobs', 'import.jobs'],
     ['/import/books/file', 'import.books'],
+    ['/collections', 'collections.list'],
+    ['/collections/new', 'collections.list'],
+    ['/collections/5', 'collections.list'],
     ['/users', 'users.list'],
   ])('%s -> %s', (pathname, tabId) => {
     expect(tabIdOf(pathname)).toBe(tabId);
@@ -118,6 +121,7 @@ describe('navigation config invariants', () => {
       const ok =
         prefix === '/' ||
         prefix === '/users' ||
+        prefix === '/collections' ||
         sectionPrefixes.some((p) => prefix.startsWith(p));
       expect(ok, prefix).toBe(true);
     }
@@ -130,11 +134,12 @@ describe('navigation config invariants', () => {
 });
 
 describe('visibility', () => {
-  it('admin sees all five sections in order', () => {
+  it('admin sees all six sections in order', () => {
     expect(getVisibleSections('admin').map((s) => s.label)).toEqual([
       'Обзор',
       'Модерация',
       'Каталог',
+      'Подборки',
       'Импорт',
       'Пользователи',
     ]);
@@ -144,6 +149,7 @@ describe('visibility', () => {
     const sections = getVisibleSections('moderator');
     expect(sections.map((s) => s.id)).toEqual(['moderation']);
     expect(sections[0].tabs.map((t) => t.id)).toEqual(['moderation.reviews']);
+    expect(sections.some((s) => s.id === 'collections')).toBe(false);
   });
 
   it('non-staff and anonymous users see nothing', () => {

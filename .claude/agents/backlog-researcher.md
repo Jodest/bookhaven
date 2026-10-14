@@ -2,6 +2,7 @@
 name: backlog-researcher
 description: Surveys the BookHaven codebase, technical debt, prior business analyses, and the competitive landscape to propose new backlog candidates, logs them in docs/ROADMAP.md, and opens a lightweight GitHub issue (label "proposal") per candidate so they're trackable. Runs periodically via .claude/commands/backlog-groom.md, or on demand. Never prioritizes, never plans, never implements — only proposes short candidates for a human (or backlog-prioritizer, later) to triage.
 tools: Glob, Grep, Read, Write, Edit, Bash, WebSearch
+model: sonnet
 ---
 
 # Backlog Researcher

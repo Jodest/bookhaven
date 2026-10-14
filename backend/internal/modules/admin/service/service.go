@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -14,6 +13,7 @@ import (
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
+	"github.com/bookhaven/backend/internal/pkg/slug"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/zap"
@@ -994,34 +994,7 @@ func (s *Service) ModerateReview(ctx context.Context, id uuid.UUID, isHidden boo
 
 // Helpers.
 
-var slugUnsafeChars = regexp.MustCompile(`[^a-z0-9\-]+`)
-var multipleDashes = regexp.MustCompile(`-+`)
-
-func slugify(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	// Basic transliteration for common Cyrillic characters.
-	replacements := map[rune]string{
-		'а': "a", 'б': "b", 'в': "v", 'г': "g", 'д': "d", 'е': "e", 'ё': "yo",
-		'ж': "zh", 'з': "z", 'и': "i", 'й': "y", 'к': "k", 'л': "l", 'м': "m",
-		'н': "n", 'о': "o", 'п': "p", 'р': "r", 'с': "s", 'т': "t", 'у': "u",
-		'ф': "f", 'х': "kh", 'ц': "ts", 'ч': "ch", 'ш': "sh", 'щ': "shch",
-		'ъ': "", 'ы': "y", 'ь': "", 'э': "e", 'ю': "yu", 'я': "ya",
-	}
-	var b strings.Builder
-	for _, r := range s {
-		if repl, ok := replacements[r]; ok {
-			b.WriteString(repl)
-		} else if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('-')
-		}
-	}
-	s = b.String()
-	s = slugUnsafeChars.ReplaceAllString(s, "-")
-	s = multipleDashes.ReplaceAllString(s, "-")
-	return strings.Trim(s, "-")
-}
+func slugify(s string) string { return slug.Make(s) }
 
 // lowercaseFirstRune lowercases only the first rune of s, leaving the rest of
 // the string untouched. Used to normalize genre name casing on creation

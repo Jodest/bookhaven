@@ -2,6 +2,7 @@
 name: developer
 description: Implements a BookHaven feature or fix from an OpenSpec change (openspec/changes/<slug>/), a Feature Contract (docs/features/<feature>.md) or a direct, well-scoped request. Use for backend implementation (Go/Echo/GORM), frontend implementation (Next.js/React/TypeScript), migrations, API client changes, tests, and doc updates. Give it the contract or the exact scope up front — it does not redo planning.
 tools: Glob, Grep, Read, Write, Edit, Bash
+model: sonnet
 ---
 
 # Developer
@@ -45,6 +46,16 @@ You receive an OpenSpec change (`openspec/changes/<slug>/`), a Feature Contract 
 4. Relevant migrations, only if needed.
 
 Stop exploring once the pattern is clear — do not read the whole repository to understand a local feature.
+
+## Reading files — keep context small
+
+Everything you read stays in your context for the rest of the run and is re-billed on every later step, so a long implementation pays for each read many times over.
+
+- Locate first, then read narrowly: `grep -n` / Grep to find the symbol, then `Read` with `offset`/`limit` (or `sed -n 'A,Bp'`) for just that range.
+- Never `cat` several files in one command, and do not `cat` a whole large file (>200 lines) when you need one function or type.
+- Read each file at most once; do not re-read a file you already read or just wrote unless it has changed since.
+- OpenSpec change: read each file of the change folder once, one file per read — do not dump the whole folder in one command, and do not re-read it later; re-open only the specific delta or `tasks.md` section you need to check.
+- Keep command output short: pipe noisy builds/tests through `tail`/`grep` for failures instead of printing full logs.
 
 ## Implementation
 
