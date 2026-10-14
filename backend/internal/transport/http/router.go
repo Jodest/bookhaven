@@ -4,6 +4,7 @@ import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	adminhttp "github.com/bookhaven/backend/internal/modules/admin/transport/http"
 	aicuratorhttp "github.com/bookhaven/backend/internal/modules/aicurator/transport/http"
+	aidescriptionshttp "github.com/bookhaven/backend/internal/modules/aidescriptions/transport/http"
 	aimodhttp "github.com/bookhaven/backend/internal/modules/aimoderation/transport/http"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	cataloghttp "github.com/bookhaven/backend/internal/modules/catalog/transport/http"
@@ -30,7 +31,9 @@ import (
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 )
 
-// RegisterRoutes registers all public API routes.
+// RegisterRoutes registers all public API routes. aiDescriptions (may be
+// nil) is the approved AI description reader behind the book detail's
+// ai_description fallback.
 func RegisterRoutes(
 	e *echo.Echo,
 	catalogService *catalogservice.Service,
@@ -44,10 +47,15 @@ func RegisterRoutes(
 	homeService *homeservice.Service,
 	authMiddleware echo.MiddlewareFunc,
 	optionalAuth echo.MiddlewareFunc,
+	aiDescriptions cataloghttp.AIDescriptionReader,
 ) {
 	api := e.Group("/api/v1")
 
-	catalogHandler := cataloghttp.NewHandler(catalogService)
+	var catalogOpts []cataloghttp.HandlerOption
+	if aiDescriptions != nil {
+		catalogOpts = append(catalogOpts, cataloghttp.WithAIDescriptionReader(aiDescriptions))
+	}
+	catalogHandler := cataloghttp.NewHandler(catalogService, catalogOpts...)
 	api.GET("/books", catalogHandler.ListBooks)
 	api.GET("/books/:slug", catalogHandler.GetBook)
 	api.GET("/books/:id/similar", catalogHandler.ListSimilarBooks)
@@ -131,6 +139,14 @@ type AICuratorDeps struct {
 	Service aicuratorhttp.CurationService
 }
 
+// AIDescriptionsDeps configures the AI descriptions endpoints
+// (/admin/ai-descriptions): Service is the aidescriptions service (it
+// carries config.AIDescriptionsActive() and the model id; the API never
+// calls the model). Its tasks are queued on the shared asynq client.
+type AIDescriptionsDeps struct {
+	Service aidescriptionshttp.DescriptionService
+}
+
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
 // harvestEnqueuer/harvestInspector are the small interfaces the new
 // harvest/transport/http.Handler depends on (satisfied by a real
@@ -147,6 +163,7 @@ func RegisterAdminRoutes(
 	harvestAuthorSearcher harvesthttp.AuthorSearcher,
 	aiModeration AIModerationDeps,
 	aiCurator AICuratorDeps,
+	aiDescriptions AIDescriptionsDeps,
 ) {
 	admin := e.Group("/api/v1/admin", authMiddleware)
 
@@ -218,5 +235,17 @@ func RegisterAdminRoutes(
 		curator.POST("/requests", curatorHandler.CreateCurationRequest, requireBearer)
 		curator.GET("/requests", curatorHandler.ListCurationRequests)
 		curator.GET("/requests/:id", curatorHandler.GetCurationRequest)
+	}
+
+	if aiDescriptions.Service != nil {
+		descHandler := aidescriptionshttp.NewHandler(harvestEnqueuer, aiDescriptions.Service)
+		desc := admin.Group("/ai-descriptions", adminRole)
+		// Static routes before /:book_id.
+		desc.GET("/status", descHandler.AIDescriptionsStatus)
+		desc.POST("/generate", descHandler.GenerateAIDescriptions, requireBearer)
+		desc.GET("", descHandler.ListAIDescriptions)
+		desc.GET("/:book_id", descHandler.GetAIDescription)
+		desc.POST("/:book_id/approve", descHandler.ApproveAIDescription, requireBearer)
+		desc.POST("/:book_id/discard", descHandler.DiscardAIDescription, requireBearer)
 	}
 }

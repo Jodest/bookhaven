@@ -32,6 +32,17 @@ vi.mock('@/entities/author', async (importOriginal) => ({
   },
 }));
 
+// The AI description panel under the form (its own tests live in
+// widgets/ai-description-panel): no record, feature off.
+vi.mock('@/entities/ai-description', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/ai-description')>()),
+  adminAiDescriptionsApi: {
+    get: () => Promise.resolve({ ai_description: null }),
+    status: () =>
+      Promise.resolve({ enabled: false, model: 'm', prompt_version: 1, missing: 0, drafts: 0, max_bulk: 200 }),
+  },
+}));
+
 vi.mock('@/entities/genre', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/genre')>()),
   adminGenresApi: {

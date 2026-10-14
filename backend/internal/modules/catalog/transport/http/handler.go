@@ -1,9 +1,11 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bookhaven/backend/internal/modules/catalog/domain"
@@ -15,12 +17,33 @@ import (
 
 // Handler handles catalog HTTP requests.
 type Handler struct {
-	service *service.Service
+	service  *service.Service
+	aiReader AIDescriptionReader
+}
+
+// AIDescriptionReader returns a book's approved AI description (openspec
+// catalog-admin/ai-descriptions; satisfied by the aidescriptions
+// repository). ok is false when there is none.
+type AIDescriptionReader interface {
+	ApprovedAIDescription(ctx context.Context, bookID uuid.UUID) (text string, generatedAt time.Time, ok bool, err error)
+}
+
+// HandlerOption configures a Handler.
+type HandlerOption func(*Handler)
+
+// WithAIDescriptionReader enables the labelled AI description fallback of
+// the book detail. Without it ai_description is always null.
+func WithAIDescriptionReader(r AIDescriptionReader) HandlerOption {
+	return func(h *Handler) { h.aiReader = r }
 }
 
 // NewHandler creates a new catalog Handler.
-func NewHandler(service *service.Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *service.Service, opts ...HandlerOption) *Handler {
+	h := &Handler{service: service}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // AuthorResponse is the author shape embedded in book list items. Slug is
@@ -70,6 +93,17 @@ type bookResponse struct {
 	ReviewsCount  int              `json:"reviews_count"`
 	Authors       []AuthorResponse `json:"authors"`
 	Genres        []GenreResponse  `json:"genres"`
+	// AIDescription is the approved AI-generated description, present only
+	// while the book's own description is blank; null otherwise. Clients
+	// show it as plain text with the notice «Описание создано ИИ и может
+	// содержать неточности.».
+	AIDescription *aiDescriptionResponse `json:"ai_description"`
+}
+
+// aiDescriptionResponse is the public AI description fallback.
+type aiDescriptionResponse struct {
+	Text        string    `json:"text"`
+	GeneratedAt time.Time `json:"generated_at"`
 }
 
 type authorDetailResponse struct {
@@ -358,6 +392,7 @@ func (h *Handler) ListBooks(c echo.Context) error {
 
 // GetBook godoc
 // @Summary Получить книгу по slug
+// @Description ai_description — одобренное администратором описание, созданное ИИ ({text, generated_at}); заполнено только когда у книги нет собственного описания, иначе null. Показывать как обычный текст с пометкой «Описание создано ИИ и может содержать неточности.».
 // @Tags catalog
 // @Produce json
 // @Param slug path string true "Slug книги"
@@ -377,7 +412,27 @@ func (h *Handler) GetBook(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get book"})
 	}
 
-	return c.JSON(http.StatusOK, toBookResponse(*book))
+	resp := toBookResponse(*book)
+	resp.AIDescription = h.aiDescriptionFor(ctx, c, book)
+	return c.JSON(http.StatusOK, resp)
+}
+
+// aiDescriptionFor returns the approved AI description of a book whose own
+// description is blank, or nil. A reader error is logged and yields nil:
+// it never fails the page.
+func (h *Handler) aiDescriptionFor(ctx context.Context, c echo.Context, book *domain.Book) *aiDescriptionResponse {
+	if h.aiReader == nil || (book.Description != nil && strings.TrimSpace(*book.Description) != "") {
+		return nil
+	}
+	text, at, ok, err := h.aiReader.ApprovedAIDescription(ctx, book.ID)
+	if err != nil {
+		c.Logger().Errorf("catalog: AI description of book %s: %v", book.ID, err)
+		return nil
+	}
+	if !ok || strings.TrimSpace(text) == "" {
+		return nil
+	}
+	return &aiDescriptionResponse{Text: text, GeneratedAt: at}
 }
 
 // ListSimilarBooks godoc

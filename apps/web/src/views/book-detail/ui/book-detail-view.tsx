@@ -21,6 +21,13 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
     notFound();
   }
 
+  // The book's own description always wins; an approved AI description
+  // (openspec catalog-admin/ai-descriptions) is only a labelled fallback.
+  const ownDescription = book.description?.trim() ? book.description : null;
+  const aiDescriptionText = ownDescription ? null : book.aiDescription?.text?.trim() || null;
+  const descriptionText = ownDescription ?? aiDescriptionText;
+  const isAIDescription = !ownDescription && !!aiDescriptionText;
+
   return (
     <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
       <div className="grid grid-cols-1 gap-8 md:grid-cols-[300px_1fr]">
@@ -80,12 +87,15 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
             />
           </div>
 
-          {book.description && (
+          {descriptionText && (
             <div className="mt-6">
               <h2 className="font-display text-xl font-semibold">Описание</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground md:text-base">
-                {book.description}
+                {descriptionText}
               </p>
+              {isAIDescription && (
+                <p className="mt-2 text-xs text-muted-foreground">Описание создано ИИ и может содержать неточности.</p>
+              )}
             </div>
           )}
 

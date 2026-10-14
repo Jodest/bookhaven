@@ -50,6 +50,7 @@ describe('SectionTabs', () => {
       ['Книги', '/moderation/books'],
       ['Авторы', '/moderation/authors'],
       ['Жанры', '/moderation/genres'],
+      ['Описания ИИ', '/moderation/descriptions'],
       ['Отзывы', '/moderation/reviews'],
     ]);
     expect(screen.getByRole('link', { name: 'Отзывы' })).toHaveAttribute('aria-current', 'page');

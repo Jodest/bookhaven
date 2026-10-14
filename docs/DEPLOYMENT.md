@@ -179,6 +179,30 @@ Cost per request (assumptions: about 0.9k input tokens — a ~700-token cached s
 
 Token counts are stored per request: `SELECT model, sum(input_tokens), sum(output_tokens) FROM ai_curation_requests GROUP BY model;` (only the last 30 days are kept).
 
+### AI book descriptions
+
+Off by default. AI description drafts are active only when `AI_DESCRIPTIONS_ENABLED=true` **and** `ANTHROPIC_API_KEY` is set — the same key as AI pre-moderation and curation, but a separate switch. A flag without a key logs `AI_DESCRIPTIONS_ENABLED is set but ANTHROPIC_API_KEY is empty; AI descriptions disabled`; otherwise the worker logs `AI descriptions disabled`. There is no schedule: an admin queues generation for one book («Описание ИИ» panel on the book edit page), or for up to 200 published books with no description and no AI description record yet (Модерация → «Описания ИИ», `/moderation/descriptions`). When active, the worker runs its own asynq server (queue `ai_descriptions`, `Concurrency: 1`, at least 500 ms between model calls) for `ai_descriptions:generate` and `ai_descriptions:sweep`. The model sees only title, author names, year, ISBN, language and genre names, and answers either a 2–4 sentence Russian annotation or "not enough knowledge" (stored as `unknown`).
+
+Every result is a **draft** in `book_ai_descriptions` (migration 000024), never written to `books.description`. An admin approves (as is or edited) or discards each draft one at a time; there is no bulk approval. The public book page shows an approved AI description only while the book has no description of its own, under «Описание создано ИИ и может содержать неточности.»; a sourced or admin-written description always takes over, and AI text appears nowhere else (home, search, lists, AI verdict input). Approving and discarding work while the feature is off.
+
+**Both `backend` (api) and `worker` need the flag and the key.** The api never calls the model; it queues the task and uses the same switch for `enabled` in `GET /admin/ai-descriptions/status` and the 503 of `POST /admin/ai-descriptions/generate`. If only the api has the flag, the button is shown but nothing is generated.
+
+| Variable | Meaning |
+|---|---|
+| `AI_DESCRIPTIONS_ENABLED` | `true` turns AI description generation on (with `ANTHROPIC_API_KEY`). Default `false`, also in dev and CI. |
+| `AI_DESCRIPTIONS_MODEL` | Exact model id. Default `claude-sonnet-5-5` (the only generative task: better knowledge of Russian works and better "I don't know" calibration); `claude-haiku-5-5` to cut cost. Blank means the default. |
+
+Review notes: the model can still hallucinate plausible details or reproduce a known publisher blurb nearly verbatim; neither can be detected automatically. Read every draft before approving, prefer «Изменить и одобрить» to fix wording, and do not paste AI text into the book's own description (that would drop the public AI label). An approved text whose book data changed later is marked «устарел» in the admin app and stays public until regenerated or discarded. Check `docker compose -f docker-compose.prod.yml logs worker` for `AI descriptions enabled`, `AI description stored` and `AI description sweep finished`; the prompt and the text are never logged.
+
+Cost (assumptions: about 1.05k input tokens per book — a ~0.9k system prompt counted uncached plus ~0.15k of book JSON — and about 0.6k output tokens including low-effort thinking; `unknown` answers cost about the same):
+
+| Model | Input / 1000 books | Output / 1000 books | Total / 1000 books |
+|---|---|---|---|
+| `claude-haiku-5-5` ($0.10 / $0.50 per 1M) | $0.11 | $0.30 | **≈ $0.41** |
+| `claude-sonnet-5-5` ($2 / $10 per 1M), default | $2.10 | $6.00 | **≈ $8.10** |
+
+One bulk run (200 books) costs about $1.60 on Sonnet. Token counts are stored per book: `SELECT model, sum(input_tokens), sum(output_tokens) FROM book_ai_descriptions GROUP BY model;` (a regeneration replaces the previous row, so this counts the latest generation per book).
+
 ## Email (SMTP)
 
 Transactional email (verification, password reset, later notifications) is sent asynchronously: the api enqueues an `email:send` task on the `email` asynq queue and the **worker** delivers it over SMTP (see `backend/internal/pkg/mailer` and [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md)). Only the `worker` container receives the SMTP variables; the `backend` (api) container never talks to SMTP.

@@ -30,6 +30,7 @@ describe('resolveNavLocation', () => {
     ['/moderation/books', 'moderation.books'],
     ['/moderation/authors', 'moderation.authors'],
     ['/moderation/genres', 'moderation.genres'],
+    ['/moderation/descriptions', 'moderation.descriptions'],
     ['/moderation/reviews', 'moderation.reviews'],
     ['/import/books', 'import.books'],
     ['/import/authors', 'import.authors'],
@@ -152,7 +153,7 @@ describe('visibility', () => {
 
   it('does not mutate the config when filtering', () => {
     getVisibleSections('moderator');
-    expect(navSections.find((s) => s.id === 'moderation')?.tabs).toHaveLength(4);
+    expect(navSections.find((s) => s.id === 'moderation')?.tabs).toHaveLength(5);
   });
 });
 
