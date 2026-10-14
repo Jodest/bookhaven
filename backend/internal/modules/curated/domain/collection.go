@@ -8,9 +8,14 @@ import (
 	"github.com/google/uuid"
 )
 
-// KindManual is the only collection kind for now (automatic collections
-// arrive in a later feature via a widened DB CHECK).
-const KindManual = "manual"
+// Collection kinds. The kind is chosen on creation and never changes.
+const (
+	// KindManual collections hold an admin-ordered list of books.
+	KindManual = "manual"
+	// KindAuto collections are ranked from site data by a Rule and stored as
+	// a snapshot recomputed by the worker.
+	KindAuto = "auto"
+)
 
 const (
 	// MaxSize is the largest number of ranked places in a collection.
@@ -37,6 +42,9 @@ var (
 	ErrInvalidGenre       = errors.New("invalid genre_id")
 	ErrInvalidPosition    = errors.New("invalid position")
 	ErrTooManyLines       = errors.New("too many lines (max 500)")
+
+	ErrCollectionAutomatic = errors.New("collection is automatic")
+	ErrNotAutomatic        = errors.New("collection is not automatic")
 )
 
 // Collection is a BookHaven-owned ranked collection of catalog books.
@@ -52,13 +60,27 @@ type Collection struct {
 	GenreID     *uuid.UUID `gorm:"type:uuid"`
 	IsPublished bool       `gorm:"not null;default:false"`
 	PublishedAt *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+
+	// Rule columns, set only for kind auto.
+	RuleMetric     *string
+	RulePeriodDays *int
+	RuleMinRatings *int
+	RuleConfidence *int
+	// ComputedAt is the time of the current snapshot; BaselineAt the time of
+	// the snapshot that CollectionItem.PreviousPosition refers to.
+	ComputedAt *time.Time
+	BaselineAt *time.Time
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
 
 	Genre *catalogDomain.Genre `gorm:"foreignKey:GenreID"`
 }
 
 func (Collection) TableName() string { return "curated_collections" }
+
+// IsAuto reports whether the collection is built by a rule.
+func (c Collection) IsAuto() bool { return c.Kind == KindAuto }
 
 // CollectionItem is a book in the admin-ordered list of a collection.
 type CollectionItem struct {
@@ -66,6 +88,9 @@ type CollectionItem struct {
 	BookID       uuid.UUID `gorm:"type:uuid;primaryKey"`
 	Position     int       `gorm:"not null"`
 	AddedAt      time.Time `gorm:"not null;default:now()"`
+	// PreviousPosition and Score are set on snapshot items of auto collections.
+	PreviousPosition *int
+	Score            *float64
 }
 
 func (CollectionItem) TableName() string { return "curated_collection_items" }

@@ -1,7 +1,13 @@
 'use client';
 
 import { AuthorNameLink } from '@/entities/author';
-import { COLLECTION_PAGE_SIZE, SourceLine, useCuratedCollection } from '@/entities/curated-collection';
+import {
+  COLLECTION_PAGE_SIZE,
+  MovementBadge,
+  SourceLine,
+  autoCaption,
+  useCuratedCollection,
+} from '@/entities/curated-collection';
 import { ApiError } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import Image from 'next/image';
@@ -65,6 +71,11 @@ export function CollectionDetailView({ slug }: CollectionDetailViewProps) {
         url={collection.source_url}
         className="mt-2 text-sm text-muted-foreground"
       />
+      {collection.kind === 'auto' && collection.rule && (
+        <p className="mt-1 text-sm text-muted-foreground">
+          {autoCaption(collection.rule, collection.computed_at)}
+        </p>
+      )}
       {collection.genre && (
         <p className="mt-1 text-sm">
           Жанр:{' '}
@@ -82,14 +93,17 @@ export function CollectionDetailView({ slug }: CollectionDetailViewProps) {
       ) : (
         <>
           <ol className="mt-8 divide-y">
-            {items.map(({ place, book }) => (
+            {items.map(({ place, movement, book }) => (
               <li key={book.id} className="flex items-center gap-4 py-4">
-                <span
-                  className="w-14 shrink-0 text-right font-display text-3xl font-semibold text-muted-foreground"
-                  aria-label={`Место ${place}`}
-                >
-                  {place}
-                </span>
+                <div className="flex w-14 shrink-0 flex-col items-end">
+                  <span
+                    className="font-display text-3xl font-semibold text-muted-foreground"
+                    aria-label={`Место ${place}`}
+                  >
+                    {place}
+                  </span>
+                  <MovementBadge movement={movement} />
+                </div>
                 <Link href={`/books/${book.slug}`} className="shrink-0">
                   <div className="relative h-24 w-16 overflow-hidden rounded-md bg-muted">
                     {book.coverUrl && (

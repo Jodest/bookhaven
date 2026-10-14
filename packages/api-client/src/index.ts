@@ -1017,7 +1017,26 @@ let accessToken: string | null = null;
 
 // ---- Curated collections (openspec collections/*) ----
 
-export type CuratedCollectionKind = 'manual';
+export type CuratedCollectionKind = 'manual' | 'auto';
+
+export type AutoMetric = 'weighted_rating' | 'most_read' | 'most_wanted' | 'trending';
+
+/** Normalized rule of an automatic collection (defaults filled in). */
+export interface AutoRule {
+  metric: AutoMetric;
+  /** null means all time. */
+  period_days: number | null;
+  /** Weighted rating only, null for other metrics. */
+  min_ratings: number | null;
+  /** The m of the weighted rating, null for other metrics. */
+  confidence: number | null;
+}
+
+/** Position change between two snapshots; null when there is no baseline. */
+export interface CollectionMovement {
+  direction: 'up' | 'down' | 'same' | 'new';
+  by: number;
+}
 
 export interface CuratedCollectionGenre {
   id: string;
@@ -1039,11 +1058,17 @@ export interface CuratedCollection {
   source_url: string | null;
   genre: CuratedCollectionGenre | null;
   cover_urls: string[];
+  /** Set for automatic collections, null for manual. */
+  rule: AutoRule | null;
+  /** Time of the current snapshot; null for manual or before the first computation. */
+  computed_at: string | null;
 }
 
 export interface CuratedCollectionPlace {
   /** Global 1-based place, stable across pages. */
   place: number;
+  /** Null for manual collections and without a baseline. */
+  movement: CollectionMovement | null;
   book: Book;
 }
 
@@ -1067,6 +1092,10 @@ export interface AdminCuratedCollection {
   genre: { id: string; name: string; slug: string; status: AdminGenreStatus } | null;
   is_published: boolean;
   published_at: string | null;
+  rule: AutoRule | null;
+  computed_at: string | null;
+  /** Time of the snapshot the movement refers to; null without a baseline. */
+  baseline_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1080,6 +1109,7 @@ export interface AdminCuratedCollectionListItem {
   is_published: boolean;
   books_count: number;
   shown_count: number;
+  computed_at: string | null;
   updated_at: string;
 }
 
@@ -1090,6 +1120,9 @@ export interface AdminCuratedCollectionItem {
   /** 1..size for ranked items, null otherwise. */
   place: number | null;
   state: AdminCuratedItemState;
+  /** Snapshot score of an automatic collection, null for manual. */
+  score: number | null;
+  movement: CollectionMovement | null;
   book: {
     id: string;
     title: string;
@@ -1156,7 +1189,18 @@ export interface BulkAddResult {
   books_count: number;
 }
 
+export interface AutoRuleInput {
+  metric: AutoMetric;
+  period_days?: number | null;
+  min_ratings?: number | null;
+  confidence?: number | null;
+}
+
 export interface AdminCuratedCollectionInput {
+  /** Create only; `manual` by default. The kind cannot be changed afterwards. */
+  kind?: CuratedCollectionKind;
+  /** Required for `auto`, forbidden for `manual`. Replaced as a whole on update. */
+  rule?: AutoRuleInput;
   title?: string;
   size?: number;
   slug?: string;
@@ -2300,11 +2344,15 @@ export const api = {
       if (params?.limit !== undefined) queryParams.limit = String(params.limit);
       const query = new URLSearchParams(queryParams).toString();
       const raw = await fetcher<Omit<CuratedCollectionDetail, 'items'> & {
-        items: { place: number; book: RawBookListItem }[];
+        items: { place: number; movement?: CollectionMovement | null; book: RawBookListItem }[];
       }>(`/api/v1/collections/${encodeURIComponent(slug)}${query ? `?${query}` : ''}`);
       return {
         ...raw,
-        items: raw.items.map((it) => ({ place: it.place, book: normalizeBookListItem(it.book) })),
+        items: raw.items.map((it) => ({
+          place: it.place,
+          movement: it.movement ?? null,
+          book: normalizeBookListItem(it.book),
+        })),
       } as CuratedCollectionDetail;
     },
   },
@@ -2649,6 +2697,11 @@ export const api = {
         }),
       remove: (id: string) =>
         fetcher<{ status: string }>(`/api/v1/admin/collections/${id}`, { method: 'DELETE' }),
+      // Recomputes an automatic collection now. Errors: 404, 422 collection is not automatic.
+      recompute: (id: string) =>
+        fetcher<AdminCuratedCollectionDetail>(`/api/v1/admin/collections/${id}/recompute`, {
+          method: 'POST',
+        }),
       // Errors: 404 book/collection, 409 book already in collection,
       // 422 book is rejected / collection is full.
       addBook: (id: string, bookId: string, position?: number) =>

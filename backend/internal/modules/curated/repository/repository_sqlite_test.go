@@ -19,8 +19,11 @@ CREATE TABLE authors (id TEXT PRIMARY KEY, name TEXT, slug TEXT, status TEXT);
 CREATE TABLE genres (id TEXT PRIMARY KEY, name TEXT, slug TEXT, status TEXT);
 CREATE TABLE book_authors (book_id TEXT NOT NULL, author_id TEXT NOT NULL);
 CREATE TABLE book_genres (book_id TEXT NOT NULL, genre_id TEXT NOT NULL);
-CREATE TABLE curated_collections (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'manual', size INTEGER NOT NULL, source TEXT, source_url TEXT, genre_id TEXT, is_published BOOLEAN NOT NULL DEFAULT 0, published_at DATETIME, created_at DATETIME, updated_at DATETIME);
-CREATE TABLE curated_collection_items (collection_id TEXT NOT NULL, book_id TEXT NOT NULL, position INTEGER NOT NULL, added_at DATETIME, PRIMARY KEY (collection_id, book_id));
+CREATE TABLE curated_collections (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'manual', size INTEGER NOT NULL, source TEXT, source_url TEXT, genre_id TEXT, is_published BOOLEAN NOT NULL DEFAULT 0, published_at DATETIME, rule_metric TEXT, rule_period_days INTEGER, rule_min_ratings INTEGER, rule_confidence INTEGER, computed_at DATETIME, baseline_at DATETIME, created_at DATETIME, updated_at DATETIME);
+CREATE TABLE curated_collection_items (collection_id TEXT NOT NULL, book_id TEXT NOT NULL, position INTEGER NOT NULL, added_at DATETIME, previous_position INTEGER, score REAL, PRIMARY KEY (collection_id, book_id));
+CREATE TABLE ratings (id TEXT PRIMARY KEY, book_id TEXT NOT NULL, user_id TEXT NOT NULL, value INTEGER NOT NULL, created_at DATETIME, updated_at DATETIME);
+CREATE TABLE shelves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT, type TEXT NOT NULL DEFAULT 'custom');
+CREATE TABLE shelf_items (shelf_id TEXT NOT NULL, book_id TEXT NOT NULL, added_at DATETIME, PRIMARY KEY (shelf_id, book_id));
 `
 
 func newRepo(t *testing.T) (*GormRepository, *gorm.DB) {
@@ -177,11 +180,11 @@ func TestPublishedPage_GlobalPlacesAndHidden(t *testing.T) {
 		}
 	}
 	books, err := r.PublishedPage(ctx, c.ID, 10, 0)
-	if err != nil || len(books) != 3 || books[0].ID != a || books[1].ID != cc || books[2].ID != d {
+	if err != nil || len(books) != 3 || books[0].Book.ID != a || books[1].Book.ID != cc || books[2].Book.ID != d {
 		t.Fatalf("page: %v %v", err, books)
 	}
 	page2, _ := r.PublishedPage(ctx, c.ID, 1, 1)
-	if len(page2) != 1 || page2[0].ID != cc {
+	if len(page2) != 1 || page2[0].Book.ID != cc {
 		t.Fatal("offset page")
 	}
 	counts, _ := r.Counts(ctx, []uuid.UUID{c.ID})

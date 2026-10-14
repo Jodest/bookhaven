@@ -23,8 +23,11 @@ func TestCuratedRoutes_RoleBearerAndPublic(t *testing.T) {
 	}
 	if err := db.Exec(`
 CREATE TABLE genres (id TEXT PRIMARY KEY, name TEXT, slug TEXT, status TEXT, merged_into_id TEXT);
-CREATE TABLE curated_collections (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'manual', size INTEGER NOT NULL, source TEXT, source_url TEXT, genre_id TEXT, is_published BOOLEAN NOT NULL DEFAULT 0, published_at DATETIME, created_at DATETIME, updated_at DATETIME);
-CREATE TABLE curated_collection_items (collection_id TEXT NOT NULL, book_id TEXT NOT NULL, position INTEGER NOT NULL, added_at DATETIME, PRIMARY KEY (collection_id, book_id));
+CREATE TABLE curated_collections (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'manual', size INTEGER NOT NULL, source TEXT, source_url TEXT, genre_id TEXT, is_published BOOLEAN NOT NULL DEFAULT 0, published_at DATETIME, rule_metric TEXT, rule_period_days INTEGER, rule_min_ratings INTEGER, rule_confidence INTEGER, computed_at DATETIME, baseline_at DATETIME, created_at DATETIME, updated_at DATETIME);
+CREATE TABLE curated_collection_items (collection_id TEXT NOT NULL, book_id TEXT NOT NULL, position INTEGER NOT NULL, added_at DATETIME, previous_position INTEGER, score REAL, PRIMARY KEY (collection_id, book_id));
+CREATE TABLE ratings (id TEXT PRIMARY KEY, book_id TEXT NOT NULL, user_id TEXT NOT NULL, value INTEGER NOT NULL, created_at DATETIME, updated_at DATETIME);
+CREATE TABLE shelves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT, type TEXT NOT NULL DEFAULT 'custom');
+CREATE TABLE shelf_items (shelf_id TEXT NOT NULL, book_id TEXT NOT NULL, added_at DATETIME, PRIMARY KEY (shelf_id, book_id));
 CREATE TABLE books (id TEXT PRIMARY KEY, status TEXT);`).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -57,6 +60,7 @@ CREATE TABLE books (id TEXT PRIMARY KEY, status TEXT);`).Error; err != nil {
 		{http.MethodGet, base + "/" + id, ""},
 		{http.MethodPatch, base + "/" + id, `{}`},
 		{http.MethodDelete, base + "/" + id, ""},
+		{http.MethodPost, base + "/" + id + "/recompute", ""},
 		{http.MethodPost, base + "/" + id + "/books", `{"book_id":"` + book + `"}`},
 		{http.MethodPost, base + "/" + id + "/books/paste/preview", `{"text":"Мать"}`},
 		{http.MethodPost, base + "/" + id + "/books/bulk", `{"book_ids":["` + book + `"]}`},

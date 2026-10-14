@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, buttonVariants, cn } from '@bookhaven/ui';
-import { adminCollectionsApi, COLLECTIONS_QUERY_KEY, reserveWarning } from '@/entities/curated-collection';
+import { adminCollectionsApi, COLLECTIONS_QUERY_KEY, KIND_LABELS, shownWarning } from '@/entities/curated-collection';
 
 export function CollectionsView() {
   const { data, isLoading, error } = useQuery({
@@ -30,6 +30,7 @@ export function CollectionsView() {
           <TableHeader>
             <TableRow>
               <TableHead>Название</TableHead>
+              <TableHead>Тип</TableHead>
               <TableHead>Статус</TableHead>
               <TableHead>Показано</TableHead>
               <TableHead>Книг</TableHead>
@@ -38,10 +39,11 @@ export function CollectionsView() {
           </TableHeader>
           <TableBody>
             {data.items.map((c) => {
-              const warning = reserveWarning(c.shown_count, c.size);
+              const warning = shownWarning(c.kind, c.shown_count, c.size);
               return (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">{c.title}</TableCell>
+                  <TableCell>{KIND_LABELS[c.kind]}</TableCell>
                   <TableCell>{c.is_published ? 'Опубликована' : 'Черновик'}</TableCell>
                   <TableCell>
                     {c.shown_count} из {c.size}

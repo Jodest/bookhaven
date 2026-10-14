@@ -1659,6 +1659,10 @@ definitions:
     type: object
   internal_modules_curated_transport_http.adminCollectionResponse:
     properties:
+      baseline_at:
+        type: string
+      computed_at:
+        type: string
       created_at:
         type: string
       description:
@@ -1673,6 +1677,8 @@ definitions:
         type: string
       published_at:
         type: string
+      rule:
+        $ref: '#/definitions/internal_modules_curated_transport_http.ruleResponse'
       size:
         type: integer
       slug:
@@ -1688,8 +1694,12 @@ definitions:
     type: object
   internal_modules_curated_transport_http.adminDetailResponse:
     properties:
+      baseline_at:
+        type: string
       books_count:
         type: integer
+      computed_at:
+        type: string
       created_at:
         type: string
       description:
@@ -1708,6 +1718,8 @@ definitions:
         type: string
       published_at:
         type: string
+      rule:
+        $ref: '#/definitions/internal_modules_curated_transport_http.ruleResponse'
       shown_count:
         type: integer
       size:
@@ -1738,10 +1750,14 @@ definitions:
     properties:
       book:
         $ref: '#/definitions/internal_modules_curated_transport_http.adminBookResponse'
+      movement:
+        $ref: '#/definitions/internal_modules_curated_transport_http.movementResponse'
       place:
         type: integer
       position:
         type: integer
+      score:
+        type: number
       state:
         type: string
     type: object
@@ -1749,6 +1765,8 @@ definitions:
     properties:
       books_count:
         type: integer
+      computed_at:
+        type: string
       id:
         type: string
       is_published:
@@ -1875,6 +1893,8 @@ definitions:
     type: object
   internal_modules_curated_transport_http.collectionSummaryResponse:
     properties:
+      computed_at:
+        type: string
       cover_urls:
         items:
           type: string
@@ -1887,6 +1907,8 @@ definitions:
         type: string
       kind:
         type: string
+      rule:
+        $ref: '#/definitions/internal_modules_curated_transport_http.ruleResponse'
       shown_count:
         type: integer
       size:
@@ -1908,6 +1930,10 @@ definitions:
         type: string
       is_published:
         type: boolean
+      kind:
+        type: string
+      rule:
+        $ref: '#/definitions/internal_modules_curated_transport_http.ruleRequest'
       size:
         type: integer
       slug:
@@ -1932,6 +1958,13 @@ definitions:
     properties:
       position:
         type: integer
+    type: object
+  internal_modules_curated_transport_http.movementResponse:
+    properties:
+      by:
+        type: integer
+      direction:
+        type: string
     type: object
   internal_modules_curated_transport_http.pasteBookResponse:
     properties:
@@ -2014,7 +2047,31 @@ definitions:
     properties:
       book:
         $ref: '#/definitions/internal_modules_curated_transport_http.bookListItemResponse'
+      movement:
+        $ref: '#/definitions/internal_modules_curated_transport_http.movementResponse'
       place:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.ruleRequest:
+    properties:
+      confidence:
+        type: integer
+      metric:
+        type: string
+      min_ratings:
+        type: integer
+      period_days:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.ruleResponse:
+    properties:
+      confidence:
+        type: integer
+      metric:
+        type: string
+      min_ratings:
+        type: integer
+      period_days:
         type: integer
     type: object
   internal_modules_curated_transport_http.updateRequest:
@@ -2027,6 +2084,10 @@ definitions:
         type: array
       is_published:
         type: boolean
+      kind:
+        type: string
+      rule:
+        $ref: '#/definitions/internal_modules_curated_transport_http.ruleRequest'
       size:
         type: integer
       slug:
@@ -4607,6 +4668,8 @@ paths:
     post:
       consumes:
       - application/json
+      description: 'kind: manual (по умолчанию) или auto; для auto обязателен rule,
+        для manual rule запрещён. Автоматическая подборка сразу получает первый снимок'
       parameters:
       - description: Данные подборки
         in: body
@@ -4702,7 +4765,9 @@ paths:
       consumes:
       - application/json
       description: Все поля необязательны; genre_id null сбрасывает жанр, пустые source/source_url
-        очищаются
+        очищаются; kind менять нельзя (400); rule заменяется целиком; смена rule,
+        жанра или размера автоматической подборки сразу пересчитывает её без базы
+        движения
       parameters:
       - description: ID подборки
         in: path
@@ -4976,6 +5041,46 @@ paths:
       security:
       - BearerAuth: []
       summary: Разобрать вставленный список книг (предпросмотр)
+      tags:
+      - admin-collections
+  /admin/collections/{id}/recompute:
+    post:
+      description: Текущий снимок становится базой движения. Для ручной подборки -
+        422, для неизвестной - 404
+      parameters:
+      - description: ID подборки
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.adminDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Пересчитать автоматическую подборку сейчас
       tags:
       - admin-collections
   /admin/dashboard:

@@ -18,6 +18,12 @@ describe('bookErrorText', () => {
     );
   });
 
+  it('maps 422 automatic collection', () => {
+    expect(bookErrorText(new ApiError(422, 'Unprocessable', 'collection is automatic'))).toBe(
+      'Книги автоматической подборки задаются правилом'
+    );
+  });
+
   it('passes other errors through', () => {
     expect(bookErrorText(new Error('boom'))).toBe('boom');
     expect(bookErrorText(undefined)).toBeUndefined();

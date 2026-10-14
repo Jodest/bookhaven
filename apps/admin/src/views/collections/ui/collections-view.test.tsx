@@ -25,8 +25,8 @@ describe('CollectionsView', () => {
   it('lists collections with status, shown count and a warning when short', async () => {
     listMock.mockResolvedValue({
       items: [
-        { id: 'c1', slug: 'a', title: 'Топ-100', kind: 'manual', size: 100, is_published: true, books_count: 102, shown_count: 98, updated_at: '' },
-        { id: 'c2', slug: 'b', title: 'Новая идея', kind: 'manual', size: 10, is_published: false, books_count: 12, shown_count: 10, updated_at: '' },
+        { id: 'c1', slug: 'a', title: 'Топ-100', kind: 'manual', size: 100, is_published: true, books_count: 102, shown_count: 98, computed_at: null, updated_at: '' },
+        { id: 'c2', slug: 'b', title: 'Новая идея', kind: 'manual', size: 10, is_published: false, books_count: 12, shown_count: 10, computed_at: null, updated_at: '' },
       ],
       total: 2,
     });
@@ -40,6 +40,23 @@ describe('CollectionsView', () => {
     expect(screen.getByLabelText('В подборке видно 98 из 100 книг — пополните резерв')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Новая подборка' })).toHaveAttribute('href', '/collections/new');
     expect(screen.getAllByRole('link', { name: 'Редактировать' })[0]).toHaveAttribute('href', '/collections/c1');
+  });
+
+  it('shows the kind and the per-kind warning', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        { id: 'c1', slug: 'a', title: 'Ручная подборка', kind: 'manual', size: 100, is_published: true, books_count: 102, shown_count: 98, computed_at: null, updated_at: '' },
+        { id: 'c2', slug: 'b', title: 'Авто подборка', kind: 'auto', size: 100, is_published: true, books_count: 40, shown_count: 40, computed_at: '2026-10-14T01:00:00Z', updated_at: '' },
+      ],
+      total: 2,
+    });
+    renderView();
+
+    await waitFor(() => expect(screen.getByText('Авто подборка')).toBeInTheDocument());
+    expect(screen.getByText('Ручная')).toBeInTheDocument();
+    expect(screen.getByText('Авто')).toBeInTheDocument();
+    expect(screen.getByLabelText('В подборке видно 98 из 100 книг — пополните резерв')).toBeInTheDocument();
+    expect(screen.getByLabelText('Правилу соответствуют только 40 из 100 книг')).toBeInTheDocument();
   });
 
   it('shows the empty state', async () => {

@@ -385,3 +385,67 @@ func TestLoad_AIDescriptions(t *testing.T) {
 		t.Errorf("blank model = %q", cfg.AIDescriptionsModel)
 	}
 }
+
+func setAutoCollectionsEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	setSMTPEnv(t, nil)
+	for _, k := range []string{"AUTO_COLLECTIONS_SCHEDULE_ENABLED", "AUTO_COLLECTIONS_SCHEDULE_CRON"} {
+		t.Setenv(k, "")
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestLoad_AutoCollectionsScheduleDefaults(t *testing.T) {
+	setAutoCollectionsEnv(t, nil)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !cfg.AutoCollectionsScheduleEnabled {
+		t.Error("auto collections schedule must be on by default")
+	}
+	if cfg.AutoCollectionsScheduleCron != "0 1 * * *" {
+		t.Errorf("AutoCollectionsScheduleCron = %q, want 0 1 * * *", cfg.AutoCollectionsScheduleCron)
+	}
+}
+
+func TestLoad_AutoCollectionsScheduleConfigured(t *testing.T) {
+	setAutoCollectionsEnv(t, map[string]string{
+		"AUTO_COLLECTIONS_SCHEDULE_ENABLED": "false",
+		"AUTO_COLLECTIONS_SCHEDULE_CRON":    " 15 2 * * 1 ",
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AutoCollectionsScheduleEnabled || cfg.AutoCollectionsScheduleCron != "15 2 * * 1" {
+		t.Errorf("unexpected config: %v %q", cfg.AutoCollectionsScheduleEnabled, cfg.AutoCollectionsScheduleCron)
+	}
+}
+
+func TestLoad_AutoCollectionsScheduleParsing(t *testing.T) {
+	cases := map[string]bool{
+		"":        true,
+		"yes":     true, // unparsable means the default (on)
+		"garbage": true,
+		"true":    true,
+		"1":       true,
+		"false":   false,
+		"0":       false,
+		"FALSE":   false,
+	}
+	for raw, want := range cases {
+		setAutoCollectionsEnv(t, map[string]string{"AUTO_COLLECTIONS_SCHEDULE_ENABLED": raw})
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.AutoCollectionsScheduleEnabled != want {
+			t.Errorf("enabled=%q: got %v, want %v", raw, cfg.AutoCollectionsScheduleEnabled, want)
+		}
+	}
+}

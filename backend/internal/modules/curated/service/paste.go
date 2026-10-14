@@ -110,8 +110,8 @@ func toPasteBooks(books []catalogDomain.Book, in map[uuid.UUID]bool) []PasteBook
 // PreviewPaste matches every pasted line against the catalog. It writes
 // nothing and never creates a book.
 func (s *Service) PreviewPaste(ctx context.Context, id uuid.UUID, text string) (*PastePreview, error) {
-	if _, err := s.repo.GetByID(ctx, id); err != nil {
-		return nil, wrapGet(err)
+	if err := s.requireManual(ctx, id); err != nil {
+		return nil, err
 	}
 	lines, err := splitPasteLines(text)
 	if err != nil {
@@ -224,8 +224,8 @@ func (s *Service) BulkAdd(ctx context.Context, id uuid.UUID, bookIDs []uuid.UUID
 	if position != nil && *position < 1 {
 		return nil, domain.ErrInvalidPosition
 	}
-	if _, err := s.repo.GetByID(ctx, id); err != nil {
-		return nil, wrapGet(err)
+	if err := s.requireManual(ctx, id); err != nil {
+		return nil, err
 	}
 	unique := make([]uuid.UUID, 0, len(bookIDs))
 	seen := make(map[uuid.UUID]bool, len(bookIDs))
