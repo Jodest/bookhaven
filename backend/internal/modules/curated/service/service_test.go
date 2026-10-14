@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -316,5 +317,51 @@ func TestDelete(t *testing.T) {
 	}
 	if err := s.Delete(ctx, c.ID); !errors.Is(err, domain.ErrCollectionNotFound) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+type countingCovers struct {
+	repository.Repository
+	covers int
+}
+
+func (c *countingCovers) Covers(ctx context.Context, id uuid.UUID, size int) ([]string, error) {
+	c.covers++
+	return c.Repository.Covers(ctx, id, size)
+}
+
+func TestListPublic_LimitSlicesBeforeCoversAndKeepsTotal(t *testing.T) {
+	_, db := setup(t)
+	cr := &countingCovers{Repository: repository.NewGormRepository(db)}
+	s := NewService(cr)
+	ctx := context.Background()
+	for i := 0; i < 5; i++ {
+		if _, err := s.Create(ctx, CreateInput{Title: fmt.Sprintf("Подборка %d", i), Size: 3, IsPublished: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, total, err := s.ListPublic(ctx, 2)
+	if err != nil || len(got) != 2 || total != 5 || cr.covers != 2 {
+		t.Fatalf("limit 2: %v n=%d total=%d covers=%d", err, len(got), total, cr.covers)
+	}
+	got, total, err = s.ListPublic(ctx, 0)
+	if err != nil || len(got) != 5 || total != 5 {
+		t.Fatalf("limit 0: %v n=%d total=%d", err, len(got), total)
+	}
+}
+
+func TestListBookPlaces_VisibilityAndEmpty(t *testing.T) {
+	s, db := setup(t)
+	ctx := context.Background()
+	pending, pub := book(t, db, "pending"), book(t, db, "published")
+	if _, err := s.ListBookPlaces(ctx, pending); !errors.Is(err, domain.ErrBookNotFound) {
+		t.Fatalf("pending: %v", err)
+	}
+	if _, err := s.ListBookPlaces(ctx, uuid.New()); !errors.Is(err, domain.ErrBookNotFound) {
+		t.Fatalf("unknown: %v", err)
+	}
+	ps, err := s.ListBookPlaces(ctx, pub)
+	if err != nil || len(ps) != 0 {
+		t.Fatalf("empty: %v %v", err, ps)
 	}
 }

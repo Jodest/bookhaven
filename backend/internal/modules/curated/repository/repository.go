@@ -39,6 +39,12 @@ type PublishedBook struct {
 	PreviousPosition *int
 }
 
+// BookPlace is the public place of a book in one published collection.
+type BookPlace struct {
+	Collection domain.Collection
+	Place      int
+}
+
 // AutoSource gives a ranking callback the per-book aggregates of a
 // collection's scope (published books, its genre, signals since the cut-off).
 type AutoSource interface {
@@ -66,6 +72,9 @@ type Repository interface {
 	Covers(ctx context.Context, id uuid.UUID, size int) ([]string, error)
 	// PublishedPage returns published books in order for limit/offset.
 	PublishedPage(ctx context.Context, id uuid.UUID, limit, offset int) ([]PublishedBook, error)
+	// BookPlaces returns the public places of a book in published
+	// collections, best place first. The numbers equal PublishedPage's order.
+	BookPlaces(ctx context.Context, bookID uuid.UUID) ([]BookPlace, error)
 	AdminItems(ctx context.Context, id uuid.UUID) ([]AdminItem, error)
 	// GetGenre and GetBook return (nil, nil) when the row does not exist.
 	GetGenre(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error)
@@ -257,6 +266,8 @@ func (r *GormRepository) Covers(ctx context.Context, id uuid.UUID, size int) ([]
 	return out, nil
 }
 
+// NOTE: BookPlaces must keep the same order as this function
+// ((position, book_id) over published books), otherwise badges and /top differ.
 func (r *GormRepository) PublishedPage(ctx context.Context, id uuid.UUID, limit, offset int) ([]PublishedBook, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -573,4 +584,51 @@ func (r *GormRepository) AddBooks(ctx context.Context, collectionID uuid.UUID, b
 		return BulkAdded{}, err
 	}
 	return res, nil
+}
+
+// BookPlaces returns the places of a book in published collections: 1 plus the
+// published books ahead of it by (position, book_id) - the same order as
+// PublishedPage, which it must mirror. Places beyond the collection size
+// (the reserve) are dropped. Best place first, then smaller size, newest, title.
+func (r *GormRepository) BookPlaces(ctx context.Context, bookID uuid.UUID) ([]BookPlace, error) {
+	type row struct {
+		ID          uuid.UUID
+		Slug        string
+		Title       string
+		Kind        string
+		Size        int
+		PublishedAt *time.Time
+		Place       int
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).Raw(`
+SELECT t.id, t.slug, t.title, t.kind, t.size, t.published_at, t.place FROM (
+  SELECT c.id, c.slug, c.title, c.kind, c.size, c.published_at,
+         1 + (SELECT COUNT(*)
+              FROM curated_collection_items j
+              JOIN books b ON b.id = j.book_id
+              WHERE j.collection_id = i.collection_id
+                AND b.status = ?
+                AND (j.position < i.position
+                     OR (j.position = i.position AND j.book_id < i.book_id))) AS place
+  FROM curated_collection_items i
+  JOIN curated_collections c ON c.id = i.collection_id
+  WHERE i.book_id = ? AND c.is_published = ?
+) t
+WHERE t.place <= t.size
+ORDER BY t.place ASC, t.size ASC, t.published_at DESC, t.title ASC`,
+		catalogDomain.BookStatusPublished, bookID, true).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]BookPlace, len(rows))
+	for i, rw := range rows {
+		out[i] = BookPlace{
+			Collection: domain.Collection{
+				ID: rw.ID, Slug: rw.Slug, Title: rw.Title, Kind: rw.Kind, Size: rw.Size, PublishedAt: rw.PublishedAt,
+			},
+			Place: rw.Place,
+		}
+	}
+	return out, nil
 }

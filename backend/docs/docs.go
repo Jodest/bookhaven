@@ -5332,6 +5332,62 @@ const docTemplate = `{
                 }
             }
         },
+        "/books/{id}/collections": {
+            "get": {
+                "description": "Доступно без авторизации. Места совпадают с /collections/{slug}; резерв не учитывается. Неизвестная или неопубликованная книга - 404",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "collections"
+                ],
+                "summary": "Места книги в подборках",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_curated_transport_http.bookPlacesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/books/{id}/ratings": {
             "post": {
                 "security": [
@@ -5763,6 +5819,14 @@ const docTemplate = `{
                     "collections"
                 ],
                 "summary": "Список опубликованных подборок",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Сколько подборок вернуть (1-50), по умолчанию все; total - число всех опубликованных",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -10818,6 +10882,51 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.bookPlaceCollection": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.bookPlaceResponse": {
+            "type": "object",
+            "properties": {
+                "collection": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.bookPlaceCollection"
+                },
+                "place": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.bookPlacesResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_curated_transport_http.bookPlaceResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

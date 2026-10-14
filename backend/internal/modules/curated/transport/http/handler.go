@@ -338,6 +338,24 @@ func toAdminCollectionResponse(c domain.Collection) adminCollectionResponse {
 	}
 }
 
+type bookPlaceCollection struct {
+	ID    uuid.UUID `json:"id"`
+	Slug  string    `json:"slug"`
+	Title string    `json:"title"`
+	Kind  string    `json:"kind"`
+	Size  int       `json:"size"`
+}
+
+type bookPlaceResponse struct {
+	Place      int                 `json:"place"`
+	Collection bookPlaceCollection `json:"collection"`
+}
+
+type bookPlacesResponse struct {
+	Items []bookPlaceResponse `json:"items"`
+	Total int                 `json:"total"`
+}
+
 func errJSON(c echo.Context, code int, msg string) error {
 	return c.JSON(code, map[string]string{"error": msg})
 }
@@ -383,11 +401,13 @@ func mapError(c echo.Context, err error, fallback string) error {
 // @Description Доступно без авторизации. Сначала новые по дате первой публикации
 // @Tags collections
 // @Produce json
+// @Param limit query int false "Сколько подборок вернуть (1-50), по умолчанию все; total - число всех опубликованных"
 // @Success 200 {object} collectionIndexResponse
 // @Failure 500 {object} map[string]string
 // @Router /collections [get]
 func (h *Handler) ListPublic(c echo.Context) error {
-	list, err := h.service.ListPublic(c.Request().Context())
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	list, total, err := h.service.ListPublic(c.Request().Context(), limit)
 	if err != nil {
 		return mapError(c, err, "failed to list collections")
 	}
@@ -395,7 +415,40 @@ func (h *Handler) ListPublic(c echo.Context) error {
 	for _, s := range list {
 		items = append(items, toSummaryResponse(s))
 	}
-	return c.JSON(http.StatusOK, collectionIndexResponse{Items: items, Total: len(items)})
+	return c.JSON(http.StatusOK, collectionIndexResponse{Items: items, Total: total})
+}
+
+// ListBookPlaces godoc
+// @Summary Места книги в подборках
+// @Description Доступно без авторизации. Места совпадают с /collections/{slug}; резерв не учитывается. Неизвестная или неопубликованная книга - 404
+// @Tags collections
+// @Produce json
+// @Param id path string true "ID книги"
+// @Success 200 {object} bookPlacesResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /books/{id}/collections [get]
+func (h *Handler) ListBookPlaces(c echo.Context) error {
+	id, err := parseID(c, "id")
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid book id")
+	}
+	places, err := h.service.ListBookPlaces(c.Request().Context(), id)
+	if err != nil {
+		return mapError(c, err, "failed to get book collections")
+	}
+	items := make([]bookPlaceResponse, 0, len(places))
+	for _, p := range places {
+		items = append(items, bookPlaceResponse{
+			Place: p.Place,
+			Collection: bookPlaceCollection{
+				ID: p.Collection.ID, Slug: p.Collection.Slug, Title: p.Collection.Title,
+				Kind: p.Collection.Kind, Size: p.Collection.Size,
+			},
+		})
+	}
+	return c.JSON(http.StatusOK, bookPlacesResponse{Items: items, Total: len(items)})
 }
 
 // GetPublic godoc

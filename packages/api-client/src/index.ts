@@ -1064,6 +1064,18 @@ export interface CuratedCollection {
   computed_at: string | null;
 }
 
+/** Place of a book in a published collection (GET /books/{id}/collections). */
+export interface BookCollectionPlace {
+  place: number;
+  collection: {
+    id: string;
+    slug: string;
+    title: string;
+    kind: CuratedCollectionKind;
+    size: number;
+  };
+}
+
 export interface CuratedCollectionPlace {
   /** Global 1-based place, stable across pages. */
   place: number;
@@ -2337,7 +2349,12 @@ export const api = {
     },
   },
   collections: {
-    list: () => fetcher<{ items: CuratedCollection[]; total: number }>('/api/v1/collections'),
+    list: (params?: { limit?: number }) =>
+      fetcher<{ items: CuratedCollection[]; total: number }>(
+        params?.limit !== undefined ? `/api/v1/collections?limit=${params.limit}` : '/api/v1/collections',
+      ),
+    forBook: (bookId: string) =>
+      fetcher<{ items: BookCollectionPlace[]; total: number }>(`/api/v1/books/${bookId}/collections`),
     get: async (slug: string, params?: { page?: number; limit?: number }) => {
       const queryParams: Record<string, string> = {};
       if (params?.page !== undefined) queryParams.page = String(params.page);

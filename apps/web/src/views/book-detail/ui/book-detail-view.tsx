@@ -1,5 +1,6 @@
 import { AuthorNameLink } from '@/entities/author';
 import { booksApi } from '@/entities/book';
+import { CollectionPlaceBadges, collectionsApi } from '@/entities/curated-collection';
 import { AddToListButton } from '@/features/add-to-list';
 import { BookRating } from '@/features/rate-book';
 import { ShelveBookButtons } from '@/features/shelve-book';
@@ -20,6 +21,10 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
   if (!book) {
     notFound();
   }
+
+  // Places in curated collections (openspec collections/curated-collections);
+  // a failure only hides the badges.
+  const places = await collectionsApi.forBook(book.id).catch(() => null);
 
   // The book's own description always wins; an approved AI description
   // (openspec catalog-admin/ai-descriptions) is only a labelled fallback.
@@ -68,6 +73,10 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
                 linkClassName="text-primary hover:underline"
               />
             ))}
+          </div>
+
+          <div className="mt-4">
+            <CollectionPlaceBadges places={places?.items ?? []} />
           </div>
 
           <div className="mt-6">

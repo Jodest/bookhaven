@@ -617,25 +617,55 @@ func isDomainErr(err error) bool {
 	return false
 }
 
-// ListPublic returns published collections newest first.
-func (s *Service) ListPublic(ctx context.Context) ([]Summary, error) {
+// MaxIndexLimit caps the optional limit of the public index.
+const MaxIndexLimit = 50
+
+// ListPublic returns published collections newest first and the total number
+// of published collections. limit <= 0 means no limit; it is capped at
+// MaxIndexLimit. Summaries (one cover query each) are built only for the
+// returned collections.
+func (s *Service) ListPublic(ctx context.Context, limit int) ([]Summary, int, error) {
 	cs, err := s.repo.ListPublished(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list published: %w", err)
+		return nil, 0, fmt.Errorf("list published: %w", err)
+	}
+	total := len(cs)
+	if limit > MaxIndexLimit {
+		limit = MaxIndexLimit
+	}
+	if limit > 0 && len(cs) > limit {
+		cs = cs[:limit]
 	}
 	counts, err := s.repo.Counts(ctx, ids(cs))
 	if err != nil {
-		return nil, fmt.Errorf("count books: %w", err)
+		return nil, 0, fmt.Errorf("count books: %w", err)
 	}
 	out := make([]Summary, 0, len(cs))
 	for _, c := range cs {
 		sm, err := s.summary(ctx, c, counts[c.ID])
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, sm)
 	}
-	return out, nil
+	return out, total, nil
+}
+
+// ListBookPlaces returns the places of a published book in published
+// collections. A missing or non-published book is ErrBookNotFound.
+func (s *Service) ListBookPlaces(ctx context.Context, bookID uuid.UUID) ([]repository.BookPlace, error) {
+	b, err := s.repo.GetBook(ctx, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("get book: %w", err)
+	}
+	if b == nil || b.Status != catalogDomain.BookStatusPublished {
+		return nil, domain.ErrBookNotFound
+	}
+	places, err := s.repo.BookPlaces(ctx, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("book places: %w", err)
+	}
+	return places, nil
 }
 
 func (s *Service) summary(ctx context.Context, c domain.Collection, cn repository.Counts) (Summary, error) {
