@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/curated/domain"
@@ -24,9 +25,29 @@ type Counts struct {
 
 // AdminItem is a stored item with its book (authors preloaded).
 type AdminItem struct {
-	Position int
-	Book     catalogDomain.Book
+	Position         int
+	PreviousPosition *int
+	Score            *float64
+	Book             catalogDomain.Book
 }
+
+// PublishedBook is a published book of a collection with its stored position
+// and the position in the previous snapshot (auto collections).
+type PublishedBook struct {
+	Book             catalogDomain.Book
+	Position         int
+	PreviousPosition *int
+}
+
+// AutoSource gives a ranking callback the per-book aggregates of a
+// collection's scope (published books, its genre, signals since the cut-off).
+type AutoSource interface {
+	AutoRows(ctx context.Context, c domain.Collection, since *time.Time) ([]domain.AutoRow, error)
+}
+
+// RankFunc computes the ordered snapshot of an auto collection from the
+// source. It runs inside the Recompute transaction.
+type RankFunc func(ctx context.Context, c domain.Collection, src AutoSource) ([]domain.ScoredBook, error)
 
 // Repository defines persistence for curated collections.
 type Repository interface {
@@ -44,7 +65,7 @@ type Repository interface {
 	// Covers returns the non-null covers of the first CoverSample placed books.
 	Covers(ctx context.Context, id uuid.UUID, size int) ([]string, error)
 	// PublishedPage returns published books in order for limit/offset.
-	PublishedPage(ctx context.Context, id uuid.UUID, limit, offset int) ([]catalogDomain.Book, error)
+	PublishedPage(ctx context.Context, id uuid.UUID, limit, offset int) ([]PublishedBook, error)
 	AdminItems(ctx context.Context, id uuid.UUID) ([]AdminItem, error)
 	// GetGenre and GetBook return (nil, nil) when the row does not exist.
 	GetGenre(ctx context.Context, id uuid.UUID) (*catalogDomain.Genre, error)
@@ -68,6 +89,15 @@ type Repository interface {
 	// remaining books exceed the free places nothing is written and
 	// ErrCollectionFull is returned.
 	AddBooks(ctx context.Context, collectionID uuid.UUID, bookIDs []uuid.UUID, position *int) (BulkAdded, error)
+	// AutoCollectionIDs returns the ids of every auto collection.
+	AutoCollectionIDs(ctx context.Context) ([]uuid.UUID, error)
+	// Recompute replaces the snapshot of an auto collection in one
+	// transaction holding the row lock: it re-reads the collection (so the
+	// rule is the one saved at that moment), ranks it through rank, keeps the
+	// current positions as previous_position unless reset, writes the items
+	// and sets computed_at/baseline_at. A failure leaves the old snapshot.
+	// A manual collection returns ErrNotAutomatic.
+	Recompute(ctx context.Context, id uuid.UUID, reset bool, now time.Time, rank RankFunc) error
 }
 
 // AddedBook is a book inserted by AddBooks with its final position.
@@ -116,7 +146,9 @@ func (r *GormRepository) Create(ctx context.Context, c *domain.Collection) error
 }
 
 func (r *GormRepository) Update(ctx context.Context, c *domain.Collection) error {
-	err := r.db.WithContext(ctx).Omit("Genre").Save(c).Error
+	// computed_at/baseline_at belong to Recompute; a stale copy must not
+	// overwrite a snapshot written meanwhile.
+	err := r.db.WithContext(ctx).Omit("Genre", "ComputedAt", "BaselineAt").Save(c).Error
 	if IsUniqueViolation(err) {
 		return domain.ErrSlugTaken
 	}
@@ -225,11 +257,11 @@ func (r *GormRepository) Covers(ctx context.Context, id uuid.UUID, size int) ([]
 	return out, nil
 }
 
-func (r *GormRepository) PublishedPage(ctx context.Context, id uuid.UUID, limit, offset int) ([]catalogDomain.Book, error) {
-	var books []catalogDomain.Book
+func (r *GormRepository) PublishedPage(ctx context.Context, id uuid.UUID, limit, offset int) ([]PublishedBook, error) {
 	if limit <= 0 {
-		return books, nil
+		return nil, nil
 	}
+	var books []catalogDomain.Book
 	err := r.db.WithContext(ctx).Model(&catalogDomain.Book{}).
 		Joins("JOIN curated_collection_items i ON i.book_id = books.id").
 		Where("i.collection_id = ? AND books.status = ?", id, catalogDomain.BookStatusPublished).
@@ -237,7 +269,28 @@ func (r *GormRepository) PublishedPage(ctx context.Context, id uuid.UUID, limit,
 		Limit(limit).Offset(offset).
 		Preload("Authors").Preload("Genres").
 		Find(&books).Error
-	return books, err
+	if err != nil || len(books) == 0 {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, len(books))
+	for i, b := range books {
+		ids[i] = b.ID
+	}
+	var items []domain.CollectionItem
+	if err := r.db.WithContext(ctx).Select("book_id", "position", "previous_position").
+		Where("collection_id = ? AND book_id IN ?", id, ids).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	byBook := make(map[uuid.UUID]domain.CollectionItem, len(items))
+	for _, it := range items {
+		byBook[it.BookID] = it
+	}
+	out := make([]PublishedBook, len(books))
+	for i, b := range books {
+		it := byBook[b.ID]
+		out[i] = PublishedBook{Book: b, Position: it.Position, PreviousPosition: it.PreviousPosition}
+	}
+	return out, nil
 }
 
 func (r *GormRepository) AdminItems(ctx context.Context, id uuid.UUID) ([]AdminItem, error) {
@@ -264,7 +317,7 @@ func (r *GormRepository) AdminItems(ctx context.Context, id uuid.UUID) ([]AdminI
 	out := make([]AdminItem, 0, len(items))
 	for _, it := range items {
 		if b, ok := byID[it.BookID]; ok {
-			out = append(out, AdminItem{Position: it.Position, Book: b})
+			out = append(out, AdminItem{Position: it.Position, PreviousPosition: it.PreviousPosition, Score: it.Score, Book: b})
 		}
 	}
 	return out, nil
@@ -292,15 +345,29 @@ func (r *GormRepository) GetBook(ctx context.Context, id uuid.UUID) (*catalogDom
 	return &b, nil
 }
 
-// lock takes the collection row lock inside tx, serialising item edits.
-func lock(tx *gorm.DB, collectionID uuid.UUID) error {
+// lock takes the collection row lock inside tx, serialising item edits and
+// snapshot writes. It returns the collection kind.
+func lock(tx *gorm.DB, collectionID uuid.UUID) (string, error) {
 	var c domain.Collection
 	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Select("id").Where("id = ?", collectionID).First(&c).Error
+		Select("id", "kind").Where("id = ?", collectionID).First(&c).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return domain.ErrCollectionNotFound
+		return "", domain.ErrCollectionNotFound
 	}
-	return err
+	return c.Kind, err
+}
+
+// lockManual is lock for the manual book-list writes: an automatic
+// collection's items are a snapshot and must not be edited by hand.
+func lockManual(tx *gorm.DB, collectionID uuid.UUID) error {
+	kind, err := lock(tx, collectionID)
+	if err != nil {
+		return err
+	}
+	if kind == domain.KindAuto {
+		return domain.ErrCollectionAutomatic
+	}
+	return nil
 }
 
 func clamp(v, lo, hi int) int {
@@ -315,7 +382,7 @@ func clamp(v, lo, hi int) int {
 
 func (r *GormRepository) AddBook(ctx context.Context, collectionID, bookID uuid.UUID, position *int) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := lock(tx, collectionID); err != nil {
+		if err := lockManual(tx, collectionID); err != nil {
 			return err
 		}
 		var dup int64
@@ -353,7 +420,7 @@ func (r *GormRepository) AddBook(ctx context.Context, collectionID, bookID uuid.
 
 func (r *GormRepository) RemoveBook(ctx context.Context, collectionID, bookID uuid.UUID) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := lock(tx, collectionID); err != nil {
+		if err := lockManual(tx, collectionID); err != nil {
 			return err
 		}
 		var it domain.CollectionItem
@@ -375,7 +442,7 @@ func (r *GormRepository) RemoveBook(ctx context.Context, collectionID, bookID uu
 
 func (r *GormRepository) MoveBook(ctx context.Context, collectionID, bookID uuid.UUID, position int) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := lock(tx, collectionID); err != nil {
+		if err := lockManual(tx, collectionID); err != nil {
 			return err
 		}
 		var it domain.CollectionItem
@@ -450,7 +517,7 @@ func (r *GormRepository) AddBooks(ctx context.Context, collectionID uuid.UUID, b
 	var res BulkAdded
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res = BulkAdded{}
-		if err := lock(tx, collectionID); err != nil {
+		if err := lockManual(tx, collectionID); err != nil {
 			return err
 		}
 		var present []uuid.UUID

@@ -33,6 +33,17 @@
 // and its "scheduled job already queued" check are a defense in depth only.
 // When disabled, neither the tick schedule nor its server is set up.
 //
+// Automatic curated collections (AUTO_COLLECTIONS_SCHEDULE_ENABLED, on by
+// default; see internal/modules/curated): the scheduler enqueues a
+// curated:recompute_auto task on AUTO_COLLECTIONS_SCHEDULE_CRON (UTC, 01:00
+// by default) that recomputes the stored snapshot of every automatic
+// collection from ratings and reading-status shelves. It runs on its own
+// small server (queue curated, Concurrency 1) and makes no external calls.
+// A failing collection keeps its old snapshot and does not stop the others.
+// Like the other schedules this assumes a single worker replica. When
+// disabled, neither the schedule nor its server is set up and automatic
+// collections change only through admin actions.
+//
 // AI pre-moderation (AI_MODERATION_ENABLED and ANTHROPIC_API_KEY, off by
 // default; see internal/modules/aimoderation): the scheduler enqueues an
 // ai_moderation:sweep on AI_MODERATION_CRON (UTC, every 30 minutes by
@@ -81,6 +92,8 @@ import (
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
+	curatedrepository "github.com/bookhaven/backend/internal/modules/curated/repository"
+	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/bookhaven/backend/internal/pkg/llm"
@@ -181,6 +194,7 @@ func main() {
 		harvestClient    *asynq.Client
 		harvestInspector *asynq.Inspector
 		scheduleSrv      *asynq.Server
+		curatedSrv       *asynq.Server
 		aiSrv            *asynq.Server
 		curatorSrv       *asynq.Server
 		descSrv          *asynq.Server
@@ -191,6 +205,9 @@ func main() {
 		}
 		if curatorSrv != nil {
 			curatorSrv.Shutdown()
+		}
+		if curatedSrv != nil {
+			curatedSrv.Shutdown()
 		}
 		if aiSrv != nil {
 			aiSrv.Shutdown()
@@ -225,6 +242,24 @@ func main() {
 		}
 	} else {
 		logger.Info("scheduled harvest disabled")
+	}
+
+	// Automatic collections: the nightly snapshot recompute.
+	if cfg.AutoCollectionsScheduleEnabled {
+		recompute := curatedservice.NewRecomputeAutoJob(
+			curatedservice.NewService(curatedrepository.NewGormRepository(db)).WithLogger(logger))
+
+		curatedMux := asynq.NewServeMux()
+		curatedMux.HandleFunc(curatedservice.TaskTypeRecomputeAuto, recompute.HandleTask)
+
+		curatedSrv = asynq.NewServer(redisOpt, curatedServerConfig(zapAsynqLogger{logger}))
+		if err := curatedSrv.Start(curatedMux); err != nil {
+			curatedSrv = nil
+			shutdownServers()
+			logger.Fatal("failed to start curated collections asynq server", zap.Error(err))
+		}
+	} else {
+		logger.Info("scheduled auto collections recompute disabled")
 	}
 
 	// AI pre-moderation: only when switched on and a key is set.
@@ -330,6 +365,12 @@ func main() {
 			zap.Int("batch", cfg.HarvestScheduleBatch),
 			zap.String("location", "UTC"))
 	}
+	if cfg.AutoCollectionsScheduleEnabled {
+		logger.Info("scheduled auto collections recompute enabled",
+			zap.String("task", curatedservice.TaskTypeRecomputeAuto),
+			zap.String("cron", cfg.AutoCollectionsScheduleCron),
+			zap.String("location", "UTC"))
+	}
 	if cfg.AIModerationActive() {
 		// Never log the API key.
 		logger.Info("AI moderation enabled",
@@ -368,6 +409,18 @@ func scheduleServerConfig(logger asynq.Logger) asynq.Config {
 	return asynq.Config{
 		Queues: map[string]int{
 			harvestservice.ScheduleQueueName: 1,
+		},
+		Concurrency: 1,
+		Logger:      logger,
+	}
+}
+
+// curatedServerConfig is the config of the automatic collections server (its
+// own queue, Concurrency 1: one recompute at a time).
+func curatedServerConfig(logger asynq.Logger) asynq.Config {
+	return asynq.Config{
+		Queues: map[string]int{
+			curatedservice.QueueName: 1,
 		},
 		Concurrency: 1,
 		Logger:      logger,
@@ -422,7 +475,9 @@ type scheduleRegistrar interface {
 
 // registerSchedules registers all periodic tasks: the similarity recompute
 // always, the scheduled-harvest tick only when cfg enables it (on
-// cfg.HarvestScheduleCron) and the AI moderation sweep only when
+// cfg.HarvestScheduleCron), the automatic collections recompute only when
+// cfg.AutoCollectionsScheduleEnabled (on cfg.AutoCollectionsScheduleCron) and
+// the AI moderation sweep only when
 // cfg.AIModerationActive() (on cfg.AIModerationCron); an invalid spec
 // fails here.
 func registerSchedules(s scheduleRegistrar, cfg *config.Config) error {
@@ -439,6 +494,13 @@ func registerSchedules(s scheduleRegistrar, cfg *config.Config) error {
 			harvestservice.NewScheduleTickTask(),
 			harvestservice.ScheduleTickOptions()...); err != nil {
 			return fmt.Errorf("register scheduled harvest (%q): %w", cfg.HarvestScheduleCron, err)
+		}
+	}
+	if cfg.AutoCollectionsScheduleEnabled {
+		if _, err := s.Register(cfg.AutoCollectionsScheduleCron,
+			curatedservice.NewRecomputeAutoTask(),
+			curatedservice.RecomputeAutoOptions()...); err != nil {
+			return fmt.Errorf("register auto collections recompute (%q): %w", cfg.AutoCollectionsScheduleCron, err)
 		}
 	}
 	if cfg.AIModerationActive() {

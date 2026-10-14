@@ -43,6 +43,12 @@ type Config struct {
 	HarvestScheduleCron    string
 	HarvestScheduleBatch   int
 
+	// Nightly recompute of automatic curated collections (worker only; see
+	// internal/modules/curated/service). On by default: only an explicit
+	// falsy AUTO_COLLECTIONS_SCHEDULE_ENABLED turns it off. The cron is UTC.
+	AutoCollectionsScheduleEnabled bool
+	AutoCollectionsScheduleCron    string
+
 	// AI pre-moderation of pending books (worker computes verdicts, API
 	// exposes trigger/status; see internal/modules/aimoderation). Active
 	// only when AI_MODERATION_ENABLED is true and ANTHROPIC_API_KEY is set
@@ -99,6 +105,10 @@ const (
 	MaxHarvestScheduleBatch     = 50
 )
 
+// DefaultAutoCollectionsScheduleCron is 01:00 UTC (04:00 MSK), before the
+// 03:30 UTC similarity job.
+const DefaultAutoCollectionsScheduleCron = "0 1 * * *"
+
 // AI moderation defaults and bounds.
 const (
 	DefaultAIModerationModel = "claude-haiku-5-5"
@@ -143,6 +153,9 @@ func Load() (*Config, error) {
 	cfg.HarvestScheduleEnabled = parseBoolEnv("HARVEST_SCHEDULE_ENABLED")
 	cfg.HarvestScheduleCron = strings.TrimSpace(getEnv("HARVEST_SCHEDULE_CRON", DefaultHarvestScheduleCron))
 	cfg.HarvestScheduleBatch = parseHarvestScheduleBatch(getEnv("HARVEST_SCHEDULE_BATCH", ""))
+
+	cfg.AutoCollectionsScheduleEnabled = parseBoolEnvDefaultTrue("AUTO_COLLECTIONS_SCHEDULE_ENABLED")
+	cfg.AutoCollectionsScheduleCron = strings.TrimSpace(getEnv("AUTO_COLLECTIONS_SCHEDULE_CRON", DefaultAutoCollectionsScheduleCron))
 
 	cfg.AIModerationEnabled = parseBoolEnv("AI_MODERATION_ENABLED")
 	cfg.AnthropicAPIKey = strings.TrimSpace(getEnv("ANTHROPIC_API_KEY", ""))
@@ -209,6 +222,13 @@ func getEnv(key, defaultValue string) string {
 func parseBoolEnv(key string) bool {
 	v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(key)))
 	return err == nil && v
+}
+
+// parseBoolEnvDefaultTrue reads a boolean env var; unset or unparsable means
+// true, only an explicit falsy value gives false.
+func parseBoolEnvDefaultTrue(key string) bool {
+	v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(key)))
+	return err != nil || v
 }
 
 // parseHarvestScheduleBatch parses HARVEST_SCHEDULE_BATCH: a non-integer

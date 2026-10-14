@@ -54,6 +54,18 @@ type bookListItemResponse struct {
 	Genres        []genreResponse  `json:"genres"`
 }
 
+type ruleResponse struct {
+	Metric     string `json:"metric"`
+	PeriodDays *int   `json:"period_days"`
+	MinRatings *int   `json:"min_ratings"`
+	Confidence *int   `json:"confidence"`
+}
+
+type movementResponse struct {
+	Direction string `json:"direction"`
+	By        int    `json:"by"`
+}
+
 type collectionSummaryResponse struct {
 	ID          string         `json:"id"`
 	Slug        string         `json:"slug"`
@@ -66,6 +78,8 @@ type collectionSummaryResponse struct {
 	SourceURL   *string        `json:"source_url"`
 	Genre       *genreResponse `json:"genre"`
 	CoverURLs   []string       `json:"cover_urls"`
+	Rule        *ruleResponse  `json:"rule"`
+	ComputedAt  *time.Time     `json:"computed_at"`
 }
 
 type collectionIndexResponse struct {
@@ -74,8 +88,9 @@ type collectionIndexResponse struct {
 }
 
 type placedBookResponse struct {
-	Place int                  `json:"place"`
-	Book  bookListItemResponse `json:"book"`
+	Place    int                  `json:"place"`
+	Movement *movementResponse    `json:"movement"`
+	Book     bookListItemResponse `json:"book"`
 }
 
 type collectionDetailResponse struct {
@@ -105,20 +120,24 @@ type adminCollectionResponse struct {
 	Genre       *adminGenreResponse `json:"genre"`
 	IsPublished bool                `json:"is_published"`
 	PublishedAt *time.Time          `json:"published_at"`
+	Rule        *ruleResponse       `json:"rule"`
+	ComputedAt  *time.Time          `json:"computed_at"`
+	BaselineAt  *time.Time          `json:"baseline_at"`
 	CreatedAt   time.Time           `json:"created_at"`
 	UpdatedAt   time.Time           `json:"updated_at"`
 }
 
 type adminListItemResponse struct {
-	ID          string    `json:"id"`
-	Slug        string    `json:"slug"`
-	Title       string    `json:"title"`
-	Kind        string    `json:"kind"`
-	Size        int       `json:"size"`
-	IsPublished bool      `json:"is_published"`
-	BooksCount  int       `json:"books_count"`
-	ShownCount  int       `json:"shown_count"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string     `json:"id"`
+	Slug        string     `json:"slug"`
+	Title       string     `json:"title"`
+	Kind        string     `json:"kind"`
+	Size        int        `json:"size"`
+	IsPublished bool       `json:"is_published"`
+	BooksCount  int        `json:"books_count"`
+	ShownCount  int        `json:"shown_count"`
+	ComputedAt  *time.Time `json:"computed_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 type adminListResponse struct {
@@ -144,6 +163,8 @@ type adminItemResponse struct {
 	Position int               `json:"position"`
 	Place    *int              `json:"place"`
 	State    string            `json:"state"`
+	Score    *float64          `json:"score"`
+	Movement *movementResponse `json:"movement"`
 	Book     adminBookResponse `json:"book"`
 }
 
@@ -156,20 +177,38 @@ type adminDetailResponse struct {
 
 // ---- request shapes ----
 
+type ruleRequest struct {
+	Metric     string `json:"metric"`
+	PeriodDays *int   `json:"period_days"`
+	MinRatings *int   `json:"min_ratings"`
+	Confidence *int   `json:"confidence"`
+}
+
+func (r *ruleRequest) toDomain() *domain.Rule {
+	if r == nil {
+		return nil
+	}
+	return &domain.Rule{Metric: r.Metric, PeriodDays: r.PeriodDays, MinRatings: r.MinRatings, Confidence: r.Confidence}
+}
+
 type createRequest struct {
-	Title       string  `json:"title"`
-	Size        int     `json:"size"`
-	Slug        string  `json:"slug"`
-	Description string  `json:"description"`
-	Source      string  `json:"source"`
-	SourceURL   string  `json:"source_url"`
-	GenreID     *string `json:"genre_id"`
-	IsPublished bool    `json:"is_published"`
+	Kind        string       `json:"kind"`
+	Rule        *ruleRequest `json:"rule"`
+	Title       string       `json:"title"`
+	Size        int          `json:"size"`
+	Slug        string       `json:"slug"`
+	Description string       `json:"description"`
+	Source      string       `json:"source"`
+	SourceURL   string       `json:"source_url"`
+	GenreID     *string      `json:"genre_id"`
+	IsPublished bool         `json:"is_published"`
 }
 
 // updateRequest: GenreID is raw so an explicit null (clear) differs from an
 // absent field (leave as is).
 type updateRequest struct {
+	Kind        *string         `json:"kind"`
+	Rule        *ruleRequest    `json:"rule"`
 	Title       *string         `json:"title"`
 	Size        *int            `json:"size"`
 	Slug        *string         `json:"slug"`
@@ -236,6 +275,21 @@ func toBookListItemResponse(b catalogDomain.Book) bookListItemResponse {
 	}
 }
 
+func toRuleResponse(c *domain.Collection) *ruleResponse {
+	r := domain.RuleOf(c)
+	if r == nil {
+		return nil
+	}
+	return &ruleResponse{Metric: r.Metric, PeriodDays: r.PeriodDays, MinRatings: r.MinRatings, Confidence: r.Confidence}
+}
+
+func toMovementResponse(m *domain.MovementInfo) *movementResponse {
+	if m == nil {
+		return nil
+	}
+	return &movementResponse{Direction: m.Direction, By: m.By}
+}
+
 func toSummaryResponse(s service.Summary) collectionSummaryResponse {
 	c := s.Collection
 	var genre *genreResponse
@@ -252,7 +306,23 @@ func toSummaryResponse(s service.Summary) collectionSummaryResponse {
 		ID: c.ID.String(), Slug: c.Slug, Title: c.Title, Description: c.Description,
 		Kind: c.Kind, Size: c.Size, ShownCount: s.ShownCount, Source: c.Source,
 		SourceURL: c.SourceURL, Genre: genre, CoverURLs: covers,
+		Rule: toRuleResponse(&c), ComputedAt: computedAt(c),
 	}
+}
+
+// computedAt is the snapshot time of an automatic collection, else null.
+func computedAt(c domain.Collection) *time.Time {
+	if !c.IsAuto() {
+		return nil
+	}
+	return c.ComputedAt
+}
+
+func baselineAt(c domain.Collection) *time.Time {
+	if !c.IsAuto() {
+		return nil
+	}
+	return c.BaselineAt
 }
 
 func toAdminCollectionResponse(c domain.Collection) adminCollectionResponse {
@@ -264,6 +334,7 @@ func toAdminCollectionResponse(c domain.Collection) adminCollectionResponse {
 		ID: c.ID.String(), Slug: c.Slug, Title: c.Title, Description: c.Description,
 		Kind: c.Kind, Size: c.Size, Source: c.Source, SourceURL: c.SourceURL, Genre: genre,
 		IsPublished: c.IsPublished, PublishedAt: c.PublishedAt, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		Rule: toRuleResponse(&c), ComputedAt: computedAt(c), BaselineAt: baselineAt(c),
 	}
 }
 
@@ -295,6 +366,10 @@ func mapError(c echo.Context, err error, fallback string) error {
 		return errJSON(c, http.StatusUnprocessableEntity, "book is rejected")
 	case errors.Is(err, domain.ErrTooManyLines):
 		return errJSON(c, http.StatusUnprocessableEntity, "too many lines (max 500)")
+	case errors.Is(err, domain.ErrCollectionAutomatic):
+		return errJSON(c, http.StatusUnprocessableEntity, "collection is automatic")
+	case errors.Is(err, domain.ErrNotAutomatic):
+		return errJSON(c, http.StatusUnprocessableEntity, "collection is not automatic")
 	case errors.Is(err, domain.ErrCollectionFull):
 		return errJSON(c, http.StatusUnprocessableEntity, "collection is full")
 	}
@@ -344,7 +419,7 @@ func (h *Handler) GetPublic(c echo.Context) error {
 	}
 	items := make([]placedBookResponse, 0, len(res.Items))
 	for _, it := range res.Items {
-		items = append(items, placedBookResponse{Place: it.Place, Book: toBookListItemResponse(it.Book)})
+		items = append(items, placedBookResponse{Place: it.Place, Movement: toMovementResponse(it.Movement), Book: toBookListItemResponse(it.Book)})
 	}
 	return c.JSON(http.StatusOK, collectionDetailResponse{
 		Collection: toSummaryResponse(res.Summary), Items: items, Total: res.Total, Page: res.Page, Limit: res.Limit,
@@ -375,7 +450,7 @@ func (h *Handler) AdminList(c echo.Context) error {
 		col := it.Collection
 		items = append(items, adminListItemResponse{
 			ID: col.ID.String(), Slug: col.Slug, Title: col.Title, Kind: col.Kind, Size: col.Size,
-			IsPublished: col.IsPublished, BooksCount: it.BooksCount, ShownCount: it.ShownCount, UpdatedAt: col.UpdatedAt,
+			IsPublished: col.IsPublished, BooksCount: it.BooksCount, ShownCount: it.ShownCount, ComputedAt: computedAt(col), UpdatedAt: col.UpdatedAt,
 		})
 	}
 	return c.JSON(http.StatusOK, adminListResponse{Items: items, Total: len(items)})
@@ -387,6 +462,7 @@ func (h *Handler) AdminList(c echo.Context) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Description kind: manual (по умолчанию) или auto; для auto обязателен rule, для manual rule запрещён. Автоматическая подборка сразу получает первый снимок
 // @Param body body createRequest true "Данные подборки"
 // @Success 201 {object} adminCollectionResponse
 // @Failure 400 {object} map[string]string
@@ -400,6 +476,7 @@ func (h *Handler) AdminCreate(c echo.Context) error {
 	in := service.CreateInput{
 		Title: req.Title, Size: req.Size, Slug: req.Slug, Description: req.Description,
 		Source: req.Source, SourceURL: req.SourceURL, IsPublished: req.IsPublished,
+		Kind: req.Kind, Rule: req.Rule.toDomain(),
 	}
 	if req.GenreID != nil && *req.GenreID != "" {
 		gid, err := uuid.Parse(*req.GenreID)
@@ -434,6 +511,34 @@ func (h *Handler) AdminGet(c echo.Context) error {
 	if err != nil {
 		return mapError(c, err, "failed to get collection")
 	}
+	return c.JSON(http.StatusOK, toAdminDetailResponse(d))
+}
+
+// AdminRecompute godoc
+// @Summary Пересчитать автоматическую подборку сейчас
+// @Description Текущий снимок становится базой движения. Для ручной подборки - 422, для неизвестной - 404
+// @Tags admin-collections
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID подборки"
+// @Success 200 {object} adminDetailResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Router /admin/collections/{id}/recompute [post]
+func (h *Handler) AdminRecompute(c echo.Context) error {
+	id, err := parseID(c, "id")
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid collection id")
+	}
+	d, err := h.service.Recompute(c.Request().Context(), id)
+	if err != nil {
+		return mapError(c, err, "failed to recompute collection")
+	}
+	return c.JSON(http.StatusOK, toAdminDetailResponse(d))
+}
+
+func toAdminDetailResponse(d *service.AdminDetail) adminDetailResponse {
 	items := make([]adminItemResponse, 0, len(d.Items))
 	for _, it := range d.Items {
 		authors := make([]adminAuthorResponse, 0, len(it.Book.Authors))
@@ -446,22 +551,23 @@ func (h *Handler) AdminGet(c echo.Context) error {
 			place = &p
 		}
 		items = append(items, adminItemResponse{
-			Position: it.Position, Place: place, State: it.State,
+			Position: it.Position, Place: place, State: it.State, Score: it.Score,
+			Movement: toMovementResponse(it.Movement),
 			Book: adminBookResponse{
 				ID: it.Book.ID.String(), Title: it.Book.Title, Slug: it.Book.Slug, Status: it.Book.Status,
 				CoverURL: it.Book.CoverURL, Authors: authors,
 			},
 		})
 	}
-	return c.JSON(http.StatusOK, adminDetailResponse{
+	return adminDetailResponse{
 		adminCollectionResponse: toAdminCollectionResponse(d.Collection),
 		BooksCount:              d.BooksCount, ShownCount: d.ShownCount, Items: items,
-	})
+	}
 }
 
 // AdminUpdate godoc
 // @Summary Изменить подборку
-// @Description Все поля необязательны; genre_id null сбрасывает жанр, пустые source/source_url очищаются
+// @Description Все поля необязательны; genre_id null сбрасывает жанр, пустые source/source_url очищаются; kind менять нельзя (400); rule заменяется целиком; смена rule, жанра или размера автоматической подборки сразу пересчитывает её без базы движения
 // @Tags admin-collections
 // @Accept json
 // @Produce json
@@ -485,6 +591,7 @@ func (h *Handler) AdminUpdate(c echo.Context) error {
 	in := service.UpdateInput{
 		Title: req.Title, Size: req.Size, Slug: req.Slug, Description: req.Description,
 		Source: req.Source, SourceURL: req.SourceURL, IsPublished: req.IsPublished,
+		Kind: req.Kind, Rule: req.Rule.toDomain(),
 	}
 	if len(req.GenreID) > 0 {
 		in.GenreIDSet = true

@@ -3,12 +3,14 @@ package main
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/bookhaven/backend/internal/config"
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
+	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
 	"github.com/hibiken/asynq"
 )
@@ -219,5 +221,63 @@ func TestRegisterSchedules_NoAIDescriptionsSchedule(t *testing.T) {
 	}
 	if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
 		t.Fatalf("expected only the similarity schedule, got %d registrations", len(f.regs))
+	}
+}
+
+func TestRegisterSchedules_AutoCollectionsWhenEnabled(t *testing.T) {
+	f := &fakeRegistrar{}
+	cfg := &config.Config{AutoCollectionsScheduleEnabled: true, AutoCollectionsScheduleCron: "0 1 * * *"}
+	if err := registerSchedules(f, cfg); err != nil {
+		t.Fatalf("registerSchedules: %v", err)
+	}
+	if len(f.regs) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	}
+	r := f.regs[1]
+	if r.cronspec != "0 1 * * *" || r.task.Type() != curatedservice.TaskTypeRecomputeAuto {
+		t.Errorf("registration = %q %q", r.cronspec, r.task.Type())
+	}
+	var queue string
+	var maxRetry int
+	for _, o := range r.opts {
+		switch o.Type() {
+		case asynq.QueueOpt:
+			queue = o.Value().(string)
+		case asynq.MaxRetryOpt:
+			maxRetry = o.Value().(int)
+		}
+	}
+	if queue != "curated" || maxRetry != 1 {
+		t.Errorf("queue=%q maxRetry=%d, want curated/1", queue, maxRetry)
+	}
+}
+
+func TestRegisterSchedules_AutoCollectionsDisabled(t *testing.T) {
+	f := &fakeRegistrar{}
+	cfg := &config.Config{AutoCollectionsScheduleEnabled: false, AutoCollectionsScheduleCron: "0 1 * * *"}
+	if err := registerSchedules(f, cfg); err != nil {
+		t.Fatalf("registerSchedules: %v", err)
+	}
+	if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+		t.Fatalf("expected only the similarity schedule, got %+v", f.regs)
+	}
+}
+
+func TestRegisterSchedules_InvalidAutoCollectionsCronFails(t *testing.T) {
+	f := &fakeRegistrar{errFor: "not a cron"}
+	cfg := &config.Config{AutoCollectionsScheduleEnabled: true, AutoCollectionsScheduleCron: "not a cron"}
+	err := registerSchedules(f, cfg)
+	if err == nil || !strings.Contains(err.Error(), "not a cron") {
+		t.Fatalf("expected an error naming the cron, got %v", err)
+	}
+}
+
+func TestCuratedServerConfig(t *testing.T) {
+	c := curatedServerConfig(nil)
+	if c.Concurrency != 1 {
+		t.Errorf("Concurrency = %d, want 1", c.Concurrency)
+	}
+	if !reflect.DeepEqual(c.Queues, map[string]int{"curated": 1}) {
+		t.Errorf("Queues = %v, want map[curated:1]", c.Queues)
 	}
 }

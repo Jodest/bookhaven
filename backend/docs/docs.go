@@ -2540,6 +2540,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "kind: manual (по умолчанию) или auto; для auto обязателен rule, для manual rule запрещён. Автоматическая подборка сразу получает первый снимок",
                 "consumes": [
                     "application/json"
                 ],
@@ -2689,7 +2690,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Все поля необязательны; genre_id null сбрасывает жанр, пустые source/source_url очищаются",
+                "description": "Все поля необязательны; genre_id null сбрасывает жанр, пустые source/source_url очищаются; kind менять нельзя (400); rule заменяется целиком; смена rule, жанра или размера автоматической подборки сразу пересчитывает её без базы движения",
                 "consumes": [
                     "application/json"
                 ],
@@ -3101,6 +3102,67 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/collections/{id}/recompute": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Текущий снимок становится базой движения. Для ручной подборки - 422, для неизвестной - 404",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-collections"
+                ],
+                "summary": "Пересчитать автоматическую подборку сейчас",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID подборки",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_curated_transport_http.adminDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -10497,6 +10559,12 @@ const docTemplate = `{
         "internal_modules_curated_transport_http.adminCollectionResponse": {
             "type": "object",
             "properties": {
+                "baseline_at": {
+                    "type": "string"
+                },
+                "computed_at": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -10517,6 +10585,9 @@ const docTemplate = `{
                 },
                 "published_at": {
                     "type": "string"
+                },
+                "rule": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.ruleResponse"
                 },
                 "size": {
                     "type": "integer"
@@ -10541,8 +10612,14 @@ const docTemplate = `{
         "internal_modules_curated_transport_http.adminDetailResponse": {
             "type": "object",
             "properties": {
+                "baseline_at": {
+                    "type": "string"
+                },
                 "books_count": {
                     "type": "integer"
+                },
+                "computed_at": {
+                    "type": "string"
                 },
                 "created_at": {
                     "type": "string"
@@ -10570,6 +10647,9 @@ const docTemplate = `{
                 },
                 "published_at": {
                     "type": "string"
+                },
+                "rule": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.ruleResponse"
                 },
                 "shown_count": {
                     "type": "integer"
@@ -10617,11 +10697,17 @@ const docTemplate = `{
                 "book": {
                     "$ref": "#/definitions/internal_modules_curated_transport_http.adminBookResponse"
                 },
+                "movement": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.movementResponse"
+                },
                 "place": {
                     "type": "integer"
                 },
                 "position": {
                     "type": "integer"
+                },
+                "score": {
+                    "type": "number"
                 },
                 "state": {
                     "type": "string"
@@ -10633,6 +10719,9 @@ const docTemplate = `{
             "properties": {
                 "books_count": {
                     "type": "integer"
+                },
+                "computed_at": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
@@ -10828,6 +10917,9 @@ const docTemplate = `{
         "internal_modules_curated_transport_http.collectionSummaryResponse": {
             "type": "object",
             "properties": {
+                "computed_at": {
+                    "type": "string"
+                },
                 "cover_urls": {
                     "type": "array",
                     "items": {
@@ -10845,6 +10937,9 @@ const docTemplate = `{
                 },
                 "kind": {
                     "type": "string"
+                },
+                "rule": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.ruleResponse"
                 },
                 "shown_count": {
                     "type": "integer"
@@ -10877,6 +10972,12 @@ const docTemplate = `{
                 },
                 "is_published": {
                     "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "rule": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.ruleRequest"
                 },
                 "size": {
                     "type": "integer"
@@ -10914,6 +11015,17 @@ const docTemplate = `{
             "properties": {
                 "position": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.movementResponse": {
+            "type": "object",
+            "properties": {
+                "by": {
+                    "type": "integer"
+                },
+                "direction": {
+                    "type": "string"
                 }
             }
         },
@@ -11041,7 +11153,44 @@ const docTemplate = `{
                 "book": {
                     "$ref": "#/definitions/internal_modules_curated_transport_http.bookListItemResponse"
                 },
+                "movement": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.movementResponse"
+                },
                 "place": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.ruleRequest": {
+            "type": "object",
+            "properties": {
+                "confidence": {
+                    "type": "integer"
+                },
+                "metric": {
+                    "type": "string"
+                },
+                "min_ratings": {
+                    "type": "integer"
+                },
+                "period_days": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.ruleResponse": {
+            "type": "object",
+            "properties": {
+                "confidence": {
+                    "type": "integer"
+                },
+                "metric": {
+                    "type": "string"
+                },
+                "min_ratings": {
+                    "type": "integer"
+                },
+                "period_days": {
                     "type": "integer"
                 }
             }
@@ -11060,6 +11209,12 @@ const docTemplate = `{
                 },
                 "is_published": {
                     "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "rule": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.ruleRequest"
                 },
                 "size": {
                     "type": "integer"

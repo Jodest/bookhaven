@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
-import { adminCollectionsApi, collectionDetailKey, reserveWarning } from '@/entities/curated-collection';
+import { adminCollectionsApi, collectionDetailKey, shownWarning } from '@/entities/curated-collection';
 import { adminGenresApi } from '@/entities/genre';
 import {
   CollectionForm,
@@ -22,6 +22,7 @@ import {
 } from '@/features/manage-collection';
 import { EditPageHeader } from '@/shared/ui';
 import { CollectionBooks } from '@/widgets/collection-books';
+import { CollectionSnapshot } from '@/widgets/collection-snapshot';
 
 const BACK_HREF = '/collections';
 
@@ -116,7 +117,7 @@ function EditCollection() {
     );
   }
 
-  const warning = reserveWarning(collection.shown_count, collection.size);
+  const warning = shownWarning(collection.kind, collection.shown_count, collection.size);
   const mutationError = update.error ?? remove.error;
 
   return (
@@ -151,7 +152,11 @@ function EditCollection() {
         </div>
       )}
 
-      <CollectionBooks collection={collection} />
+      {collection.kind === 'auto' ? (
+        <CollectionSnapshot collection={collection} />
+      ) : (
+        <CollectionBooks collection={collection} />
+      )}
 
       <div className="border-t pt-4">
         {confirmDelete ? (

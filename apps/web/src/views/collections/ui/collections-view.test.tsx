@@ -31,6 +31,8 @@ function make(overrides: Partial<CuratedCollection> = {}): CuratedCollection {
     source_url: 'https://bbc.co.uk',
     genre: null,
     cover_urls: ['https://covers.openlibrary.org/a.jpg', 'https://covers.openlibrary.org/b.jpg'],
+    rule: null,
+    computed_at: null,
     ...overrides,
   };
 }
@@ -61,5 +63,28 @@ describe('CollectionsView (/top)', () => {
     expect(card.querySelectorAll('img')).toHaveLength(2);
     expect(screen.getByText('98 книг')).toBeInTheDocument();
     expect(screen.getByText('Источник: по версии BBC Big Read, 2003')).toBeInTheDocument();
+  });
+
+  it('lists an automatic collection like a manual one', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        make({
+          id: 'c2',
+          slug: 'best-rated',
+          title: 'Лучшее по оценкам',
+          kind: 'auto',
+          shown_count: 40,
+          source: null,
+          source_url: null,
+          rule: { metric: 'weighted_rating', period_days: null, min_ratings: 3, confidence: 10 },
+          computed_at: '2026-10-14T01:00:00Z',
+        }),
+      ],
+      total: 1,
+    });
+    renderView();
+    const card = await screen.findByRole('link', { name: /Лучшее по оценкам/ });
+    expect(card).toHaveAttribute('href', '/top/best-rated');
+    expect(screen.getByText('40 книг')).toBeInTheDocument();
   });
 });

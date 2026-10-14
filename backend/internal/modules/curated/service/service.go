@@ -15,6 +15,7 @@ import (
 	"github.com/bookhaven/backend/internal/modules/curated/repository"
 	"github.com/bookhaven/backend/internal/pkg/slug"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 const (
@@ -43,7 +44,9 @@ type Summary struct {
 // PublicItem is one ranked place.
 type PublicItem struct {
 	Place int
-	Book  catalogDomain.Book
+	// Movement is nil for manual collections and without a baseline.
+	Movement *domain.MovementInfo
+	Book     catalogDomain.Book
 }
 
 // PublicPage is a page of a published collection.
@@ -68,7 +71,10 @@ type AdminDetailItem struct {
 	// Place is 0 unless State is ranked.
 	Place int
 	State string
-	Book  catalogDomain.Book
+	// Score and Movement are set for automatic collections.
+	Score    *float64
+	Movement *domain.MovementInfo
+	Book     catalogDomain.Book
 }
 
 // AdminDetail is the admin view of a collection with every book.
@@ -82,6 +88,8 @@ type AdminDetail struct {
 // CreateInput carries the fields of a new collection.
 type CreateInput struct {
 	Title       string
+	Kind        string // "" means manual
+	Rule        *domain.Rule
 	Size        int
 	Slug        string
 	Description string
@@ -94,6 +102,8 @@ type CreateInput struct {
 // UpdateInput carries a partial update; nil means "leave as is". GenreIDSet
 // with a nil GenreID clears the genre; empty Source/SourceURL clear them.
 type UpdateInput struct {
+	Kind        *string // rejected: the kind never changes
+	Rule        *domain.Rule
 	Title       *string
 	Size        *int
 	Slug        *string
@@ -109,11 +119,20 @@ type UpdateInput struct {
 type Service struct {
 	repo repository.Repository
 	now  func() time.Time
+	log  *zap.Logger
 }
 
 // NewService creates a Service.
 func NewService(repo repository.Repository) *Service {
-	return &Service{repo: repo, now: time.Now}
+	return &Service{repo: repo, now: time.Now, log: zap.NewNop()}
+}
+
+// WithLogger sets the logger used for non-fatal recompute failures.
+func (s *Service) WithLogger(l *zap.Logger) *Service {
+	if l != nil {
+		s.log = l
+	}
+	return s
 }
 
 func (s *Service) validateTitle(t string) (string, error) {
@@ -196,8 +215,37 @@ func (s *Service) checkGenre(ctx context.Context, id *uuid.UUID) error {
 	return nil
 }
 
-// Create makes a manual collection.
+// normalizeRule validates a rule and maps a rule error to a validation error.
+func normalizeRule(r domain.Rule) (domain.Rule, error) {
+	n, err := r.Normalize()
+	if err != nil {
+		return domain.Rule{}, invalid("%s", err.Error())
+	}
+	return n, nil
+}
+
+// Create makes a manual or automatic collection. An automatic one gets its
+// first snapshot at once; a failed computation is logged, not returned.
 func (s *Service) Create(ctx context.Context, in CreateInput) (*domain.Collection, error) {
+	kind := in.Kind
+	if kind == "" {
+		kind = domain.KindManual
+	}
+	if kind != domain.KindManual && kind != domain.KindAuto {
+		return nil, invalid("kind: must be manual or auto")
+	}
+	var rule domain.Rule
+	switch {
+	case kind == domain.KindAuto && in.Rule == nil:
+		return nil, invalid("rule: required for automatic collections")
+	case kind == domain.KindManual && in.Rule != nil:
+		return nil, invalid("rule: only for automatic collections")
+	case kind == domain.KindAuto:
+		var err error
+		if rule, err = normalizeRule(*in.Rule); err != nil {
+			return nil, err
+		}
+	}
 	title, err := s.validateTitle(in.Title)
 	if err != nil {
 		return nil, err
@@ -226,9 +274,12 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*domain.Collectio
 	}
 
 	c := &domain.Collection{
-		ID: uuid.New(), Slug: sl, Title: title, Description: desc, Kind: domain.KindManual,
+		ID: uuid.New(), Slug: sl, Title: title, Description: desc, Kind: kind,
 		Size: in.Size, Source: source, SourceURL: sourceURL, GenreID: in.GenreID,
 		IsPublished: in.IsPublished,
+	}
+	if kind == domain.KindAuto {
+		c.SetRule(rule)
 	}
 	if in.IsPublished {
 		now := s.now()
@@ -240,7 +291,18 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*domain.Collectio
 		}
 		return nil, fmt.Errorf("create collection: %w", err)
 	}
+	if kind == domain.KindAuto {
+		s.recomputeLogged(ctx, c.ID)
+	}
 	return s.repo.GetByID(ctx, c.ID)
+}
+
+// recomputeLogged recomputes with a reset baseline; a failure keeps the
+// collection as it is (no or old snapshot) and is only logged.
+func (s *Service) recomputeLogged(ctx context.Context, id uuid.UUID) {
+	if err := s.recompute(ctx, id, true); err != nil {
+		s.log.Error("curated: recompute failed", zap.String("collection_id", id.String()), zap.Error(err))
+	}
 }
 
 // Update applies a partial update.
@@ -248,6 +310,21 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in UpdateInput) (*do
 	c, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, wrapGet(err)
+	}
+	if in.Kind != nil {
+		return nil, invalid("kind: cannot be changed")
+	}
+	before := domain.RuleOf(c)
+	sizeBefore, genreBefore := c.Size, c.GenreID
+	if in.Rule != nil {
+		if !c.IsAuto() {
+			return nil, invalid("rule: only for automatic collections")
+		}
+		n, err := normalizeRule(*in.Rule)
+		if err != nil {
+			return nil, err
+		}
+		c.SetRule(n)
 	}
 	if in.Title != nil {
 		t, err := s.validateTitle(*in.Title)
@@ -310,7 +387,71 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in UpdateInput) (*do
 		}
 		return nil, fmt.Errorf("update collection: %w", err)
 	}
+	if c.IsAuto() && autoInputsChanged(before, domain.RuleOf(c), sizeBefore, c.Size, genreBefore, c.GenreID) {
+		s.recomputeLogged(ctx, id)
+	}
 	return s.repo.GetByID(ctx, id)
+}
+
+func autoInputsChanged(before, after *domain.Rule, sizeBefore, sizeAfter int, genreBefore, genreAfter *uuid.UUID) bool {
+	if sizeBefore != sizeAfter {
+		return true
+	}
+	if (genreBefore == nil) != (genreAfter == nil) || (genreBefore != nil && *genreBefore != *genreAfter) {
+		return true
+	}
+	if before == nil || after == nil {
+		return before != after
+	}
+	return !before.Equal(*after)
+}
+
+// Recompute is the admin "recompute now" action: it replaces the snapshot of
+// an automatic collection, keeping the current one as the movement baseline.
+func (s *Service) Recompute(ctx context.Context, id uuid.UUID) (*AdminDetail, error) {
+	if err := s.recompute(ctx, id, false); err != nil {
+		if isDomainErr(err) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("recompute collection: %w", err)
+	}
+	return s.GetAdmin(ctx, id)
+}
+
+func (s *Service) recompute(ctx context.Context, id uuid.UUID, reset bool) error {
+	now := s.now()
+	return s.repo.Recompute(ctx, id, reset, now, func(ctx context.Context, c domain.Collection, src repository.AutoSource) ([]domain.ScoredBook, error) {
+		rule := domain.RuleOf(&c)
+		if rule == nil {
+			return nil, domain.ErrNotAutomatic
+		}
+		var since *time.Time
+		if rule.PeriodDays != nil {
+			t := now.AddDate(0, 0, -*rule.PeriodDays)
+			since = &t
+		}
+		rows, err := src.AutoRows(ctx, c, since)
+		if err != nil {
+			return nil, fmt.Errorf("aggregate: %w", err)
+		}
+		return domain.RankAuto(rows, *rule, domain.SnapshotLimit(c.Size)), nil
+	})
+}
+
+// RecomputeAll recomputes every automatic collection for the worker. A
+// collection that fails keeps its snapshot and does not stop the others; only
+// failing to list them is returned.
+func (s *Service) RecomputeAll(ctx context.Context) error {
+	ids, err := s.repo.AutoCollectionIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("list auto collections: %w", err)
+	}
+	for _, id := range ids {
+		if err := s.recompute(ctx, id, false); err != nil {
+			s.log.Error("curated: scheduled recompute failed", zap.String("collection_id", id.String()), zap.Error(err))
+		}
+	}
+	return nil
 }
 
 func wrapGet(err error) error {
@@ -380,15 +521,38 @@ func (s *Service) GetAdmin(ctx context.Context, id uuid.UUID) (*AdminDetail, err
 		}
 		d.Items = append(d.Items, AdminDetailItem{
 			Position: ranked[i].Position, Place: ranked[i].Place, State: ranked[i].State, Book: it.Book,
+			Score: it.Score, Movement: movementOf(c, it.PreviousPosition, it.Position),
 		})
 	}
 	return d, nil
 }
 
+// movementOf is the movement of a stored position; nil for manual
+// collections and for automatic ones without a baseline.
+func movementOf(c *domain.Collection, prev *int, pos int) *domain.MovementInfo {
+	if !c.IsAuto() {
+		return nil
+	}
+	return domain.Movement(c.BaselineAt != nil, prev, pos)
+}
+
+// requireManual loads the collection and rejects automatic ones: their books
+// come from the rule, never from hand edits.
+func (s *Service) requireManual(ctx context.Context, id uuid.UUID) error {
+	c, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return wrapGet(err)
+	}
+	if c.IsAuto() {
+		return domain.ErrCollectionAutomatic
+	}
+	return nil
+}
+
 // AddBook queues a catalog book (pending or published) in the collection.
 func (s *Service) AddBook(ctx context.Context, id, bookID uuid.UUID, position *int) error {
-	if _, err := s.repo.GetByID(ctx, id); err != nil {
-		return wrapGet(err)
+	if err := s.requireManual(ctx, id); err != nil {
+		return err
 	}
 	b, err := s.repo.GetBook(ctx, bookID)
 	if err != nil {
@@ -411,6 +575,9 @@ func (s *Service) AddBook(ctx context.Context, id, bookID uuid.UUID, position *i
 
 // RemoveBook removes a book from the collection.
 func (s *Service) RemoveBook(ctx context.Context, id, bookID uuid.UUID) error {
+	if err := s.requireManual(ctx, id); err != nil {
+		return err
+	}
 	if err := s.repo.RemoveBook(ctx, id, bookID); err != nil {
 		if isDomainErr(err) {
 			return err
@@ -425,6 +592,9 @@ func (s *Service) MoveBook(ctx context.Context, id, bookID uuid.UUID, position i
 	if position < 1 {
 		return domain.ErrInvalidPosition
 	}
+	if err := s.requireManual(ctx, id); err != nil {
+		return err
+	}
 	if err := s.repo.MoveBook(ctx, id, bookID, position); err != nil {
 		if isDomainErr(err) {
 			return err
@@ -438,6 +608,7 @@ func isDomainErr(err error) bool {
 	for _, e := range []error{
 		domain.ErrCollectionNotFound, domain.ErrBookNotInList, domain.ErrBookAlreadyIn,
 		domain.ErrCollectionFull, domain.ErrBookNotFound, domain.ErrBookRejected, domain.ErrTooManyLines,
+		domain.ErrCollectionAutomatic, domain.ErrNotAutomatic,
 	} {
 		if errors.Is(err, e) {
 			return true
@@ -512,7 +683,10 @@ func (s *Service) GetPublic(ctx context.Context, slugValue string, page, limit i
 		return nil, fmt.Errorf("published page: %w", err)
 	}
 	for i, b := range books {
-		res.Items = append(res.Items, PublicItem{Place: offset + i + 1, Book: b})
+		res.Items = append(res.Items, PublicItem{
+			Place: offset + i + 1, Book: b.Book,
+			Movement: movementOf(c, b.PreviousPosition, b.Position),
+		})
 	}
 	return res, nil
 }

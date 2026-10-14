@@ -35,6 +35,8 @@ function item(
     position,
     place,
     state,
+    score: null,
+    movement: null,
     book: { id, title: `Книга ${position}`, slug: `k${position}`, status, cover_url: null, authors: [{ id: 'a', name: 'Автор' }] },
   };
 }
@@ -52,6 +54,9 @@ function detail(items: AdminCuratedCollectionItem[]): AdminCuratedCollectionDeta
     genre: null,
     is_published: true,
     published_at: null,
+    rule: null,
+    computed_at: null,
+    baseline_at: null,
     created_at: '',
     updated_at: '',
     books_count: items.length,
