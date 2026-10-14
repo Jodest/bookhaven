@@ -52,6 +52,16 @@
 // names and resolves each name through the same WikidataClient (and so the
 // same rate limiter) as the harvest. Nothing is imported or published.
 // When not active, its server is not set up and the model is never called.
+//
+// AI book descriptions (AI_DESCRIPTIONS_ENABLED and the shared
+// ANTHROPIC_API_KEY, off by default; see internal/modules/aidescriptions):
+// admins queue ai_descriptions:generate (selected books) or
+// ai_descriptions:sweep (up to 200 published books without any description)
+// from the API; there is no schedule. Both run on their own server (queue
+// ai_descriptions, Concurrency 1), one paced model call per book. Results
+// are drafts in book_ai_descriptions: no book field is written and nothing
+// is published without an admin. When not active, its server is not set up
+// and the model is never called.
 package main
 
 import (
@@ -66,6 +76,8 @@ import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
 	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
+	aidescrepository "github.com/bookhaven/backend/internal/modules/aidescriptions/repository"
+	aidescservice "github.com/bookhaven/backend/internal/modules/aidescriptions/service"
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
@@ -171,8 +183,12 @@ func main() {
 		scheduleSrv      *asynq.Server
 		aiSrv            *asynq.Server
 		curatorSrv       *asynq.Server
+		descSrv          *asynq.Server
 	)
 	shutdownServers := func() {
+		if descSrv != nil {
+			descSrv.Shutdown()
+		}
 		if curatorSrv != nil {
 			curatorSrv.Shutdown()
 		}
@@ -260,6 +276,32 @@ func main() {
 			logger.Warn("AI_CURATOR_ENABLED is set but ANTHROPIC_API_KEY is empty; AI curation disabled")
 		}
 		logger.Info("AI curation disabled")
+	}
+
+	// AI descriptions: only when switched on and a key is set.
+	if cfg.AIDescriptionsActive() {
+		client := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.AIDescriptionsModel)
+		descHandlers := aidescservice.NewHandlers(aidescrepository.NewGormRepository(db), adminService, client, cfg.AIDescriptionsModel, logger)
+
+		descMux := asynq.NewServeMux()
+		descMux.HandleFunc(aidescservice.TaskTypeGenerate, descHandlers.HandleGenerate)
+		descMux.HandleFunc(aidescservice.TaskTypeSweep, descHandlers.HandleSweep)
+
+		descSrv = asynq.NewServer(redisOpt, aiDescriptionsServerConfig(zapAsynqLogger{logger}))
+		if err := descSrv.Start(descMux); err != nil {
+			descSrv = nil
+			shutdownServers()
+			logger.Fatal("failed to start AI descriptions asynq server", zap.Error(err))
+		}
+		// Never log the API key.
+		logger.Info("AI descriptions enabled",
+			zap.String("queue", aidescservice.QueueName),
+			zap.String("model", cfg.AIDescriptionsModel))
+	} else {
+		if cfg.AIDescriptionsEnabled {
+			logger.Warn("AI_DESCRIPTIONS_ENABLED is set but ANTHROPIC_API_KEY is empty; AI descriptions disabled")
+		}
+		logger.Info("AI descriptions disabled")
 	}
 
 	scheduler := asynq.NewScheduler(
@@ -350,6 +392,18 @@ func aiCuratorServerConfig(logger asynq.Logger) asynq.Config {
 	return asynq.Config{
 		Queues: map[string]int{
 			curatorservice.QueueName: 1,
+		},
+		Concurrency: 1,
+		Logger:      logger,
+	}
+}
+
+// aiDescriptionsServerConfig is the config of the AI descriptions server
+// (its own queue, Concurrency 1: one model call at a time).
+func aiDescriptionsServerConfig(logger asynq.Logger) asynq.Config {
+	return asynq.Config{
+		Queues: map[string]int{
+			aidescservice.QueueName: 1,
 		},
 		Concurrency: 1,
 		Logger:      logger,

@@ -85,6 +85,19 @@ export interface Book {
   genres: Genre[];
   createdAt: string;
   updatedAt: string;
+  /**
+   * Approved AI-generated description fallback (GET /books/:slug only;
+   * openspec catalog-admin/ai-descriptions). Set only while the book's own
+   * description is blank; null otherwise, undefined on other payloads.
+   * Render as plain text with the notice «Описание создано ИИ и может
+   * содержать неточности.».
+   */
+  aiDescription?: BookAIDescription | null;
+}
+
+export interface BookAIDescription {
+  text: string;
+  generatedAt: string;
 }
 
 export interface Author {
@@ -895,6 +908,61 @@ export interface AdminCurationRequest extends AdminCurationRequestSummary {
   candidates: AdminCurationCandidate[];
 }
 
+// AI book descriptions (/api/v1/admin/ai-descriptions, openspec capability
+// catalog-admin/ai-descriptions). Generated texts are drafts kept apart from
+// the book's own description; an admin approves or discards each one. The
+// text is display-only plain text.
+
+export type AIDescriptionStatus = 'draft' | 'approved' | 'discarded' | 'unknown' | 'failed';
+
+export type AIDescriptionErrorCode = 'model_refusal' | 'model_truncated' | 'invalid_output';
+
+export interface AdminAIDescriptionStatus {
+  /** Generation is switched on and has an API key. */
+  enabled: boolean;
+  model: string;
+  prompt_version: number;
+  /** Books an all_missing run would pick (without the cap). */
+  missing: number;
+  /** Drafts whose book still has no own description. */
+  drafts: number;
+  max_bulk: number;
+}
+
+export interface AdminAIDescription {
+  status: AIDescriptionStatus;
+  /** Display-only plain text; empty for unknown and failed. */
+  text: string;
+  error_code: AIDescriptionErrorCode | null;
+  model: string;
+  prompt_version: number;
+  generated_at: string;
+  reviewed_at: string | null;
+  edited: boolean;
+  /** Prompt version or the book's model input changed since generation. */
+  stale: boolean;
+  /** The book now has its own description (the AI one is not public). */
+  superseded: boolean;
+}
+
+export interface AdminAIDescriptionItem extends AdminAIDescription {
+  book: {
+    id: string;
+    title: string;
+    authors: string[];
+    published_year: number | null;
+    status: string;
+  };
+}
+
+export type AdminAIDescriptionGenerateInput = { book_ids: string[] } | { all_missing: true };
+
+export interface AdminAIDescriptionListParams {
+  status?: AIDescriptionStatus;
+  page?: number;
+  limit?: number;
+}
+
 // Genre import from Wikidata (docs/features/genre-wikidata-import.md).
 
 // AdminGenreExistingMarker is the "already in BookHaven" marker of a genre
@@ -1184,6 +1252,7 @@ export type PaginatedResponse<T> = {
 // Backend returns snake_case for catalog entities; normalize to the camelCase
 // Book/Author/Genre types consumed by the frontend.
 type RawBook = Book & {
+  ai_description?: { text: string; generated_at: string } | null;
   cover_url: string | null;
   published_year: number | null;
   page_count: number | null;
@@ -1273,6 +1342,9 @@ function normalizeBook(raw: RawBook): Book {
     genres: raw.genres.map(normalizeGenre),
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+    aiDescription: raw.ai_description
+      ? { text: raw.ai_description.text, generatedAt: raw.ai_description.generated_at }
+      : null,
   };
 }
 
@@ -2355,6 +2427,39 @@ export const api = {
         }),
       list: () => fetcher<{ items: AdminCurationRequestSummary[] }>('/api/v1/admin/ai-curator/requests'),
       get: (id: string) => fetcher<AdminCurationRequest>(`/api/v1/admin/ai-curator/requests/${id}`),
+    },
+    aiDescriptions: {
+      status: () => fetcher<AdminAIDescriptionStatus>('/api/v1/admin/ai-descriptions/status'),
+      // Errors: 400 bad input, 409 an all_missing run already queued, 502
+      // queueing failed, 503 AI descriptions disabled.
+      generate: (body: AdminAIDescriptionGenerateInput) =>
+        fetcher<{ task_id: string }>('/api/v1/admin/ai-descriptions/generate', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }),
+      list: (params?: AdminAIDescriptionListParams) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.status) queryParams.status = params.status;
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        return fetcher<PaginatedResponse<AdminAIDescriptionItem>>(
+          `/api/v1/admin/ai-descriptions?${new URLSearchParams(queryParams)}`
+        );
+      },
+      get: (bookId: string) =>
+        fetcher<{ ai_description: AdminAIDescription | null }>(`/api/v1/admin/ai-descriptions/${bookId}`),
+      // Errors: 404 no record, 409 not reviewable or the book already has a
+      // description, 422 invalid text.
+      approve: (bookId: string, text?: string) =>
+        fetcher<AdminAIDescriptionItem>(`/api/v1/admin/ai-descriptions/${bookId}/approve`, {
+          method: 'POST',
+          body: JSON.stringify(text === undefined ? {} : { text }),
+        }),
+      discard: (bookId: string) =>
+        fetcher<AdminAIDescriptionItem>(`/api/v1/admin/ai-descriptions/${bookId}/discard`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        }),
     },
   },
 };

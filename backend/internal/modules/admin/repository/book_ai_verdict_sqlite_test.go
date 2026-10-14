@@ -179,3 +179,30 @@ func TestLoadBooksForReview(t *testing.T) {
 		t.Fatalf("empty ids: %v %v", empty, err)
 	}
 }
+
+// AI descriptions (migration 000024) live in their own table: the verdict
+// input loader never reads them (openspec catalog-moderation/ai-verdicts,
+// "AI description is not verdict input").
+func TestLoadBooksForReview_IgnoresAIDescriptions(t *testing.T) {
+	f := newAIVerdictRepo(t)
+	ctx := context.Background()
+	if err := f.db.Exec(`CREATE TABLE book_ai_descriptions (
+		book_id TEXT PRIMARY KEY, status TEXT NOT NULL, text TEXT NOT NULL DEFAULT '',
+		model TEXT NOT NULL, prompt_version INTEGER NOT NULL, input_hash TEXT NOT NULL,
+		generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`).Error; err != nil {
+		t.Fatalf("create AI descriptions table: %v", err)
+	}
+	book := f.book("Неизвестная повесть", catalogDomain.BookStatusPending, nil, nil, false)
+	if err := f.db.Exec("INSERT INTO book_ai_descriptions (book_id, status, text, model, prompt_version, input_hash) VALUES (?, 'approved', ?, 'm', 1, 'h')",
+		book, "Повесть рассказывает о жизни в провинции.").Error; err != nil {
+		t.Fatalf("insert AI description: %v", err)
+	}
+
+	books, err := f.repo.LoadBooksForReview(ctx, []uuid.UUID{book})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(books) != 1 || books[0].Description != nil {
+		t.Fatalf("the verdict input must not see the AI description: %+v", books)
+	}
+}

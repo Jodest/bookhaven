@@ -199,3 +199,25 @@ func TestAICuratorServerConfig(t *testing.T) {
 		t.Errorf("Queues = %v, want map[ai_curator:1]", c.Queues)
 	}
 }
+
+func TestAIDescriptionsServerConfig(t *testing.T) {
+	c := aiDescriptionsServerConfig(nil)
+	if c.Concurrency != 1 {
+		t.Errorf("Concurrency = %d, want 1", c.Concurrency)
+	}
+	if !reflect.DeepEqual(c.Queues, map[string]int{"ai_descriptions": 1}) {
+		t.Errorf("Queues = %v, want map[ai_descriptions:1]", c.Queues)
+	}
+}
+
+// AI descriptions are admin-triggered only: no schedule, even when active.
+func TestRegisterSchedules_NoAIDescriptionsSchedule(t *testing.T) {
+	f := &fakeRegistrar{}
+	cfg := &config.Config{AIDescriptionsEnabled: true, AnthropicAPIKey: "sk-test"}
+	if err := registerSchedules(f, cfg); err != nil {
+		t.Fatalf("registerSchedules: %v", err)
+	}
+	if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+		t.Fatalf("expected only the similarity schedule, got %d registrations", len(f.regs))
+	}
+}
