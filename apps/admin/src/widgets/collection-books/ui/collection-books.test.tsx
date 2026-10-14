@@ -170,4 +170,16 @@ describe('CollectionBooks', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
     await waitFor(() => expect(screen.getByText('Книга уже в подборке')).toBeInTheDocument());
   });
+
+  it('toggles the paste panel behind the Вставить список button', () => {
+    renderWidget(detail(items));
+    expect(screen.queryByLabelText('Список книг')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Вставить список' }));
+    expect(screen.getByLabelText('Список книг')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Найти в каталоге' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Вставить список' }));
+    expect(screen.queryByLabelText('Список книг')).not.toBeInTheDocument();
+  });
 });

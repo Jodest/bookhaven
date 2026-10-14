@@ -437,7 +437,7 @@ func (s *Service) MoveBook(ctx context.Context, id, bookID uuid.UUID, position i
 func isDomainErr(err error) bool {
 	for _, e := range []error{
 		domain.ErrCollectionNotFound, domain.ErrBookNotInList, domain.ErrBookAlreadyIn,
-		domain.ErrCollectionFull, domain.ErrBookNotFound, domain.ErrBookRejected,
+		domain.ErrCollectionFull, domain.ErrBookNotFound, domain.ErrBookRejected, domain.ErrTooManyLines,
 	} {
 		if errors.Is(err, e) {
 			return true

@@ -1106,6 +1106,56 @@ export interface AdminCuratedCollectionDetail extends AdminCuratedCollection {
   items: AdminCuratedCollectionItem[];
 }
 
+export type PasteLineStatus =
+  | 'found'
+  | 'ambiguous'
+  | 'not_found'
+  | 'rejected'
+  | 'in_collection'
+  | 'duplicate'
+  | 'invalid';
+
+/** A catalog book in a bulk-paste preview. */
+export interface PasteBook {
+  id: string;
+  title: string;
+  slug: string;
+  status: AdminBookStatus;
+  cover_url: string | null;
+  published_year: number | null;
+  authors: { id: string; name: string }[];
+  in_collection: boolean;
+}
+
+export interface PasteLine {
+  /** 1-based line number in the pasted text (blank lines counted). */
+  line: number;
+  text: string;
+  title: string;
+  author: string | null;
+  status: PasteLineStatus;
+  /** Set for found and for a single-match in_collection. */
+  book: PasteBook | null;
+  /** Only for ambiguous and rejected lines. */
+  candidates: PasteBook[];
+  duplicate_of: number | null;
+}
+
+export interface PastePreview {
+  books_count: number;
+  free_slots: number;
+  counts: Record<PasteLineStatus, number>;
+  lines: PasteLine[];
+}
+
+export type BulkSkipReason = 'not_found' | 'rejected' | 'already_in_collection' | 'duplicate';
+
+export interface BulkAddResult {
+  added: { book_id: string; position: number }[];
+  skipped: { book_id: string; reason: BulkSkipReason }[];
+  books_count: number;
+}
+
 export interface AdminCuratedCollectionInput {
   title?: string;
   size?: number;
@@ -2609,6 +2659,18 @@ export const api = {
       removeBook: (id: string, bookId: string) =>
         fetcher<{ status: string }>(`/api/v1/admin/collections/${id}/books/${bookId}`, {
           method: 'DELETE',
+        }),
+      // Read-only. Errors: 400 text, 404 collection, 422 too many lines (max 500).
+      previewPaste: (id: string, text: string) =>
+        fetcher<PastePreview>(`/api/v1/admin/collections/${id}/books/paste/preview`, {
+          method: 'POST',
+          body: JSON.stringify({ text }),
+        }),
+      // Errors: 400 book_ids / position, 404 collection, 422 collection is full (nothing added).
+      bulkAddBooks: (id: string, bookIds: string[], position?: number) =>
+        fetcher<BulkAddResult>(`/api/v1/admin/collections/${id}/books/bulk`, {
+          method: 'POST',
+          body: JSON.stringify(position === undefined ? { book_ids: bookIds } : { book_ids: bookIds, position }),
         }),
       moveBook: (id: string, bookId: string, position: number) =>
         fetcher<{ status: string }>(`/api/v1/admin/collections/${id}/books/${bookId}/position`, {

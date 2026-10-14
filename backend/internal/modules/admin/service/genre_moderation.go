@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
+	"github.com/bookhaven/backend/internal/pkg/textnorm"
 	"github.com/google/uuid"
 )
 
@@ -190,19 +190,7 @@ func (s *Service) BulkSetGenreStatus(ctx context.Context, ids []uuid.UUID, statu
 // normalizeGenreName lowercases name, folds ё to е, turns every rune that
 // is not a letter or digit into a space, collapses spaces and trims.
 func normalizeGenreName(name string) string {
-	var b strings.Builder
-	b.Grow(len(name))
-	for _, r := range strings.ToLower(name) {
-		switch {
-		case r == 'ё':
-			b.WriteRune('е')
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(r)
-		default:
-			b.WriteRune(' ')
-		}
-	}
-	return strings.Join(strings.Fields(b.String()), " ")
+	return textnorm.Key(name)
 }
 
 // genreStem strips the longest matching suffix of genreSuffixes from a

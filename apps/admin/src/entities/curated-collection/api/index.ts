@@ -9,6 +9,8 @@ export const adminCollectionsApi = {
   addBook: api.admin.collections.addBook,
   removeBook: api.admin.collections.removeBook,
   moveBook: api.admin.collections.moveBook,
+  previewPaste: api.admin.collections.previewPaste,
+  bulkAddBooks: api.admin.collections.bulkAddBooks,
 };
 
 /** Prefix of every admin collections query (list and detail). */

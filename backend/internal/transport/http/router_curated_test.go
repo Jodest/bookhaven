@@ -58,6 +58,8 @@ CREATE TABLE books (id TEXT PRIMARY KEY, status TEXT);`).Error; err != nil {
 		{http.MethodPatch, base + "/" + id, `{}`},
 		{http.MethodDelete, base + "/" + id, ""},
 		{http.MethodPost, base + "/" + id + "/books", `{"book_id":"` + book + `"}`},
+		{http.MethodPost, base + "/" + id + "/books/paste/preview", `{"text":"Мать"}`},
+		{http.MethodPost, base + "/" + id + "/books/bulk", `{"book_ids":["` + book + `"]}`},
 		{http.MethodDelete, base + "/" + id + "/books/" + book, ""},
 		{http.MethodPut, base + "/" + id + "/books/" + book + "/position", `{"position":1}`},
 	}

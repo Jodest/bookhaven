@@ -51,6 +51,8 @@ func newEnv(t *testing.T) *env {
 	a.PATCH("/:id", h.AdminUpdate)
 	a.DELETE("/:id", h.AdminDelete)
 	a.POST("/:id/books", h.AdminAddBook)
+	a.POST("/:id/books/paste/preview", h.AdminPastePreview)
+	a.POST("/:id/books/bulk", h.AdminBulkAdd)
 	a.DELETE("/:id/books/:bookId", h.AdminRemoveBook)
 	a.PUT("/:id/books/:bookId/position", h.AdminMoveBook)
 	return &env{e: e, db: db}
