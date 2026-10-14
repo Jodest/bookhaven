@@ -54,6 +54,34 @@ type Repository interface {
 	AddBook(ctx context.Context, collectionID, bookID uuid.UUID, position *int) error
 	RemoveBook(ctx context.Context, collectionID, bookID uuid.UUID) error
 	MoveBook(ctx context.Context, collectionID, bookID uuid.UUID, position int) error
+	// TitleCandidates returns up to limit books whose title contains every
+	// word of key (a textnorm.Key), shortest titles first, authors
+	// preloaded. The caller still compares the full normalized title.
+	TitleCandidates(ctx context.Context, key string, limit int) ([]catalogDomain.Book, error)
+	// CollectionBookIDs returns the ids of the books held by the collection.
+	CollectionBookIDs(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error)
+	// BooksByIDs returns the existing books among ids (authors not loaded).
+	BooksByIDs(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Book, error)
+	// AddBooks inserts the books as one contiguous block (position nil =
+	// end, clamped) in one transaction holding the collection row lock.
+	// Books already present are skipped and returned in AlreadyIn. When the
+	// remaining books exceed the free places nothing is written and
+	// ErrCollectionFull is returned.
+	AddBooks(ctx context.Context, collectionID uuid.UUID, bookIDs []uuid.UUID, position *int) (BulkAdded, error)
+}
+
+// AddedBook is a book inserted by AddBooks with its final position.
+type AddedBook struct {
+	BookID   uuid.UUID
+	Position int
+}
+
+// BulkAdded is the outcome of AddBooks.
+type BulkAdded struct {
+	Added     []AddedBook
+	AlreadyIn []uuid.UUID
+	// Total is the number of books in the collection after the call.
+	Total int
 }
 
 // GormRepository is the GORM implementation of Repository.
@@ -380,4 +408,102 @@ func (r *GormRepository) MoveBook(ctx context.Context, collectionID, bookID uuid
 			Where("collection_id = ? AND book_id = ?", collectionID, bookID).
 			UpdateColumn("position", target).Error
 	})
+}
+
+func (r *GormRepository) TitleCandidates(ctx context.Context, key string, limit int) ([]catalogDomain.Book, error) {
+	words := strings.Fields(key)
+	if len(words) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	q := r.db.WithContext(ctx).Model(&catalogDomain.Book{})
+	if r.db.Dialector.Name() == "postgres" {
+		// The expression must match idx_books_title_words (migration 000026).
+		q = q.Where("to_tsvector('simple', replace(lower(title), 'ё', 'е')) @@ plainto_tsquery('simple', ?)", key)
+	} else {
+		// Fallback for engines without the word index (SQLite tests).
+		for _, w := range words {
+			q = q.Where("instr(replace(lower(title), 'ё', 'е'), ?) > 0", w)
+		}
+	}
+	var books []catalogDomain.Book
+	err := q.Order("length(title) ASC, id ASC").Limit(limit).Preload("Authors").Find(&books).Error
+	return books, err
+}
+
+func (r *GormRepository) CollectionBookIDs(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	err := r.db.WithContext(ctx).Model(&domain.CollectionItem{}).
+		Where("collection_id = ?", id).Order("position ASC").Pluck("book_id", &ids).Error
+	return ids, err
+}
+
+func (r *GormRepository) BooksByIDs(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Book, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var books []catalogDomain.Book
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&books).Error
+	return books, err
+}
+
+func (r *GormRepository) AddBooks(ctx context.Context, collectionID uuid.UUID, bookIDs []uuid.UUID, position *int) (BulkAdded, error) {
+	var res BulkAdded
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res = BulkAdded{}
+		if err := lock(tx, collectionID); err != nil {
+			return err
+		}
+		var present []uuid.UUID
+		if err := tx.Model(&domain.CollectionItem{}).
+			Where("collection_id = ?", collectionID).Pluck("book_id", &present).Error; err != nil {
+			return err
+		}
+		have := make(map[uuid.UUID]bool, len(present))
+		for _, id := range present {
+			have[id] = true
+		}
+		var addable []uuid.UUID
+		for _, id := range bookIDs {
+			if have[id] {
+				res.AlreadyIn = append(res.AlreadyIn, id)
+				continue
+			}
+			have[id] = true
+			addable = append(addable, id)
+		}
+		k, m := len(present), len(addable)
+		res.Total = k
+		if m > domain.MaxBooks-k {
+			return domain.ErrCollectionFull
+		}
+		if m == 0 {
+			return nil
+		}
+		pos := k + 1
+		if position != nil {
+			pos = clamp(*position, 1, k+1)
+		}
+		if err := tx.Model(&domain.CollectionItem{}).
+			Where("collection_id = ? AND position >= ?", collectionID, pos).
+			UpdateColumn("position", gorm.Expr("position + ?", m)).Error; err != nil {
+			return err
+		}
+		rows := make([]domain.CollectionItem, m)
+		for i, id := range addable {
+			rows[i] = domain.CollectionItem{CollectionID: collectionID, BookID: id, Position: pos + i}
+			res.Added = append(res.Added, AddedBook{BookID: id, Position: pos + i})
+		}
+		if err := tx.Create(&rows).Error; err != nil {
+			if IsUniqueViolation(err) {
+				return domain.ErrBookAlreadyIn
+			}
+			return err
+		}
+		res.Total = k + m
+		return nil
+	})
+	if err != nil {
+		return BulkAdded{}, err
+	}
+	return res, nil
 }

@@ -293,6 +293,8 @@ func mapError(c echo.Context, err error, fallback string) error {
 		return errJSON(c, http.StatusConflict, "book already in collection")
 	case errors.Is(err, domain.ErrBookRejected):
 		return errJSON(c, http.StatusUnprocessableEntity, "book is rejected")
+	case errors.Is(err, domain.ErrTooManyLines):
+		return errJSON(c, http.StatusUnprocessableEntity, "too many lines (max 500)")
 	case errors.Is(err, domain.ErrCollectionFull):
 		return errJSON(c, http.StatusUnprocessableEntity, "collection is full")
 	}
@@ -617,4 +619,185 @@ func (h *Handler) AdminMoveBook(c echo.Context) error {
 		return mapError(c, err, "failed to move book")
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// ---- bulk paste ----
+
+type pastePreviewRequest struct {
+	Text string `json:"text"`
+}
+
+type bulkAddRequest struct {
+	BookIDs  []string `json:"book_ids"`
+	Position *int     `json:"position"`
+}
+
+type pasteBookResponse struct {
+	ID            string                `json:"id"`
+	Title         string                `json:"title"`
+	Slug          string                `json:"slug"`
+	Status        string                `json:"status"`
+	CoverURL      *string               `json:"cover_url"`
+	PublishedYear *int                  `json:"published_year"`
+	Authors       []adminAuthorResponse `json:"authors"`
+	InCollection  bool                  `json:"in_collection"`
+}
+
+type pasteLineResponse struct {
+	Line        int                 `json:"line"`
+	Text        string              `json:"text"`
+	Title       string              `json:"title"`
+	Author      *string             `json:"author"`
+	Status      string              `json:"status"`
+	Book        *pasteBookResponse  `json:"book"`
+	Candidates  []pasteBookResponse `json:"candidates"`
+	DuplicateOf *int                `json:"duplicate_of"`
+}
+
+type pasteCountsResponse struct {
+	Found        int `json:"found"`
+	Ambiguous    int `json:"ambiguous"`
+	NotFound     int `json:"not_found"`
+	Rejected     int `json:"rejected"`
+	InCollection int `json:"in_collection"`
+	Duplicate    int `json:"duplicate"`
+	Invalid      int `json:"invalid"`
+}
+
+type pastePreviewResponse struct {
+	BooksCount int                 `json:"books_count"`
+	FreeSlots  int                 `json:"free_slots"`
+	Counts     pasteCountsResponse `json:"counts"`
+	Lines      []pasteLineResponse `json:"lines"`
+}
+
+type bulkAddedResponse struct {
+	BookID   string `json:"book_id"`
+	Position int    `json:"position"`
+}
+
+type bulkSkippedResponse struct {
+	BookID string `json:"book_id"`
+	Reason string `json:"reason"`
+}
+
+type bulkAddResponse struct {
+	Added      []bulkAddedResponse   `json:"added"`
+	Skipped    []bulkSkippedResponse `json:"skipped"`
+	BooksCount int                   `json:"books_count"`
+}
+
+func toPasteBookResponse(b service.PasteBook) pasteBookResponse {
+	authors := make([]adminAuthorResponse, 0, len(b.Book.Authors))
+	for _, a := range b.Book.Authors {
+		authors = append(authors, adminAuthorResponse{ID: a.ID.String(), Name: a.Name})
+	}
+	return pasteBookResponse{
+		ID: b.Book.ID.String(), Title: b.Book.Title, Slug: b.Book.Slug, Status: b.Book.Status,
+		CoverURL: b.Book.CoverURL, PublishedYear: b.Book.PublishedYear, Authors: authors, InCollection: b.InCollection,
+	}
+}
+
+// AdminPastePreview godoc
+// @Summary Разобрать вставленный список книг (предпросмотр)
+// @Description Только чтение: каждая непустая строка сопоставляется с каталогом, ничего не создаётся и не добавляется. Не более 500 строк и 100000 символов
+// @Tags admin-collections
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID подборки"
+// @Param body body pastePreviewRequest true "Текст со списком книг"
+// @Success 200 {object} pastePreviewResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Router /admin/collections/{id}/books/paste/preview [post]
+func (h *Handler) AdminPastePreview(c echo.Context) error {
+	id, err := parseID(c, "id")
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid collection id")
+	}
+	var req pastePreviewRequest
+	if err := c.Bind(&req); err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid request")
+	}
+	p, err := h.service.PreviewPaste(c.Request().Context(), id, req.Text)
+	if err != nil {
+		return mapError(c, err, "failed to preview paste")
+	}
+	lines := make([]pasteLineResponse, 0, len(p.Lines))
+	for _, l := range p.Lines {
+		r := pasteLineResponse{
+			Line: l.Line, Text: l.Text, Title: l.Title, Author: l.Author, Status: string(l.Status),
+			Candidates: make([]pasteBookResponse, 0, len(l.Candidates)), DuplicateOf: l.DuplicateOf,
+		}
+		if l.Book != nil {
+			b := toPasteBookResponse(*l.Book)
+			r.Book = &b
+		}
+		for _, cand := range l.Candidates {
+			r.Candidates = append(r.Candidates, toPasteBookResponse(cand))
+		}
+		lines = append(lines, r)
+	}
+	n := p.Counts
+	return c.JSON(http.StatusOK, pastePreviewResponse{
+		BooksCount: p.BooksCount, FreeSlots: p.FreeSlots, Lines: lines,
+		Counts: pasteCountsResponse{
+			Found: n[domain.PasteFound], Ambiguous: n[domain.PasteAmbiguous], NotFound: n[domain.PasteNotFound],
+			Rejected: n[domain.PasteRejected], InCollection: n[domain.PasteInCollection],
+			Duplicate: n[domain.PasteDuplicate], Invalid: n[domain.PasteInvalid],
+		},
+	})
+}
+
+// AdminBulkAdd godoc
+// @Summary Добавить выбранные книги каталога в подборку списком
+// @Description Книги добавляются одним блоком в заданном порядке, в конец или на позицию. Неизвестные, отклонённые, повторы и уже добавленные пропускаются; если оставшихся больше свободных мест (максимум 1000 книг) - 422 и ничего не добавляется
+// @Tags admin-collections
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID подборки"
+// @Param body body bulkAddRequest true "Список книг и необязательная позиция"
+// @Success 200 {object} bulkAddResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Router /admin/collections/{id}/books/bulk [post]
+func (h *Handler) AdminBulkAdd(c echo.Context) error {
+	id, err := parseID(c, "id")
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid collection id")
+	}
+	var req bulkAddRequest
+	if err := c.Bind(&req); err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid request")
+	}
+	if len(req.BookIDs) == 0 || len(req.BookIDs) > service.MaxBulkIDs {
+		return errJSON(c, http.StatusBadRequest, "book_ids: must contain 1 to 500 ids")
+	}
+	ids := make([]uuid.UUID, len(req.BookIDs))
+	for i, raw := range req.BookIDs {
+		bid, err := uuid.Parse(raw)
+		if err != nil {
+			return errJSON(c, http.StatusBadRequest, "book_ids: invalid id")
+		}
+		ids[i] = bid
+	}
+	res, err := h.service.BulkAdd(c.Request().Context(), id, ids, req.Position)
+	if err != nil {
+		return mapError(c, err, "failed to add books")
+	}
+	out := bulkAddResponse{
+		Added: make([]bulkAddedResponse, 0, len(res.Added)), Skipped: make([]bulkSkippedResponse, 0, len(res.Skipped)),
+		BooksCount: res.BooksCount,
+	}
+	for _, a := range res.Added {
+		out.Added = append(out.Added, bulkAddedResponse{BookID: a.BookID.String(), Position: a.Position})
+	}
+	for _, s := range res.Skipped {
+		out.Skipped = append(out.Skipped, bulkSkippedResponse{BookID: s.BookID.String(), Reason: s.Reason})
+	}
+	return c.JSON(http.StatusOK, out)
 }

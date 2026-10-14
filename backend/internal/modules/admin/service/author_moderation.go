@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
+	"github.com/bookhaven/backend/internal/pkg/textnorm"
 	"github.com/google/uuid"
 )
 
@@ -208,19 +208,7 @@ func (s *Service) BulkSetAuthorStatus(ctx context.Context, ids []uuid.UUID, stat
 // normalizeAuthorName lowercases name, folds ё to е, turns every rune that
 // is not a letter, digit or space into a space, and collapses spaces.
 func normalizeAuthorName(name string) string {
-	var b strings.Builder
-	b.Grow(len(name))
-	for _, r := range strings.ToLower(name) {
-		switch {
-		case r == 'ё':
-			b.WriteRune('е')
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(r)
-		default:
-			b.WriteRune(' ')
-		}
-	}
-	return strings.Join(strings.Fields(b.String()), " ")
+	return textnorm.Key(name)
 }
 
 // authorNameParts splits a name into its normalized surname and the

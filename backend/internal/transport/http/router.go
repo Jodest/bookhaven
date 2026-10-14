@@ -245,6 +245,8 @@ func RegisterAdminRoutes(
 	collections.PATCH("/:id", curatedHandler.AdminUpdate, requireBearer)
 	collections.DELETE("/:id", curatedHandler.AdminDelete, requireBearer)
 	collections.POST("/:id/books", curatedHandler.AdminAddBook, requireBearer)
+	collections.POST("/:id/books/paste/preview", curatedHandler.AdminPastePreview, requireBearer)
+	collections.POST("/:id/books/bulk", curatedHandler.AdminBulkAdd, requireBearer)
 	collections.DELETE("/:id/books/:bookId", curatedHandler.AdminRemoveBook, requireBearer)
 	collections.PUT("/:id/books/:bookId/position", curatedHandler.AdminMoveBook, requireBearer)
 

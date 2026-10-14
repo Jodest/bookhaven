@@ -2833,6 +2833,152 @@
                 }
             }
         },
+        "/admin/collections/{id}/books/bulk": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Книги добавляются одним блоком в заданном порядке, в конец или на позицию. Неизвестные, отклонённые, повторы и уже добавленные пропускаются; если оставшихся больше свободных мест (максимум 1000 книг) - 422 и ничего не добавляется",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-collections"
+                ],
+                "summary": "Добавить выбранные книги каталога в подборку списком",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID подборки",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Список книг и необязательная позиция",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_curated_transport_http.bulkAddRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_curated_transport_http.bulkAddResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/collections/{id}/books/paste/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Только чтение: каждая непустая строка сопоставляется с каталогом, ничего не создаётся и не добавляется. Не более 500 строк и 100000 символов",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-collections"
+                ],
+                "summary": "Разобрать вставленный список книг (предпросмотр)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID подборки",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Текст со списком книг",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_curated_transport_http.pastePreviewRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_curated_transport_http.pastePreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/collections/{id}/books/{bookId}": {
             "delete": {
                 "security": [
@@ -10579,6 +10725,62 @@
                 }
             }
         },
+        "internal_modules_curated_transport_http.bulkAddRequest": {
+            "type": "object",
+            "properties": {
+                "book_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "position": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.bulkAddResponse": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_curated_transport_http.bulkAddedResponse"
+                    }
+                },
+                "books_count": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_curated_transport_http.bulkSkippedResponse"
+                    }
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.bulkAddedResponse": {
+            "type": "object",
+            "properties": {
+                "book_id": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.bulkSkippedResponse": {
+            "type": "object",
+            "properties": {
+                "book_id": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_curated_transport_http.collectionDetailResponse": {
             "type": "object",
             "properties": {
@@ -10705,6 +10907,124 @@
             "properties": {
                 "position": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.pasteBookResponse": {
+            "type": "object",
+            "properties": {
+                "authors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_curated_transport_http.adminAuthorResponse"
+                    }
+                },
+                "cover_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "in_collection": {
+                    "type": "boolean"
+                },
+                "published_year": {
+                    "type": "integer"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.pasteCountsResponse": {
+            "type": "object",
+            "properties": {
+                "ambiguous": {
+                    "type": "integer"
+                },
+                "duplicate": {
+                    "type": "integer"
+                },
+                "found": {
+                    "type": "integer"
+                },
+                "in_collection": {
+                    "type": "integer"
+                },
+                "invalid": {
+                    "type": "integer"
+                },
+                "not_found": {
+                    "type": "integer"
+                },
+                "rejected": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.pasteLineResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "book": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.pasteBookResponse"
+                },
+                "candidates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_curated_transport_http.pasteBookResponse"
+                    }
+                },
+                "duplicate_of": {
+                    "type": "integer"
+                },
+                "line": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.pastePreviewRequest": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.pastePreviewResponse": {
+            "type": "object",
+            "properties": {
+                "books_count": {
+                    "type": "integer"
+                },
+                "counts": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.pasteCountsResponse"
+                },
+                "free_slots": {
+                    "type": "integer"
+                },
+                "lines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_curated_transport_http.pasteLineResponse"
+                    }
                 }
             }
         },
