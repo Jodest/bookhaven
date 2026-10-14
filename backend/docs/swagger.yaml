@@ -1626,6 +1626,305 @@ definitions:
           $ref: '#/definitions/internal_modules_catalog_transport_http.BookListItemResponse'
         type: array
     type: object
+  internal_modules_curated_transport_http.addBookRequest:
+    properties:
+      book_id:
+        type: string
+      position:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.adminAuthorResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.adminBookResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.adminAuthorResponse'
+        type: array
+      cover_url:
+        type: string
+      id:
+        type: string
+      slug:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.adminCollectionResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      genre:
+        $ref: '#/definitions/internal_modules_curated_transport_http.adminGenreResponse'
+      id:
+        type: string
+      is_published:
+        type: boolean
+      kind:
+        type: string
+      published_at:
+        type: string
+      size:
+        type: integer
+      slug:
+        type: string
+      source:
+        type: string
+      source_url:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.adminDetailResponse:
+    properties:
+      books_count:
+        type: integer
+      created_at:
+        type: string
+      description:
+        type: string
+      genre:
+        $ref: '#/definitions/internal_modules_curated_transport_http.adminGenreResponse'
+      id:
+        type: string
+      is_published:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.adminItemResponse'
+        type: array
+      kind:
+        type: string
+      published_at:
+        type: string
+      shown_count:
+        type: integer
+      size:
+        type: integer
+      slug:
+        type: string
+      source:
+        type: string
+      source_url:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.adminGenreResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.adminItemResponse:
+    properties:
+      book:
+        $ref: '#/definitions/internal_modules_curated_transport_http.adminBookResponse'
+      place:
+        type: integer
+      position:
+        type: integer
+      state:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.adminListItemResponse:
+    properties:
+      books_count:
+        type: integer
+      id:
+        type: string
+      is_published:
+        type: boolean
+      kind:
+        type: string
+      shown_count:
+        type: integer
+      size:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.adminListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.adminListItemResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.authorResponse:
+    properties:
+      birth_date:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      photo_url:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.bookListItemResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.authorResponse'
+        type: array
+      cover_url:
+        type: string
+      genres:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.genreResponse'
+        type: array
+      id:
+        type: string
+      published_year:
+        type: integer
+      rating:
+        type: number
+      ratings_count:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.collectionDetailResponse:
+    properties:
+      collection:
+        $ref: '#/definitions/internal_modules_curated_transport_http.collectionSummaryResponse'
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.placedBookResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.collectionIndexResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.collectionSummaryResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.collectionSummaryResponse:
+    properties:
+      cover_urls:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      genre:
+        $ref: '#/definitions/internal_modules_curated_transport_http.genreResponse'
+      id:
+        type: string
+      kind:
+        type: string
+      shown_count:
+        type: integer
+      size:
+        type: integer
+      slug:
+        type: string
+      source:
+        type: string
+      source_url:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.createRequest:
+    properties:
+      description:
+        type: string
+      genre_id:
+        type: string
+      is_published:
+        type: boolean
+      size:
+        type: integer
+      slug:
+        type: string
+      source:
+        type: string
+      source_url:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.genreResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.moveBookRequest:
+    properties:
+      position:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.placedBookResponse:
+    properties:
+      book:
+        $ref: '#/definitions/internal_modules_curated_transport_http.bookListItemResponse'
+      place:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.updateRequest:
+    properties:
+      description:
+        type: string
+      genre_id:
+        items:
+          type: integer
+        type: array
+      is_published:
+        type: boolean
+      size:
+        type: integer
+      slug:
+        type: string
+      source:
+        type: string
+      source_url:
+        type: string
+      title:
+        type: string
+    type: object
   internal_modules_harvest_transport_http.authorCandidateResponse:
     properties:
       description:
@@ -4172,6 +4471,302 @@ paths:
       summary: Очередь модерации книг (админ)
       tags:
       - admin
+  /admin/collections:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.adminListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список подборок (админ)
+      tags:
+      - admin-collections
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные подборки
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_curated_transport_http.createRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.adminCollectionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создать подборку
+      tags:
+      - admin-collections
+  /admin/collections/{id}:
+    delete:
+      description: Удаляется подборка и её список книг, сами книги остаются
+      parameters:
+      - description: ID подборки
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удалить подборку
+      tags:
+      - admin-collections
+    get:
+      parameters:
+      - description: ID подборки
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.adminDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Подборка со всеми книгами (админ)
+      tags:
+      - admin-collections
+    patch:
+      consumes:
+      - application/json
+      description: Все поля необязательны; genre_id null сбрасывает жанр, пустые source/source_url
+        очищаются
+      parameters:
+      - description: ID подборки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Поля для изменения
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_curated_transport_http.updateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.adminCollectionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Изменить подборку
+      tags:
+      - admin-collections
+  /admin/collections/{id}/books:
+    post:
+      consumes:
+      - application/json
+      description: Принимаются книги pending и published; отклонённая - 422
+      parameters:
+      - description: ID подборки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Книга и необязательная позиция
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_curated_transport_http.addBookRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Добавить книгу каталога в подборку
+      tags:
+      - admin-collections
+  /admin/collections/{id}/books/{bookId}:
+    delete:
+      parameters:
+      - description: ID подборки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID книги
+        in: path
+        name: bookId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Убрать книгу из подборки
+      tags:
+      - admin-collections
+  /admin/collections/{id}/books/{bookId}/position:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID подборки
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID книги
+        in: path
+        name: bookId
+        required: true
+        type: string
+      - description: Позиция, с 1
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_curated_transport_http.moveBookRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Переместить книгу на позицию
+      tags:
+      - admin-collections
   /admin/dashboard:
     get:
       description: Требуется роль admin
@@ -5919,6 +6514,64 @@ paths:
       summary: Получить книгу по slug
       tags:
       - catalog
+  /collections:
+    get:
+      description: Доступно без авторизации. Сначала новые по дате первой публикации
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.collectionIndexResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Список опубликованных подборок
+      tags:
+      - collections
+  /collections/{slug}:
+    get:
+      description: Доступно без авторизации. Черновик или неизвестный адрес - 404
+      parameters:
+      - description: Адрес подборки
+        in: path
+        name: slug
+        required: true
+        type: string
+      - description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы, по умолчанию 50, максимум 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.collectionDetailResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Опубликованная подборка с местами
+      tags:
+      - collections
   /genres:
     get:
       produces:

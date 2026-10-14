@@ -16,6 +16,8 @@ import (
 	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
 	aidescrepository "github.com/bookhaven/backend/internal/modules/aidescriptions/repository"
 	aidescservice "github.com/bookhaven/backend/internal/modules/aidescriptions/service"
+	curatedrepository "github.com/bookhaven/backend/internal/modules/curated/repository"
+	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
 	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
@@ -233,10 +235,11 @@ func main() {
 	optionalAuth := middleware.OptionalAuth(authService, usersRepo)
 
 	// Public + protected routes
+	curatedService := curatedservice.NewService(curatedrepository.NewGormRepository(db))
 	// AI descriptions (openspec catalog-admin/ai-descriptions): one
 	// repository backs the public fallback reader and the admin service.
 	aiDescriptionsRepo := aidescrepository.NewGormRepository(db)
-	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, authMiddleware, optionalAuth, aiDescriptionsRepo)
+	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, curatedService, authMiddleware, optionalAuth, aiDescriptionsRepo)
 
 	// Admin routes
 	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, taskClient, harvestInspector, wikidataClient,
@@ -246,7 +249,7 @@ func main() {
 			curatorservice.WithLogger(logger))},
 		httptransport.AIDescriptionsDeps{Service: aidescservice.NewService(
 			aiDescriptionsRepo, adminService, cfg.AIDescriptionsActive(), cfg.AIDescriptionsModel,
-			aidescservice.WithLogger(logger))})
+			aidescservice.WithLogger(logger))}, curatedService)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)
