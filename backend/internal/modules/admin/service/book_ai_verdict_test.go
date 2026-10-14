@@ -191,6 +191,41 @@ func TestBookReviewInputs_OrderHintsAndHash(t *testing.T) {
 	}
 }
 
+// A book without its own description is reviewed with an empty
+// description, whatever AI description it has (that lives in another
+// table the loader never reads; see the repository test
+// TestLoadBooksForReview_IgnoresAIDescriptions).
+func TestBookReviewInputs_NoOwnDescriptionIsEmpty(t *testing.T) {
+	svc, repo := newService()
+	b := reviewBook()
+	b.Description = nil
+	repo.reviewBooks = []catalogDomain.Book{b}
+
+	got, err := svc.BookReviewInputs(context.Background(), []uuid.UUID{b.ID})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("BookReviewInputs: %v %+v", err, got)
+	}
+	empty := b
+	blank := ""
+	empty.Description = &blank
+	if got[0].Input.Description != "" || got[0].InputHash != InputHash(BookReviewDataOf(empty)) {
+		t.Errorf("input must equal the input with an empty description: %+v", got[0].Input.BookReviewData)
+	}
+}
+
+func TestLoadBooksWithRelations(t *testing.T) {
+	svc, repo := newService()
+	b := reviewBook()
+	repo.reviewBooks = []catalogDomain.Book{b}
+	got, err := svc.LoadBooksWithRelations(context.Background(), []uuid.UUID{b.ID, uuid.New()})
+	if err != nil || len(got) != 1 || got[0].ID != b.ID || len(got[0].Authors) != 2 {
+		t.Fatalf("LoadBooksWithRelations = %+v (%v)", got, err)
+	}
+	if empty, err := svc.LoadBooksWithRelations(context.Background(), nil); err != nil || empty == nil || len(empty) != 0 {
+		t.Errorf("empty ids = %v (%v)", empty, err)
+	}
+}
+
 func TestSaveBookAIVerdict(t *testing.T) {
 	svc, repo := newService()
 	id := uuid.New()

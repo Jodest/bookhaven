@@ -65,3 +65,41 @@ describe('BookDetailView', () => {
     expect(document.querySelector('a[href="/authors/null"]')).toBeNull();
   });
 });
+
+describe('BookDetailView description', () => {
+  const LABEL = 'Описание создано ИИ и может содержать неточности.';
+  const AI_TEXT = 'Роман рассказывает о конфликте поколений в русской усадьбе.';
+
+  it('shows an approved AI description with the label when the own description is blank', async () => {
+    getBook.mockResolvedValue({ ...book, description: '  ', aiDescription: { text: AI_TEXT, generatedAt: '2026-10-13T12:00:00Z' } });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.getByRole('heading', { name: 'Описание' })).toBeInTheDocument();
+    expect(screen.getByText(AI_TEXT)).toBeInTheDocument();
+    expect(screen.getByText(LABEL)).toBeInTheDocument();
+  });
+
+  it('the own description wins and has no label', async () => {
+    getBook.mockResolvedValue({
+      ...book,
+      description: 'Описание из Open Library.',
+      aiDescription: { text: AI_TEXT, generatedAt: '2026-10-13T12:00:00Z' },
+    });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.getByText('Описание из Open Library.')).toBeInTheDocument();
+    expect(screen.queryByText(AI_TEXT)).not.toBeInTheDocument();
+    expect(screen.queryByText(LABEL)).not.toBeInTheDocument();
+  });
+
+  it('no description and a null AI description: no block', async () => {
+    getBook.mockResolvedValue({ ...book, description: null, aiDescription: null });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.queryByRole('heading', { name: 'Описание' })).not.toBeInTheDocument();
+    expect(screen.queryByText(LABEL)).not.toBeInTheDocument();
+  });
+});

@@ -328,3 +328,60 @@ func TestLoad_AICurator(t *testing.T) {
 		t.Errorf("blank model = %q", cfg.AICuratorModel)
 	}
 }
+
+func setAIDescriptionsEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	setSMTPEnv(t, nil)
+	for _, k := range []string{"AI_DESCRIPTIONS_ENABLED", "AI_DESCRIPTIONS_MODEL", "ANTHROPIC_API_KEY", "AI_MODERATION_ENABLED", "AI_CURATOR_ENABLED"} {
+		t.Setenv(k, "")
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestLoad_AIDescriptions(t *testing.T) {
+	setAIDescriptionsEnv(t, nil)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AIDescriptionsEnabled || cfg.AIDescriptionsActive() {
+		t.Error("AI descriptions must be off by default")
+	}
+	if cfg.AIDescriptionsModel != "claude-sonnet-5-5" {
+		t.Errorf("default model = %q", cfg.AIDescriptionsModel)
+	}
+
+	cases := []struct {
+		enabled, key string
+		wantActive   bool
+	}{
+		{"true", "", false},
+		{"true", "   ", false},
+		{"false", "sk-test", false},
+		{"true", "sk-test", true},
+	}
+	for _, tc := range cases {
+		setAIDescriptionsEnv(t, map[string]string{"AI_DESCRIPTIONS_ENABLED": tc.enabled, "ANTHROPIC_API_KEY": tc.key})
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		if cfg.AIDescriptionsActive() != tc.wantActive {
+			t.Errorf("enabled=%q key=%q: active=%v", tc.enabled, tc.key, cfg.AIDescriptionsActive())
+		}
+		if cfg.AIModerationActive() || cfg.AICuratorActive() {
+			t.Errorf("the descriptions flag must not switch on AI moderation or curation")
+		}
+	}
+
+	setAIDescriptionsEnv(t, map[string]string{"AI_DESCRIPTIONS_MODEL": " claude-haiku-5-5 "})
+	if cfg, _ := Load(); cfg.AIDescriptionsModel != "claude-haiku-5-5" {
+		t.Errorf("model = %q", cfg.AIDescriptionsModel)
+	}
+	setAIDescriptionsEnv(t, map[string]string{"AI_DESCRIPTIONS_MODEL": "   "})
+	if cfg, _ := Load(); cfg.AIDescriptionsModel != "claude-sonnet-5-5" {
+		t.Errorf("blank model = %q", cfg.AIDescriptionsModel)
+	}
+}

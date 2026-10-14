@@ -1140,6 +1140,156 @@ definitions:
           $ref: '#/definitions/internal_modules_aicurator_transport_http.curationSummaryResponse'
         type: array
     type: object
+  internal_modules_aidescriptions_transport_http.aiDescriptionBookResponse:
+    properties:
+      authors:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      published_year:
+        type: integer
+      status:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_aidescriptions_transport_http.aiDescriptionDetailResponse:
+    properties:
+      ai_description:
+        $ref: '#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionResponse'
+    type: object
+  internal_modules_aidescriptions_transport_http.aiDescriptionItemResponse:
+    properties:
+      book:
+        $ref: '#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionBookResponse'
+      edited:
+        type: boolean
+      error_code:
+        enum:
+        - model_refusal
+        - model_truncated
+        - invalid_output
+        type: string
+      generated_at:
+        type: string
+      model:
+        type: string
+      prompt_version:
+        type: integer
+      reviewed_at:
+        type: string
+      stale:
+        description: |-
+          Stale: the prompt version or the book's model input changed since
+          generation.
+        type: boolean
+      status:
+        enum:
+        - draft
+        - approved
+        - discarded
+        - unknown
+        - failed
+        type: string
+      superseded:
+        description: |-
+          Superseded: the book now has its own description (the AI one is not
+          public).
+        type: boolean
+      text:
+        type: string
+    type: object
+  internal_modules_aidescriptions_transport_http.aiDescriptionResponse:
+    properties:
+      edited:
+        type: boolean
+      error_code:
+        enum:
+        - model_refusal
+        - model_truncated
+        - invalid_output
+        type: string
+      generated_at:
+        type: string
+      model:
+        type: string
+      prompt_version:
+        type: integer
+      reviewed_at:
+        type: string
+      stale:
+        description: |-
+          Stale: the prompt version or the book's model input changed since
+          generation.
+        type: boolean
+      status:
+        enum:
+        - draft
+        - approved
+        - discarded
+        - unknown
+        - failed
+        type: string
+      superseded:
+        description: |-
+          Superseded: the book now has its own description (the AI one is not
+          public).
+        type: boolean
+      text:
+        type: string
+    type: object
+  internal_modules_aidescriptions_transport_http.aiDescriptionsStatusResponse:
+    properties:
+      drafts:
+        description: 'Drafts: drafts whose book has no own description.'
+        type: integer
+      enabled:
+        description: 'Enabled: the flag and the API key are both set.'
+        type: boolean
+      max_bulk:
+        type: integer
+      missing:
+        description: 'Missing: books an all_missing run would pick (without the cap).'
+        type: integer
+      model:
+        type: string
+      prompt_version:
+        type: integer
+    type: object
+  internal_modules_aidescriptions_transport_http.approveAIDescriptionRequest:
+    properties:
+      text:
+        type: string
+    type: object
+  internal_modules_aidescriptions_transport_http.generateAIDescriptionsRequest:
+    properties:
+      all_missing:
+        type: boolean
+      book_ids:
+        items:
+          type: string
+        type: array
+    type: object
+  internal_modules_aidescriptions_transport_http.generateAIDescriptionsResponse:
+    properties:
+      task_id:
+        type: string
+    type: object
+  internal_modules_aidescriptions_transport_http.listAIDescriptionsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionItemResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
   internal_modules_aimoderation_transport_http.aiReviewRequest:
     properties:
       all_unreviewed:
@@ -1355,6 +1505,13 @@ definitions:
       source_url:
         type: string
     type: object
+  internal_modules_catalog_transport_http.aiDescriptionResponse:
+    properties:
+      generated_at:
+        type: string
+      text:
+        type: string
+    type: object
   internal_modules_catalog_transport_http.authorDetailResponse:
     properties:
       biography:
@@ -1385,6 +1542,14 @@ definitions:
     type: object
   internal_modules_catalog_transport_http.bookResponse:
     properties:
+      ai_description:
+        allOf:
+        - $ref: '#/definitions/internal_modules_catalog_transport_http.aiDescriptionResponse'
+        description: |-
+          AIDescription is the approved AI-generated description, present only
+          while the book's own description is blank; null otherwise. Clients
+          show it as plain text with the notice «Описание создано ИИ и может
+          содержать неточности.».
       authors:
         items:
           $ref: '#/definitions/internal_modules_catalog_transport_http.AuthorResponse'
@@ -2510,6 +2675,350 @@ paths:
       security:
       - BearerAuth: []
       summary: Статус подбора авторов ИИ (админ)
+      tags:
+      - admin
+  /admin/ai-descriptions:
+    get:
+      description: Требуется роль admin. status — draft (по умолчанию), approved,
+        discarded, unknown или failed; новые первыми; limit 1–50 (по умолчанию 20).
+        У каждой записи — книга (id, title, authors, published_year, status), статус,
+        текст (показывать только как обычный текст), код ошибки, модель, время генерации,
+        stale (с генерации изменились версия промпта или данные книги) и superseded
+        (у книги появилось собственное описание). Работает и при выключенной генерации.
+      parameters:
+      - description: Статус (draft, approved, discarded, unknown, failed)
+        in: query
+        name: status
+        type: string
+      - description: Страница (с 1)
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы (1–50)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aidescriptions_transport_http.listAIDescriptionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список описаний ИИ (админ)
+      tags:
+      - admin
+  /admin/ai-descriptions/{book_id}:
+    get:
+      description: Требуется роль admin. Возвращает запись описания ИИ книги или null.
+        Работает и при выключенной генерации.
+      parameters:
+      - description: ID книги (UUID)
+        in: path
+        name: book_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Описание ИИ книги (админ)
+      tags:
+      - admin
+  /admin/ai-descriptions/{book_id}/approve:
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Одобряет черновик или уже
+        одобренное описание. Необязательный text заменяет сгенерированный текст (1–2000
+        символов после обрезки пробелов, в основном кириллица) и помечает описание
+        изменённым. Описание книги не меняется: одобренное описание ИИ показывается
+        на сайте с пометкой, пока у книги нет собственного описания. 404 — записи
+        нет; 409 — запись не черновик и не одобрена, или у книги уже есть собственное
+        описание; 422 — неверный текст. Работает и при выключенной генерации.'
+      parameters:
+      - description: ID книги (UUID)
+        in: path
+        name: book_id
+        required: true
+        type: string
+      - description: Необязательный исправленный текст
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/internal_modules_aidescriptions_transport_http.approveAIDescriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionItemResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Одобрить описание ИИ (админ)
+      tags:
+      - admin
+  /admin/ai-descriptions/{book_id}/discard:
+    post:
+      description: Требуется роль admin и Bearer-токен. Переводит черновик или одобренное
+        описание в отклонённые (одобренное снимается с сайта). 404 — записи нет; 409
+        — запись не черновик и не одобрена. Работает и при выключенной генерации.
+      parameters:
+      - description: ID книги (UUID)
+        in: path
+        name: book_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionItemResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Отклонить описание ИИ (админ)
+      tags:
+      - admin
+  /admin/ai-descriptions/generate:
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Ровно одна форма: {"book_ids":
+        [...]} — 1–100 UUID (повторы убираются), каждая подходящая книга (без собственного
+        описания, статус pending или published) генерируется заново, какой бы ни была
+        её текущая запись; или {"all_missing": true} — до 200 опубликованных книг
+        без собственного описания и без какой-либо записи описания ИИ, старые первыми.
+        Генерация идёт только в фоновом воркере; результат — черновик, который одобряет
+        администратор. В описание книги ничего не записывается. 503 — генерация выключена
+        (проверяется первым); 400 — неверный запрос; 409 — генерация для книг без
+        описания уже в очереди; 502 — не удалось поставить задачу в очередь.'
+      parameters:
+      - description: book_ids или all_missing
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_aidescriptions_transport_http.generateAIDescriptionsRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/internal_modules_aidescriptions_transport_http.generateAIDescriptionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Поставить генерацию описаний ИИ в очередь (админ)
+      tags:
+      - admin
+  /admin/ai-descriptions/status:
+    get:
+      description: Требуется роль admin. enabled — включена ли генерация (флаг AI_DESCRIPTIONS_ENABLED
+        и ключ API заданы), model — модель, prompt_version — версия промпта, missing
+        — сколько книг выберет генерация «для книг без описания» (опубликованные,
+        без собственного описания и без какой-либо записи описания ИИ; без учёта ограничения),
+        drafts — черновики, у книг которых до сих пор нет собственного описания, max_bulk
+        — ограничение одного запуска (200).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionsStatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Статус описаний ИИ (админ)
       tags:
       - admin
   /admin/authors:
@@ -5378,6 +5887,10 @@ paths:
       - catalog
   /books/{slug}:
     get:
+      description: ai_description — одобренное администратором описание, созданное
+        ИИ ({text, generated_at}); заполнено только когда у книги нет собственного
+        описания, иначе null. Показывать как обычный текст с пометкой «Описание создано
+        ИИ и может содержать неточности.».
       parameters:
       - description: Slug книги
         in: path

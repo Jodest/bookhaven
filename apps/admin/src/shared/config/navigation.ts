@@ -94,6 +94,13 @@ export const navSections: NavSection[] = [
         roles: ['admin'],
       },
       {
+        id: 'moderation.descriptions',
+        label: 'Описания ИИ',
+        href: '/moderation/descriptions',
+        match: ['/moderation/descriptions'],
+        roles: ['admin'],
+      },
+      {
         id: 'moderation.reviews',
         label: 'Отзывы',
         href: '/moderation/reviews',

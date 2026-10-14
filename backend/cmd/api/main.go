@@ -14,6 +14,8 @@ import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
 	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
+	aidescrepository "github.com/bookhaven/backend/internal/modules/aidescriptions/repository"
+	aidescservice "github.com/bookhaven/backend/internal/modules/aidescriptions/service"
 	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
@@ -231,14 +233,20 @@ func main() {
 	optionalAuth := middleware.OptionalAuth(authService, usersRepo)
 
 	// Public + protected routes
-	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, authMiddleware, optionalAuth)
+	// AI descriptions (openspec catalog-admin/ai-descriptions): one
+	// repository backs the public fallback reader and the admin service.
+	aiDescriptionsRepo := aidescrepository.NewGormRepository(db)
+	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, authMiddleware, optionalAuth, aiDescriptionsRepo)
 
 	// Admin routes
 	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, taskClient, harvestInspector, wikidataClient,
 		httptransport.AIModerationDeps{Active: cfg.AIModerationActive(), Model: cfg.AIModerationModel},
 		httptransport.AICuratorDeps{Service: curatorservice.NewService(
 			curatorrepository.NewGormRepository(db), adminService, cfg.AICuratorActive(), cfg.AICuratorModel,
-			curatorservice.WithLogger(logger))})
+			curatorservice.WithLogger(logger))},
+		httptransport.AIDescriptionsDeps{Service: aidescservice.NewService(
+			aiDescriptionsRepo, adminService, cfg.AIDescriptionsActive(), cfg.AIDescriptionsModel,
+			aidescservice.WithLogger(logger))})
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)

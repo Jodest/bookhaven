@@ -300,6 +300,498 @@
                 }
             }
         },
+        "/admin/ai-descriptions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. status — draft (по умолчанию), approved, discarded, unknown или failed; новые первыми; limit 1–50 (по умолчанию 20). У каждой записи — книга (id, title, authors, published_year, status), статус, текст (показывать только как обычный текст), код ошибки, модель, время генерации, stale (с генерации изменились версия промпта или данные книги) и superseded (у книги появилось собственное описание). Работает и при выключенной генерации.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Список описаний ИИ (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Статус (draft, approved, discarded, unknown, failed)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Страница (с 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Размер страницы (1–50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.listAIDescriptionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/ai-descriptions/generate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Ровно одна форма: {\"book_ids\": [...]} — 1–100 UUID (повторы убираются), каждая подходящая книга (без собственного описания, статус pending или published) генерируется заново, какой бы ни была её текущая запись; или {\"all_missing\": true} — до 200 опубликованных книг без собственного описания и без какой-либо записи описания ИИ, старые первыми. Генерация идёт только в фоновом воркере; результат — черновик, который одобряет администратор. В описание книги ничего не записывается. 503 — генерация выключена (проверяется первым); 400 — неверный запрос; 409 — генерация для книг без описания уже в очереди; 502 — не удалось поставить задачу в очередь.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Поставить генерацию описаний ИИ в очередь (админ)",
+                "parameters": [
+                    {
+                        "description": "book_ids или all_missing",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.generateAIDescriptionsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.generateAIDescriptionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/ai-descriptions/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. enabled — включена ли генерация (флаг AI_DESCRIPTIONS_ENABLED и ключ API заданы), model — модель, prompt_version — версия промпта, missing — сколько книг выберет генерация «для книг без описания» (опубликованные, без собственного описания и без какой-либо записи описания ИИ; без учёта ограничения), drafts — черновики, у книг которых до сих пор нет собственного описания, max_bulk — ограничение одного запуска (200).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Статус описаний ИИ (админ)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionsStatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/ai-descriptions/{book_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Возвращает запись описания ИИ книги или null. Работает и при выключенной генерации.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Описание ИИ книги (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги (UUID)",
+                        "name": "book_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/ai-descriptions/{book_id}/approve": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Одобряет черновик или уже одобренное описание. Необязательный text заменяет сгенерированный текст (1–2000 символов после обрезки пробелов, в основном кириллица) и помечает описание изменённым. Описание книги не меняется: одобренное описание ИИ показывается на сайте с пометкой, пока у книги нет собственного описания. 404 — записи нет; 409 — запись не черновик и не одобрена, или у книги уже есть собственное описание; 422 — неверный текст. Работает и при выключенной генерации.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Одобрить описание ИИ (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги (UUID)",
+                        "name": "book_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Необязательный исправленный текст",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.approveAIDescriptionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionItemResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/ai-descriptions/{book_id}/discard": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Переводит черновик или одобренное описание в отклонённые (одобренное снимается с сайта). 404 — записи нет; 409 — запись не черновик и не одобрена. Работает и при выключенной генерации.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Отклонить описание ИИ (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги (UUID)",
+                        "name": "book_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionItemResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/authors": {
             "get": {
                 "security": [
@@ -4538,6 +5030,7 @@
         },
         "/books/{slug}": {
             "get": {
+                "description": "ai_description — одобренное администратором описание, созданное ИИ ({text, generated_at}); заполнено только когда у книги нет собственного описания, иначе null. Показывать как обычный текст с пометкой «Описание создано ИИ и может содержать неточности.».",
                 "produces": [
                     "application/json"
                 ],
@@ -8540,6 +9033,214 @@
                 }
             }
         },
+        "internal_modules_aidescriptions_transport_http.aiDescriptionBookResponse": {
+            "type": "object",
+            "properties": {
+                "authors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "published_year": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aidescriptions_transport_http.aiDescriptionDetailResponse": {
+            "type": "object",
+            "properties": {
+                "ai_description": {
+                    "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionResponse"
+                }
+            }
+        },
+        "internal_modules_aidescriptions_transport_http.aiDescriptionItemResponse": {
+            "type": "object",
+            "properties": {
+                "book": {
+                    "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionBookResponse"
+                },
+                "edited": {
+                    "type": "boolean"
+                },
+                "error_code": {
+                    "type": "string",
+                    "enum": [
+                        "model_refusal",
+                        "model_truncated",
+                        "invalid_output"
+                    ]
+                },
+                "generated_at": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt_version": {
+                    "type": "integer"
+                },
+                "reviewed_at": {
+                    "type": "string"
+                },
+                "stale": {
+                    "description": "Stale: the prompt version or the book's model input changed since\ngeneration.",
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "approved",
+                        "discarded",
+                        "unknown",
+                        "failed"
+                    ]
+                },
+                "superseded": {
+                    "description": "Superseded: the book now has its own description (the AI one is not\npublic).",
+                    "type": "boolean"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aidescriptions_transport_http.aiDescriptionResponse": {
+            "type": "object",
+            "properties": {
+                "edited": {
+                    "type": "boolean"
+                },
+                "error_code": {
+                    "type": "string",
+                    "enum": [
+                        "model_refusal",
+                        "model_truncated",
+                        "invalid_output"
+                    ]
+                },
+                "generated_at": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt_version": {
+                    "type": "integer"
+                },
+                "reviewed_at": {
+                    "type": "string"
+                },
+                "stale": {
+                    "description": "Stale: the prompt version or the book's model input changed since\ngeneration.",
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "approved",
+                        "discarded",
+                        "unknown",
+                        "failed"
+                    ]
+                },
+                "superseded": {
+                    "description": "Superseded: the book now has its own description (the AI one is not\npublic).",
+                    "type": "boolean"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aidescriptions_transport_http.aiDescriptionsStatusResponse": {
+            "type": "object",
+            "properties": {
+                "drafts": {
+                    "description": "Drafts: drafts whose book has no own description.",
+                    "type": "integer"
+                },
+                "enabled": {
+                    "description": "Enabled: the flag and the API key are both set.",
+                    "type": "boolean"
+                },
+                "max_bulk": {
+                    "type": "integer"
+                },
+                "missing": {
+                    "description": "Missing: books an all_missing run would pick (without the cap).",
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aidescriptions_transport_http.approveAIDescriptionRequest": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aidescriptions_transport_http.generateAIDescriptionsRequest": {
+            "type": "object",
+            "properties": {
+                "all_missing": {
+                    "type": "boolean"
+                },
+                "book_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "internal_modules_aidescriptions_transport_http.generateAIDescriptionsResponse": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aidescriptions_transport_http.listAIDescriptionsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aidescriptions_transport_http.aiDescriptionItemResponse"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_modules_aimoderation_transport_http.aiReviewRequest": {
             "type": "object",
             "properties": {
@@ -8862,6 +9563,17 @@
                 }
             }
         },
+        "internal_modules_catalog_transport_http.aiDescriptionResponse": {
+            "type": "object",
+            "properties": {
+                "generated_at": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_catalog_transport_http.authorDetailResponse": {
             "type": "object",
             "properties": {
@@ -8905,6 +9617,14 @@
         "internal_modules_catalog_transport_http.bookResponse": {
             "type": "object",
             "properties": {
+                "ai_description": {
+                    "description": "AIDescription is the approved AI-generated description, present only\nwhile the book's own description is blank; null otherwise. Clients\nshow it as plain text with the notice «Описание создано ИИ и может\nсодержать неточности.».",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_catalog_transport_http.aiDescriptionResponse"
+                        }
+                    ]
+                },
                 "authors": {
                     "type": "array",
                     "items": {

@@ -61,6 +61,8 @@ services:
       # the same flag as the worker, otherwise requests end as timeout.
       AI_CURATOR_ENABLED: ${AI_CURATOR_ENABLED:-false}
       AI_CURATOR_MODEL: ${AI_CURATOR_MODEL:-claude-haiku-5-5}
+      AI_DESCRIPTIONS_ENABLED: ${AI_DESCRIPTIONS_ENABLED:-false}
+      AI_DESCRIPTIONS_MODEL: ${AI_DESCRIPTIONS_MODEL:-claude-sonnet-5-5}
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,6 +103,8 @@ services:
       # ANTHROPIC_API_KEY). The worker makes the model and Wikidata calls.
       AI_CURATOR_ENABLED: ${AI_CURATOR_ENABLED:-false}
       AI_CURATOR_MODEL: ${AI_CURATOR_MODEL:-claude-haiku-5-5}
+      AI_DESCRIPTIONS_ENABLED: ${AI_DESCRIPTIONS_ENABLED:-false}
+      AI_DESCRIPTIONS_MODEL: ${AI_DESCRIPTIONS_MODEL:-claude-sonnet-5-5}
     depends_on:
       postgres:
         condition: service_healthy
