@@ -55,6 +55,21 @@ type Config struct {
 	AIModerationModel   string
 	AIModerationCron    string
 	AIModerationBatch   int
+
+	// AI curator of author import lists (worker asks the model for author
+	// names and resolves them against Wikidata; API exposes the requests;
+	// see internal/modules/aicurator). Active only when AI_CURATOR_ENABLED
+	// is true and ANTHROPIC_API_KEY (shared with AI moderation) is set
+	// (AICuratorActive); both api and worker need both. AICuratorModel is
+	// the exact model id.
+	AICuratorEnabled bool
+	AICuratorModel   string
+}
+
+// AICuratorActive reports whether AI curation is switched on and has an
+// API key.
+func (c *Config) AICuratorActive() bool {
+	return c.AICuratorEnabled && strings.TrimSpace(c.AnthropicAPIKey) != ""
 }
 
 // AIModerationActive reports whether AI moderation is switched on and has
@@ -77,6 +92,9 @@ const (
 	DefaultAIModerationBatch = 50
 	MaxAIModerationBatch     = 200
 )
+
+// DefaultAICuratorModel is the AI curator's default model id.
+const DefaultAICuratorModel = "claude-haiku-5-5"
 
 // defaultMailFrom is used when MAIL_FROM is unset (dev / Mailpit).
 const defaultMailFrom = "BookHaven <noreply@bookhaven.local>"
@@ -116,6 +134,12 @@ func Load() (*Config, error) {
 	}
 	cfg.AIModerationCron = strings.TrimSpace(getEnv("AI_MODERATION_CRON", DefaultAIModerationCron))
 	cfg.AIModerationBatch = parseClampedInt(getEnv("AI_MODERATION_BATCH", ""), DefaultAIModerationBatch, MaxAIModerationBatch)
+
+	cfg.AICuratorEnabled = parseBoolEnv("AI_CURATOR_ENABLED")
+	cfg.AICuratorModel = strings.TrimSpace(getEnv("AI_CURATOR_MODEL", DefaultAICuratorModel))
+	if cfg.AICuratorModel == "" {
+		cfg.AICuratorModel = DefaultAICuratorModel
+	}
 
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
 	if err != nil || smtpPort <= 0 || smtpPort > 65535 {

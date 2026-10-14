@@ -191,6 +191,7 @@ describe('sub-tabs', () => {
     ['/import/books/file', 'import.books', 'import.books.file'],
     ['/import/authors/manual', 'import.authors', 'import.authors.manual'],
     ['/import/authors/wikidata', 'import.authors', 'import.authors.wikidata'],
+    ['/import/authors/ai', 'import.authors', 'import.authors.ai'],
     ['/import/genres/manual', 'import.genres', 'import.genres.manual'],
     ['/import/genres/wikidata', 'import.genres', 'import.genres.wikidata'],
   ])('%s -> %s / %s', (pathname, tabId, subtabId) => {
@@ -202,6 +203,8 @@ describe('sub-tabs', () => {
     ['/import/books', 'import.books'],
     ['/import/books/unknown', 'import.books'],
     ['/import/authors/file', 'import.authors'],
+    ['/import/books/ai', 'import.books'],
+    ['/import/genres/ai', 'import.genres'],
     ['/import/jobs', 'import.jobs'],
   ])('%s resolves to %s with no subtab', (pathname, tabId) => {
     expect(tabIdOf(pathname)).toBe(tabId);
@@ -216,8 +219,8 @@ describe('sub-tabs', () => {
     }
   });
 
-  it('sub-tab order is manual -> wikidata -> file and sub-tabs live under their tab', () => {
-    const order = ['manual', 'wikidata', 'file'];
+  it('sub-tab order is manual -> wikidata -> file -> ai and sub-tabs live under their tab', () => {
+    const order = ['manual', 'wikidata', 'file', 'ai'];
     for (const tab of tabs.filter((t) => t.subtabs)) {
       const methods = tab.subtabs!.map((s) => s.href.split('/').pop()!);
       expect(methods, tab.id).toEqual(order.filter((m) => methods.includes(m)));
@@ -227,6 +230,8 @@ describe('sub-tabs', () => {
       }
     }
     expect(importBooks.subtabs!.map((s) => s.label)).toEqual(['Вручную', 'Wikidata', 'Из файла']);
+    expect(getTabById('import.authors')!.subtabs!.map((s) => s.label)).toEqual(['Вручную', 'Wikidata', 'Подбор ИИ']);
+    expect(getTabById('import.genres')!.subtabs!.map((s) => s.label)).toEqual(['Вручную', 'Wikidata']);
   });
 
   it('sub-tabs inherit the tab roles', () => {

@@ -1,10 +1,9 @@
 'use client';
 
 import { KeyboardEvent, ReactNode } from 'react';
-import Link from 'next/link';
 import { AdminHarvestAuthorCandidate } from '@bookhaven/api-client';
-import { Button, Card, CardContent, Input, Label } from '@bookhaven/ui';
-import { AuthorStatusBadge, authorModerationHref } from '@/entities/author';
+import { Button, Input, Label } from '@bookhaven/ui';
+import { WikidataAuthorCandidateCard } from '@/entities/author';
 import type { WikidataAuthorSearch as SearchState } from '../model/use-wikidata-author-search';
 
 interface WikidataAuthorSearchProps {
@@ -72,39 +71,11 @@ export function WikidataAuthorSearch({
       {search.candidates.length > 0 && (
         <div className="space-y-2">
           {search.candidates.map((candidate) => (
-            <Card key={candidate.qid}>
-              <CardContent className="flex items-center justify-between gap-4 p-4">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{candidate.label}</span>
-                    <a
-                      href={`https://www.wikidata.org/wiki/${candidate.qid}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-mono text-xs text-primary underline"
-                    >
-                      {candidate.qid}
-                    </a>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {candidate.description || 'без описания'}
-                  </div>
-                  {candidate.existing && (
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="text-muted-foreground">Уже в BookHaven:</span>
-                      <AuthorStatusBadge status={candidate.existing.status} />
-                      <Link
-                        href={authorModerationHref(candidate.existing) as any}
-                        className="text-primary underline"
-                      >
-                        Открыть
-                      </Link>
-                    </div>
-                  )}
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">{renderActions(candidate)}</div>
-              </CardContent>
-            </Card>
+            <WikidataAuthorCandidateCard
+              key={candidate.qid}
+              candidate={candidate}
+              actions={renderActions(candidate)}
+            />
           ))}
         </div>
       )}

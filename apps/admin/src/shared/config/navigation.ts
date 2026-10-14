@@ -186,6 +186,13 @@ export const navSections: NavSection[] = [
             href: '/import/authors/wikidata',
             match: ['/import/authors/wikidata'],
           },
+          {
+            // Always visible; the page itself says when AI curation is off.
+            id: 'import.authors.ai',
+            label: 'Подбор ИИ',
+            href: '/import/authors/ai',
+            match: ['/import/authors/ai'],
+          },
         ],
       },
       {

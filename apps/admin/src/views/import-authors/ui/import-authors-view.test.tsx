@@ -17,6 +17,10 @@ vi.mock('@/widgets/wikidata-author-import', () => ({
   WikidataAuthorImportPanel: () => <div>wikidata author panel</div>,
 }));
 
+vi.mock('@/widgets/ai-author-curation', () => ({
+  AiAuthorCurationPanel: () => <div>ai curation panel</div>,
+}));
+
 function makeAuthor(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
   return {
     id: 'a1',
@@ -74,6 +78,15 @@ describe('ImportAuthorsView', () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByText('wikidata author panel')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Имя *')).not.toBeInTheDocument();
+  });
+
+  it('ai renders «Подбор ИИ» and only the curation panel', () => {
+    renderView('ai');
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Подбор ИИ' })).toBeInTheDocument();
+    expect(screen.getByText('ai curation panel')).toBeInTheDocument();
+    expect(screen.queryByText('wikidata author panel')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Имя *')).not.toBeInTheDocument();
   });
 
