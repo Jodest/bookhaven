@@ -885,30 +885,51 @@ func (h *Handler) AdminPastePreview(c echo.Context) error {
 	if err != nil {
 		return mapError(c, err, "failed to preview paste")
 	}
+	return c.JSON(http.StatusOK, ToPastePreviewResponse(p))
+}
+
+// PasteLineResponse and PasteCountsResponse are the paste report shapes other
+// modules (AI collection drafts) reuse.
+type (
+	PasteLineResponse    = pasteLineResponse
+	PasteCountsResponse  = pasteCountsResponse
+	PastePreviewResponse = pastePreviewResponse
+)
+
+// ToPasteLineResponse maps one report entry to its JSON shape.
+func ToPasteLineResponse(l service.PasteLine) PasteLineResponse {
+	r := pasteLineResponse{
+		Line: l.Line, Text: l.Text, Title: l.Title, Author: l.Author, Status: string(l.Status),
+		Candidates: make([]pasteBookResponse, 0, len(l.Candidates)), DuplicateOf: l.DuplicateOf,
+	}
+	if l.Book != nil {
+		b := toPasteBookResponse(*l.Book)
+		r.Book = &b
+	}
+	for _, cand := range l.Candidates {
+		r.Candidates = append(r.Candidates, toPasteBookResponse(cand))
+	}
+	return r
+}
+
+// ToPasteCountsResponse maps the per-status counts to their JSON shape.
+func ToPasteCountsResponse(n map[domain.PasteStatus]int) PasteCountsResponse {
+	return pasteCountsResponse{
+		Found: n[domain.PasteFound], Ambiguous: n[domain.PasteAmbiguous], NotFound: n[domain.PasteNotFound],
+		Rejected: n[domain.PasteRejected], InCollection: n[domain.PasteInCollection],
+		Duplicate: n[domain.PasteDuplicate], Invalid: n[domain.PasteInvalid],
+	}
+}
+
+// ToPastePreviewResponse maps a whole paste report to its JSON shape.
+func ToPastePreviewResponse(p *service.PastePreview) PastePreviewResponse {
 	lines := make([]pasteLineResponse, 0, len(p.Lines))
 	for _, l := range p.Lines {
-		r := pasteLineResponse{
-			Line: l.Line, Text: l.Text, Title: l.Title, Author: l.Author, Status: string(l.Status),
-			Candidates: make([]pasteBookResponse, 0, len(l.Candidates)), DuplicateOf: l.DuplicateOf,
-		}
-		if l.Book != nil {
-			b := toPasteBookResponse(*l.Book)
-			r.Book = &b
-		}
-		for _, cand := range l.Candidates {
-			r.Candidates = append(r.Candidates, toPasteBookResponse(cand))
-		}
-		lines = append(lines, r)
+		lines = append(lines, ToPasteLineResponse(l))
 	}
-	n := p.Counts
-	return c.JSON(http.StatusOK, pastePreviewResponse{
-		BooksCount: p.BooksCount, FreeSlots: p.FreeSlots, Lines: lines,
-		Counts: pasteCountsResponse{
-			Found: n[domain.PasteFound], Ambiguous: n[domain.PasteAmbiguous], NotFound: n[domain.PasteNotFound],
-			Rejected: n[domain.PasteRejected], InCollection: n[domain.PasteInCollection],
-			Duplicate: n[domain.PasteDuplicate], Invalid: n[domain.PasteInvalid],
-		},
-	})
+	return pastePreviewResponse{
+		BooksCount: p.BooksCount, FreeSlots: p.FreeSlots, Lines: lines, Counts: ToPasteCountsResponse(p.Counts),
+	}
 }
 
 // AdminBulkAdd godoc

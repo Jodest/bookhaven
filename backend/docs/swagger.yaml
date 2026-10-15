@@ -195,6 +195,51 @@ definitions:
       slug:
         type: string
     type: object
+  github_com_bookhaven_backend_internal_modules_curated_transport_http.PasteCountsResponse:
+    properties:
+      ambiguous:
+        type: integer
+      duplicate:
+        type: integer
+      found:
+        type: integer
+      in_collection:
+        type: integer
+      invalid:
+        type: integer
+      not_found:
+        type: integer
+      rejected:
+        type: integer
+    type: object
+  github_com_bookhaven_backend_internal_modules_curated_transport_http.adminAuthorResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  github_com_bookhaven_backend_internal_modules_curated_transport_http.pasteBookResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_curated_transport_http.adminAuthorResponse'
+        type: array
+      cover_url:
+        type: string
+      id:
+        type: string
+      in_collection:
+        type: boolean
+      published_year:
+        type: integer
+      slug:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+    type: object
   github_com_bookhaven_backend_internal_modules_harvest_service.HarvestRecordError:
     properties:
       index:
@@ -955,6 +1000,175 @@ definitions:
         type: string
       name:
         type: string
+    type: object
+  internal_modules_aicollections_transport_http.createDraftRequest:
+    properties:
+      brief:
+        type: string
+      collection_id:
+        type: string
+      count:
+        type: integer
+    type: object
+  internal_modules_aicollections_transport_http.draftCreatorResponse:
+    properties:
+      id:
+        type: string
+      username:
+        type: string
+    type: object
+  internal_modules_aicollections_transport_http.draftDetailResponse:
+    properties:
+      brief:
+        type: string
+      collection_id:
+        type: string
+      count:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        $ref: '#/definitions/internal_modules_aicollections_transport_http.draftCreatorResponse'
+      error_code:
+        enum:
+        - model_refusal
+        - model_truncated
+        - invalid_output
+        - model_error
+        - enqueue_failed
+        - timeout
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      input_tokens:
+        type: integer
+      model:
+        type: string
+      output_tokens:
+        type: integer
+      prompt_version:
+        type: integer
+      proposals_count:
+        type: integer
+      report:
+        allOf:
+        - $ref: '#/definitions/internal_modules_aicollections_transport_http.draftReportResponse'
+        description: Report is null unless the draft is done.
+      status:
+        enum:
+        - queued
+        - running
+        - done
+        - failed
+        type: string
+    type: object
+  internal_modules_aicollections_transport_http.draftLineResponse:
+    properties:
+      author:
+        type: string
+      book:
+        $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_curated_transport_http.pasteBookResponse'
+      candidates:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_curated_transport_http.pasteBookResponse'
+        type: array
+      duplicate_of:
+        type: integer
+      line:
+        type: integer
+      note:
+        type: string
+      original_title:
+        type: string
+      status:
+        type: string
+      text:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_aicollections_transport_http.draftReportResponse:
+    properties:
+      books_count:
+        type: integer
+      counts:
+        $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_curated_transport_http.PasteCountsResponse'
+      free_slots:
+        type: integer
+      lines:
+        items:
+          $ref: '#/definitions/internal_modules_aicollections_transport_http.draftLineResponse'
+        type: array
+    type: object
+  internal_modules_aicollections_transport_http.draftStatusResponse:
+    properties:
+      daily_limit:
+        type: integer
+      enabled:
+        description: 'Enabled: the flag and the API key are both set.'
+        type: boolean
+      max_brief_length:
+        type: integer
+      max_count:
+        type: integer
+      model:
+        type: string
+      prompt_version:
+        type: integer
+      used_today:
+        type: integer
+    type: object
+  internal_modules_aicollections_transport_http.draftSummaryResponse:
+    properties:
+      brief:
+        type: string
+      collection_id:
+        type: string
+      count:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        $ref: '#/definitions/internal_modules_aicollections_transport_http.draftCreatorResponse'
+      error_code:
+        enum:
+        - model_refusal
+        - model_truncated
+        - invalid_output
+        - model_error
+        - enqueue_failed
+        - timeout
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      input_tokens:
+        type: integer
+      model:
+        type: string
+      output_tokens:
+        type: integer
+      prompt_version:
+        type: integer
+      proposals_count:
+        type: integer
+      status:
+        enum:
+        - queued
+        - running
+        - done
+        - failed
+        type: string
+    type: object
+  internal_modules_aicollections_transport_http.listDraftsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_aicollections_transport_http.draftSummaryResponse'
+        type: array
     type: object
   internal_modules_aicurator_transport_http.createCurationRequest:
     properties:
@@ -2972,6 +3186,239 @@ info:
   title: BookHaven API
   version: "1.0"
 paths:
+  /admin/ai-collections/drafts:
+    get:
+      description: Требуется роль admin. 20 последних черновиков подборки collection_id,
+        новые первыми. Черновик в статусе queued/running без прогресса больше часа
+        показывается как failed с error_code timeout. Работает и при выключенной функции.
+      parameters:
+      - description: ID подборки (UUID)
+        in: query
+        name: collection_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aicollections_transport_http.listDraftsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Недавние черновики подборки от ИИ (админ)
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. collection_id — ручная подборка,
+        brief — описание подборки (1–500 символов после обрезки пробелов), count —
+        сколько книг предложить (1–1000; по умолчанию размер подборки плюс пятая часть,
+        не больше 1000). Черновик сохраняется в статусе queued и составляется воркером:
+        модель предлагает книги, сопоставление с каталогом выполняется при чтении
+        черновика. Подборка и каталог не меняются. 503 — функция выключена; 400 —
+        неверные collection_id, brief или count; 404 — подборка не найдена; 422 —
+        подборка автоматическая; 409 — у подборки уже составляется черновик (draft_id);
+        429 — исчерпан дневной лимит (20 черновиков за 24 часа); 502 — не удалось
+        поставить задачу в очередь (черновик помечается failed / enqueue_failed).'
+      parameters:
+      - description: collection_id, brief и необязательный count
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_aicollections_transport_http.createDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/internal_modules_aicollections_transport_http.draftSummaryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "429":
+          description: Too Many Requests
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Создать черновик подборки от ИИ (админ)
+      tags:
+      - admin
+  /admin/ai-collections/drafts/{id}:
+    get:
+      description: 'Требуется роль admin. Для готового черновика (done) поле report
+        вычисляется при чтении по текущему каталогу и составу подборки: те же статусы,
+        что у предпросмотра вставленного списка (found, ambiguous, not_found, rejected,
+        in_collection, duplicate), по записи на каждое предложение в порядке рангов;
+        line — ранг, original_title и note — мнение модели, только для показа как
+        обычный текст. Для остальных статусов report равен null, а proposals_count
+        показывает прогресс. Книга, которой нет в каталоге (not_found), не создаётся
+        и не добавляется.'
+      parameters:
+      - description: ID черновика (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aicollections_transport_http.draftDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Черновик подборки от ИИ с отчётом по каталогу (админ)
+      tags:
+      - admin
+  /admin/ai-collections/status:
+    get:
+      description: Требуется роль admin. enabled — включены ли черновики (флаг AI_COLLECTIONS_ENABLED
+        и ключ API заданы), model — модель, prompt_version — версия промпта, лимиты
+        (max_brief_length, max_count, daily_limit), used_today — число черновиков
+        текущего администратора за последние 24 часа. Работает и при выключенной функции.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aicollections_transport_http.draftStatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Статус черновиков подборок от ИИ (админ)
+      tags:
+      - admin
   /admin/ai-curator/requests:
     get:
       description: Требуется роль admin. 20 последних запросов всех администраторов,

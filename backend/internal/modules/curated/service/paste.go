@@ -107,6 +107,25 @@ func toPasteBooks(books []catalogDomain.Book, in map[uuid.UUID]bool) []PasteBook
 	return out
 }
 
+// matchTry is one extra exact-title lookup tried when the item's own title
+// matches nothing. KeepAuthor keeps the item's author for the classification;
+// otherwise the retried text is taken as a whole title with no author.
+type matchTry struct {
+	Title      string
+	KeepAuthor bool
+}
+
+// matchItem is one thing to match against the catalog: a pasted line or an
+// AI proposal. An empty Title is reported as invalid.
+type matchItem struct {
+	Line    int
+	Text    string
+	Title   string
+	Author  string
+	Key     string
+	Retries []matchTry
+}
+
 // PreviewPaste matches every pasted line against the catalog. It writes
 // nothing and never creates a book.
 func (s *Service) PreviewPaste(ctx context.Context, id uuid.UUID, text string) (*PastePreview, error) {
@@ -117,6 +136,23 @@ func (s *Service) PreviewPaste(ctx context.Context, id uuid.UUID, text string) (
 	if err != nil {
 		return nil, err
 	}
+	items := make([]matchItem, 0, len(lines))
+	for _, ln := range lines {
+		p := domain.Parse(ln.text)
+		it := matchItem{
+			Line: ln.n, Text: ln.text, Title: p.Title, Author: p.Author,
+			Key: textnorm.Key(p.Title + " " + p.Author),
+		}
+		if p.Author != "" {
+			it.Retries = []matchTry{{Title: p.Whole}}
+		}
+		items = append(items, it)
+	}
+	return s.matchItems(ctx, id, items)
+}
+
+// matchItems is the matching core shared by bulk paste and AI proposals.
+func (s *Service) matchItems(ctx context.Context, id uuid.UUID, items []matchItem) (*PastePreview, error) {
 	heldIDs, err := s.repo.CollectionBookIDs(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("collection books: %w", err)
@@ -145,30 +181,39 @@ func (s *Service) PreviewPaste(ctx context.Context, id uuid.UUID, text string) (
 		return m, nil
 	}
 
-	report := make([]PasteLine, 0, len(lines))
-	entries := make([]domain.PasteEntry, 0, len(lines))
-	for _, ln := range lines {
-		pl := PasteLine{Line: ln.n, Text: ln.text, Candidates: []PasteBook{}}
-		p := domain.Parse(ln.text)
-		titleKey := textnorm.Key(p.Title)
+	report := make([]PasteLine, 0, len(items))
+	entries := make([]domain.PasteEntry, 0, len(items))
+	for _, it := range items {
+		pl := PasteLine{Line: it.Line, Text: it.Text, Candidates: []PasteBook{}}
+		titleKey := textnorm.Key(it.Title)
 		if titleKey == "" {
 			pl.Status = domain.PasteInvalid
 			report = append(report, pl)
-			entries = append(entries, domain.PasteEntry{Line: ln.n, Status: domain.PasteInvalid})
+			entries = append(entries, domain.PasteEntry{Line: it.Line, Status: domain.PasteInvalid})
 			continue
 		}
-		title, author := p.Title, p.Author
+		title, author := it.Title, it.Author
 		matches, err := exact(titleKey)
 		if err != nil {
 			return nil, err
 		}
-		if len(matches) == 0 && author != "" {
-			if wholeKey := textnorm.Key(p.Whole); wholeKey != "" && wholeKey != titleKey {
-				if matches, err = exact(wholeKey); err != nil {
+		if len(matches) == 0 {
+			for _, r := range it.Retries {
+				if !r.KeepAuthor && author == "" {
+					continue
+				}
+				rk := textnorm.Key(r.Title)
+				if rk == "" || rk == titleKey {
+					continue
+				}
+				if matches, err = exact(rk); err != nil {
 					return nil, err
 				}
 				if len(matches) > 0 {
-					title, author = p.Whole, ""
+					if !r.KeepAuthor {
+						title, author = r.Title, ""
+					}
+					break
 				}
 			}
 		}
@@ -178,7 +223,7 @@ func (s *Service) PreviewPaste(ctx context.Context, id uuid.UUID, text string) (
 			a := author
 			pl.Author = &a
 		}
-		entry := domain.PasteEntry{Line: ln.n, Key: textnorm.Key(p.Title + " " + p.Author), Status: cl.Status}
+		entry := domain.PasteEntry{Line: it.Line, Key: it.Key, Status: cl.Status}
 		if cl.Book != nil {
 			pl.Book = &PasteBook{Book: *cl.Book, InCollection: held[cl.Book.ID]}
 			entry.BookID = cl.Book.ID
@@ -212,6 +257,64 @@ func (s *Service) PreviewPaste(ctx context.Context, id uuid.UUID, text string) (
 		free = 0
 	}
 	return &PastePreview{BooksCount: len(heldIDs), FreeSlots: free, Counts: counts, Lines: report}, nil
+}
+
+// ManualInfo is what AI drafts need to know about a manual collection.
+type ManualInfo struct {
+	Title       string
+	Description string
+	GenreName   string
+	Size        int
+}
+
+// ManualInfo loads a manual collection: ErrCollectionNotFound for an unknown
+// one and ErrCollectionAutomatic for an automatic one.
+func (s *Service) ManualInfo(ctx context.Context, id uuid.UUID) (*ManualInfo, error) {
+	c, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, wrapGet(err)
+	}
+	if c.IsAuto() {
+		return nil, domain.ErrCollectionAutomatic
+	}
+	info := &ManualInfo{Title: c.Title, Description: c.Description, Size: c.Size}
+	if c.Genre != nil {
+		info.GenreName = c.Genre.Name
+	}
+	return info, nil
+}
+
+// Proposal is one AI-proposed book to match against the catalog.
+type Proposal struct {
+	Rank          int
+	Title         string
+	Author        string
+	OriginalTitle string
+}
+
+// MatchProposals matches AI proposals with the bulk-paste rules, plus a retry
+// by the original title that keeps the author. It writes nothing and never
+// creates a book.
+func (s *Service) MatchProposals(ctx context.Context, id uuid.UUID, ps []Proposal) (*PastePreview, error) {
+	if err := s.requireManual(ctx, id); err != nil {
+		return nil, err
+	}
+	items := make([]matchItem, 0, len(ps))
+	for _, p := range ps {
+		text := p.Title
+		if p.Author != "" {
+			text = p.Title + " — " + p.Author
+		}
+		it := matchItem{
+			Line: p.Rank, Text: text, Title: p.Title, Author: p.Author,
+			Key: textnorm.Key(p.Title + " " + p.Author),
+		}
+		if p.OriginalTitle != "" {
+			it.Retries = []matchTry{{Title: p.OriginalTitle, KeepAuthor: true}}
+		}
+		items = append(items, it)
+	}
+	return s.matchItems(ctx, id, items)
 }
 
 // BulkAdd appends the chosen catalog books in the given order as one block.

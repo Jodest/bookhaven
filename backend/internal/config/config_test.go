@@ -386,6 +386,46 @@ func TestLoad_AIDescriptions(t *testing.T) {
 	}
 }
 
+func setAICollectionsEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	setSMTPEnv(t, nil)
+	for _, k := range []string{"AI_COLLECTIONS_ENABLED", "AI_COLLECTIONS_MODEL", "ANTHROPIC_API_KEY", "AI_DESCRIPTIONS_ENABLED"} {
+		t.Setenv(k, "")
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestLoad_AICollections(t *testing.T) {
+	setAICollectionsEnv(t, nil)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AICollectionsEnabled || cfg.AICollectionsActive() {
+		t.Error("AI collection drafts must be off by default")
+	}
+	if cfg.AICollectionsModel != "claude-sonnet-5-5" {
+		t.Errorf("default model = %q", cfg.AICollectionsModel)
+	}
+
+	setAICollectionsEnv(t, map[string]string{"AI_COLLECTIONS_ENABLED": "true"})
+	cfg, _ = Load()
+	if !cfg.AICollectionsEnabled || cfg.AICollectionsActive() {
+		t.Error("the flag without a key must not be active")
+	}
+
+	setAICollectionsEnv(t, map[string]string{"AI_COLLECTIONS_ENABLED": "true", "ANTHROPIC_API_KEY": "sk-test", "AI_COLLECTIONS_MODEL": " claude-haiku-5-5 "})
+	cfg, _ = Load()
+	if !cfg.AICollectionsActive() || cfg.AICollectionsModel != "claude-haiku-5-5" {
+		t.Errorf("active=%v model=%q", cfg.AICollectionsActive(), cfg.AICollectionsModel)
+	}
+	if cfg.AIDescriptionsActive() {
+		t.Error("the collections flag must not switch on AI descriptions")
+	}
+}
+
 func setAutoCollectionsEnv(t *testing.T, env map[string]string) {
 	t.Helper()
 	setSMTPEnv(t, nil)

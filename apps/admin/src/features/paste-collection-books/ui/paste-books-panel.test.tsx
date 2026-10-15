@@ -3,14 +3,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@bookhaven/api-client';
 import type { PastePreview } from '@bookhaven/api-client';
-import { pasteBook, pasteLine } from '../lib/fixtures';
+import { pasteBook, pasteLine } from '@/shared/lib/paste-fixtures';
 import { PasteBooksPanel } from './paste-books-panel';
 
 const previewMock = vi.fn();
 const bulkMock = vi.fn();
 
-vi.mock('@/entities/curated-collection', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/entities/curated-collection')>()),
+vi.mock('@/entities/curated-collection/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/curated-collection/api')>()),
   adminCollectionsApi: {
     previewPaste: (...a: unknown[]) => previewMock(...a),
     bulkAddBooks: (...a: unknown[]) => bulkMock(...a),

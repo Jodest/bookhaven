@@ -1,28 +1,24 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import type { BulkAddResult, PasteBook, PasteLine, PastePreview } from '@bookhaven/api-client';
+import type { BulkAddResult, PastePreview } from '@bookhaven/api-client';
 import { Button, Input, Label, Textarea } from '@bookhaven/ui';
-import { pasteErrorText } from '../lib/paste-error-text';
 import {
   deriveSelection,
   initialSelection,
+  MatchReportTable,
   notFoundText,
   overCapacity,
-  resolvedBookId,
-  selectionReducer,
-  isPickable,
-  type Selection,
-} from '../lib/selection';
-import {
-  PASTE_BOOK_STATUS_LABELS,
   PASTE_COUNT_LABELS,
   PASTE_COUNT_ORDER,
-  pasteStatusLabel,
+  resolvedBookId,
+  selectionReducer,
   SKIP_REASON_LABELS,
-} from '../lib/status-labels';
-import { useBulkAdd, usePastePreview } from '../model/use-paste-books';
+  useBulkAddBooks,
+  type Selection,
+} from '@/entities/curated-collection';
+import { pasteErrorText } from '../lib/paste-error-text';
+import { usePastePreview } from '../model/use-paste-books';
 
 interface PasteBooksPanelProps {
   collectionId: string;
@@ -36,120 +32,6 @@ interface Report {
   notFound: string;
 }
 
-function bookSummary(book: PasteBook): string {
-  const authors = book.authors.map((a) => a.name).join(', ');
-  const year = book.published_year ? `, ${book.published_year}` : '';
-  return `${book.title}${authors ? ` — ${authors}` : ''}${year}`;
-}
-
-interface CandidateListProps {
-  line: PasteLine;
-  picked: string | undefined;
-  onPick: (line: number, bookId: string) => void;
-}
-
-function CandidateList({ line, picked, onPick }: CandidateListProps) {
-  return (
-    <ul className="mt-1 space-y-1">
-      {line.candidates.map((c) => {
-        const pickable = isPickable(c);
-        return (
-          <li key={c.id}>
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="radio"
-                name={`pick-${line.line}`}
-                checked={picked === c.id}
-                disabled={!pickable}
-                onChange={() => onPick(line.line, c.id)}
-                aria-label={`Выбрать: ${bookSummary(c)}`}
-              />
-              <span className={pickable ? undefined : 'text-muted-foreground'}>
-                {bookSummary(c)} · {PASTE_BOOK_STATUS_LABELS[c.status]}
-                {c.in_collection && ' · Уже в подборке'}
-              </span>
-            </label>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-interface PreviewTableProps {
-  preview: PastePreview;
-  selection: Selection;
-  repeatOf: Record<number, number>;
-  disabled: boolean;
-  onToggle: (line: number) => void;
-  onPick: (line: number, bookId: string) => void;
-}
-
-function PreviewTable({ preview, selection, repeatOf, disabled, onToggle, onPick }: PreviewTableProps) {
-  return (
-    <table className="w-full text-left text-sm">
-      <tbody>
-        {preview.lines.map((l) => {
-          const resolved = resolvedBookId(l, selection);
-          const tickable = (l.status === 'found' || l.status === 'ambiguous') && !repeatOf[l.line];
-          return (
-            <tr key={l.line} className="border-b align-top" data-status={l.status}>
-              <td className="w-10 p-2">
-                {(l.status === 'found' || l.status === 'ambiguous') && (
-                  <input
-                    type="checkbox"
-                    aria-label={`Добавить строку ${l.line}`}
-                    checked={Boolean(selection.ticked[l.line]) && resolved !== null && !repeatOf[l.line]}
-                    disabled={disabled || !tickable || resolved === null}
-                    onChange={() => onToggle(l.line)}
-                  />
-                )}
-              </td>
-              <td className="w-12 p-2 text-muted-foreground">{l.line}</td>
-              <td className="p-2">
-                <div className="font-medium">{l.text}</div>
-                {l.book && (
-                  <div className="text-sm text-muted-foreground">
-                    {bookSummary(l.book)} · {PASTE_BOOK_STATUS_LABELS[l.book.status]}
-                  </div>
-                )}
-                {l.status === 'ambiguous' && (
-                  <CandidateList line={l} picked={selection.picks[l.line]} onPick={onPick} />
-                )}
-                {l.status === 'rejected' && l.candidates.length > 0 && (
-                  <ul className="mt-1 text-sm text-muted-foreground">
-                    {l.candidates.map((c) => (
-                      <li key={c.id}>
-                        {bookSummary(c)} · {PASTE_BOOK_STATUS_LABELS[c.status]}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </td>
-              <td className="w-64 p-2">
-                <div>{pasteStatusLabel(l)}</div>
-                {repeatOf[l.line] !== undefined && (
-                  <div className="text-xs text-muted-foreground">Повтор строки {repeatOf[l.line]}</div>
-                )}
-                {l.status === 'not_found' && (
-                  <Link
-                    href="/import/books/manual"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-primary underline"
-                  >
-                    Добавить в каталог
-                  </Link>
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
-
 /**
  * Bulk paste of books into a collection: textarea, per-line preview against
  * the catalog, choice of the books to add and a result report. A line never
@@ -157,7 +39,7 @@ function PreviewTable({ preview, selection, repeatOf, disabled, onToggle, onPick
  */
 export function PasteBooksPanel({ collectionId }: PasteBooksPanelProps) {
   const previewMutation = usePastePreview(collectionId);
-  const bulk = useBulkAdd(collectionId);
+  const bulk = useBulkAddBooks(collectionId);
 
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<PastePreview | null>(null);
@@ -252,8 +134,8 @@ export function PasteBooksPanel({ collectionId }: PasteBooksPanelProps) {
               .map((s) => `${PASTE_COUNT_LABELS[s]}: ${preview.counts[s]}`)
               .join(' · ')}
           </p>
-          <PreviewTable
-            preview={preview}
+          <MatchReportTable
+            lines={preview.lines}
             selection={selection}
             repeatOf={derived.repeatOf}
             disabled={pending}

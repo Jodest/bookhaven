@@ -1201,6 +1201,70 @@ export interface BulkAddResult {
   books_count: number;
 }
 
+// AI drafts of a manual curated collection (/api/v1/admin/ai-collections,
+// openspec capability collections/curated-collection-ai-drafts). The model
+// proposes books only; the report matches them against the catalog at read
+// time. Nothing is added to a collection or the catalog automatically.
+
+export type AiDraftStatus = 'queued' | 'running' | 'done' | 'failed';
+
+export type AiDraftErrorCode =
+  | 'model_refusal'
+  | 'model_truncated'
+  | 'invalid_output'
+  | 'model_error'
+  | 'enqueue_failed'
+  | 'timeout';
+
+export interface AdminAiCollectionsStatus {
+  /** AI collection drafts are switched on and have an API key. */
+  enabled: boolean;
+  model: string;
+  prompt_version: number;
+  max_brief_length: number;
+  max_count: number;
+  daily_limit: number;
+  /** The caller's drafts in the last 24 hours. */
+  used_today: number;
+}
+
+export interface AdminAiCollectionDraftCreateInput {
+  collection_id: string;
+  brief: string;
+  /** 1..1000; omitted means the collection size plus a fifth. */
+  count?: number;
+}
+
+export interface AdminAiCollectionDraft {
+  id: string;
+  collection_id: string;
+  brief: string;
+  count: number;
+  status: AiDraftStatus;
+  /** Set for failed drafts and for done drafts whose later part failed. */
+  error_code: AiDraftErrorCode | null;
+  /** Stored proposals so far (the progress). */
+  proposals_count: number;
+  model: string;
+  prompt_version: number;
+  input_tokens: number;
+  output_tokens: number;
+  created_by: { id: string; username: string } | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+/** A bulk-paste report line plus the AI proposal's original title and note. */
+export type AiDraftLine = PasteLine & {
+  original_title: string | null;
+  note: string;
+};
+
+export interface AdminAiCollectionDraftDetail extends AdminAiCollectionDraft {
+  /** Null unless the draft is done; computed at read time. */
+  report: (Omit<PastePreview, 'lines'> & { lines: AiDraftLine[] }) | null;
+}
+
 export interface AutoRuleInput {
   metric: AutoMetric;
   period_days?: number | null;
@@ -2663,6 +2727,22 @@ export const api = {
         }),
       list: () => fetcher<{ items: AdminCurationRequestSummary[] }>('/api/v1/admin/ai-curator/requests'),
       get: (id: string) => fetcher<AdminCurationRequest>(`/api/v1/admin/ai-curator/requests/${id}`),
+    },
+    aiCollections: {
+      status: () => fetcher<AdminAiCollectionsStatus>('/api/v1/admin/ai-collections/status'),
+      // Errors: 400 bad collection_id/brief/count, 404 collection, 409 active
+      // draft (draft_id), 422 automatic collection, 429 daily limit, 502
+      // queueing failed, 503 AI collection drafts disabled.
+      create: (body: AdminAiCollectionDraftCreateInput) =>
+        fetcher<AdminAiCollectionDraft>('/api/v1/admin/ai-collections/drafts', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }),
+      list: (collectionId: string) =>
+        fetcher<{ items: AdminAiCollectionDraft[] }>(
+          `/api/v1/admin/ai-collections/drafts?${new URLSearchParams({ collection_id: collectionId })}`
+        ),
+      get: (id: string) => fetcher<AdminAiCollectionDraftDetail>(`/api/v1/admin/ai-collections/drafts/${id}`),
     },
     aiDescriptions: {
       status: () => fetcher<AdminAIDescriptionStatus>('/api/v1/admin/ai-descriptions/status'),

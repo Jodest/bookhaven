@@ -212,6 +212,16 @@ func TestAIDescriptionsServerConfig(t *testing.T) {
 	}
 }
 
+func TestAICollectionsServerConfig(t *testing.T) {
+	c := aiCollectionsServerConfig(nil)
+	if c.Concurrency != 1 {
+		t.Errorf("Concurrency = %d, want 1", c.Concurrency)
+	}
+	if !reflect.DeepEqual(c.Queues, map[string]int{"ai_collections": 1}) {
+		t.Errorf("Queues = %v, want map[ai_collections:1]", c.Queues)
+	}
+}
+
 // AI descriptions are admin-triggered only: no schedule, even when active.
 func TestRegisterSchedules_NoAIDescriptionsSchedule(t *testing.T) {
 	f := &fakeRegistrar{}
