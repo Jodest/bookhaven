@@ -129,6 +129,7 @@ func RegisterRoutes(
 	curatedHandler := curatedhttp.NewHandler(curatedService)
 	api.GET("/collections", curatedHandler.ListPublic)
 	api.GET("/collections/:slug", curatedHandler.GetPublic)
+	api.GET("/books/:id/collections", curatedHandler.ListBookPlaces)
 }
 
 // AIModerationDeps configures the AI moderation trigger/status endpoints:

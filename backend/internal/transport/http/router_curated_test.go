@@ -92,4 +92,11 @@ CREATE TABLE books (id TEXT PRIMARY KEY, status TEXT);`).Error; err != nil {
 	if code := do(http.MethodGet, "/api/v1/collections/ok-title", "", "", ""); code != http.StatusNotFound {
 		t.Errorf("public draft: %d", code)
 	}
+	// Per-book places are public: unknown book 404, bad id 400, never 401/403.
+	if code := do(http.MethodGet, "/api/v1/books/"+uuid.NewString()+"/collections", "", "", ""); code != http.StatusNotFound {
+		t.Errorf("public book places unknown: %d", code)
+	}
+	if code := do(http.MethodGet, "/api/v1/books/not-a-uuid/collections", "", "", ""); code != http.StatusBadRequest {
+		t.Errorf("public book places bad id: %d", code)
+	}
 }

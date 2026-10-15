@@ -5,11 +5,14 @@ import { formatBooksCount, formatSource } from '../lib/format-source';
 
 interface CollectionCardProps {
   collection: CuratedCollection;
+  /** Heading level of the title; h3 when the card sits under a section h2. */
+  headingLevel?: 'h2' | 'h3';
 }
 
 /** Index card of /top: title, up to 4 covers, «{n} книг» and the source line. */
-export function CollectionCard({ collection }: CollectionCardProps) {
+export function CollectionCard({ collection, headingLevel = 'h2' }: CollectionCardProps) {
   const source = formatSource(collection.source);
+  const Heading = headingLevel;
   const covers = collection.cover_urls.slice(0, 4);
 
   return (
@@ -24,7 +27,7 @@ export function CollectionCard({ collection }: CollectionCardProps) {
           </div>
         ))}
       </div>
-      <h2 className="mt-3 font-display text-lg font-semibold leading-tight">{collection.title}</h2>
+      <Heading className="mt-3 font-display text-lg font-semibold leading-tight">{collection.title}</Heading>
       <p className="mt-1 text-sm text-muted-foreground">{formatBooksCount(collection.shown_count)}</p>
       {source && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{source}</p>}
     </Link>

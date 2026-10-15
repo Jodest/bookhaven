@@ -1831,6 +1831,35 @@ definitions:
       title:
         type: string
     type: object
+  internal_modules_curated_transport_http.bookPlaceCollection:
+    properties:
+      id:
+        type: string
+      kind:
+        type: string
+      size:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_curated_transport_http.bookPlaceResponse:
+    properties:
+      collection:
+        $ref: '#/definitions/internal_modules_curated_transport_http.bookPlaceCollection'
+      place:
+        type: integer
+    type: object
+  internal_modules_curated_transport_http.bookPlacesResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_curated_transport_http.bookPlaceResponse'
+        type: array
+      total:
+        type: integer
+    type: object
   internal_modules_curated_transport_http.bulkAddRequest:
     properties:
       book_ids:
@@ -6551,6 +6580,44 @@ paths:
       summary: Список книг
       tags:
       - catalog
+  /books/{id}/collections:
+    get:
+      description: Доступно без авторизации. Места совпадают с /collections/{slug};
+        резерв не учитывается. Неизвестная или неопубликованная книга - 404
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_curated_transport_http.bookPlacesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Места книги в подборках
+      tags:
+      - collections
   /books/{id}/ratings:
     post:
       consumes:
@@ -6833,6 +6900,12 @@ paths:
   /collections:
     get:
       description: Доступно без авторизации. Сначала новые по дате первой публикации
+      parameters:
+      - description: Сколько подборок вернуть (1-50), по умолчанию все; total - число
+          всех опубликованных
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
