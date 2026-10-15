@@ -639,6 +639,68 @@ export interface AdminBookAdaptation extends BookAdaptation {
   kinopoisk_id: string | null;
 }
 
+// ---- Manual editing of screen works (openspec screen-works/admin-editing) ----
+
+/** Work data typed by an admin (create inside `work`, and PATCH /admin/screen-works/{id}). */
+export interface ScreenWorkInput {
+  title: string;
+  original_title: string | null;
+  kind: ScreenWorkKind;
+  year: number | null;
+  director: string | null;
+  imdb_id: string | null;
+  kinopoisk_id: string | null;
+  /** Optional on create and PATCH; a stored QID can not be changed. */
+  qid?: string | null;
+}
+
+/** Row of GET /admin/screen-works. */
+export interface AdminScreenWork {
+  id: string;
+  title: string;
+  original_title: string | null;
+  kind: ScreenWorkKind;
+  year: number | null;
+  director: string | null;
+  imdb_id: string | null;
+  kinopoisk_id: string | null;
+  qid: string | null;
+  manually_edited_at: string | null;
+  book_count: number;
+  author_count: number;
+}
+
+export interface AdminScreenWorkBookLink {
+  id: string;
+  title: string;
+  status: string;
+  hidden: boolean;
+  source: 'wikidata' | 'manual';
+}
+
+export interface AdminScreenWorkAuthorLink {
+  id: string;
+  name: string;
+  status: string;
+  hidden: boolean;
+  source: 'wikidata' | 'manual';
+  relation: 'biopic' | 'documentary';
+}
+
+/** GET/PATCH /admin/screen-works/{id}. */
+export interface AdminScreenWorkDetail extends AdminScreenWork {
+  books: AdminScreenWorkBookLink[];
+  authors: AdminScreenWorkAuthorLink[];
+}
+
+/** Exactly one of screen_work_id and work; relation is required for authors. */
+export type AddScreenWorkLinkBody = { screen_work_id: string } | { work: ScreenWorkInput };
+export type AddAuthorScreenWorkBody = AddScreenWorkLinkBody & { relation: 'biopic' | 'documentary' };
+
+/** 201 of the manual link endpoints: the admin item plus work_created. */
+export type AddedAdaptation = AdminBookAdaptation & { work_created: boolean };
+export type AddedAuthorFilm = AdminAuthorFilm & { work_created: boolean };
+
 // One book of POST /api/v1/admin/books/sync-adaptations. notes are codes:
 // 'no_qid', 'wikidata_unavailable'.
 export interface AdminAdaptationSyncItem {
@@ -1608,6 +1670,8 @@ async function fetcher<T>(path: string, options?: RequestInit, isRetry = false):
     throw new ApiError(response.status, response.statusText, message, path, code, retryAfterSeconds);
   }
 
+  // 204 (deletes) has no body.
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -2579,6 +2643,18 @@ export const api = {
           method: 'PATCH',
           body: JSON.stringify({ hidden }),
         }),
+      // Manual link: an existing work or a new one. Errors: 409 already
+      // linked / duplicate imdb or kinopoisk id, 422 invalid work data.
+      addAdaptation: (bookId: string, body: AddScreenWorkLinkBody) =>
+        fetcher<AddedAdaptation>(`/api/v1/admin/books/${bookId}/adaptations`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }),
+      // Manual links only (409 for a Wikidata link).
+      deleteAdaptation: (bookId: string, screenWorkId: string) =>
+        fetcher<void>(`/api/v1/admin/books/${bookId}/adaptations/${screenWorkId}`, {
+          method: 'DELETE',
+        }),
       create: (data: AdminBookInput) =>
         fetcher<AdminBook>('/api/v1/admin/books', {
           method: 'POST',
@@ -2713,11 +2789,53 @@ export const api = {
       // Every film link of an author, including hidden ones.
       screenWorks: (authorId: string) =>
         fetcher<{ items: AdminAuthorFilm[]; total: number }>(`/api/v1/admin/authors/${authorId}/screen-works`),
+      // hidden, relation or both (at least one).
+      updateScreenWork: (
+        authorId: string,
+        screenWorkId: string,
+        patch: { hidden?: boolean; relation?: 'biopic' | 'documentary' }
+      ) =>
+        fetcher<AdminAuthorFilm>(`/api/v1/admin/authors/${authorId}/screen-works/${screenWorkId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(patch),
+        }),
       setScreenWorkHidden: (authorId: string, screenWorkId: string, hidden: boolean) =>
         fetcher<AdminAuthorFilm>(`/api/v1/admin/authors/${authorId}/screen-works/${screenWorkId}`, {
           method: 'PATCH',
           body: JSON.stringify({ hidden }),
         }),
+      addScreenWork: (authorId: string, body: AddAuthorScreenWorkBody) =>
+        fetcher<AddedAuthorFilm>(`/api/v1/admin/authors/${authorId}/screen-works`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        }),
+      deleteScreenWork: (authorId: string, screenWorkId: string) =>
+        fetcher<void>(`/api/v1/admin/authors/${authorId}/screen-works/${screenWorkId}`, {
+          method: 'DELETE',
+        }),
+    },
+    screenWorks: {
+      list: (params?: { search?: string; unlinked?: boolean; page?: number; limit?: number }) => {
+        const q: Record<string, string> = {};
+        if (params?.search) q.search = params.search;
+        if (params?.unlinked) q.unlinked = 'true';
+        if (params?.page !== undefined) q.page = String(params.page);
+        if (params?.limit !== undefined) q.limit = String(params.limit);
+        return fetcher<PaginatedResponse<AdminScreenWork>>(
+          `/api/v1/admin/screen-works?${new URLSearchParams(q)}`
+        );
+      },
+      get: (id: string) => fetcher<AdminScreenWorkDetail>(`/api/v1/admin/screen-works/${id}`),
+      // Full replace; marks the work as edited by hand. Errors: 409 taken
+      // qid, 422 invalid data / qid cannot be changed.
+      update: (id: string, data: ScreenWorkInput) =>
+        fetcher<AdminScreenWorkDetail>(`/api/v1/admin/screen-works/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        }),
+      // 409 while the work has any link.
+      delete: (id: string) =>
+        fetcher<void>(`/api/v1/admin/screen-works/${id}`, { method: 'DELETE' }),
     },
     genres: {
       list: async (params?: {

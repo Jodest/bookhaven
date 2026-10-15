@@ -27,6 +27,8 @@ describe('resolveNavLocation', () => {
     ['/catalog/authors/1/edit', 'catalog.authors'],
     ['/catalog/genres', 'catalog.genres'],
     ['/catalog/genres/1/edit', 'catalog.genres'],
+    ['/catalog/screen-works', 'catalog.screen-works'],
+    ['/catalog/screen-works/7/edit', 'catalog.screen-works'],
     ['/moderation/books', 'moderation.books'],
     ['/moderation/authors', 'moderation.authors'],
     ['/moderation/genres', 'moderation.genres'],

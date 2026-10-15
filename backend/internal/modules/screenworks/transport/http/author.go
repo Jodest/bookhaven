@@ -111,16 +111,21 @@ func (h *Handler) AdminListAuthorFilms(c echo.Context) error {
 	return c.JSON(http.StatusOK, adminAuthorFilmsResponse{Items: items, Total: len(items)})
 }
 
-// AdminSetAuthorFilmHidden godoc
-// @Summary Скрыть или показать фильм об авторе (админ)
-// @Description Требуется роль admin и Bearer-токен. Поле hidden обязательно. Связь и фильм не удаляются, поэтому повторная синхронизация скрытую связь не возвращает. Видимость экранизации той же работы у книги не меняется. Неизвестный автор или связь - 404
+type updateAuthorFilmRequest struct {
+	Hidden   *bool   `json:"hidden"`
+	Relation *string `json:"relation"`
+}
+
+// AdminUpdateAuthorFilm godoc
+// @Summary Изменить связь фильма с автором (админ)
+// @Description Требуется роль admin и Bearer-токен. Тело: hidden, relation (biopic | documentary) или оба поля; хотя бы одно обязательно. Связь любого источника. Связь и фильм не удаляются при скрытии, поэтому повторная синхронизация скрытую связь не возвращает; выставленный relation синхронизация не меняет. Видимость экранизации той же работы у книги не меняется. Неизвестный автор или связь - 404
 // @Tags admin
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "ID автора"
 // @Param screen_work_id path string true "ID фильма"
-// @Param body body setHiddenRequest true "Видимость"
+// @Param body body updateAuthorFilmRequest true "Видимость и/или тип связи"
 // @Success 200 {object} adminAuthorFilmResponse
 // @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
@@ -128,7 +133,7 @@ func (h *Handler) AdminListAuthorFilms(c echo.Context) error {
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Router /admin/authors/{id}/screen-works/{screen_work_id} [patch]
-func (h *Handler) AdminSetAuthorFilmHidden(c echo.Context) error {
+func (h *Handler) AdminUpdateAuthorFilm(c echo.Context) error {
 	authorID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return errJSON(c, http.StatusBadRequest, "invalid author id")
@@ -137,13 +142,16 @@ func (h *Handler) AdminSetAuthorFilmHidden(c echo.Context) error {
 	if err != nil {
 		return errJSON(c, http.StatusBadRequest, "invalid screen work id")
 	}
-	var req setHiddenRequest
-	if err := c.Bind(&req); err != nil || req.Hidden == nil {
-		return errJSON(c, http.StatusBadRequest, "hidden is required")
+	var req updateAuthorFilmRequest
+	if err := c.Bind(&req); err != nil {
+		return errJSON(c, http.StatusBadRequest, domain.ErrLinkPatchEmpty.Error())
 	}
-	item, err := h.service.SetAuthorFilmHidden(c.Request().Context(), authorID, workID, *req.Hidden)
+	item, err := h.service.UpdateAuthorFilm(c.Request().Context(), authorID, workID, req.Hidden, req.Relation)
 	if err != nil {
-		if errors.Is(err, domain.ErrAuthorLinkNotFound) {
+		switch {
+		case errors.Is(err, domain.ErrLinkPatchEmpty), errors.Is(err, domain.ErrInvalidRelation):
+			return errJSON(c, http.StatusBadRequest, err.Error())
+		case errors.Is(err, domain.ErrAuthorLinkNotFound):
 			return errJSON(c, http.StatusNotFound, "author film link not found")
 		}
 		return errJSON(c, http.StatusInternalServerError, "failed to update author film")

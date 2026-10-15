@@ -225,7 +225,9 @@ func RegisterAdminRoutes(
 	books.GET("/:id", adminHandler.GetBook)
 	books.PATCH("/:id", adminHandler.UpdateBook, requireBearer)
 	books.GET("/:id/adaptations", screenWorksHandler.AdminListBookAdaptations)
+	books.POST("/:id/adaptations", screenWorksHandler.AdminAddAdaptation, requireBearer)
 	books.PATCH("/:id/adaptations/:screen_work_id", screenWorksHandler.AdminSetAdaptationHidden, requireBearer)
+	books.DELETE("/:id/adaptations/:screen_work_id", screenWorksHandler.AdminDeleteAdaptation, requireBearer)
 
 	authors := admin.Group("/authors", adminRole)
 	authors.GET("", adminHandler.ListAuthors)
@@ -239,7 +241,15 @@ func RegisterAdminRoutes(
 	authors.PATCH("/:id", adminHandler.UpdateAuthor, requireBearer)
 	authors.POST("/:id/merge", adminHandler.MergeAuthors, requireBearer)
 	authors.GET("/:id/screen-works", screenWorksHandler.AdminListAuthorFilms)
-	authors.PATCH("/:id/screen-works/:screen_work_id", screenWorksHandler.AdminSetAuthorFilmHidden, requireBearer)
+	authors.POST("/:id/screen-works", screenWorksHandler.AdminAddAuthorFilm, requireBearer)
+	authors.PATCH("/:id/screen-works/:screen_work_id", screenWorksHandler.AdminUpdateAuthorFilm, requireBearer)
+	authors.DELETE("/:id/screen-works/:screen_work_id", screenWorksHandler.AdminDeleteAuthorFilm, requireBearer)
+
+	screenWorks := admin.Group("/screen-works", adminRole)
+	screenWorks.GET("", screenWorksHandler.AdminListWorks)
+	screenWorks.GET("/:id", screenWorksHandler.AdminGetWork)
+	screenWorks.PATCH("/:id", screenWorksHandler.AdminUpdateWork, requireBearer)
+	screenWorks.DELETE("/:id", screenWorksHandler.AdminDeleteWork, requireBearer)
 
 	genres := admin.Group("/genres", adminRole)
 	genres.GET("", adminHandler.ListGenres)

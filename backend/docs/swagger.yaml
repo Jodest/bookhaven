@@ -303,6 +303,25 @@ definitions:
       title:
         type: string
     type: object
+  github_com_bookhaven_backend_internal_modules_screenworks_domain.WorkFields:
+    properties:
+      director:
+        type: string
+      imdb_id:
+        type: string
+      kind:
+        type: string
+      kinopoisk_id:
+        type: string
+      original_title:
+        type: string
+      qid:
+        type: string
+      title:
+        type: string
+      year:
+        type: integer
+    type: object
   github_com_bookhaven_backend_internal_modules_screenworks_service.AuthorSyncItem:
     properties:
       added:
@@ -3075,6 +3094,86 @@ definitions:
       total:
         type: integer
     type: object
+  internal_modules_screenworks_transport_http.addAdaptationRequest:
+    properties:
+      screen_work_id:
+        type: string
+      work:
+        $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_domain.WorkFields'
+    type: object
+  internal_modules_screenworks_transport_http.addAdaptationResponse:
+    properties:
+      director:
+        type: string
+      hidden:
+        type: boolean
+      id:
+        type: string
+      imdb_id:
+        type: string
+      imdb_url:
+        type: string
+      kind:
+        type: string
+      kinopoisk_id:
+        type: string
+      kinopoisk_url:
+        type: string
+      original_title:
+        type: string
+      qid:
+        type: string
+      source:
+        type: string
+      title:
+        type: string
+      work_created:
+        type: boolean
+      year:
+        type: integer
+    type: object
+  internal_modules_screenworks_transport_http.addAuthorFilmRequest:
+    properties:
+      relation:
+        type: string
+      screen_work_id:
+        type: string
+      work:
+        $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_domain.WorkFields'
+    type: object
+  internal_modules_screenworks_transport_http.addAuthorFilmResponse:
+    properties:
+      director:
+        type: string
+      hidden:
+        type: boolean
+      id:
+        type: string
+      imdb_id:
+        type: string
+      imdb_url:
+        type: string
+      kind:
+        type: string
+      kinopoisk_id:
+        type: string
+      kinopoisk_url:
+        type: string
+      original_title:
+        type: string
+      qid:
+        type: string
+      relation:
+        type: string
+      source:
+        type: string
+      title:
+        type: string
+      work_created:
+        type: boolean
+      year:
+        type: integer
+    type: object
   internal_modules_screenworks_transport_http.adminAdaptationResponse:
     properties:
       director:
@@ -3194,6 +3293,116 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  internal_modules_screenworks_transport_http.updateAuthorFilmRequest:
+    properties:
+      hidden:
+        type: boolean
+      relation:
+        type: string
+    type: object
+  internal_modules_screenworks_transport_http.workAuthorLinkResponse:
+    properties:
+      hidden:
+        type: boolean
+      id:
+        type: string
+      name:
+        type: string
+      relation:
+        type: string
+      source:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_modules_screenworks_transport_http.workBookLinkResponse:
+    properties:
+      hidden:
+        type: boolean
+      id:
+        type: string
+      source:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_screenworks_transport_http.workDetailResponse:
+    properties:
+      author_count:
+        type: integer
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_screenworks_transport_http.workAuthorLinkResponse'
+        type: array
+      book_count:
+        type: integer
+      books:
+        items:
+          $ref: '#/definitions/internal_modules_screenworks_transport_http.workBookLinkResponse'
+        type: array
+      director:
+        type: string
+      id:
+        type: string
+      imdb_id:
+        type: string
+      kind:
+        type: string
+      kinopoisk_id:
+        type: string
+      manually_edited_at:
+        type: string
+      original_title:
+        type: string
+      qid:
+        type: string
+      title:
+        type: string
+      year:
+        type: integer
+    type: object
+  internal_modules_screenworks_transport_http.workItemResponse:
+    properties:
+      author_count:
+        type: integer
+      book_count:
+        type: integer
+      director:
+        type: string
+      id:
+        type: string
+      imdb_id:
+        type: string
+      kind:
+        type: string
+      kinopoisk_id:
+        type: string
+      manually_edited_at:
+        type: string
+      original_title:
+        type: string
+      qid:
+        type: string
+      title:
+        type: string
+      year:
+        type: integer
+    type: object
+  internal_modules_screenworks_transport_http.workListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_screenworks_transport_http.workItemResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
     type: object
   internal_modules_shelves_transport_http.addBookRequest:
     properties:
@@ -4548,14 +4757,84 @@ paths:
       summary: Фильмы об авторе (админ)
       tags:
       - admin
-  /admin/authors/{id}/screen-works/{screen_work_id}:
-    patch:
+    post:
       consumes:
       - application/json
-      description: Требуется роль admin и Bearer-токен. Поле hidden обязательно. Связь
-        и фильм не удаляются, поэтому повторная синхронизация скрытую связь не возвращает.
-        Видимость экранизации той же работы у книги не меняется. Неизвестный автор
-        или связь - 404
+      description: Требуется роль admin и Bearer-токен. Работает как добавление экранизации
+        книге (screen_work_id либо work), автор любого статуса; дополнительно обязателен
+        relation (biopic | documentary). Связь с source = manual публикуется сразу.
+        Уже привязанная работа - 409
+      parameters:
+      - description: ID автора
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Существующая или новая работа и тип связи
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_screenworks_transport_http.addAuthorFilmRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_screenworks_transport_http.addAuthorFilmResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Добавить фильм об авторе вручную (админ)
+      tags:
+      - admin
+  /admin/authors/{id}/screen-works/{screen_work_id}:
+    delete:
+      description: Требуется роль admin и Bearer-токен. Удаляет только связь с source
+        = manual, сама работа остаётся. Связь из Wikidata не удаляется (409), её нужно
+        скрыть. Отсутствующая связь - 404
       parameters:
       - description: ID автора
         in: path
@@ -4567,12 +4846,76 @@ paths:
         name: screen_work_id
         required: true
         type: string
-      - description: Видимость
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удалить ручную связь автора с фильмом (админ)
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Тело: hidden, relation (biopic
+        | documentary) или оба поля; хотя бы одно обязательно. Связь любого источника.
+        Связь и фильм не удаляются при скрытии, поэтому повторная синхронизация скрытую
+        связь не возвращает; выставленный relation синхронизация не меняет. Видимость
+        экранизации той же работы у книги не меняется. Неизвестный автор или связь
+        - 404'
+      parameters:
+      - description: ID автора
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID фильма
+        in: path
+        name: screen_work_id
+        required: true
+        type: string
+      - description: Видимость и/или тип связи
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/internal_modules_screenworks_transport_http.setHiddenRequest'
+          $ref: '#/definitions/internal_modules_screenworks_transport_http.updateAuthorFilmRequest'
       produces:
       - application/json
       responses:
@@ -4612,7 +4955,7 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Скрыть или показать фильм об авторе (админ)
+      summary: Изменить связь фильма с автором (админ)
       tags:
       - admin
   /admin/authors/bulk-status:
@@ -5248,7 +5591,142 @@ paths:
       summary: Экранизации книги (админ)
       tags:
       - admin
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Тело: screen_work_id (существующая
+        работа) либо work (новая работа: title, original_title, kind, year, director,
+        imdb_id, kinopoisk_id, qid) - ровно одно из двух. Связь с source = manual
+        публикуется сразу. Книга любого статуса. Если QID уже есть в каталоге, привязывается
+        существующая работа без изменений (work_created = false). Одинаковый IMDb
+        или Кинопоиск id у новой работы - 409 с screen_work_id существующей. Уже привязанная
+        работа (в том числе скрытая) - 409. Ошибки полей - 422'
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Существующая или новая работа
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_screenworks_transport_http.addAdaptationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_screenworks_transport_http.addAdaptationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Добавить экранизацию книге вручную (админ)
+      tags:
+      - admin
   /admin/books/{id}/adaptations/{screen_work_id}:
+    delete:
+      description: Требуется роль admin и Bearer-токен. Удаляет только связь с source
+        = manual, сама работа остаётся. Связь из Wikidata не удаляется (409), её нужно
+        скрыть. Отсутствующая связь - 404
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID экранизации
+        in: path
+        name: screen_work_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удалить ручную связь книги с экранизацией (админ)
+      tags:
+      - admin
     patch:
       consumes:
       - application/json
@@ -7055,6 +7533,241 @@ paths:
       security:
       - BearerAuth: []
       summary: Скрыть/показать рецензию (модерация)
+      tags:
+      - admin
+  /admin/screen-works:
+    get:
+      description: Требуется роль admin. Все работы с пагинацией (page по умолчанию
+        1, limit по умолчанию 20, максимум 100), по названию, затем году. search -
+        подстрока названия или оригинального названия без учёта регистра либо точный
+        QID, IMDb id или Кинопоиск id. unlinked=true оставляет работы без связей с
+        книгами и авторами. Счётчики включают скрытые связи
+      parameters:
+      - description: Поиск
+        in: query
+        name: search
+        type: string
+      - description: Только без связей
+        in: query
+        name: unlinked
+        type: boolean
+      - description: Страница
+        in: query
+        name: page
+        type: integer
+      - description: Размер страницы (1..100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_screenworks_transport_http.workListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список фильмов и сериалов (админ)
+      tags:
+      - admin
+  /admin/screen-works/{id}:
+    delete:
+      description: 'Требуется роль admin и Bearer-токен. Удаляет работу только без
+        связей с книгами и авторами (скрытые связи тоже считаются): иначе 409. Строка
+        фильма блокируется на время проверки связей и удаления, поэтому параллельное
+        добавление связи не теряется: итог - 409 либо связь сохраняется'
+      parameters:
+      - description: ID фильма
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удалить фильм или сериал (админ)
+      tags:
+      - admin
+    get:
+      description: Требуется роль admin. Работа со связанными книгами и авторами любого
+        статуса, включая скрытые связи
+      parameters:
+      - description: ID фильма
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_screenworks_transport_http.workDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Фильм или сериал (админ)
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Полная замена полей (title,
+        original_title, kind, year, director, imdb_id, kinopoisk_id); qid необязателен:
+        у работы без QID его можно добавить, у работы с QID изменить или убрать нельзя
+        (422). Работа помечается как изменённая вручную, и синхронизация Wikidata
+        её больше не меняет. Занятый QID - 409, ошибки полей - 422'
+      parameters:
+      - description: ID фильма
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Данные фильма
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_domain.WorkFields'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_screenworks_transport_http.workDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Изменить фильм или сериал (админ)
       tags:
       - admin
   /admin/users:

@@ -12,6 +12,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
   useParams: () => ({ id: 'a1' }),
   useSearchParams: () => searchParamsValue,
+  usePathname: () => '/catalog/x/a1/edit',
 }));
 
 const getMock = vi.fn();
@@ -232,7 +233,7 @@ describe('AuthorEditView', () => {
     const section = (await screen.findByRole('heading', { name: 'Фильмы об авторе' })).closest('section') as HTMLElement;
     expect(await within(section).findByText('Толкин')).toBeInTheDocument();
     expect(within(section).getByText('2019 · Фильм · Доме Каруко')).toBeInTheDocument();
-    expect(within(section).getAllByText('Документальный')).toHaveLength(1);
+    expect(within(section).getAllByText('Документальный', { ignore: 'option' })).toHaveLength(1);
     expect(within(section).getAllByText('Скрыт')).toHaveLength(1);
     expect(within(section).getByRole('button', { name: 'Показать' })).toBeInTheDocument();
 

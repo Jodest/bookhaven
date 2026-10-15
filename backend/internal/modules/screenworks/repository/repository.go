@@ -44,6 +44,25 @@ type Repository interface {
 	// SetAuthorLinkHidden sets the hidden flag; domain.ErrAuthorLinkNotFound
 	// when the link does not exist.
 	SetAuthorLinkHidden(ctx context.Context, authorID, workID uuid.UUID, hidden bool) error
+
+	// Manual editing (openspec change add-screen-works-admin-editing).
+
+	ListWorks(ctx context.Context, f domain.WorkFilter) ([]domain.WorkListItem, int64, error)
+	GetWork(ctx context.Context, id uuid.UUID) (*domain.WorkDetail, error)
+	// UpdateWork replaces the fields and sets manually_edited_at.
+	UpdateWork(ctx context.Context, id uuid.UUID, f domain.WorkFields) error
+	// DeleteWorkIfUnlinked: ErrWorkNotFound or ErrWorkHasLinks otherwise.
+	DeleteWorkIfUnlinked(ctx context.Context, id uuid.UUID) error
+	// AddManualBookLink resolves or creates the work and inserts a manual
+	// link in one transaction; created is true for a new work.
+	AddManualBookLink(ctx context.Context, bookID uuid.UUID, ref domain.WorkRef) (workID uuid.UUID, created bool, err error)
+	AddManualAuthorLink(ctx context.Context, authorID uuid.UUID, ref domain.WorkRef, relation string) (workID uuid.UUID, created bool, err error)
+	// DeleteManualBookLink: ErrLinkNotFound, ErrLinkNotManual.
+	DeleteManualBookLink(ctx context.Context, bookID, workID uuid.UUID) error
+	// DeleteManualAuthorLink: ErrAuthorLinkNotFound, ErrLinkNotManual.
+	DeleteManualAuthorLink(ctx context.Context, authorID, workID uuid.UUID) error
+	// UpdateAuthorLink sets hidden, relation or both (ErrAuthorLinkNotFound).
+	UpdateAuthorLink(ctx context.Context, authorID, workID uuid.UUID, hidden *bool, relation *string) error
 }
 
 // GormRepository implements Repository.
