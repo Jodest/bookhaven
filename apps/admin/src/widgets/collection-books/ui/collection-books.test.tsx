@@ -19,6 +19,12 @@ vi.mock('@/entities/curated-collection', async (importOriginal) => ({
   },
 }));
 
+vi.mock('@/features/ai-collection-draft', () => ({
+  AiDraftPanel: ({ collectionId, size, booksCount }: { collectionId: string; size: number; booksCount: number }) => (
+    <div data-testid="ai-draft-panel">{`${collectionId}:${size}:${booksCount}`}</div>
+  ),
+}));
+
 vi.mock('@/entities/book', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/book')>()),
   adminBooksApi: { list: (...a: unknown[]) => listBooksMock(...a) },
@@ -186,5 +192,24 @@ describe('CollectionBooks', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Вставить список' }));
     expect(screen.queryByLabelText('Список книг')).not.toBeInTheDocument();
+  });
+
+  it('toggles the AI draft panel behind the Черновик ИИ button, closed for a non-empty collection', () => {
+    renderWidget(detail(items));
+    const toggle = screen.getByRole('button', { name: 'Черновик ИИ' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('ai-draft-panel')).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(screen.getByTestId('ai-draft-panel')).toHaveTextContent('c1:2:4');
+
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId('ai-draft-panel')).not.toBeInTheDocument();
+  });
+
+  it('opens the AI draft panel by default for an empty collection', () => {
+    renderWidget(detail([]));
+    expect(screen.getByRole('button', { name: 'Черновик ИИ' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('ai-draft-panel')).toBeInTheDocument();
   });
 });

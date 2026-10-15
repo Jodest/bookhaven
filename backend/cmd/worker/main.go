@@ -73,6 +73,14 @@
 // are drafts in book_ai_descriptions: no book field is written and nothing
 // is published without an admin. When not active, its server is not set up
 // and the model is never called.
+//
+// AI collection drafts (AI_COLLECTIONS_ENABLED and the shared
+// ANTHROPIC_API_KEY, off by default; see internal/modules/aicollections):
+// admins queue ai_collections:draft from the API; it runs on its own server
+// (queue ai_collections, Concurrency 1) and asks the model for ranked books
+// in chunks of 100. Nothing is added to a collection or the catalog: the
+// match against the catalog is computed when an admin reads the draft. When
+// not active, its server is not set up and the model is never called.
 package main
 
 import (
@@ -87,6 +95,8 @@ import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
 	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
+	aicollrepository "github.com/bookhaven/backend/internal/modules/aicollections/repository"
+	aicollservice "github.com/bookhaven/backend/internal/modules/aicollections/service"
 	aidescrepository "github.com/bookhaven/backend/internal/modules/aidescriptions/repository"
 	aidescservice "github.com/bookhaven/backend/internal/modules/aidescriptions/service"
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
@@ -198,8 +208,12 @@ func main() {
 		aiSrv            *asynq.Server
 		curatorSrv       *asynq.Server
 		descSrv          *asynq.Server
+		collSrv          *asynq.Server
 	)
 	shutdownServers := func() {
+		if collSrv != nil {
+			collSrv.Shutdown()
+		}
 		if descSrv != nil {
 			descSrv.Shutdown()
 		}
@@ -339,6 +353,32 @@ func main() {
 		logger.Info("AI descriptions disabled")
 	}
 
+	// AI collection drafts: only when switched on and a key is set.
+	if cfg.AICollectionsActive() {
+		client := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.AICollectionsModel)
+		collLookup := curatedservice.NewService(curatedrepository.NewGormRepository(db)).WithLogger(logger)
+		collHandlers := aicollservice.NewHandlers(aicollrepository.NewGormRepository(db), collLookup, client, cfg.AICollectionsModel, logger)
+
+		collMux := asynq.NewServeMux()
+		collMux.HandleFunc(aicollservice.TaskTypeDraft, collHandlers.HandleDraft)
+
+		collSrv = asynq.NewServer(redisOpt, aiCollectionsServerConfig(zapAsynqLogger{logger}))
+		if err := collSrv.Start(collMux); err != nil {
+			collSrv = nil
+			shutdownServers()
+			logger.Fatal("failed to start AI collection drafts asynq server", zap.Error(err))
+		}
+		// Never log the API key.
+		logger.Info("AI collection drafts enabled",
+			zap.String("queue", aicollservice.QueueName),
+			zap.String("model", cfg.AICollectionsModel))
+	} else {
+		if cfg.AICollectionsEnabled {
+			logger.Warn("AI_COLLECTIONS_ENABLED is set but ANTHROPIC_API_KEY is empty; AI collection drafts disabled")
+		}
+		logger.Info("AI collection drafts disabled")
+	}
+
 	scheduler := asynq.NewScheduler(
 		redisOpt,
 		&asynq.SchedulerOpts{
@@ -457,6 +497,18 @@ func aiDescriptionsServerConfig(logger asynq.Logger) asynq.Config {
 	return asynq.Config{
 		Queues: map[string]int{
 			aidescservice.QueueName: 1,
+		},
+		Concurrency: 1,
+		Logger:      logger,
+	}
+}
+
+// aiCollectionsServerConfig is the config of the AI collection drafts server
+// (its own queue, Concurrency 1: one draft is generated at a time).
+func aiCollectionsServerConfig(logger asynq.Logger) asynq.Config {
+	return asynq.Config{
+		Queues: map[string]int{
+			aicollservice.QueueName: 1,
 		},
 		Concurrency: 1,
 		Logger:      logger,
