@@ -214,6 +214,30 @@ Cost (assumptions: about 1.05k input tokens per book — a ~0.9k system prompt c
 
 One bulk run (200 books) costs about $1.60 on Sonnet. Token counts are stored per book: `SELECT model, sum(input_tokens), sum(output_tokens) FROM book_ai_descriptions GROUP BY model;` (a regeneration replaces the previous row, so this counts the latest generation per book).
 
+### AI collection drafts
+
+Off by default. AI drafts of manual curated collections are active only when `AI_COLLECTIONS_ENABLED=true` **and** `ANTHROPIC_API_KEY` is set — the same key as the other AI features, but a separate switch. A flag without a key logs `AI_COLLECTIONS_ENABLED is set but ANTHROPIC_API_KEY is empty; AI collection drafts disabled`; otherwise the worker logs `AI collection drafts disabled`. An admin opens a manual collection, uses «Черновик ИИ» next to «Вставить список», describes the collection and asks for a ranked list (1–1000 books; the default is the collection size plus a fifth). The worker runs its own asynq server (queue `ai_collections`, `Concurrency: 1`, at least 500 ms between model calls) for `ai_collections:draft`, one draft at a time, in chunks of 100 books that continue the ranking and exclude the books already proposed. A transient model failure is retried and resumes after the stored chunks; a draft with at least one stored proposal ends `done` even when a later chunk failed (`error_code` then names the failure).
+
+The model only proposes books (title, author, original title, a short note). Matching against the catalog is computed when an admin reads the draft, with the bulk-paste rules (plus a retry by the original title); a book missing from the catalog is only listed under «Нет в каталоге» and is never created or added. The admin applies the chosen books through the existing bulk add, appended at the end or inserted at a position; applying never removes or reorders the books already in the collection.
+
+**Both `backend` (api) and `worker` need the flag and the key.** The api never calls the model; it queues the task and uses the same switch for `enabled` in `GET /admin/ai-collections/status` and the 503 of `POST /admin/ai-collections/drafts`. If only the api has the flag, a draft is queued and then shown as failed with `timeout` after an hour; if only the worker has it, the admin sees the feature as off.
+
+Limits: one active draft per collection (409), 20 drafts per admin per rolling 24 hours, failed ones included (429), a brief of 1–500 characters. Drafts (and their proposals) are kept for 30 days and are deleted with their collection (migration 000028).
+
+| Variable | Meaning |
+|---|---|
+| `AI_COLLECTIONS_ENABLED` | `true` turns AI collection drafts on (with `ANTHROPIC_API_KEY`). Default `false`, also in dev and CI. |
+| `AI_COLLECTIONS_MODEL` | Exact model id. Default `claude-sonnet-5-5` (recall of real, correctly named and attributed works is the whole value; Haiku invents more titles, which only turn into «Нет в каталоге» noise); `claude-haiku-5-5` to cut cost. Blank means the default. |
+
+Cost per chunk of 100 books (assumptions: about 1k input tokens of system prompt plus the brief and context, plus about 15 tokens per already-proposed book in the exclusion list, at most about 13.5k at rank 901; about 6k output tokens including low-effort thinking):
+
+| Model | Top-100 (1 chunk) | Top-1000 (10 chunks) |
+|---|---|---|
+| `claude-sonnet-5-5` ($2 / $10 per 1M), default | ≈ $0.06 | ≈ $0.75 |
+| `claude-haiku-5-5` ($0.10 / $0.50 per 1M) | ≈ $0.003 | ≈ $0.04 |
+
+The daily cap of 20 drafts per admin bounds the worst case at about $15 per admin per day on Sonnet. Token counts are stored per draft: `SELECT model, sum(input_tokens), sum(output_tokens) FROM ai_collection_drafts GROUP BY model;` (only the last 30 days are kept).
+
 ## Email (SMTP)
 
 Transactional email (verification, password reset, later notifications) is sent asynchronously: the api enqueues an `email:send` task on the `email` asynq queue and the **worker** delivers it over SMTP (see `backend/internal/pkg/mailer` and [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md)). Only the `worker` container receives the SMTP variables; the `backend` (api) container never talks to SMTP.

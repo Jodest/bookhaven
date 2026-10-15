@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pasteBook, pasteLine } from './fixtures';
+import { pasteBook, pasteLine } from '@/shared/lib/paste-fixtures';
 import {
   deriveSelection,
   initialSelection,

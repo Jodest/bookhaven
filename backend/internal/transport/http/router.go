@@ -4,6 +4,7 @@ import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	adminhttp "github.com/bookhaven/backend/internal/modules/admin/transport/http"
 	aicuratorhttp "github.com/bookhaven/backend/internal/modules/aicurator/transport/http"
+	aicollectionshttp "github.com/bookhaven/backend/internal/modules/aicollections/transport/http"
 	aidescriptionshttp "github.com/bookhaven/backend/internal/modules/aidescriptions/transport/http"
 	aimodhttp "github.com/bookhaven/backend/internal/modules/aimoderation/transport/http"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
@@ -156,6 +157,14 @@ type AIDescriptionsDeps struct {
 	Service aidescriptionshttp.DescriptionService
 }
 
+// AICollectionsDeps configures the AI collection draft endpoints
+// (/admin/ai-collections): Service is the aicollections service (it carries
+// config.AICollectionsActive() and the model id; the API never calls the
+// model). Its task is queued on the shared asynq client.
+type AICollectionsDeps struct {
+	Service aicollectionshttp.DraftService
+}
+
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
 // harvestEnqueuer/harvestInspector are the small interfaces the new
 // harvest/transport/http.Handler depends on (satisfied by a real
@@ -173,6 +182,7 @@ func RegisterAdminRoutes(
 	aiModeration AIModerationDeps,
 	aiCurator AICuratorDeps,
 	aiDescriptions AIDescriptionsDeps,
+	aiCollections AICollectionsDeps,
 	curatedService *curatedservice.Service,
 ) {
 	admin := e.Group("/api/v1/admin", authMiddleware)
@@ -271,5 +281,15 @@ func RegisterAdminRoutes(
 		desc.GET("/:book_id", descHandler.GetAIDescription)
 		desc.POST("/:book_id/approve", descHandler.ApproveAIDescription, requireBearer)
 		desc.POST("/:book_id/discard", descHandler.DiscardAIDescription, requireBearer)
+	}
+
+	if aiCollections.Service != nil {
+		draftsHandler := aicollectionshttp.NewHandler(harvestEnqueuer, aiCollections.Service)
+		drafts := admin.Group("/ai-collections", adminRole)
+		// Static routes before /drafts/:id.
+		drafts.GET("/status", draftsHandler.DraftsStatus)
+		drafts.POST("/drafts", draftsHandler.CreateDraft, requireBearer)
+		drafts.GET("/drafts", draftsHandler.ListDrafts)
+		drafts.GET("/drafts/:id", draftsHandler.GetDraft)
 	}
 }

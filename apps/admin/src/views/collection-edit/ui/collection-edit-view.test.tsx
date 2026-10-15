@@ -146,6 +146,7 @@ describe('CollectionEditView', () => {
     renderView();
     await waitFor(() => expect(screen.getByTestId('snapshot-panel')).toBeInTheDocument());
     expect(screen.queryByTestId('books-panel')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Черновик ИИ' })).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Правилу соответствуют только 40 из 100 книг');
     expect(screen.getByText('Авто')).toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();

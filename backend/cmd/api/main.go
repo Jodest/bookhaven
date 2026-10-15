@@ -14,6 +14,8 @@ import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
 	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
+	aicollrepository "github.com/bookhaven/backend/internal/modules/aicollections/repository"
+	aicollservice "github.com/bookhaven/backend/internal/modules/aicollections/service"
 	aidescrepository "github.com/bookhaven/backend/internal/modules/aidescriptions/repository"
 	aidescservice "github.com/bookhaven/backend/internal/modules/aidescriptions/service"
 	curatedrepository "github.com/bookhaven/backend/internal/modules/curated/repository"
@@ -249,7 +251,10 @@ func main() {
 			curatorservice.WithLogger(logger))},
 		httptransport.AIDescriptionsDeps{Service: aidescservice.NewService(
 			aiDescriptionsRepo, adminService, cfg.AIDescriptionsActive(), cfg.AIDescriptionsModel,
-			aidescservice.WithLogger(logger))}, curatedService)
+			aidescservice.WithLogger(logger))},
+		httptransport.AICollectionsDeps{Service: aicollservice.NewService(
+			aicollrepository.NewGormRepository(db), curatedService, curatedService, cfg.AICollectionsActive(), cfg.AICollectionsModel,
+			aicollservice.WithLogger(logger))}, curatedService)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)

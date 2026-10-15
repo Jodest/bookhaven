@@ -7,6 +7,7 @@ import { Button, Input, Label } from '@bookhaven/ui';
 import { adminBooksApi, BookStatusBadge } from '@/entities/book';
 import { ITEM_STATE_LABELS } from '@/entities/curated-collection';
 import { bookErrorText, useCollectionBookMutations } from '@/features/edit-collection-books';
+import { AiDraftPanel } from '@/features/ai-collection-draft';
 import { PasteBooksPanel } from '@/features/paste-collection-books';
 
 const SEARCH_LIMIT = 10;
@@ -109,6 +110,8 @@ export function CollectionBooks({ collection }: CollectionBooksProps) {
   const [draft, setDraft] = useState('');
   const [term, setTerm] = useState('');
   const [pasteOpen, setPasteOpen] = useState(false);
+  // An empty collection starts with the AI draft panel open.
+  const [aiOpen, setAiOpen] = useState(collection.items.length === 0);
 
   const search = useQuery({
     queryKey: ['admin', 'books', 'collection-search', term],
@@ -187,6 +190,19 @@ export function CollectionBooks({ collection }: CollectionBooksProps) {
           Вставить список
         </Button>
         {pasteOpen && <PasteBooksPanel collectionId={collection.id} />}
+      </div>
+
+      <div className="space-y-3">
+        <Button type="button" variant="outline" aria-expanded={aiOpen} onClick={() => setAiOpen((open) => !open)}>
+          Черновик ИИ
+        </Button>
+        {aiOpen && (
+          <AiDraftPanel
+            collectionId={collection.id}
+            size={collection.size}
+            booksCount={collection.items.length}
+          />
+        )}
       </div>
 
       {error && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}

@@ -78,6 +78,19 @@ type Config struct {
 	// and worker need both. AIDescriptionsModel is the exact model id.
 	AIDescriptionsEnabled bool
 	AIDescriptionsModel   string
+
+	// AI collection drafts (an admin asks for a ranked draft of a manual
+	// collection; see internal/modules/aicollections). Active only when
+	// AI_COLLECTIONS_ENABLED is true and ANTHROPIC_API_KEY is set
+	// (AICollectionsActive); both api and worker need both.
+	AICollectionsEnabled bool
+	AICollectionsModel   string
+}
+
+// AICollectionsActive reports whether AI collection drafts are switched on
+// and have an API key.
+func (c *Config) AICollectionsActive() bool {
+	return c.AICollectionsEnabled && strings.TrimSpace(c.AnthropicAPIKey) != ""
 }
 
 // AIDescriptionsActive reports whether AI descriptions are switched on and
@@ -123,6 +136,10 @@ const DefaultAICuratorModel = "claude-haiku-5-5"
 // DefaultAIDescriptionsModel is the AI descriptions' default model id
 // (Sonnet: the only generative task, where world knowledge matters).
 const DefaultAIDescriptionsModel = "claude-sonnet-5-5"
+
+// DefaultAICollectionsModel is the AI collection drafts' default model id
+// (Sonnet: recall of real, correctly attributed works is the whole value).
+const DefaultAICollectionsModel = "claude-sonnet-5-5"
 
 // defaultMailFrom is used when MAIL_FROM is unset (dev / Mailpit).
 const defaultMailFrom = "BookHaven <noreply@bookhaven.local>"
@@ -176,6 +193,12 @@ func Load() (*Config, error) {
 	cfg.AIDescriptionsModel = strings.TrimSpace(getEnv("AI_DESCRIPTIONS_MODEL", DefaultAIDescriptionsModel))
 	if cfg.AIDescriptionsModel == "" {
 		cfg.AIDescriptionsModel = DefaultAIDescriptionsModel
+	}
+
+	cfg.AICollectionsEnabled = parseBoolEnv("AI_COLLECTIONS_ENABLED")
+	cfg.AICollectionsModel = strings.TrimSpace(getEnv("AI_COLLECTIONS_MODEL", DefaultAICollectionsModel))
+	if cfg.AICollectionsModel == "" {
+		cfg.AICollectionsModel = DefaultAICollectionsModel
 	}
 
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))

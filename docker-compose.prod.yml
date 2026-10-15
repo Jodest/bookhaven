@@ -63,6 +63,8 @@ services:
       AI_CURATOR_MODEL: ${AI_CURATOR_MODEL:-claude-haiku-5-5}
       AI_DESCRIPTIONS_ENABLED: ${AI_DESCRIPTIONS_ENABLED:-false}
       AI_DESCRIPTIONS_MODEL: ${AI_DESCRIPTIONS_MODEL:-claude-sonnet-5-5}
+      AI_COLLECTIONS_ENABLED: ${AI_COLLECTIONS_ENABLED:-false}
+      AI_COLLECTIONS_MODEL: ${AI_COLLECTIONS_MODEL:-claude-sonnet-5-5}
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,6 +109,8 @@ services:
       AI_CURATOR_MODEL: ${AI_CURATOR_MODEL:-claude-haiku-5-5}
       AI_DESCRIPTIONS_ENABLED: ${AI_DESCRIPTIONS_ENABLED:-false}
       AI_DESCRIPTIONS_MODEL: ${AI_DESCRIPTIONS_MODEL:-claude-sonnet-5-5}
+      AI_COLLECTIONS_ENABLED: ${AI_COLLECTIONS_ENABLED:-false}
+      AI_COLLECTIONS_MODEL: ${AI_COLLECTIONS_MODEL:-claude-sonnet-5-5}
     depends_on:
       postgres:
         condition: service_healthy
