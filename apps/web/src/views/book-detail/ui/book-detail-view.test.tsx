@@ -6,6 +6,7 @@ import { BookDetailView } from './book-detail-view';
 
 const getBook = vi.fn();
 const forBook = vi.fn();
+const adaptationsForBook = vi.fn();
 
 vi.mock('@/entities/book', () => ({
   booksApi: { get: (slug: string) => getBook(slug) },
@@ -14,6 +15,11 @@ vi.mock('@/entities/book', () => ({
 vi.mock('@/entities/curated-collection', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/curated-collection')>()),
   collectionsApi: { forBook: (id: string) => forBook(id) },
+}));
+
+vi.mock('@/entities/screen-work', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/screen-work')>()),
+  screenWorksApi: { forBook: (id: string) => adaptationsForBook(id) },
 }));
 
 vi.mock('next/image', () => ({
@@ -62,6 +68,8 @@ const book: Book = {
 beforeEach(() => {
   forBook.mockReset();
   forBook.mockResolvedValue({ items: [], total: 0 });
+  adaptationsForBook.mockReset();
+  adaptationsForBook.mockResolvedValue({ items: [], total: 0 });
 });
 
 describe('BookDetailView collection badges', () => {
@@ -138,5 +146,52 @@ describe('BookDetailView description', () => {
 
     expect(screen.queryByRole('heading', { name: 'Описание' })).not.toBeInTheDocument();
     expect(screen.queryByText(LABEL)).not.toBeInTheDocument();
+  });
+});
+
+describe('BookDetailView adaptations', () => {
+  it('renders the adaptations block', async () => {
+    getBook.mockResolvedValue(book);
+    adaptationsForBook.mockResolvedValue({
+      items: [
+        {
+          id: 'w1',
+          title: 'Отцы и дети (фильм)',
+          original_title: null,
+          kind: 'film',
+          year: 1958,
+          director: 'Адольф Бергункер',
+          imdb_url: null,
+          kinopoisk_url: 'https://www.kinopoisk.ru/film/1/',
+        },
+      ],
+      total: 1,
+    });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(adaptationsForBook).toHaveBeenCalledWith('b1');
+    expect(screen.getByRole('heading', { name: 'Экранизации' })).toBeInTheDocument();
+    expect(screen.getByText('Режиссёр: Адольф Бергункер')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Кинопоиск' })).toHaveAttribute('target', '_blank');
+  });
+
+  it('has no block for an empty list', async () => {
+    getBook.mockResolvedValue(book);
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.queryByRole('heading', { name: 'Экранизации' })).not.toBeInTheDocument();
+  });
+
+  it('renders the page without the block when the request fails', async () => {
+    getBook.mockResolvedValue(book);
+    adaptationsForBook.mockRejectedValue(new Error('boom'));
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Отцы и дети' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Экранизации' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/boom|ошибк/i)).not.toBeInTheDocument();
   });
 });

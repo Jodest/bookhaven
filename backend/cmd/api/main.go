@@ -20,6 +20,8 @@ import (
 	aidescservice "github.com/bookhaven/backend/internal/modules/aidescriptions/service"
 	curatedrepository "github.com/bookhaven/backend/internal/modules/curated/repository"
 	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
+	screenworksrepository "github.com/bookhaven/backend/internal/modules/screenworks/repository"
+	screenworksservice "github.com/bookhaven/backend/internal/modules/screenworks/service"
 	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
@@ -241,7 +243,10 @@ func main() {
 	// AI descriptions (openspec catalog-admin/ai-descriptions): one
 	// repository backs the public fallback reader and the admin service.
 	aiDescriptionsRepo := aidescrepository.NewGormRepository(db)
-	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, curatedService, authMiddleware, optionalAuth, aiDescriptionsRepo)
+	// Screen adaptations (openspec screen-works): shares the Wikidata client
+	// (and its rate limiter) with the author enrichment.
+	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger)
+	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, curatedService, screenWorksService, authMiddleware, optionalAuth, aiDescriptionsRepo)
 
 	// Admin routes
 	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, taskClient, harvestInspector, wikidataClient,
@@ -254,7 +259,7 @@ func main() {
 			aidescservice.WithLogger(logger))},
 		httptransport.AICollectionsDeps{Service: aicollservice.NewService(
 			aicollrepository.NewGormRepository(db), curatedService, curatedService, cfg.AICollectionsActive(), cfg.AICollectionsModel,
-			aicollservice.WithLogger(logger))}, curatedService)
+			aicollservice.WithLogger(logger))}, curatedService, screenWorksService)
 
 	// Auth routes
 	authHandler := authhttp.NewHandler(authService)

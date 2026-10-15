@@ -143,6 +143,7 @@ type bookResponse struct {
 	Status         string           `json:"status"`
 	PublishedAt    *time.Time       `json:"published_at"`
 	ExternalSource *string          `json:"external_source,omitempty"`
+	ExternalID     *string          `json:"external_id,omitempty"`
 	Authors        []authorResponse `json:"authors"`
 	Genres         []genreResponse  `json:"genres"`
 	CreatedAt      time.Time        `json:"created_at"`
@@ -559,6 +560,7 @@ func toBookResponse(b catalogDomain.Book) bookResponse {
 		Status:         b.Status,
 		PublishedAt:    b.PublishedAt,
 		ExternalSource: b.ExternalSource,
+		ExternalID:     b.ExternalID,
 		Authors:        authors,
 		Genres:         genres,
 		CreatedAt:      b.CreatedAt,

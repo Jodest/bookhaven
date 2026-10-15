@@ -5,14 +5,21 @@ import { useQuery } from '@tanstack/react-query';
 import { adminBooksApi, BookStatusBadge, BOOK_STATUS_LABELS } from '@/entities/book';
 import { adminAuthorsApi } from '@/entities/author';
 import { adminGenresApi } from '@/entities/genre';
-import { AdminBook } from '@bookhaven/api-client';
-import { Badge } from '@bookhaven/ui';
+import { AdminAdaptationSyncReport, AdminBook } from '@bookhaven/api-client';
+import { Badge, Button } from '@bookhaven/ui';
 import { useBookStatusMutation } from '@/features/moderate-book';
+import {
+  hasWikidataQid,
+  syncErrorMessage,
+  syncItemText,
+  useSyncAdaptations,
+} from '@/features/sync-adaptations';
 import {
   CatalogList,
   type CatalogListColumn,
   type CatalogListFilter,
   type CatalogListState,
+  type CatalogRowContext,
 } from '@/widgets/catalog-list';
 
 // Catalog books list (docs/features/catalog-unified-lists.md), rendered
@@ -72,6 +79,22 @@ const COLUMNS: CatalogListColumn<AdminBook>[] = [
 
 export function BooksListView() {
   const statusMutation = useBookStatusMutation();
+  const syncMutation = useSyncAdaptations();
+
+  const handleSync = (book: AdminBook, ctx: CatalogRowContext) => {
+    ctx.notify(null);
+    syncMutation.mutate([book.id], {
+      onSuccess: (report: AdminAdaptationSyncReport) => {
+        const result = report.items[0];
+        if (!result) return;
+        ctx.notify({
+          type: result.outcome === 'error' ? 'error' : 'success',
+          message: syncItemText(result, book.title),
+        });
+      },
+      onError: (err) => ctx.notify({ type: 'error', message: syncErrorMessage(err) }),
+    });
+  };
 
   const { data: authorsData } = useQuery({
     queryKey: ['admin', 'authors', 'all'],
@@ -123,6 +146,18 @@ export function BooksListView() {
       statusLabels={BOOK_STATUS_LABELS}
       filters={filters}
       columns={COLUMNS}
+      renderRowActions={(book, ctx) =>
+        hasWikidataQid(book) ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={syncMutation.isPending}
+            onClick={() => handleSync(book, ctx)}
+          >
+            Найти экранизации в Wikidata
+          </Button>
+        ) : null
+      }
       copy={{
         searchPlaceholder: 'Поиск по названию, ISBN, описанию',
         loadError: 'Не удалось загрузить книги.',

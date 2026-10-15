@@ -1,6 +1,7 @@
 import { AuthorNameLink } from '@/entities/author';
 import { booksApi } from '@/entities/book';
 import { CollectionPlaceBadges, collectionsApi } from '@/entities/curated-collection';
+import { BookAdaptations, screenWorksApi } from '@/entities/screen-work';
 import { AddToListButton } from '@/features/add-to-list';
 import { BookRating } from '@/features/rate-book';
 import { ShelveBookButtons } from '@/features/shelve-book';
@@ -25,6 +26,10 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
   // Places in curated collections (openspec collections/curated-collections);
   // a failure only hides the badges.
   const places = await collectionsApi.forBook(book.id).catch(() => null);
+
+  // Screen adaptations (openspec screen-works/book-adaptations); a failure
+  // only hides the block.
+  const adaptations = await screenWorksApi.forBook(book.id).catch(() => null);
 
   // The book's own description always wins; an approved AI description
   // (openspec catalog-admin/ai-descriptions) is only a labelled fallback.
@@ -136,6 +141,8 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
               </Badge>
             ))}
           </div>
+
+          <BookAdaptations items={adaptations?.items ?? []} />
 
           <ReviewsSection bookId={book.id} slug={book.slug} />
         </div>

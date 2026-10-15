@@ -67,6 +67,7 @@ Status: standard workflow since 2026-10-13. Every product area has a living spec
 | `collections` | shelves, shelf books, lists, list books, public collections |
 | `home` | home page (payload, cache, layout), book of the day, literary calendar, catalog rows, random book, personal blocks |
 | `reading-challenges` | goals, progress |
+| `screen-works` | screen adaptations of books (films, series, cartoons, teleplays), the public book-page block, admin hide/show of an adaptation link |
 
 A Feature Contract is used only for work outside these domains (for example infra or tooling). A new product area gets a baseline spec, verified against the code, before or together with its first change.
 

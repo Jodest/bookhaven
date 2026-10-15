@@ -334,6 +334,8 @@ export interface AdminBook {
   /** First time the book became published; null if never. Read-only. */
   published_at: string | null;
   external_source: string | null;
+  /** Source id (the Wikidata QID when external_source is 'wikidata'). */
+  external_id?: string | null;
   authors: AdminAuthor[];
   genres: AdminGenre[];
   created_at: string;
@@ -604,6 +606,58 @@ export interface AdminAuthorEnrichmentReport {
   processed: number;
   enriched: number;
   items: AdminAuthorEnrichmentItem[];
+}
+
+// ---- Screen adaptations of books (openspec screen-works/*) ----
+
+export type ScreenWorkKind =
+  | 'film'
+  | 'tv_film'
+  | 'series'
+  | 'animated_film'
+  | 'animated_series'
+  | 'teleplay';
+
+/** Adaptation of a book (GET /books/{id}/adaptations). */
+export interface BookAdaptation {
+  id: string;
+  title: string;
+  original_title: string | null;
+  kind: ScreenWorkKind;
+  year: number | null;
+  director: string | null;
+  imdb_url: string | null;
+  kinopoisk_url: string | null;
+}
+
+/** Adaptation link in the admin (GET /admin/books/{id}/adaptations). */
+export interface AdminBookAdaptation extends BookAdaptation {
+  hidden: boolean;
+  source: 'wikidata' | 'manual';
+  qid: string | null;
+  imdb_id: string | null;
+  kinopoisk_id: string | null;
+}
+
+// One book of POST /api/v1/admin/books/sync-adaptations. notes are codes:
+// 'no_qid', 'wikidata_unavailable'.
+export interface AdminAdaptationSyncItem {
+  book_id: string;
+  title: string;
+  outcome: 'added' | 'unchanged' | 'skipped' | 'error';
+  found: number;
+  added: number;
+  notes: string[];
+  message: string;
+}
+
+export interface AdminAdaptationSyncReport {
+  processed: number;
+  /** Books with outcome 'added'. */
+  updated: number;
+  /** Links created. */
+  added: number;
+  items: AdminAdaptationSyncItem[];
 }
 
 /** Enrichment applied to an author created by a direct import. */
@@ -1980,6 +2034,10 @@ function normalizeAuthResponse(raw: RawAuthResponse): AuthResponse {
 
 export const api = {
   books: {
+    // Visible adaptations of a published book. Errors: 400 invalid id, 404
+    // unknown or not published book.
+    adaptations: (bookId: string) =>
+      fetcher<{ items: BookAdaptation[]; total: number }>(`/api/v1/books/${bookId}/adaptations`),
     list: async (params?: {
       page?: number;
       limit?: number;
@@ -2462,6 +2520,21 @@ export const api = {
         );
       },
       get: (id: string) => fetcher<AdminBook>(`/api/v1/admin/books/${id}`),
+      // Finds adaptations of 1..50 books in Wikidata. Errors: 502 Wikidata
+      // unavailable, 503 not configured.
+      syncAdaptations: (ids: string[]) =>
+        fetcher<AdminAdaptationSyncReport>('/api/v1/admin/books/sync-adaptations', {
+          method: 'POST',
+          body: JSON.stringify({ ids }),
+        }),
+      // Every adaptation link of a book, including hidden ones.
+      adaptations: (bookId: string) =>
+        fetcher<{ items: AdminBookAdaptation[]; total: number }>(`/api/v1/admin/books/${bookId}/adaptations`),
+      setAdaptationHidden: (bookId: string, screenWorkId: string, hidden: boolean) =>
+        fetcher<AdminBookAdaptation>(`/api/v1/admin/books/${bookId}/adaptations/${screenWorkId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ hidden }),
+        }),
       create: (data: AdminBookInput) =>
         fetcher<AdminBook>('/api/v1/admin/books', {
           method: 'POST',
