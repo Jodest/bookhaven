@@ -3,7 +3,9 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
+import { Button } from '@bookhaven/ui';
 import type {
+  AdminAdaptationSyncReport,
   AdminBookHint,
   AdminBookQueueItem,
   AdminBookQueueParams,
@@ -19,13 +21,23 @@ import {
   bulkBookStatusSummary,
   useBookStatusMutation,
 } from '@/features/moderate-book';
+import {
+  bulkSyncSummary,
+  hasWikidataQid,
+  syncErrorMessage,
+  syncItemText,
+  syncReportHasErrors,
+  useSyncAdaptations,
+} from '@/features/sync-adaptations';
 import { buildEditHref } from '@/shared/lib';
 import {
   ModerationQueue,
   moderationCreatedAtColumn,
   type ModerationQueueColumn,
+  type ModerationQueueControls,
   type ModerationQueueFilter,
   type ModerationQueueState,
+  type ModerationRowContext,
 } from '@/widgets/moderation-queue';
 
 // Book moderation queue (docs/features/book-moderation-ui.md), rendered
@@ -75,6 +87,9 @@ const buildParams = ({ status, search, page, limit, filters }: ModerationQueueSt
   limit,
 });
 
+const itemHasQid = (item: AdminBookQueueItem) =>
+  hasWikidataQid({ external_source: item.book.external_source, external_id: item.external_id });
+
 const Muted = () => <span className="text-muted-foreground">—</span>;
 
 /** "ISBN · год" with only the parts that exist; null when both are empty. */
@@ -89,6 +104,45 @@ export function BookModerationView() {
   const statusMutation = useBookStatusMutation();
   const aiStatus = useAiReviewStatus();
   const aiEnabled = aiStatus.data?.enabled ?? false;
+  const syncMutation = useSyncAdaptations();
+  const syncPending = syncMutation.isPending;
+
+  const handleRowSync = (item: AdminBookQueueItem, ctx: ModerationRowContext) => {
+    ctx.notify(null);
+    syncMutation.mutate([item.book.id], {
+      onSuccess: (report: AdminAdaptationSyncReport) => {
+        const result = report.items[0];
+        if (!result) return;
+        ctx.notify({
+          type: result.outcome === 'error' ? 'error' : 'success',
+          message: syncItemText(result, item.book.title),
+        });
+      },
+      onError: (err) => ctx.notify({ type: 'error', message: syncErrorMessage(err) }),
+    });
+  };
+
+  const handleBulkSync = (selectedItems: AdminBookQueueItem[], controls: ModerationQueueControls) => {
+    // Only rows with a Wikidata QID are sent; the rest are reported as skipped.
+    const selectedWithQid = selectedItems.filter(itemHasQid);
+    controls.notify(null);
+    if (selectedWithQid.length === 0) return;
+    const skippedWithoutQid = selectedItems.length - selectedWithQid.length;
+    const titles = Object.fromEntries(selectedWithQid.map((i) => [i.book.id, i.book.title]));
+    syncMutation.mutate(
+      selectedWithQid.map((i) => i.book.id),
+      {
+        onSuccess: (report: AdminAdaptationSyncReport) => {
+          controls.clearSelection();
+          controls.notify({
+            type: syncReportHasErrors(report) ? 'error' : 'success',
+            message: bulkSyncSummary(report, skippedWithoutQid, titles),
+          });
+        },
+        onError: (err) => controls.notify({ type: 'error', message: syncErrorMessage(err) }),
+      }
+    );
+  };
 
   const editHref = (id: string) => buildEditHref(`/catalog/books/${id}/edit`, pathname, searchParams);
 
@@ -171,15 +225,35 @@ export function BookModerationView() {
           />
         ) : null
       }
-      renderBulkActions={(selected, controls) =>
-        aiEnabled && selected.every((item) => item.book.status === 'pending') ? (
-          <AiReviewSelectedButton
-            selected={selected}
-            notify={controls.notify}
-            clearSelection={controls.clearSelection}
-          />
+      renderRowActions={(item, ctx) =>
+        itemHasQid(item) ? (
+          <Button variant="outline" size="sm" disabled={syncPending} onClick={() => handleRowSync(item, ctx)}>
+            Найти экранизации в Wikidata
+          </Button>
         ) : null
       }
+      renderBulkActions={(selected, controls) => {
+        const withQid = selected.filter(itemHasQid).length;
+        return (
+          <>
+            {aiEnabled && selected.every((item) => item.book.status === 'pending') && (
+              <AiReviewSelectedButton
+                selected={selected}
+                notify={controls.notify}
+                clearSelection={controls.clearSelection}
+              />
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={syncPending || withQid === 0}
+              onClick={() => handleBulkSync(selected, controls)}
+            >
+              Найти экранизации в Wikidata ({withQid})
+            </Button>
+          </>
+        );
+      }}
       flashKey="catalog.books"
       copy={{
         title: 'Модерация книг',

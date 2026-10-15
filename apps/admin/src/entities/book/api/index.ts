@@ -11,4 +11,7 @@ export const adminBooksApi = {
   moderationQueue: api.admin.books.moderationQueue,
   aiReview: api.admin.books.aiReview,
   aiReviewStatus: api.admin.books.aiReviewStatus,
+  syncAdaptations: api.admin.books.syncAdaptations,
+  adaptations: api.admin.books.adaptations,
+  setAdaptationHidden: api.admin.books.setAdaptationHidden,
 };

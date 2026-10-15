@@ -121,6 +121,12 @@ type HarvestResult struct {
 	// older jobs, and when no enrichment source is configured).
 	AuthorsEnriched        *int `json:"authors_enriched,omitempty"`
 	AuthorEnrichmentErrors *int `json:"author_enrichment_errors,omitempty"`
+	// AdaptationsAdded / AdaptationSyncErrors report the end-of-job sync of
+	// screen adaptations of the books this job created (openspec
+	// catalog-import/wikidata-book-harvest). Set only once that step ran
+	// (nil without a configured syncer and in results of older jobs).
+	AdaptationsAdded     *int `json:"adaptations_added,omitempty"`
+	AdaptationSyncErrors *int `json:"adaptation_sync_errors,omitempty"`
 }
 
 // HarvestRecordError describes a single record's failure. It does not abort
@@ -156,12 +162,36 @@ type Handler struct {
 	wikidata WikidataQuerier
 	enrich   bookdata.Client
 	admin    *adminservice.Service
+	syncer   AdaptationSyncer
+}
+
+// AdaptationSyncer syncs screen adaptations of the books a job created.
+// Declared here so the harvest package does not import the screenworks
+// module; satisfied by *screenworks/service.Service.
+type AdaptationSyncer interface {
+	// SyncCreatedBooks returns the number of links created and the number
+	// of books whose sync ended in an error. It never fails the job.
+	SyncCreatedBooks(ctx context.Context, bookIDs []uuid.UUID) (added, failed int)
+	HasSyncSource() bool
+}
+
+// HandlerOption configures optional Handler dependencies.
+type HandlerOption func(*Handler)
+
+// WithAdaptationSyncer enables the end-of-job adaptation sync. Without it
+// the step is skipped and the result carries no adaptation counters.
+func WithAdaptationSyncer(s AdaptationSyncer) HandlerOption {
+	return func(h *Handler) { h.syncer = s }
 }
 
 // NewHandler builds a Handler. enrich may be nil to disable enrichment
 // entirely (records are then created using only Wikidata's own fields).
-func NewHandler(wikidata WikidataQuerier, enrich bookdata.Client, admin *adminservice.Service) *Handler {
-	return &Handler{wikidata: wikidata, enrich: enrich, admin: admin}
+func NewHandler(wikidata WikidataQuerier, enrich bookdata.Client, admin *adminservice.Service, opts ...HandlerOption) *Handler {
+	h := &Handler{wikidata: wikidata, enrich: enrich, admin: admin}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // HandleTask is the asynq.HandlerFunc-compatible entry point, registered on
@@ -237,10 +267,13 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progre
 	result := HarvestResult{Total: len(records), Errors: []HarvestRecordError{}, SkippedRecords: []HarvestSkippedRecord{}}
 	reportProgress(progress, result)
 
-	var createdAuthors []uuid.UUID
+	var createdAuthors, createdBooks []uuid.UUID
 	for i, rec := range records {
-		outcome, created, procErr := processHarvestRecord(ctx, rec, h.enrich, h.admin)
+		outcome, created, bookID, procErr := processHarvestRecord(ctx, rec, h.enrich, h.admin)
 		createdAuthors = append(createdAuthors, created...)
+		if bookID != uuid.Nil {
+			createdBooks = append(createdBooks, bookID)
+		}
 		if procErr != nil {
 			result.Errors = append(result.Errors, HarvestRecordError{
 				Index:   i,
@@ -267,6 +300,18 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progre
 		enriched, failed := enrichCreatedAuthors(ctx, h.admin, createdAuthors)
 		result.AuthorsEnriched = &enriched
 		result.AuthorEnrichmentErrors = &failed
+		reportProgress(progress, result)
+	}
+
+	// Best-effort: after the author enrichment, sync screen adaptations of
+	// the books this job created.
+	if h.syncer != nil && h.syncer.HasSyncSource() {
+		added, failed := 0, 0
+		if len(createdBooks) > 0 {
+			added, failed = h.syncer.SyncCreatedBooks(ctx, createdBooks)
+		}
+		result.AdaptationsAdded = &added
+		result.AdaptationSyncErrors = &failed
 		reportProgress(progress, result)
 	}
 
@@ -310,26 +355,27 @@ const (
 // It is a package-level function (not a Handler method) so it can be unit
 // tested directly with fakes, without constructing a Handler/asynq.Task.
 func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich bookdata.Client, admin *adminservice.Service) (recordOutcome, error) {
-	outcome, _, err := processHarvestRecord(ctx, rec, enrich, admin)
+	outcome, _, _, err := processHarvestRecord(ctx, rec, enrich, admin)
 	return outcome, err
 }
 
 // processHarvestRecord is processRecord that also returns the authors
 // created with a Wikidata QID while resolving this record's authors -
 // reported even when the book creation then fails, so the job still
-// enriches them (docs/features/author-wikidata-enrichment.md rule 4b).
-func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich bookdata.Client, admin *adminservice.Service) (recordOutcome, []uuid.UUID, error) {
+// enriches them (docs/features/author-wikidata-enrichment.md rule 4b). It
+// also returns the id of the created book (uuid.Nil when none was created).
+func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich bookdata.Client, admin *adminservice.Service) (recordOutcome, []uuid.UUID, uuid.UUID, error) {
 	sourceID := strings.TrimSpace(rec.SourceID)
 	if sourceID == "" {
-		return 0, nil, errors.New("record has no source id")
+		return 0, nil, uuid.Nil, errors.New("record has no source id")
 	}
 
 	_, err := admin.FindBookByExternalID(ctx, wikidataSourceName, sourceID)
 	if err == nil {
-		return outcomeSkipped, nil, nil
+		return outcomeSkipped, nil, uuid.Nil, nil
 	}
 	if !errors.Is(err, adminservice.ErrBookNotFound) {
-		return 0, nil, fmt.Errorf("check existing book: %w", err)
+		return 0, nil, uuid.Nil, fmt.Errorf("check existing book: %w", err)
 	}
 
 	enriched := rec
@@ -339,12 +385,12 @@ func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, 
 
 	resolution, err := admin.ResolveHarvestAuthorRefs(ctx, harvestAuthorRefs(enriched))
 	if err != nil {
-		return 0, nil, fmt.Errorf("resolve authors: %w", err)
+		return 0, nil, uuid.Nil, fmt.Errorf("resolve authors: %w", err)
 	}
 	authorIDs, created := resolution.IDs, resolution.CreatedWithQID
 	genreIDs, err := admin.ResolveOrCreateHarvestGenres(ctx, harvestGenreRefs(enriched))
 	if err != nil {
-		return 0, created, fmt.Errorf("resolve genres: %w", err)
+		return 0, created, uuid.Nil, fmt.Errorf("resolve genres: %w", err)
 	}
 
 	// Language is required by validateBookInput (ErrInvalidLanguage on
@@ -384,10 +430,11 @@ func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, 
 		AllowNonRussianTitle: true,
 	}
 
-	if _, err := admin.CreateBook(ctx, input); err != nil {
-		return 0, created, fmt.Errorf("create book: %w", err)
+	book, err := admin.CreateBook(ctx, input)
+	if err != nil {
+		return 0, created, uuid.Nil, fmt.Errorf("create book: %w", err)
 	}
-	return outcomeCreated, created, nil
+	return outcomeCreated, created, book.ID, nil
 }
 
 // harvestAuthorRefs maps a record's authors to resolver refs: the paired

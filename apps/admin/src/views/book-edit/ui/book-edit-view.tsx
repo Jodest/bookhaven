@@ -6,9 +6,11 @@ import { adminBooksApi } from '@/entities/book';
 import { DASHBOARD_QUERY_KEY } from '@/entities/dashboard';
 import { AdminBookInput, ApiError } from '@bookhaven/api-client';
 import { BookForm } from '@/features/manage-book';
+import { hasWikidataQid } from '@/features/sync-adaptations';
 import { safeBackHref, setFlash } from '@/shared/lib';
 import { EditPageHeader } from '@/shared/ui';
 import { AiDescriptionPanel } from '@/widgets/ai-description-panel';
+import { BookAdaptationsAdmin } from '@/widgets/book-adaptations-admin';
 
 // Standalone book edit page (docs/features/catalog-unified-lists.md).
 // BookForm navigates to the resolved back href after a save and on «Отмена».
@@ -67,6 +69,7 @@ export function BookEditView() {
         hasOwnDescription={!!book.description?.trim()}
         bookStatus={book.status}
       />
+      <BookAdaptationsAdmin bookId={book.id} bookTitle={book.title} hasQid={hasWikidataQid(book)} />
     </div>
   );
 }

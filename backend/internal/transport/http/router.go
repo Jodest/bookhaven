@@ -24,6 +24,8 @@ import (
 	readingchallengeshttp "github.com/bookhaven/backend/internal/modules/reading_challenges/transport/http"
 	reviewsservice "github.com/bookhaven/backend/internal/modules/reviews/service"
 	reviewshttp "github.com/bookhaven/backend/internal/modules/reviews/transport/http"
+	screenworksservice "github.com/bookhaven/backend/internal/modules/screenworks/service"
+	screenworkshttp "github.com/bookhaven/backend/internal/modules/screenworks/transport/http"
 	shelvesservice "github.com/bookhaven/backend/internal/modules/shelves/service"
 	shelveshttp "github.com/bookhaven/backend/internal/modules/shelves/transport/http"
 	usersdomain "github.com/bookhaven/backend/internal/modules/users/domain"
@@ -49,6 +51,7 @@ func RegisterRoutes(
 	notificationsService *notificationsservice.Service,
 	homeService *homeservice.Service,
 	curatedService *curatedservice.Service,
+	screenWorksService *screenworksservice.Service,
 	authMiddleware echo.MiddlewareFunc,
 	optionalAuth echo.MiddlewareFunc,
 	aiDescriptions cataloghttp.AIDescriptionReader,
@@ -131,6 +134,10 @@ func RegisterRoutes(
 	api.GET("/collections", curatedHandler.ListPublic)
 	api.GET("/collections/:slug", curatedHandler.GetPublic)
 	api.GET("/books/:id/collections", curatedHandler.ListBookPlaces)
+
+	// Screen adaptations of a book (openspec screen-works/book-adaptations): public.
+	screenWorksHandler := screenworkshttp.NewHandler(screenWorksService)
+	api.GET("/books/:id/adaptations", screenWorksHandler.ListBookAdaptations)
 }
 
 // AIModerationDeps configures the AI moderation trigger/status endpoints:
@@ -184,6 +191,7 @@ func RegisterAdminRoutes(
 	aiDescriptions AIDescriptionsDeps,
 	aiCollections AICollectionsDeps,
 	curatedService *curatedservice.Service,
+	screenWorksService *screenworksservice.Service,
 ) {
 	admin := e.Group("/api/v1/admin", authMiddleware)
 
@@ -192,6 +200,8 @@ func RegisterAdminRoutes(
 	// BookHaven" markers, docs/features/author-direct-import.md).
 	harvestHandler := harvesthttp.NewHandler(harvestEnqueuer, harvestInspector, harvestAuthorSearcher, adminService)
 	aiReviewHandler := aimodhttp.NewHandler(harvestEnqueuer, adminService, aiModeration.Active, aiModeration.Model)
+
+	screenWorksHandler := screenworkshttp.NewHandler(screenWorksService)
 
 	adminRole := middleware.RequireRole(usersdomain.RoleAdmin)
 	adminOrModerator := middleware.RequireRole(usersdomain.RoleAdmin, usersdomain.RoleModerator)
@@ -209,8 +219,11 @@ func RegisterAdminRoutes(
 	books.GET("/moderation", adminHandler.ListBookModerationQueue)
 	books.POST("/ai-review", aiReviewHandler.TriggerAIReview, requireBearer)
 	books.GET("/ai-review/status", aiReviewHandler.AIReviewStatus)
+	books.POST("/sync-adaptations", screenWorksHandler.SyncAdaptations, requireBearer)
 	books.GET("/:id", adminHandler.GetBook)
 	books.PATCH("/:id", adminHandler.UpdateBook, requireBearer)
+	books.GET("/:id/adaptations", screenWorksHandler.AdminListBookAdaptations)
+	books.PATCH("/:id/adaptations/:screen_work_id", screenWorksHandler.AdminSetAdaptationHidden, requireBearer)
 
 	authors := admin.Group("/authors", adminRole)
 	authors.GET("", adminHandler.ListAuthors)

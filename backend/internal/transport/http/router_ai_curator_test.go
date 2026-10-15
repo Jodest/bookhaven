@@ -61,7 +61,7 @@ func TestAICuratorRoutes_RoleAndBearer(t *testing.T) {
 	e := echo.New()
 	stub := &stubCurator{}
 	RegisterAdminRoutes(e, adminservice.NewService(nil), fakeAuth, stubEnqueuer{}, nil, nil,
-		AIModerationDeps{}, AICuratorDeps{Service: stub}, AIDescriptionsDeps{}, AICollectionsDeps{}, nil)
+		AIModerationDeps{}, AICuratorDeps{Service: stub}, AIDescriptionsDeps{}, AICollectionsDeps{}, nil, nil)
 
 	do := func(method, path, role, bearer string) int {
 		req := httptest.NewRequest(method, path, strings.NewReader(`{"prompt":"x"}`))

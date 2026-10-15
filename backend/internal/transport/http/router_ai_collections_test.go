@@ -39,7 +39,7 @@ func TestAICollectionsRoutes_RoleAndBearer(t *testing.T) {
 	e := echo.New()
 	stub := &stubDrafts{}
 	RegisterAdminRoutes(e, adminservice.NewService(nil), fakeAuth, stubEnqueuer{}, nil, nil,
-		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{}, AICollectionsDeps{Service: stub}, nil)
+		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{}, AICollectionsDeps{Service: stub}, nil, nil)
 
 	do := func(method, path, role, bearer string) int {
 		req := httptest.NewRequest(method, path, strings.NewReader(`{"brief":"x"}`))
