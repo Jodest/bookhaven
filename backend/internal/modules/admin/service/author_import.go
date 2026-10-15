@@ -9,8 +9,40 @@ import (
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
+
+// AuthorFilmSyncer syncs the films about authors from Wikidata. Declared here
+// so the admin module does not import screenworks; satisfied by
+// *screenworks/service.Service (openspec add-author-screen-works).
+type AuthorFilmSyncer interface {
+	SyncCreatedAuthors(ctx context.Context, ids []uuid.UUID) (added, failed int)
+	HasAuthorSyncSource() bool
+}
+
+// WithAuthorFilmSyncer enables the best-effort film sync after a direct
+// Wikidata author import creates an author. Without it the import does
+// nothing extra.
+func WithAuthorFilmSyncer(syncer AuthorFilmSyncer) Option {
+	return func(s *Service) {
+		s.authorFilmSyncer = syncer
+	}
+}
+
+// syncImportedAuthorFilms looks up the films about a just created author.
+// Errors are only logged: the import never fails because of it.
+func (s *Service) syncImportedAuthorFilms(ctx context.Context, author *catalogDomain.Author) {
+	if s.authorFilmSyncer == nil || author == nil || !s.authorFilmSyncer.HasAuthorSyncSource() {
+		return
+	}
+	added, failed := s.authorFilmSyncer.SyncCreatedAuthors(ctx, []uuid.UUID{author.ID})
+	if failed > 0 {
+		s.log.Warn("author film sync after import failed", zap.String("author_id", author.ID.String()))
+		return
+	}
+	s.log.Info("author film sync after import", zap.String("author_id", author.ID.String()), zap.Int("added", added))
+}
 
 var (
 	// ErrInvalidQID: the QID is not ^Q[0-9]+$ after trim/uppercase (400).
@@ -142,6 +174,7 @@ func (s *Service) ImportWikidataAuthor(ctx context.Context, qid string) (*Author
 				// record (docs/features/author-wikidata-enrichment.md
 				// rule 4a); never fails the import.
 				result.Enrichment = s.enrichImportedAuthor(ctx, result.Author, record)
+				s.syncImportedAuthorFilms(ctx, result.Author)
 			}
 			return result, nil
 		}

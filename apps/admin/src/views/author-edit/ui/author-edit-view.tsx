@@ -9,6 +9,7 @@ import { DASHBOARD_QUERY_KEY } from '@/entities/dashboard';
 import { AuthorForm } from '@/features/manage-author';
 import { safeBackHref, setFlash } from '@/shared/lib';
 import { EditPageHeader } from '@/shared/ui';
+import { AuthorFilmsAdmin } from '@/widgets/author-films-admin';
 
 // Standalone author edit page (docs/features/catalog-unified-lists.md).
 // «Назад», «Отмена» and the post-save navigation all go to the same
@@ -92,6 +93,7 @@ export function AuthorEditView() {
           errorMessage={updateMutation.error?.message}
         />
       )}
+      <AuthorFilmsAdmin authorId={author.id} authorName={author.name} hasQid={!!author.external_id} />
     </div>
   );
 }

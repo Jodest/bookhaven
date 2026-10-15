@@ -24,6 +24,7 @@ CREATE TABLE authors (
 );
 CREATE UNIQUE INDEX idx_authors_external_source_id ON authors(external_source, external_id) WHERE external_source IS NOT NULL;
 CREATE TABLE book_authors (book_id TEXT NOT NULL, author_id TEXT NOT NULL, PRIMARY KEY (book_id, author_id));
+CREATE TABLE author_screen_works (author_id TEXT NOT NULL, screen_work_id TEXT NOT NULL, relation TEXT NOT NULL, hidden BOOLEAN NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'wikidata', created_at DATETIME, updated_at DATETIME, PRIMARY KEY (author_id, screen_work_id));
 `
 
 type authorIdentityRow struct {

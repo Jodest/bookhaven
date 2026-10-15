@@ -42,9 +42,17 @@ const (
 	NoteWikidataUnavailable = "wikidata_unavailable"
 )
 
+// Relations of an author film link (CHECK constraint of migration 000030).
+const (
+	RelationBiopic      = "biopic"
+	RelationDocumentary = "documentary"
+)
+
 var (
-	ErrBookNotFound = errors.New("book not found")
-	ErrLinkNotFound = errors.New("adaptation link not found")
+	ErrBookNotFound       = errors.New("book not found")
+	ErrLinkNotFound       = errors.New("adaptation link not found")
+	ErrAuthorNotFound     = errors.New("author not found")
+	ErrAuthorLinkNotFound = errors.New("author film link not found")
 )
 
 // WorkInput is an adaptation to store: a work found in Wikidata. Optional
@@ -77,7 +85,31 @@ func (b BookRef) WikidataQID() string {
 	return strings.TrimSpace(*b.ExternalID)
 }
 
-// LinkedWork is a screen work as linked to one book.
+// AuthorFilmInput is a film about an author to store.
+type AuthorFilmInput struct {
+	WorkInput
+	Relation string
+}
+
+// AuthorRef is the read-only part of an author the film sync needs.
+type AuthorRef struct {
+	ID             uuid.UUID
+	Name           string
+	Status         string
+	ExternalSource *string
+	ExternalID     *string
+}
+
+// WikidataQID returns the author's Wikidata QID or "".
+func (a AuthorRef) WikidataQID() string {
+	if a.ExternalSource == nil || a.ExternalID == nil || *a.ExternalSource != ExternalSourceWikidata {
+		return ""
+	}
+	return strings.TrimSpace(*a.ExternalID)
+}
+
+// LinkedWork is a screen work as linked to one book or one author (Relation
+// is filled for author links only).
 type LinkedWork struct {
 	ID            uuid.UUID `gorm:"column:id"`
 	Title         string    `gorm:"column:title"`
@@ -90,6 +122,7 @@ type LinkedWork struct {
 	ExternalID    *string   `gorm:"column:external_id"`
 	Hidden        bool      `gorm:"column:hidden"`
 	Source        string    `gorm:"column:source"`
+	Relation      string    `gorm:"column:relation"`
 }
 
 // IMDbURL is the public IMDb link or nil.

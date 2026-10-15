@@ -54,18 +54,25 @@ type SyncItem struct {
 
 // Service provides the screen works logic.
 type Service struct {
-	repo   repository.Repository
-	source Source
-	log    *zap.Logger
+	repo         repository.Repository
+	source       Source
+	authorSource AuthorSource
+	log          *zap.Logger
 }
 
 // NewService creates a Service. source may be nil: the sync is then
-// unavailable (the lists and hide/show still work). log may be nil.
+// unavailable (the lists and hide/show still work). When source also
+// implements AuthorSource (as *bookdata.WikidataClient does) the author film
+// sync is enabled too. log may be nil.
 func NewService(repo repository.Repository, source Source, log *zap.Logger) *Service {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &Service{repo: repo, source: source, log: log}
+	s := &Service{repo: repo, source: source, log: log}
+	if as, ok := source.(AuthorSource); ok {
+		s.authorSource = as
+	}
+	return s
 }
 
 // HasSyncSource reports whether the sync is configured.

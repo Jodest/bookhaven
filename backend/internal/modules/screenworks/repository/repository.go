@@ -28,6 +28,22 @@ type Repository interface {
 	// SetLinkHidden sets the hidden flag; domain.ErrLinkNotFound when the
 	// link does not exist.
 	SetLinkHidden(ctx context.Context, bookID, workID uuid.UUID, hidden bool) error
+
+	// GetAuthorsForSync reads id, name, status and external ids of the
+	// authors that exist (read-only).
+	GetAuthorsForSync(ctx context.Context, ids []uuid.UUID) ([]domain.AuthorRef, error)
+	// AuthorStatus returns the status of an author or domain.ErrAuthorNotFound.
+	AuthorStatus(ctx context.Context, id uuid.UUID) (string, error)
+	// SyncAuthor stores the films and links them to the author in one
+	// transaction. It returns the number of links created.
+	SyncAuthor(ctx context.Context, authorID uuid.UUID, films []domain.AuthorFilmInput) (int, error)
+	// ListPublicByAuthor returns the non-hidden author links, ordered.
+	ListPublicByAuthor(ctx context.Context, authorID uuid.UUID) ([]domain.LinkedWork, error)
+	// ListAdminByAuthor returns every author link including hidden ones.
+	ListAdminByAuthor(ctx context.Context, authorID uuid.UUID) ([]domain.LinkedWork, error)
+	// SetAuthorLinkHidden sets the hidden flag; domain.ErrAuthorLinkNotFound
+	// when the link does not exist.
+	SetAuthorLinkHidden(ctx context.Context, authorID, workID uuid.UUID, hidden bool) error
 }
 
 // GormRepository implements Repository.
