@@ -1,7 +1,7 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, type AdminAuthor } from '@bookhaven/api-client';
+import { ApiError, type AdminAuthor, type AdminAuthorFilm } from '@bookhaven/api-client';
 import { consumeFlash } from '@/shared/lib';
 import { AuthorEditView } from './author-edit-view';
 
@@ -16,12 +16,18 @@ vi.mock('next/navigation', () => ({
 
 const getMock = vi.fn();
 const updateMock = vi.fn();
+const filmsMock = vi.fn();
+const setHiddenMock = vi.fn();
+const syncFilmsMock = vi.fn();
 
 vi.mock('@/entities/author', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/author')>()),
   adminAuthorsApi: {
     get: (...args: unknown[]) => getMock(...args),
     update: (...args: unknown[]) => updateMock(...args),
+    screenWorks: (...args: unknown[]) => filmsMock(...args),
+    setScreenWorkHidden: (...args: unknown[]) => setHiddenMock(...args),
+    syncScreenWorks: (...args: unknown[]) => syncFilmsMock(...args),
   },
 }));
 
@@ -46,6 +52,26 @@ function makeAuthor(overrides: Partial<AdminAuthor> = {}): AdminAuthor {
   };
 }
 
+function makeFilm(overrides: Partial<AdminAuthorFilm> = {}): AdminAuthorFilm {
+  return {
+    id: 'w1',
+    title: 'Толкин',
+    original_title: null,
+    kind: 'film',
+    relation: 'biopic',
+    year: 2019,
+    director: 'Доме Каруко',
+    imdb_url: null,
+    kinopoisk_url: null,
+    hidden: false,
+    source: 'wikidata',
+    qid: 'Q42689885',
+    imdb_id: null,
+    kinopoisk_id: null,
+    ...overrides,
+  };
+}
+
 function renderView() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -65,6 +91,10 @@ describe('AuthorEditView', () => {
     pushMock.mockReset();
     getMock.mockReset();
     updateMock.mockReset();
+    filmsMock.mockReset();
+    filmsMock.mockResolvedValue({ items: [], total: 0 });
+    setHiddenMock.mockReset();
+    syncFilmsMock.mockReset();
     window.sessionStorage.clear();
   });
 
@@ -185,6 +215,75 @@ describe('AuthorEditView', () => {
     expect(await screen.findByText('author slug already exists')).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
     expect(consumeFlash('catalog.authors')).toBeNull();
+  });
+
+  it('lists films with «Документальный» and «Скрыт» marks and switches hide / show', async () => {
+    getMock.mockResolvedValue(makeAuthor());
+    filmsMock.mockResolvedValue({
+      items: [
+        makeFilm(),
+        makeFilm({ id: 'w2', title: 'Волшебство слов', kind: 'tv_film', relation: 'documentary', year: 2011, director: null, hidden: true }),
+      ],
+      total: 2,
+    });
+    setHiddenMock.mockResolvedValue(makeFilm({ hidden: true }));
+    renderView();
+
+    const section = (await screen.findByRole('heading', { name: 'Фильмы об авторе' })).closest('section') as HTMLElement;
+    expect(await within(section).findByText('Толкин')).toBeInTheDocument();
+    expect(within(section).getByText('2019 · Фильм · Доме Каруко')).toBeInTheDocument();
+    expect(within(section).getAllByText('Документальный')).toHaveLength(1);
+    expect(within(section).getAllByText('Скрыт')).toHaveLength(1);
+    expect(within(section).getByRole('button', { name: 'Показать' })).toBeInTheDocument();
+
+    filmsMock.mockResolvedValue({
+      items: [makeFilm({ hidden: true }), makeFilm({ id: 'w2', title: 'Волшебство слов', relation: 'documentary', hidden: true })],
+      total: 2,
+    });
+    fireEvent.click(within(section).getByRole('button', { name: 'Скрыть' }));
+    await waitFor(() => expect(setHiddenMock).toHaveBeenCalledWith('a1', 'w1', true));
+    await waitFor(() => expect(within(section).getAllByText('Скрыт')).toHaveLength(2));
+    expect(within(section).queryByRole('button', { name: 'Скрыть' })).not.toBeInTheDocument();
+    expect(within(section).getAllByRole('button', { name: 'Показать' })).toHaveLength(2);
+  });
+
+  it('shows the films empty text, the load error and the visibility error', async () => {
+    getMock.mockResolvedValue(makeAuthor());
+    const first = renderView();
+    expect(await screen.findByText('Фильмов об авторе пока нет.')).toBeInTheDocument();
+    first.unmount();
+
+    filmsMock.mockRejectedValue(new ApiError(500, 'Server Error', 'boom'));
+    const second = renderView();
+    expect(await screen.findByText('Не удалось загрузить фильмы об авторе.')).toBeInTheDocument();
+    second.unmount();
+
+    filmsMock.mockResolvedValue({ items: [makeFilm()], total: 1 });
+    setHiddenMock.mockRejectedValue(new ApiError(500, 'Server Error', 'boom'));
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: 'Скрыть' }));
+    expect(await screen.findByText('Не удалось изменить видимость фильма.')).toBeInTheDocument();
+  });
+
+  it('offers the film sync only for a QID author and shows the result', async () => {
+    getMock.mockResolvedValue(makeAuthor());
+    const first = renderView();
+    await screen.findByText('Фильмов об авторе пока нет.');
+    expect(screen.queryByRole('button', { name: 'Найти фильмы об авторе в Wikidata' })).not.toBeInTheDocument();
+    first.unmount();
+
+    getMock.mockResolvedValue(makeAuthor({ external_source: 'wikidata', external_id: 'Q892' }));
+    syncFilmsMock.mockResolvedValue({
+      processed: 1,
+      updated: 1,
+      added: 2,
+      items: [{ author_id: 'a1', name: 'Лев Толстой', outcome: 'added', found: 2, added: 2, notes: [], message: '' }],
+    });
+    const { invalidateSpy } = renderView();
+    fireEvent.click(await screen.findByRole('button', { name: 'Найти фильмы об авторе в Wikidata' }));
+    await waitFor(() => expect(syncFilmsMock).toHaveBeenCalledWith(['a1']));
+    expect(await screen.findByText('Автор «Лев Толстой»: добавлено фильмов — 2.')).toBeInTheDocument();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'authors'] });
   });
 
   it('«Отмена» returns to back without saving', async () => {

@@ -660,6 +660,46 @@ export interface AdminAdaptationSyncReport {
   items: AdminAdaptationSyncItem[];
 }
 
+// ---- Films about authors (openspec screen-works/author-films) ----
+
+/** How a film relates to its author: a fiction film or a documentary. */
+export type AuthorFilmRelation = 'biopic' | 'documentary';
+
+/** Film about an author (GET /authors/{id}/screen-works). */
+export interface AuthorFilm extends BookAdaptation {
+  relation: AuthorFilmRelation;
+}
+
+/** Film link in the admin (GET /admin/authors/{id}/screen-works). */
+export interface AdminAuthorFilm extends AuthorFilm {
+  hidden: boolean;
+  source: 'wikidata' | 'manual';
+  qid: string | null;
+  imdb_id: string | null;
+  kinopoisk_id: string | null;
+}
+
+// One author of POST /api/v1/admin/authors/sync-screen-works. notes are
+// codes: 'no_qid', 'wikidata_unavailable'.
+export interface AdminAuthorFilmSyncItem {
+  author_id: string;
+  name: string;
+  outcome: 'added' | 'unchanged' | 'skipped' | 'error';
+  found: number;
+  added: number;
+  notes: string[];
+  message: string;
+}
+
+export interface AdminAuthorFilmSyncReport {
+  processed: number;
+  /** Authors with outcome 'added'. */
+  updated: number;
+  /** Links created. */
+  added: number;
+  items: AdminAuthorFilmSyncItem[];
+}
+
 /** Enrichment applied to an author created by a direct import. */
 export interface AdminAuthorImportEnrichment {
   filled: AdminAuthorEnrichmentField[];
@@ -2104,6 +2144,10 @@ export const api = {
       const raw = await fetcher<RawAuthorDetail>(`/api/v1/authors/${slug}`);
       return normalizeAuthorDetail(raw);
     },
+    // Visible films about a published author (by author id, not slug).
+    // Errors: 400 invalid id, 404 unknown or not published author.
+    screenWorks: (authorId: string) =>
+      fetcher<{ items: AuthorFilm[]; total: number }>(`/api/v1/authors/${authorId}/screen-works`),
   },
   genres: {
     list: () => fetcher<{ items: Genre[]; total: number }>('/api/v1/genres'),
@@ -2658,6 +2702,21 @@ export const api = {
         fetcher<AdminAuthorEnrichmentReport>('/api/v1/admin/authors/enrich-wikidata', {
           method: 'POST',
           body: JSON.stringify({ ids }),
+        }),
+      // Finds films about 1..50 authors in Wikidata. Errors: 502 Wikidata
+      // unavailable, 503 not configured.
+      syncScreenWorks: (ids: string[]) =>
+        fetcher<AdminAuthorFilmSyncReport>('/api/v1/admin/authors/sync-screen-works', {
+          method: 'POST',
+          body: JSON.stringify({ ids }),
+        }),
+      // Every film link of an author, including hidden ones.
+      screenWorks: (authorId: string) =>
+        fetcher<{ items: AdminAuthorFilm[]; total: number }>(`/api/v1/admin/authors/${authorId}/screen-works`),
+      setScreenWorkHidden: (authorId: string, screenWorkId: string, hidden: boolean) =>
+        fetcher<AdminAuthorFilm>(`/api/v1/admin/authors/${authorId}/screen-works/${screenWorkId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ hidden }),
         }),
     },
     genres: {

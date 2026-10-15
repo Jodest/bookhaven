@@ -10,4 +10,7 @@ export const adminAuthorsApi = {
   bulkStatus: api.admin.authors.bulkStatus,
   importWikidata: api.admin.authors.importWikidata,
   enrichWikidata: api.admin.authors.enrichWikidata,
+  syncScreenWorks: api.admin.authors.syncScreenWorks,
+  screenWorks: api.admin.authors.screenWorks,
+  setScreenWorkHidden: api.admin.authors.setScreenWorkHidden,
 };

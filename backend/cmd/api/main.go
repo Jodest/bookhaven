@@ -120,11 +120,16 @@ func main() {
 	// budget; it does not share the OpenLibraryClient's budget, nor the
 	// same host.
 	wikidataClient := bookdata.NewWikidataClient()
+	// Screen works (openspec screen-works): shares the Wikidata client (and
+	// its rate limiter) with the author enrichment. Built before the admin
+	// service because the direct author import syncs the new author's films.
+	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger)
 	adminService := adminservice.NewService(adminRepo,
 		adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()),
 		adminservice.WithAuthorFetcher(wikidataClient),
 		adminservice.WithAuthorEnrichmentSource(wikidataClient),
 		adminservice.WithGenreWikidataSource(wikidataClient),
+		adminservice.WithAuthorFilmSyncer(screenWorksService),
 		adminservice.WithLogger(logger))
 	shelvesService := shelvesservice.NewService(shelvesRepo)
 	listsService := listsservice.NewService(listsRepo)
@@ -243,9 +248,6 @@ func main() {
 	// AI descriptions (openspec catalog-admin/ai-descriptions): one
 	// repository backs the public fallback reader and the admin service.
 	aiDescriptionsRepo := aidescrepository.NewGormRepository(db)
-	// Screen adaptations (openspec screen-works): shares the Wikidata client
-	// (and its rate limiter) with the author enrichment.
-	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger)
 	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, curatedService, screenWorksService, authMiddleware, optionalAuth, aiDescriptionsRepo)
 
 	// Admin routes

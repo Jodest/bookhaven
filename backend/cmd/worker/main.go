@@ -148,7 +148,8 @@ func main() {
 	// WikidataClient (one rate limiter).
 	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger)
 	harvestHandler := harvestservice.NewHandler(wikidataClient, openLibraryClient, adminService,
-		harvestservice.WithAdaptationSyncer(screenWorksService))
+		harvestservice.WithAdaptationSyncer(screenWorksService),
+		harvestservice.WithAuthorFilmSyncer(screenWorksService))
 
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(harvestservice.TaskTypeHarvestWikidataQuery, harvestHandler.HandleTask)

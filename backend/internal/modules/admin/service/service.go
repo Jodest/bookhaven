@@ -65,6 +65,9 @@ type Service struct {
 	// author_enrich.go). Nil unless configured via
 	// WithAuthorEnrichmentSource.
 	enrichmentSource AuthorEnrichmentSource
+	// authorFilmSyncer syncs films about a freshly imported author (see
+	// author_import.go). Nil unless configured via WithAuthorFilmSyncer.
+	authorFilmSyncer AuthorFilmSyncer
 	// genreSource backs the Wikidata genre search and import (see
 	// genre_import.go). Nil unless configured via WithGenreWikidataSource.
 	genreSource GenreWikidataSource

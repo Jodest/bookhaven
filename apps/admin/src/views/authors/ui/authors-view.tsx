@@ -2,10 +2,15 @@
 
 import Link from 'next/link';
 import { adminAuthorsApi, AuthorStatusBadge, AUTHOR_STATUS_LABELS } from '@/entities/author';
-import { AdminAuthor, AdminAuthorEnrichmentReport } from '@bookhaven/api-client';
+import { AdminAuthor, AdminAuthorEnrichmentReport, AdminAuthorFilmSyncReport } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import { enrichErrorMessage, enrichItemText, useEnrichAuthors } from '@/features/enrich-author';
 import { useAuthorStatusMutation } from '@/features/moderate-author';
+import {
+  syncErrorMessage as filmSyncErrorMessage,
+  syncItemText as filmSyncItemText,
+  useSyncAuthorFilms,
+} from '@/features/sync-author-films';
 import { WikidataLink } from '@/shared/ui';
 import {
   CatalogList,
@@ -37,6 +42,22 @@ const COLUMNS: CatalogListColumn<AdminAuthor>[] = [
 export function AuthorsView() {
   const statusMutation = useAuthorStatusMutation();
   const enrichMutation = useEnrichAuthors();
+  const filmSyncMutation = useSyncAuthorFilms();
+
+  const handleFilmSync = (author: AdminAuthor, ctx: CatalogRowContext) => {
+    ctx.notify(null);
+    filmSyncMutation.mutate([author.id], {
+      onSuccess: (report: AdminAuthorFilmSyncReport) => {
+        const result = report.items[0];
+        if (!result) return;
+        ctx.notify({
+          type: result.outcome === 'error' ? 'error' : 'success',
+          message: filmSyncItemText(result, author.name),
+        });
+      },
+      onError: (err) => ctx.notify({ type: 'error', message: filmSyncErrorMessage(err) }),
+    });
+  };
 
   const handleEnrich = (author: AdminAuthor, ctx: CatalogRowContext) => {
     ctx.notify(null);
@@ -74,14 +95,24 @@ export function AuthorsView() {
       columns={COLUMNS}
       renderRowActions={(author, ctx) =>
         author.external_id ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={enrichMutation.isPending}
-            onClick={() => handleEnrich(author, ctx)}
-          >
-            Обогатить из Wikidata
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={enrichMutation.isPending}
+              onClick={() => handleEnrich(author, ctx)}
+            >
+              Обогатить из Wikidata
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={filmSyncMutation.isPending}
+              onClick={() => handleFilmSync(author, ctx)}
+            >
+              Найти фильмы об авторе в Wikidata
+            </Button>
+          </>
         ) : null
       }
       copy={{

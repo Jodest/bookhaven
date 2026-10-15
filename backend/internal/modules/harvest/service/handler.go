@@ -127,6 +127,12 @@ type HarvestResult struct {
 	// (nil without a configured syncer and in results of older jobs).
 	AdaptationsAdded     *int `json:"adaptations_added,omitempty"`
 	AdaptationSyncErrors *int `json:"adaptation_sync_errors,omitempty"`
+	// AuthorFilmsAdded / AuthorFilmSyncErrors report the end-of-job sync of
+	// films about the authors this job created (openspec
+	// catalog-import/wikidata-book-harvest). Set only once that step ran
+	// (nil without a configured syncer and in results of older jobs).
+	AuthorFilmsAdded     *int `json:"author_films_added,omitempty"`
+	AuthorFilmSyncErrors *int `json:"author_film_sync_errors,omitempty"`
 }
 
 // HarvestRecordError describes a single record's failure. It does not abort
@@ -163,6 +169,8 @@ type Handler struct {
 	enrich   bookdata.Client
 	admin    *adminservice.Service
 	syncer   AdaptationSyncer
+	// filmSyncer syncs films about the authors a job created.
+	filmSyncer AuthorFilmSyncer
 }
 
 // AdaptationSyncer syncs screen adaptations of the books a job created.
@@ -175,6 +183,16 @@ type AdaptationSyncer interface {
 	HasSyncSource() bool
 }
 
+// AuthorFilmSyncer syncs films about the authors a job created. Declared here
+// so the harvest package does not import the screenworks module; satisfied by
+// *screenworks/service.Service.
+type AuthorFilmSyncer interface {
+	// SyncCreatedAuthors returns the number of links created and the number
+	// of authors whose sync ended in an error. It never fails the job.
+	SyncCreatedAuthors(ctx context.Context, authorIDs []uuid.UUID) (added, failed int)
+	HasAuthorSyncSource() bool
+}
+
 // HandlerOption configures optional Handler dependencies.
 type HandlerOption func(*Handler)
 
@@ -182,6 +200,13 @@ type HandlerOption func(*Handler)
 // the step is skipped and the result carries no adaptation counters.
 func WithAdaptationSyncer(s AdaptationSyncer) HandlerOption {
 	return func(h *Handler) { h.syncer = s }
+}
+
+// WithAuthorFilmSyncer enables the end-of-job sync of films about the authors
+// the job created. Without it the step is skipped and the result carries no
+// author film counters.
+func WithAuthorFilmSyncer(s AuthorFilmSyncer) HandlerOption {
+	return func(h *Handler) { h.filmSyncer = s }
 }
 
 // NewHandler builds a Handler. enrich may be nil to disable enrichment
@@ -312,6 +337,17 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progre
 		}
 		result.AdaptationsAdded = &added
 		result.AdaptationSyncErrors = &failed
+		reportProgress(progress, result)
+	}
+
+	// Best-effort: sync films about the authors this job created.
+	if h.filmSyncer != nil && h.filmSyncer.HasAuthorSyncSource() {
+		added, failed := 0, 0
+		if len(createdAuthors) > 0 {
+			added, failed = h.filmSyncer.SyncCreatedAuthors(ctx, createdAuthors)
+		}
+		result.AuthorFilmsAdded = &added
+		result.AuthorFilmSyncErrors = &failed
 		reportProgress(progress, result)
 	}
 

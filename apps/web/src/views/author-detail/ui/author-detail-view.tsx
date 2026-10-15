@@ -1,5 +1,6 @@
 import { authorsApi, isWikimediaUrl, PhotoAttribution } from '@/entities/author';
 import { BookCard } from '@/entities/book';
+import { AuthorFilms, screenWorksApi } from '@/entities/screen-work';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 
@@ -13,6 +14,10 @@ export async function AuthorDetailView({ slug }: AuthorDetailViewProps) {
   if (!author) {
     notFound();
   }
+
+  // Films about the author (openspec screen-works/author-films); a failure
+  // only hides the block.
+  const films = await screenWorksApi.forAuthor(author.id).catch(() => null);
 
   return (
     <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
@@ -75,6 +80,8 @@ export async function AuthorDetailView({ slug }: AuthorDetailViewProps) {
           </div>
         </section>
       )}
+
+      <AuthorFilms items={films?.items ?? []} />
     </main>
   );
 }
