@@ -1,8 +1,8 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BooksListView } from './books-list-view';
-import type { AdminBook } from '@bookhaven/api-client';
+import { ApiError, type AdminBook } from '@bookhaven/api-client';
 
 const pushMock = vi.fn();
 let searchParamsValue = new URLSearchParams();
@@ -15,6 +15,7 @@ vi.mock('next/navigation', () => ({
 
 const listMock = vi.fn();
 const bulkStatusMock = vi.fn();
+const syncMock = vi.fn();
 const genresListMock = vi.fn();
 const authorsListMock = vi.fn();
 
@@ -23,6 +24,7 @@ vi.mock('@/entities/book', async (importOriginal) => ({
   adminBooksApi: {
     list: (...args: unknown[]) => listMock(...args),
     bulkStatus: (...args: unknown[]) => bulkStatusMock(...args),
+    syncAdaptations: (...args: unknown[]) => syncMock(...args),
   },
 }));
 
@@ -82,6 +84,7 @@ describe('BooksListView', () => {
     pushMock.mockReset();
     listMock.mockReset();
     bulkStatusMock.mockReset();
+    syncMock.mockReset();
     window.sessionStorage.clear();
     genresListMock.mockReset();
     authorsListMock.mockReset();
@@ -339,6 +342,52 @@ describe('BooksListView', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Снять с публикации' }));
     expect(bulkStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('offers «Найти экранизации в Wikidata» only for QID books and syncs one book', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        makeBook({ external_source: 'wikidata', external_id: 'Q1' }),
+        makeBook({ id: 'book-2', title: 'Без QID', external_source: null }),
+      ],
+      total: 2,
+      page: 1,
+      limit: 20,
+    });
+    syncMock.mockResolvedValue({
+      processed: 1,
+      updated: 1,
+      added: 2,
+      items: [{ book_id: 'book-1', title: 'Тестовая книга', outcome: 'added', found: 2, added: 2, notes: [], message: '' }],
+    });
+
+    const { invalidateSpy } = renderView();
+
+    const rowOf = (title: string) =>
+      screen.getByText(title, { selector: 'span.font-medium' }).closest('tr') as HTMLElement;
+    await waitFor(() => expect(screen.getByText('Без QID')).toBeInTheDocument());
+    expect(
+      within(rowOf('Без QID')).queryByRole('button', { name: 'Найти экранизации в Wikidata' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(rowOf('Тестовая книга')).getByRole('button', { name: 'Найти экранизации в Wikidata' }));
+    await waitFor(() => expect(syncMock).toHaveBeenCalledWith(['book-1']));
+    expect(await screen.findByText('Книга «Тестовая книга»: добавлено экранизаций — 2.')).toBeInTheDocument();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'books'] });
+  });
+
+  it('shows the Wikidata-unavailable text when the sync fails with 502', async () => {
+    listMock.mockResolvedValue({
+      items: [makeBook({ external_source: 'wikidata', external_id: 'Q1' })],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+    syncMock.mockRejectedValue(new ApiError(502, 'Bad Gateway', 'x'));
+
+    renderView();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Найти экранизации в Wikidata' }));
+    expect(await screen.findByText('Wikidata недоступна, попробуйте позже.')).toBeInTheDocument();
   });
 
   it('links to the book moderation queue from the header', async () => {

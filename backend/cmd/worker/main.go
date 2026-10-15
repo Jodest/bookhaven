@@ -105,6 +105,8 @@ import (
 	curatedrepository "github.com/bookhaven/backend/internal/modules/curated/repository"
 	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
+	screenworksrepository "github.com/bookhaven/backend/internal/modules/screenworks/repository"
+	screenworksservice "github.com/bookhaven/backend/internal/modules/screenworks/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/bookhaven/backend/internal/pkg/llm"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
@@ -142,7 +144,11 @@ func main() {
 	// request" contract. See docs/features/openlibrary-works-description.md.
 	openLibraryClient := bookdata.NewOpenLibraryClient(bookdata.WithWorkDescriptionLookup())
 
-	harvestHandler := harvestservice.NewHandler(wikidataClient, openLibraryClient, adminService)
+	// Adaptation sync of the books a harvest created shares the same
+	// WikidataClient (one rate limiter).
+	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger)
+	harvestHandler := harvestservice.NewHandler(wikidataClient, openLibraryClient, adminService,
+		harvestservice.WithAdaptationSyncer(screenWorksService))
 
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(harvestservice.TaskTypeHarvestWikidataQuery, harvestHandler.HandleTask)

@@ -19,6 +19,7 @@ const queueMock = vi.fn();
 const bulkStatusMock = vi.fn();
 const aiReviewMock = vi.fn();
 const aiReviewStatusMock = vi.fn();
+const syncMock = vi.fn();
 
 vi.mock('@/entities/book', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/book')>()),
@@ -27,6 +28,7 @@ vi.mock('@/entities/book', async (importOriginal) => ({
     bulkStatus: (...args: unknown[]) => bulkStatusMock(...args),
     aiReview: (...args: unknown[]) => aiReviewMock(...args),
     aiReviewStatus: (...args: unknown[]) => aiReviewStatusMock(...args),
+    syncAdaptations: (...args: unknown[]) => syncMock(...args),
   },
 }));
 
@@ -159,6 +161,7 @@ describe('BookModerationView', () => {
     bulkStatusMock.mockReset();
     aiReviewMock.mockReset();
     aiReviewStatusMock.mockReset();
+    syncMock.mockReset();
     aiReviewStatusMock.mockResolvedValue({ enabled: true, model: 'claude-haiku-5-5', prompt_version: 1, needs_review: 7 });
     queueMock.mockResolvedValue({ items: [makeItem(), secondItem], total: 2, page: 1, limit: 20 });
   });
@@ -580,5 +583,51 @@ describe('BookModerationView', () => {
     expect(screen.queryByRole('button', { name: /Выбрать уверенные/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Выбрать все на странице' }));
     expect(screen.queryByRole('button', { name: /Проверить ИИ \(/ })).not.toBeInTheDocument();
+  });
+
+  it('offers the adaptation sync row action only for QID books and syncs one book', async () => {
+    syncMock.mockResolvedValue({
+      processed: 1,
+      updated: 0,
+      added: 0,
+      items: [{ book_id: 'b1', title: 'Война и мир', outcome: 'unchanged', found: 0, added: 0, notes: [], message: '' }],
+    });
+    renderView();
+    await loaded();
+
+    expect(
+      within(rowOf('Анна Каренина')).queryByRole('button', { name: 'Найти экранизации в Wikidata' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(rowOf('Война и мир')).getByRole('button', { name: 'Найти экранизации в Wikidata' }));
+    await waitFor(() => expect(syncMock).toHaveBeenCalledWith(['b1']));
+    expect(await screen.findByText('Книга «Война и мир»: новых экранизаций нет.')).toBeInTheDocument();
+  });
+
+  it('bulk sync counts and sends only QID rows and reports the skipped ones', async () => {
+    syncMock.mockResolvedValue({
+      processed: 1,
+      updated: 1,
+      added: 2,
+      items: [{ book_id: 'b1', title: 'Война и мир', outcome: 'added', found: 2, added: 2, notes: [], message: '' }],
+    });
+    renderView();
+    await loaded();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Выбрать все на странице' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Найти экранизации в Wikidata (1)' }));
+    await waitFor(() => expect(syncMock).toHaveBeenCalledWith(['b1']));
+    expect(
+      await screen.findByText('Обновлено книг: 1 из 1, добавлено экранизаций: 2. Без QID пропущено: 1.')
+    ).toBeInTheDocument();
+  });
+
+  it('shows the Wikidata-unavailable text when the bulk sync fails with 502', async () => {
+    syncMock.mockRejectedValue(new ApiError(502, 'Bad Gateway', 'x'));
+    renderView();
+    await loaded();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Выбрать все на странице' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Найти экранизации в Wikidata (1)' }));
+    expect(await screen.findByText('Wikidata недоступна, попробуйте позже.')).toBeInTheDocument();
   });
 });
