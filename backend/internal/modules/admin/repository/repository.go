@@ -637,6 +637,23 @@ func (r *GormRepository) MergeAuthors(ctx context.Context, duplicateID, canonica
 			return err
 		}
 
+		// Films about the author (openspec add-author-screen-works): move
+		// the duplicate's links to the canonical author before the delete,
+		// keeping every hide, so a later sync cannot bring a hidden film
+		// back. The cascade would otherwise drop them.
+		if err := tx.Exec(`
+			INSERT INTO author_screen_works (author_id, screen_work_id, relation, hidden, source, created_at, updated_at)
+			SELECT ?, screen_work_id, relation, hidden, source, created_at, CURRENT_TIMESTAMP
+			FROM author_screen_works WHERE author_id = ?
+			ON CONFLICT (author_id, screen_work_id)
+			DO UPDATE SET hidden = author_screen_works.hidden OR EXCLUDED.hidden, updated_at = CURRENT_TIMESTAMP
+		`, canonicalID, duplicateID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM author_screen_works WHERE author_id = ?", duplicateID).Error; err != nil {
+			return err
+		}
+
 		if err := tx.Exec("DELETE FROM authors WHERE id = ?", duplicateID).Error; err != nil {
 			return err
 		}

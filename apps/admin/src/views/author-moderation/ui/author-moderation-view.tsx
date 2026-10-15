@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   AdminAuthor,
   AdminAuthorEnrichmentReport,
+  AdminAuthorFilmSyncReport,
   AdminAuthorHint,
   AdminAuthorQueueItem,
   AdminAuthorQueueParams,
@@ -19,6 +20,13 @@ import {
   enrichReportHasErrors,
   useEnrichAuthors,
 } from '@/features/enrich-author';
+import {
+  bulkSyncSummary as bulkFilmSyncSummary,
+  syncErrorMessage as filmSyncErrorMessage,
+  syncItemText as filmSyncItemText,
+  syncReportHasErrors as filmSyncReportHasErrors,
+  useSyncAuthorFilms,
+} from '@/features/sync-author-films';
 import { MergeAuthorDialog } from '@/features/merge-author';
 import {
   authorStatusConfirmText,
@@ -92,6 +100,8 @@ export function AuthorModerationView() {
   const statusMutation = useAuthorStatusMutation();
   const enrichMutation = useEnrichAuthors();
   const enrichPending = enrichMutation.isPending;
+  const filmSyncMutation = useSyncAuthorFilms();
+  const filmSyncPending = filmSyncMutation.isPending;
 
   const openMerge = (ctx: ModerationRowContext, duplicate: AdminAuthor, initialCanonical?: AdminAuthor) => {
     ctx.notify(null);
@@ -131,6 +141,43 @@ export function AuthorModerationView() {
           });
         },
         onError: (err) => controls.notify({ type: 'error', message: enrichErrorMessage(err) }),
+      }
+    );
+  };
+
+  const handleRowFilmSync = (item: AdminAuthorQueueItem, ctx: ModerationRowContext) => {
+    ctx.notify(null);
+    filmSyncMutation.mutate([item.author.id], {
+      onSuccess: (report: AdminAuthorFilmSyncReport) => {
+        const result = report.items[0];
+        if (!result) return;
+        ctx.notify({
+          type: result.outcome === 'error' ? 'error' : 'success',
+          message: filmSyncItemText(result, item.author.name),
+        });
+      },
+      onError: (err) => ctx.notify({ type: 'error', message: filmSyncErrorMessage(err) }),
+    });
+  };
+
+  const handleBulkFilmSync = (selectedItems: AdminAuthorQueueItem[], controls: ModerationQueueControls) => {
+    // Only rows with a Wikidata QID are sent; the rest are reported as skipped.
+    const selectedWithQid = selectedItems.filter((i) => !!i.author.external_id);
+    controls.notify(null);
+    if (selectedWithQid.length === 0) return;
+    const skippedWithoutQid = selectedItems.length - selectedWithQid.length;
+    const names = Object.fromEntries(selectedWithQid.map((i) => [i.author.id, i.author.name]));
+    filmSyncMutation.mutate(
+      selectedWithQid.map((i) => i.author.id),
+      {
+        onSuccess: (report: AdminAuthorFilmSyncReport) => {
+          controls.clearSelection();
+          controls.notify({
+            type: filmSyncReportHasErrors(report) ? 'error' : 'success',
+            message: bulkFilmSyncSummary(report, skippedWithoutQid, names),
+          });
+        },
+        onError: (err) => controls.notify({ type: 'error', message: filmSyncErrorMessage(err) }),
       }
     );
   };
@@ -206,19 +253,39 @@ export function AuthorModerationView() {
               Обогатить из Wikidata
             </Button>
           )}
+          {item.author.external_id && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={filmSyncPending}
+              onClick={() => handleRowFilmSync(item, ctx)}
+            >
+              Найти фильмы об авторе в Wikidata
+            </Button>
+          )}
         </>
       )}
       renderBulkActions={(selectedItems, controls) => {
         const withQid = selectedItems.filter((i) => !!i.author.external_id).length;
         return (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={enrichPending || withQid === 0}
-            onClick={() => handleBulkEnrich(selectedItems, controls)}
-          >
-            Обогатить из Wikidata ({withQid})
-          </Button>
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={enrichPending || withQid === 0}
+              onClick={() => handleBulkEnrich(selectedItems, controls)}
+            >
+              Обогатить из Wikidata ({withQid})
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={filmSyncPending || withQid === 0}
+              onClick={() => handleBulkFilmSync(selectedItems, controls)}
+            >
+              Найти фильмы об авторе в Wikidata ({withQid})
+            </Button>
+          </>
         );
       }}
       renderOverlay={(controls) =>

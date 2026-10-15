@@ -1689,6 +1689,99 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/authors/sync-screen-works": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Для 1..50 авторов (любой статус, дубликаты схлопываются) с QID Wikidata находит видеоработы, у которых главная тема (P921) - автор: фильмы, телефильмы, сериалы, мультфильмы, мультсериалы, телеспектакли, документальные и биографические фильмы; серии фильмов, игры, статьи-списки и эпизоды отбрасываются. Документальные получают relation = documentary, остальные - biopic. Связи публикуются сразу, синхронизация только добавляет и никогда не возвращает скрытую администратором связь. Каждый автор обрабатывается независимо: outcome = added | unchanged | skipped (notes: no_qid) | error (notes: wikidata_unavailable). 502 - если все запросы к Wikidata не удались",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Найти фильмы об авторах в Wikidata (админ)",
+                "parameters": [
+                    {
+                        "description": "ID авторов (1..50)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.syncRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_service.AuthorSyncReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/authors/{id}": {
             "get": {
                 "security": [
@@ -1916,6 +2009,183 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_admin_transport_http.mergeAuthorsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/authors/{id}/screen-works": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Все связанные фильмы об авторе любого статуса, включая скрытые, в том же порядке, что и публичный список",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Фильмы об авторе (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID автора",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.adminAuthorFilmsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/authors/{id}/screen-works/{screen_work_id}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Поле hidden обязательно. Связь и фильм не удаляются, поэтому повторная синхронизация скрытую связь не возвращает. Видимость экранизации той же работы у книги не меняется. Неизвестный автор или связь - 404",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Скрыть или показать фильм об авторе (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID автора",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID фильма",
+                        "name": "screen_work_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Видимость",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.setHiddenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.adminAuthorFilmResponse"
                         }
                     },
                     "400": {
@@ -5789,6 +6059,62 @@ const docTemplate = `{
                 }
             }
         },
+        "/authors/{id}/screen-works": {
+            "get": {
+                "description": "Доступно без авторизации. Видимые фильмы об опубликованном авторе (художественные байопики и документальные, relation = biopic | documentary) без пагинации: сначала по году (без года - в конце), затем по названию. Скрытые администратором не возвращаются. Неизвестный или неопубликованный автор - 404. Параметр id - это ID автора, не slug",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "screen-works"
+                ],
+                "summary": "Фильмы об авторе",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID автора",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.authorFilmsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/authors/{slug}": {
             "get": {
                 "produces": [
@@ -9242,6 +9568,13 @@ const docTemplate = `{
                 "author_enrichment_errors": {
                     "type": "integer"
                 },
+                "author_film_sync_errors": {
+                    "type": "integer"
+                },
+                "author_films_added": {
+                    "description": "AuthorFilmsAdded / AuthorFilmSyncErrors report the end-of-job sync of\nfilms about the authors this job created (openspec\ncatalog-import/wikidata-book-harvest). Set only once that step ran\n(nil without a configured syncer and in results of older jobs).",
+                    "type": "integer"
+                },
                 "authors_enriched": {
                     "description": "AuthorsEnriched / AuthorEnrichmentErrors report the end-of-job\nWikidata enrichment of the authors this job created\n(docs/features/author-wikidata-enrichment.md rule 4b). Set only once\nthat step ran (nil while the record loop is running, in results of\nolder jobs, and when no enrichment source is configured).",
                     "type": "integer"
@@ -9280,6 +9613,55 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_screenworks_service.AuthorSyncItem": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "type": "integer"
+                },
+                "author_id": {
+                    "type": "string"
+                },
+                "found": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "outcome": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_screenworks_service.AuthorSyncReport": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_service.AuthorSyncItem"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
                 }
             }
         },
@@ -13411,6 +13793,113 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/internal_modules_screenworks_transport_http.adminAdaptationResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.adminAuthorFilmResponse": {
+            "type": "object",
+            "properties": {
+                "director": {
+                    "type": "string"
+                },
+                "hidden": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imdb_id": {
+                    "type": "string"
+                },
+                "imdb_url": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "kinopoisk_id": {
+                    "type": "string"
+                },
+                "kinopoisk_url": {
+                    "type": "string"
+                },
+                "original_title": {
+                    "type": "string"
+                },
+                "qid": {
+                    "type": "string"
+                },
+                "relation": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.adminAuthorFilmsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_screenworks_transport_http.adminAuthorFilmResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.authorFilmResponse": {
+            "type": "object",
+            "properties": {
+                "director": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imdb_url": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "kinopoisk_url": {
+                    "type": "string"
+                },
+                "original_title": {
+                    "type": "string"
+                },
+                "relation": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.authorFilmsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_screenworks_transport_http.authorFilmResponse"
                     }
                 },
                 "total": {

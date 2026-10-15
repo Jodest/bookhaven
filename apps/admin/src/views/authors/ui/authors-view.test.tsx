@@ -17,6 +17,7 @@ const listMock = vi.fn();
 const updateMock = vi.fn();
 const bulkStatusMock = vi.fn();
 const enrichMock = vi.fn();
+const syncFilmsMock = vi.fn();
 
 vi.mock('@/entities/author', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/author')>()),
@@ -25,6 +26,7 @@ vi.mock('@/entities/author', async (importOriginal) => ({
     update: (...args: unknown[]) => updateMock(...args),
     bulkStatus: (...args: unknown[]) => bulkStatusMock(...args),
     enrichWikidata: (...args: unknown[]) => enrichMock(...args),
+    syncScreenWorks: (...args: unknown[]) => syncFilmsMock(...args),
   },
 }));
 
@@ -72,6 +74,7 @@ describe('AuthorsView (catalog list)', () => {
     updateMock.mockReset();
     bulkStatusMock.mockReset();
     enrichMock.mockReset();
+    syncFilmsMock.mockReset();
     window.sessionStorage.clear();
   });
 
@@ -178,6 +181,35 @@ describe('AuthorsView (catalog list)', () => {
     fireEvent.click(within(rowOf('Лев Толстой')).getByRole('button', { name: 'Обогатить из Wikidata' }));
     await waitFor(() => expect(enrichMock).toHaveBeenCalledWith(['a1']));
     expect(await screen.findByText(/Автор «Лев Толстой»: нечего добавить/)).toBeInTheDocument();
+  });
+
+  it('offers «Найти фильмы об авторе в Wikidata» only with a QID and shows the result', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        makeAuthor({ external_source: 'wikidata', external_id: 'Q7243' }),
+        makeAuthor({ id: 'a2', name: 'Без QID', slug: 'no-qid' }),
+      ],
+      total: 2,
+      page: 1,
+      limit: 20,
+    });
+    syncFilmsMock.mockResolvedValue({
+      processed: 1,
+      updated: 1,
+      added: 2,
+      items: [{ author_id: 'a1', name: 'Лев Толстой', outcome: 'added', found: 2, added: 2, notes: [], message: '' }],
+    });
+
+    const { invalidateSpy } = renderView();
+
+    await waitFor(() => expect(screen.getByText('Без QID')).toBeInTheDocument());
+    expect(
+      within(rowOf('Без QID')).queryByRole('button', { name: 'Найти фильмы об авторе в Wikidata' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(rowOf('Лев Толстой')).getByRole('button', { name: 'Найти фильмы об авторе в Wikidata' }));
+    await waitFor(() => expect(syncFilmsMock).toHaveBeenCalledWith(['a1']));
+    expect(await screen.findByText('Автор «Лев Толстой»: добавлено фильмов — 2.')).toBeInTheDocument();
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'authors'] });
   });
 
   it('links to the author moderation queue from the header', async () => {

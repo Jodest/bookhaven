@@ -138,6 +138,8 @@ func RegisterRoutes(
 	// Screen adaptations of a book (openspec screen-works/book-adaptations): public.
 	screenWorksHandler := screenworkshttp.NewHandler(screenWorksService)
 	api.GET("/books/:id/adaptations", screenWorksHandler.ListBookAdaptations)
+	// Films about an author (openspec screen-works/author-films): public.
+	api.GET("/authors/:id/screen-works", screenWorksHandler.ListAuthorFilms)
 }
 
 // AIModerationDeps configures the AI moderation trigger/status endpoints:
@@ -231,10 +233,13 @@ func RegisterAdminRoutes(
 	authors.POST("/bulk-status", adminHandler.BulkSetAuthorStatus, requireBearer)
 	authors.POST("/import-wikidata", adminHandler.ImportWikidataAuthor, requireBearer)
 	authors.POST("/enrich-wikidata", adminHandler.EnrichAuthorsFromWikidata, requireBearer)
+	authors.POST("/sync-screen-works", screenWorksHandler.SyncAuthorFilms, requireBearer)
 	authors.POST("", adminHandler.CreateAuthor, requireBearer)
 	authors.GET("/:id", adminHandler.GetAuthor)
 	authors.PATCH("/:id", adminHandler.UpdateAuthor, requireBearer)
 	authors.POST("/:id/merge", adminHandler.MergeAuthors, requireBearer)
+	authors.GET("/:id/screen-works", screenWorksHandler.AdminListAuthorFilms)
+	authors.PATCH("/:id/screen-works/:screen_work_id", screenWorksHandler.AdminSetAuthorFilmHidden, requireBearer)
 
 	genres := admin.Group("/genres", adminRole)
 	genres.GET("", adminHandler.ListGenres)

@@ -16,6 +16,7 @@ vi.mock('next/navigation', () => ({
 const queueMock = vi.fn();
 const bulkStatusMock = vi.fn();
 const enrichMock = vi.fn();
+const syncFilmsMock = vi.fn();
 
 vi.mock('@/entities/author', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/author')>()),
@@ -23,6 +24,7 @@ vi.mock('@/entities/author', async (importOriginal) => ({
     moderationQueue: (...args: unknown[]) => queueMock(...args),
     bulkStatus: (...args: unknown[]) => bulkStatusMock(...args),
     enrichWikidata: (...args: unknown[]) => enrichMock(...args),
+    syncScreenWorks: (...args: unknown[]) => syncFilmsMock(...args),
   },
 }));
 
@@ -115,6 +117,7 @@ describe('AuthorModerationView', () => {
     queueMock.mockReset();
     bulkStatusMock.mockReset();
     enrichMock.mockReset();
+    syncFilmsMock.mockReset();
     queueMock.mockResolvedValue({ items: [makeItem(), secondItem], total: 2, page: 1, limit: 20 });
   });
 
@@ -387,6 +390,62 @@ describe('AuthorModerationView', () => {
       expect(screen.getByText('Обогащено 0 из 1. Без QID пропущено: 1.')).toBeInTheDocument()
     );
     expect(enrichMock).toHaveBeenCalledWith(['a1']);
+  });
+
+  it('offers the film sync only on rows with a QID and shows the result', async () => {
+    syncFilmsMock.mockResolvedValue({
+      processed: 1,
+      updated: 0,
+      added: 0,
+      items: [{ author_id: 'a1', name: 'Л. Н. Толстой', outcome: 'unchanged', found: 0, added: 0, notes: [], message: '' }],
+    });
+    const { invalidateSpy } = renderView();
+    await waitFor(() => expect(rowOf('Л. Н. Толстой')).toBeInTheDocument());
+
+    expect(
+      within(rowOf('Гомер')).queryByRole('button', { name: 'Найти фильмы об авторе в Wikidata' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(rowOf('Л. Н. Толстой')).getByRole('button', { name: 'Найти фильмы об авторе в Wikidata' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Автор «Л. Н. Толстой»: новых фильмов нет.')).toBeInTheDocument()
+    );
+    expect(syncFilmsMock).toHaveBeenCalledWith(['a1']);
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'authors'] });
+  });
+
+  it('bulk film sync sends only selected rows with a QID and reports the skipped ones', async () => {
+    syncFilmsMock.mockResolvedValue({
+      processed: 1,
+      updated: 1,
+      added: 3,
+      items: [{ author_id: 'a1', name: 'Л. Н. Толстой', outcome: 'added', found: 3, added: 3, notes: [], message: '' }],
+    });
+    renderView();
+    await waitFor(() => expect(rowOf('Л. Н. Толстой')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Выбрать «Гомер»'));
+    expect(screen.getByRole('button', { name: 'Найти фильмы об авторе в Wikidata (0)' })).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText('Выбрать «Л. Н. Толстой»'));
+    fireEvent.click(screen.getByRole('button', { name: 'Найти фильмы об авторе в Wikidata (1)' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Обновлено авторов: 1 из 1, добавлено фильмов: 3. Без QID пропущено: 1.')
+      ).toBeInTheDocument()
+    );
+    expect(syncFilmsMock).toHaveBeenCalledWith(['a1']);
+  });
+
+  it('shows the film sync 503 message', async () => {
+    const { ApiError } = await import('@bookhaven/api-client');
+    syncFilmsMock.mockRejectedValue(new ApiError(503, 'Unavailable', 'author film sync source is not configured'));
+    renderView();
+    await waitFor(() => expect(rowOf('Л. Н. Толстой')).toBeInTheDocument());
+
+    fireEvent.click(within(rowOf('Л. Н. Толстой')).getByRole('button', { name: 'Найти фильмы об авторе в Wikidata' }));
+    await waitFor(() => expect(screen.getByText('Поиск фильмов об авторах не настроен.')).toBeInTheDocument());
   });
 
   it('shows the 502 message when Wikidata is unavailable', async () => {
