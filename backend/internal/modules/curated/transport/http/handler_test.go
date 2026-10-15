@@ -47,6 +47,7 @@ func newEnv(t *testing.T) *env {
 	e := echo.New()
 	e.GET("/collections", h.ListPublic)
 	e.GET("/collections/:slug", h.GetPublic)
+	e.GET("/books/:id/collections", h.ListBookPlaces)
 	a := e.Group("/admin/collections")
 	a.GET("", h.AdminList)
 	a.POST("", h.AdminCreate)
@@ -219,5 +220,56 @@ func TestAdmin_PatchClearsFieldsAndDetail(t *testing.T) {
 	}
 	if code, _ := v.do("DELETE", "/admin/collections/"+id, ""); code != 200 {
 		t.Fatal("delete")
+	}
+}
+
+func TestPublic_IndexLimit(t *testing.T) {
+	v := newEnv(t)
+	for i := 0; i < 5; i++ {
+		v.collection(t, `{"title":"Подборка `+string(rune('A'+i))+`","size":3,"is_published":true}`)
+	}
+	code, out := v.do(http.MethodGet, "/collections?limit=2", "")
+	if code != 200 || len(out["items"].([]any)) != 2 || out["total"].(float64) != 5 {
+		t.Fatalf("limit 2: %d %v", code, out)
+	}
+	for _, q := range []string{"limit=0", "limit=-1", "limit=abc"} {
+		_, out = v.do(http.MethodGet, "/collections?"+q, "")
+		if len(out["items"].([]any)) != 5 {
+			t.Errorf("%s must not limit", q)
+		}
+	}
+}
+
+func TestPublic_BookPlaces(t *testing.T) {
+	v := newEnv(t)
+	id := v.collection(t, `{"title":"Топ-100","size":2,"slug":"top","is_published":true}`)
+	pending, a, b, reserve := v.book(t, "pending"), v.book(t, "published"), v.book(t, "published"), v.book(t, "published")
+	for _, bk := range []string{pending, a, b, reserve} {
+		if code, out := v.do(http.MethodPost, "/admin/collections/"+id+"/books", `{"book_id":"`+bk+`"}`); code != 201 {
+			t.Fatalf("add: %d %v", code, out)
+		}
+	}
+	code, out := v.do(http.MethodGet, "/books/"+b+"/collections", "")
+	items, _ := out["items"].([]any)
+	if code != 200 || len(items) != 1 || out["total"].(float64) != 1 {
+		t.Fatalf("places: %d %v", code, out)
+	}
+	it := items[0].(map[string]any)
+	col := it["collection"].(map[string]any)
+	if it["place"].(float64) != 2 || col["slug"] != "top" || col["title"] != "Топ-100" || col["kind"] != "manual" || col["size"].(float64) != 2 || col["id"] != id {
+		t.Fatalf("item: %v", it)
+	}
+	code, out = v.do(http.MethodGet, "/books/"+reserve+"/collections", "")
+	if code != 200 || len(out["items"].([]any)) != 0 || out["total"].(float64) != 0 {
+		t.Fatalf("reserve: %d %v", code, out)
+	}
+	if code, out = v.do(http.MethodGet, "/books/zzz/collections", ""); code != 400 || out["error"] != "invalid book id" {
+		t.Fatalf("bad id: %d %v", code, out)
+	}
+	if code, out = v.do(http.MethodGet, "/books/"+pending+"/collections", ""); code != 404 || out["error"] != "book not found" {
+		t.Fatalf("pending: %d %v", code, out)
+	}
+	if code, _ = v.do(http.MethodGet, "/books/"+uuid.NewString()+"/collections", ""); code != 404 {
+		t.Fatalf("unknown: %d", code)
 	}
 }

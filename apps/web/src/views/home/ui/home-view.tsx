@@ -1,8 +1,10 @@
 import { BookRow } from '@/entities/book';
+import { collectionsApi } from '@/entities/curated-collection';
 import { genresApi } from '@/entities/genre';
 import { homeApi } from '@/entities/home';
 import { PickRandomBook } from '@/features/pick-random-book';
 import { BookOfTheDay } from '@/widgets/book-of-the-day';
+import { CuratedCollectionsRow } from '@/widgets/curated-collections-row';
 import { LiteraryCalendar } from '@/widgets/literary-calendar';
 import { PersonalHome, PersonalRecommendations } from '@/widgets/personal-home';
 import { RecentReviews } from '@/widgets/recent-reviews';
@@ -12,13 +14,15 @@ import Link from 'next/link';
 /**
  * Home page (see docs/features/home-page-content.md). Public blocks are
  * server-rendered from GET /home; if it fails, only the hero, genre chips
- * and the personal blocks render. Personal blocks (logged-in only) are
+ * and the personal blocks render. The «Подборки» block (openspec home/*)
+ * comes from GET /collections?limit=6 and renders independently of /home. Personal blocks (logged-in only) are
  * client-side widgets over GET /home/me. Empty blocks render nothing.
  */
 export async function HomeView() {
-  const [home, { items: genres }] = await Promise.all([
+  const [home, { items: genres }, collections] = await Promise.all([
     homeApi.get().catch(() => null),
     genresApi.list().catch(() => ({ items: [] as { id: string; name: string }[] })),
+    collectionsApi.list({ limit: 6 }).catch(() => null),
   ]);
 
   const bookOfTheDay = home?.bookOfTheDay ?? null;
@@ -26,6 +30,9 @@ export async function HomeView() {
     home?.calendar && (home.calendar.events.length > 0 || home.calendar.anniversaries.length > 0)
       ? home.calendar
       : null;
+
+  // Skip empty collections, show the 3 newest.
+  const homeCollections = (collections?.items ?? []).filter((c) => c.shown_count > 0).slice(0, 3);
 
   return (
     <main>
@@ -97,12 +104,17 @@ export async function HomeView() {
             linkLabel="Смотреть все"
           />
 
+          <CuratedCollectionsRow collections={homeCollections} />
+
           <RecentReviews reviews={home.recentReviews} />
         </div>
       )}
 
       {!home && (
-        <PersonalRecommendations className="container mx-auto px-4 pb-12 sm:px-6 md:pb-16 lg:px-8" />
+        <div className="container mx-auto space-y-12 px-4 pb-12 sm:px-6 md:pb-16 lg:px-8">
+          <PersonalRecommendations />
+          <CuratedCollectionsRow collections={homeCollections} />
+        </div>
       )}
     </main>
   );

@@ -1,13 +1,19 @@
 import { render, screen } from '@testing-library/react';
 import type { Book } from '@bookhaven/api-client';
 import type { ImgHTMLAttributes } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BookDetailView } from './book-detail-view';
 
 const getBook = vi.fn();
+const forBook = vi.fn();
 
 vi.mock('@/entities/book', () => ({
   booksApi: { get: (slug: string) => getBook(slug) },
+}));
+
+vi.mock('@/entities/curated-collection', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/curated-collection')>()),
+  collectionsApi: { forBook: (id: string) => forBook(id) },
 }));
 
 vi.mock('next/image', () => ({
@@ -52,6 +58,37 @@ const book: Book = {
   createdAt: '',
   updatedAt: '',
 };
+
+beforeEach(() => {
+  forBook.mockReset();
+  forBook.mockResolvedValue({ items: [], total: 0 });
+});
+
+describe('BookDetailView collection badges', () => {
+  it('renders the places returned by the API', async () => {
+    getBook.mockResolvedValue(book);
+    forBook.mockResolvedValue({
+      items: [{ place: 3, collection: { id: 'c1', slug: 'top-100', title: 'Топ-100', kind: 'manual', size: 100 } }],
+      total: 1,
+    });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(forBook).toHaveBeenCalledWith('b1');
+    expect(screen.getByRole('link', { name: '№3 в „Топ-100“' })).toHaveAttribute('href', '/top/top-100');
+  });
+
+  it('still renders the page without badges when the places request fails', async () => {
+    getBook.mockResolvedValue(book);
+    forBook.mockRejectedValue(new Error('boom'));
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Отцы и дети' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Места в подборках')).not.toBeInTheDocument();
+    expect(screen.queryByText(/boom|ошибк/i)).not.toBeInTheDocument();
+  });
+});
 
 describe('BookDetailView', () => {
   it('links published authors and renders non-published ones as plain text', async () => {

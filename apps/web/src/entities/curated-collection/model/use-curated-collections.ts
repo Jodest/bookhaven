@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { collectionsApi } from '../api';
+import { COLLECTION_PAGE_SIZE } from '../lib/place-href';
 
 export const CURATED_COLLECTIONS_KEY = ['curated-collections'] as const;
 
-/** Page size of /top/{slug}; the API default and the value the page numbers are based on. */
-export const COLLECTION_PAGE_SIZE = 50;
+export { COLLECTION_PAGE_SIZE };
 
 export function useCuratedCollections() {
   return useQuery({
