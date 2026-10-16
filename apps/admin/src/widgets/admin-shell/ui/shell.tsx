@@ -4,6 +4,7 @@ import { useAuthStore, isAdmin, isModerator } from '@/entities/session';
 import { NavBadge, useNavCounters } from '@/features/nav-counters';
 import {
   getHomeHref,
+  getHelpHrefForPath,
   getHomeTab,
   getSectionHref,
   getVisibleSections,
@@ -13,6 +14,7 @@ import {
   resolveNavLocation,
 } from '@/shared/config';
 import { isSafeInternalRedirect } from '@/shared/lib';
+import { HelpLink } from '@/shared/ui';
 import { AccessDenied } from './access-denied';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
@@ -143,6 +145,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }
 
   const sections = getVisibleSections(role);
+  const helpHref = getHelpHrefForPath(pathname, role);
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -190,7 +193,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </Button>
         </div>
       </aside>
-      <main className="flex-1 overflow-auto p-4 md:p-8">{children}</main>
+      <main className="flex-1 overflow-auto p-4 md:p-8">
+        {helpHref && (
+          <div className="-mb-2 flex justify-end">
+            <HelpLink href={helpHref} />
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   );
 }

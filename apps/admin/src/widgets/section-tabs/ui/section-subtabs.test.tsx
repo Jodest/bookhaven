@@ -110,6 +110,7 @@ describe('SectionSubtabs', () => {
         tabs: [
           {
             id: 't',
+            helpChapter: null,
             label: 'T',
             href: '/import/t/a',
             match: ['/import/t'],

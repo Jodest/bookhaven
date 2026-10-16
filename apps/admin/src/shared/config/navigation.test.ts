@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canAccessSubtab,
+  getHelpHrefForPath,
   getHomeHref,
   getSectionHref,
   getTabById,
@@ -11,6 +12,7 @@ import {
   resolveNavLocation,
   type NavSection,
 } from './navigation';
+import { getHelpChapter } from './help';
 
 function tabIdOf(pathname: string): string | null | undefined {
   const loc = resolveNavLocation(pathname);
@@ -124,6 +126,8 @@ describe('navigation config invariants', () => {
         prefix === '/' ||
         prefix === '/users' ||
         prefix === '/collections' ||
+        prefix === '/help' ||
+        prefix.startsWith('/help/') ||
         sectionPrefixes.some((p) => prefix.startsWith(p));
       expect(ok, prefix).toBe(true);
     }
@@ -136,7 +140,7 @@ describe('navigation config invariants', () => {
 });
 
 describe('visibility', () => {
-  it('admin sees all six sections in order', () => {
+  it('admin sees all seven sections in order', () => {
     expect(getVisibleSections('admin').map((s) => s.label)).toEqual([
       'Обзор',
       'Модерация',
@@ -144,13 +148,15 @@ describe('visibility', () => {
       'Подборки',
       'Импорт',
       'Пользователи',
+      'Справка',
     ]);
   });
 
   it('moderator sees only moderation with only the reviews tab', () => {
     const sections = getVisibleSections('moderator');
-    expect(sections.map((s) => s.id)).toEqual(['moderation']);
+    expect(sections.map((s) => s.id)).toEqual(['moderation', 'help']);
     expect(sections[0].tabs.map((t) => t.id)).toEqual(['moderation.reviews']);
+    expect(sections[1].tabs.map((t) => t.id)).toEqual(['help.index', 'help.moderation']);
     expect(sections.some((s) => s.id === 'collections')).toBe(false);
   });
 
@@ -263,6 +269,7 @@ describe('sub-tabs', () => {
         tabs: [
           {
             id: 't',
+            helpChapter: null,
             label: 'T',
             href: '/import/t/a',
             match: ['/import/t'],
@@ -274,6 +281,7 @@ describe('sub-tabs', () => {
           },
           {
             id: 'u',
+            helpChapter: null,
             label: 'U',
             href: '/import/u/a',
             match: ['/import/u'],
@@ -301,5 +309,69 @@ describe('sub-tabs', () => {
     expect(getTabHref('import.genres')).toBe('/import/genres/manual');
     expect(getTabById('nope')).toBeNull();
     expect(() => getTabHref('nope')).toThrow();
+  });
+});
+
+describe('help links', () => {
+  it('every non-help tab has a registered help chapter', () => {
+    for (const tab of navSections.flatMap((s) => s.tabs)) {
+      if (tab.id.startsWith('help.')) {
+        expect(tab.helpChapter, tab.id).toBeNull();
+      } else {
+        expect(getHelpChapter(tab.helpChapter ?? ''), tab.id).not.toBeNull();
+      }
+    }
+  });
+
+  it.each([
+    ['/', '/help/getting-started'],
+    ['/moderation/books', '/help/catalog-review'],
+    ['/moderation/authors', '/help/catalog-review'],
+    ['/moderation/genres', '/help/catalog-review'],
+    ['/moderation/descriptions', '/help/catalog-review'],
+    ['/moderation/reviews', '/help/moderation'],
+    ['/catalog/books', '/help/adding-content'],
+    ['/catalog/books/1/edit', '/help/adding-content'],
+    ['/catalog/authors', '/help/adding-content'],
+    ['/catalog/authors/1/edit', '/help/adding-content'],
+    ['/catalog/genres', '/help/adding-content'],
+    ['/catalog/screen-works', '/help/screen-works'],
+    ['/catalog/screen-works/7/edit', '/help/screen-works'],
+    ['/collections', '/help/collections'],
+    ['/collections/new', '/help/collections'],
+    ['/collections/abc', '/help/collections'],
+    ['/import/books/wikidata', '/help/adding-content'],
+    ['/import/books/file', '/help/adding-content'],
+    ['/import/authors/ai', '/help/adding-content'],
+    ['/import/genres/manual', '/help/adding-content'],
+    ['/import/jobs', '/help/import-jobs'],
+    ['/users', '/help/users-roles'],
+  ])('admin on %s gets %s', (pathname, expected) => {
+    expect(getHelpHrefForPath(pathname, 'admin')).toBe(expected);
+  });
+
+  it('moderator gets the moderation chapter on /moderation/reviews', () => {
+    expect(getHelpHrefForPath('/moderation/reviews', 'moderator')).toBe('/help/moderation');
+  });
+
+  it('the link only points to a chapter available to the role', () => {
+    expect(getHelpHrefForPath('/users', 'moderator')).toBeNull();
+    expect(getHelpHrefForPath('/users', 'user')).toBeNull();
+    expect(getHelpHrefForPath('/users', undefined)).toBeNull();
+  });
+
+  it.each(['/help', '/help/moderation', '/help/nope', '/login', '/moderation', '/catalog', '/import', '/unknown'])(
+    'no link on %s',
+    (pathname) => {
+      expect(getHelpHrefForPath(pathname, 'admin')).toBeNull();
+    }
+  );
+
+  it('help tabs follow the registry roles', () => {
+    expect(getTabById('help.index')!.roles).toEqual(['admin', 'moderator']);
+    expect(getTabById('help.moderation')!.roles).toEqual(['admin', 'moderator']);
+    expect(getTabById('help.adding-content')!.roles).toEqual(['admin']);
+    expect(tabIdOf('/help/adding-content')).toBe('help.adding-content');
+    expect(tabIdOf('/help/no-such')).toBe('help.index');
   });
 });
