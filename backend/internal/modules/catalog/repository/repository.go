@@ -82,8 +82,8 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]do
 
 	if filter.Search != "" {
 		query = query.Where(
-			"to_tsvector('russian', title || ' ' || COALESCE(isbn, '') || ' ' || COALESCE(description, '')) @@ plainto_tsquery('russian', ?)",
-			filter.Search,
+			"(to_tsvector('russian', title || ' ' || COALESCE(isbn, '') || ' ' || COALESCE(description, '')) @@ to_tsquery('russian', ?) OR to_tsvector('russian', title || ' ' || COALESCE(isbn, '') || ' ' || COALESCE(description, '')) @@ plainto_tsquery('russian', ?))",
+			buildPrefixTSQuery(filter.Search), filter.Search,
 		)
 	}
 
@@ -200,8 +200,8 @@ func (r *GormRepository) ListAuthors(ctx context.Context, search string, limit i
 
 	if search != "" {
 		query = query.Where(
-			"to_tsvector('russian', name || ' ' || COALESCE(biography, '')) @@ plainto_tsquery('russian', ?)",
-			search,
+			"(to_tsvector('russian', name || ' ' || COALESCE(biography, '')) @@ to_tsquery('russian', ?) OR to_tsvector('russian', name || ' ' || COALESCE(biography, '')) @@ plainto_tsquery('russian', ?))",
+			buildPrefixTSQuery(search), search,
 		)
 	}
 
