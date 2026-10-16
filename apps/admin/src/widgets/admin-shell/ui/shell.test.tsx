@@ -65,7 +65,7 @@ describe('Shell', () => {
     countersValue = { sections: {}, tabs: {} };
   });
 
-  it('admin on / sees six sections, Обзор active, and the page', () => {
+  it('admin on / sees seven sections, Обзор active, and the page', () => {
     setUser('admin');
     renderShell('/');
 
@@ -77,6 +77,7 @@ describe('Shell', () => {
       ['Подборки', '/collections'],
       ['Импорт', '/import/books/wikidata'],
       ['Пользователи', '/users'],
+      ['Справка', '/help'],
     ]);
     expect(links[0]).toHaveAttribute('aria-current', 'page');
     expect(links[1]).not.toHaveAttribute('aria-current');
@@ -112,14 +113,15 @@ describe('Shell', () => {
     }
   );
 
-  it('moderator on /moderation/reviews sees only Модерация and the page', () => {
+  it('moderator on /moderation/reviews sees only Модерация, Справка and the page', () => {
     setUser('moderator');
     renderShell('/moderation/reviews');
 
     const links = sidebarLinks();
-    expect(links).toHaveLength(1);
-    expect(links[0]).toHaveTextContent('Модерация');
-    expect(links[0]).toHaveAttribute('href', '/moderation/reviews');
+    expect(links.map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
+      ['Модерация', '/moderation/reviews'],
+      ['Справка', '/help'],
+    ]);
     expect(screen.getByText('page content')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Подборки' })).not.toBeInTheDocument();
   });
@@ -249,8 +251,49 @@ describe('Shell', () => {
       renderShell('/moderation/reviews');
 
       const links = sidebarLinks();
-      expect(links).toHaveLength(1);
+      expect(links).toHaveLength(2);
       expect(links[0]).toHaveAccessibleName('Модерация');
     });
+  });
+});
+
+describe('Shell help', () => {
+  beforeEach(() => {
+    authState = { user: null, isLoading: false, forbiddenPath: null };
+    countersValue = { sections: {}, tabs: {} };
+  });
+
+  it('admin on /import/jobs sees the help link to the import jobs chapter', () => {
+    setUser('admin');
+    renderShell('/import/jobs');
+    expect(screen.getByRole('link', { name: 'Справка по разделу' })).toHaveAttribute('href', '/help/import-jobs');
+  });
+
+  it('moderator on /moderation/reviews sees the moderation chapter link', () => {
+    setUser('moderator');
+    renderShell('/moderation/reviews');
+    expect(screen.getByRole('link', { name: 'Справка по разделу' })).toHaveAttribute('href', '/help/moderation');
+  });
+
+  it('shows no help link inside the help', () => {
+    setUser('admin');
+    renderShell('/help/moderation');
+    expect(screen.queryByRole('link', { name: 'Справка по разделу' })).not.toBeInTheDocument();
+    expect(screen.getByText('page content')).toBeInTheDocument();
+  });
+
+  it('moderator on an admin-only chapter gets AccessDenied with the reviews button', () => {
+    setUser('moderator');
+    renderShell('/help/adding-content');
+    expect(screen.getByText(ADMIN_ONLY_MESSAGE)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'К отзывам' })).toBeInTheDocument();
+    expect(screen.queryByText('page content')).not.toBeInTheDocument();
+  });
+
+  it.each(['/help', '/help/moderation'])('moderator on %s is allowed', (pathname) => {
+    setUser('moderator');
+    renderShell(pathname);
+    expect(screen.getByText('page content')).toBeInTheDocument();
+    expect(screen.queryByText(ADMIN_ONLY_MESSAGE)).not.toBeInTheDocument();
   });
 });
