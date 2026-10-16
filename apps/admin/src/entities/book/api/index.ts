@@ -14,4 +14,6 @@ export const adminBooksApi = {
   syncAdaptations: api.admin.books.syncAdaptations,
   adaptations: api.admin.books.adaptations,
   setAdaptationHidden: api.admin.books.setAdaptationHidden,
+  addAdaptation: api.admin.books.addAdaptation,
+  deleteAdaptation: api.admin.books.deleteAdaptation,
 };

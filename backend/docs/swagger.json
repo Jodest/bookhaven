@@ -2129,16 +2129,14 @@
                         }
                     }
                 }
-            }
-        },
-        "/admin/authors/{id}/screen-works/{screen_work_id}": {
-            "patch": {
+            },
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Требуется роль admin и Bearer-токен. Поле hidden обязательно. Связь и фильм не удаляются, поэтому повторная синхронизация скрытую связь не возвращает. Видимость экранизации той же работы у книги не меняется. Неизвестный автор или связь - 404",
+                "description": "Требуется роль admin и Bearer-токен. Работает как добавление экранизации книге (screen_work_id либо work), автор любого статуса; дополнительно обязателен relation (biopic | documentary). Связь с source = manual публикуется сразу. Уже привязанная работа - 409",
                 "consumes": [
                     "application/json"
                 ],
@@ -2148,7 +2146,203 @@
                 "tags": [
                     "admin"
                 ],
-                "summary": "Скрыть или показать фильм об авторе (админ)",
+                "summary": "Добавить фильм об авторе вручную (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID автора",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Существующая или новая работа и тип связи",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.addAuthorFilmRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.addAuthorFilmResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/authors/{id}/screen-works/{screen_work_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Удаляет только связь с source = manual, сама работа остаётся. Связь из Wikidata не удаляется (409), её нужно скрыть. Отсутствующая связь - 404",
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Удалить ручную связь автора с фильмом (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID автора",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID фильма",
+                        "name": "screen_work_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Тело: hidden, relation (biopic | documentary) или оба поля; хотя бы одно обязательно. Связь любого источника. Связь и фильм не удаляются при скрытии, поэтому повторная синхронизация скрытую связь не возвращает; выставленный relation синхронизация не меняет. Видимость экранизации той же работы у книги не меняется. Неизвестный автор или связь - 404",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Изменить связь фильма с автором (админ)",
                 "parameters": [
                     {
                         "type": "string",
@@ -2165,12 +2359,12 @@
                         "required": true
                     },
                     {
-                        "description": "Видимость",
+                        "description": "Видимость и/или тип связи",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.setHiddenRequest"
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.updateAuthorFilmRequest"
                         }
                     }
                 ],
@@ -3263,9 +3457,203 @@
                         }
                     }
                 }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Тело: screen_work_id (существующая работа) либо work (новая работа: title, original_title, kind, year, director, imdb_id, kinopoisk_id, qid) - ровно одно из двух. Связь с source = manual публикуется сразу. Книга любого статуса. Если QID уже есть в каталоге, привязывается существующая работа без изменений (work_created = false). Одинаковый IMDb или Кинопоиск id у новой работы - 409 с screen_work_id существующей. Уже привязанная работа (в том числе скрытая) - 409. Ошибки полей - 422",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Добавить экранизацию книге вручную (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Существующая или новая работа",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.addAdaptationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.addAdaptationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/admin/books/{id}/adaptations/{screen_work_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Удаляет только связь с source = manual, сама работа остаётся. Связь из Wikidata не удаляется (409), её нужно скрыть. Отсутствующая связь - 404",
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Удалить ручную связь книги с экранизацией (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID экранизации",
+                        "name": "screen_work_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "patch": {
                 "security": [
                     {
@@ -5338,6 +5726,350 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/screen-works": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Все работы с пагинацией (page по умолчанию 1, limit по умолчанию 20, максимум 100), по названию, затем году. search - подстрока названия или оригинального названия без учёта регистра либо точный QID, IMDb id или Кинопоиск id. unlinked=true оставляет работы без связей с книгами и авторами. Счётчики включают скрытые связи",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Список фильмов и сериалов (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Поиск",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Только без связей",
+                        "name": "unlinked",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Страница",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Размер страницы (1..100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.workListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/screen-works/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. Работа со связанными книгами и авторами любого статуса, включая скрытые связи",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Фильм или сериал (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID фильма",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.workDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Удаляет работу только без связей с книгами и авторами (скрытые связи тоже считаются): иначе 409. Строка фильма блокируется на время проверки связей и удаления, поэтому параллельное добавление связи не теряется: итог - 409 либо связь сохраняется",
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Удалить фильм или сериал (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID фильма",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Полная замена полей (title, original_title, kind, year, director, imdb_id, kinopoisk_id); qid необязателен: у работы без QID его можно добавить, у работы с QID изменить или убрать нельзя (422). Работа помечается как изменённая вручную, и синхронизация Wikidata её больше не меняет. Занятый QID - 409, ошибки полей - 422",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Изменить фильм или сериал (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID фильма",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Данные фильма",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_domain.WorkFields"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.workDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -9609,6 +10341,35 @@
                 }
             }
         },
+        "github_com_bookhaven_backend_internal_modules_screenworks_domain.WorkFields": {
+            "type": "object",
+            "properties": {
+                "director": {
+                    "type": "string"
+                },
+                "imdb_id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "kinopoisk_id": {
+                    "type": "string"
+                },
+                "original_title": {
+                    "type": "string"
+                },
+                "qid": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_bookhaven_backend_internal_modules_screenworks_service.AuthorSyncItem": {
             "type": "object",
             "properties": {
@@ -13735,6 +14496,128 @@
                 }
             }
         },
+        "internal_modules_screenworks_transport_http.addAdaptationRequest": {
+            "type": "object",
+            "properties": {
+                "screen_work_id": {
+                    "type": "string"
+                },
+                "work": {
+                    "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_domain.WorkFields"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.addAdaptationResponse": {
+            "type": "object",
+            "properties": {
+                "director": {
+                    "type": "string"
+                },
+                "hidden": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imdb_id": {
+                    "type": "string"
+                },
+                "imdb_url": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "kinopoisk_id": {
+                    "type": "string"
+                },
+                "kinopoisk_url": {
+                    "type": "string"
+                },
+                "original_title": {
+                    "type": "string"
+                },
+                "qid": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "work_created": {
+                    "type": "boolean"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.addAuthorFilmRequest": {
+            "type": "object",
+            "properties": {
+                "relation": {
+                    "type": "string"
+                },
+                "screen_work_id": {
+                    "type": "string"
+                },
+                "work": {
+                    "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_domain.WorkFields"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.addAuthorFilmResponse": {
+            "type": "object",
+            "properties": {
+                "director": {
+                    "type": "string"
+                },
+                "hidden": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imdb_id": {
+                    "type": "string"
+                },
+                "imdb_url": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "kinopoisk_id": {
+                    "type": "string"
+                },
+                "kinopoisk_url": {
+                    "type": "string"
+                },
+                "original_title": {
+                    "type": "string"
+                },
+                "qid": {
+                    "type": "string"
+                },
+                "relation": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "work_created": {
+                    "type": "boolean"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_modules_screenworks_transport_http.adminAdaptationResponse": {
             "type": "object",
             "properties": {
@@ -13916,6 +14799,174 @@
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.updateAuthorFilmRequest": {
+            "type": "object",
+            "properties": {
+                "hidden": {
+                    "type": "boolean"
+                },
+                "relation": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.workAuthorLinkResponse": {
+            "type": "object",
+            "properties": {
+                "hidden": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "relation": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.workBookLinkResponse": {
+            "type": "object",
+            "properties": {
+                "hidden": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.workDetailResponse": {
+            "type": "object",
+            "properties": {
+                "author_count": {
+                    "type": "integer"
+                },
+                "authors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_screenworks_transport_http.workAuthorLinkResponse"
+                    }
+                },
+                "book_count": {
+                    "type": "integer"
+                },
+                "books": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_screenworks_transport_http.workBookLinkResponse"
+                    }
+                },
+                "director": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imdb_id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "kinopoisk_id": {
+                    "type": "string"
+                },
+                "manually_edited_at": {
+                    "type": "string"
+                },
+                "original_title": {
+                    "type": "string"
+                },
+                "qid": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.workItemResponse": {
+            "type": "object",
+            "properties": {
+                "author_count": {
+                    "type": "integer"
+                },
+                "book_count": {
+                    "type": "integer"
+                },
+                "director": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imdb_id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "kinopoisk_id": {
+                    "type": "string"
+                },
+                "manually_edited_at": {
+                    "type": "string"
+                },
+                "original_title": {
+                    "type": "string"
+                },
+                "qid": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.workListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_screenworks_transport_http.workItemResponse"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

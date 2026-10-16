@@ -92,6 +92,7 @@ describe('SectionTabs', () => {
       ['Книги', '/catalog/books'],
       ['Авторы', '/catalog/authors'],
       ['Жанры', '/catalog/genres'],
+      ['Фильмы и сериалы', '/catalog/screen-works'],
     ]);
     expect(screen.getByRole('link', { name: 'Книги' })).toHaveAttribute('aria-current', 'page');
   });

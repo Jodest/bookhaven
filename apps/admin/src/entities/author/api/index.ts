@@ -13,4 +13,7 @@ export const adminAuthorsApi = {
   syncScreenWorks: api.admin.authors.syncScreenWorks,
   screenWorks: api.admin.authors.screenWorks,
   setScreenWorkHidden: api.admin.authors.setScreenWorkHidden,
+  updateScreenWork: api.admin.authors.updateScreenWork,
+  addScreenWork: api.admin.authors.addScreenWork,
+  deleteScreenWork: api.admin.authors.deleteScreenWork,
 };
