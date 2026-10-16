@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  CircleHelp,
   Download,
   LayoutDashboard,
   ListOrdered,
@@ -7,6 +8,7 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
+import { helpChapters, type HelpChapterSlug } from './help';
 
 /**
  * Single source of truth for admin navigation: sidebar sections, section tabs
@@ -31,6 +33,8 @@ export interface NavSubtab {
   /** Pathname prefixes this sub-tab owns (longest prefix wins within the tab). */
   match: string[];
   roles?: StaffRole[];
+  /** Overrides the tab's help chapter for this sub-page. */
+  helpChapter?: HelpChapterSlug;
 }
 
 export interface NavTab {
@@ -45,9 +49,11 @@ export interface NavTab {
   homeLabel?: string;
   /** Sub-pages; when present, `href` must equal one of `subtabs[].href` (the default). */
   subtabs?: NavSubtab[];
+  /** Admin-guide chapter opened by the «?» link; null only for help tabs. */
+  helpChapter: HelpChapterSlug | null;
 }
 
-export type NavSectionId = 'overview' | 'moderation' | 'catalog' | 'collections' | 'import' | 'users';
+export type NavSectionId = 'overview' | 'moderation' | 'catalog' | 'collections' | 'import' | 'users' | 'help';
 
 export interface NavSection {
   id: NavSectionId;
@@ -66,6 +72,7 @@ export const navSections: NavSection[] = [
     tabs: [
       {
         id: 'overview.dashboard',
+        helpChapter: 'getting-started',
         label: 'Обзор',
         href: '/',
         match: ['/'],
@@ -82,6 +89,7 @@ export const navSections: NavSection[] = [
     tabs: [
       {
         id: 'moderation.books',
+        helpChapter: 'catalog-review',
         label: 'Книги',
         href: '/moderation/books',
         match: ['/moderation/books'],
@@ -89,6 +97,7 @@ export const navSections: NavSection[] = [
       },
       {
         id: 'moderation.authors',
+        helpChapter: 'catalog-review',
         label: 'Авторы',
         href: '/moderation/authors',
         match: ['/moderation/authors'],
@@ -96,6 +105,7 @@ export const navSections: NavSection[] = [
       },
       {
         id: 'moderation.genres',
+        helpChapter: 'catalog-review',
         label: 'Жанры',
         href: '/moderation/genres',
         match: ['/moderation/genres'],
@@ -103,6 +113,7 @@ export const navSections: NavSection[] = [
       },
       {
         id: 'moderation.descriptions',
+        helpChapter: 'catalog-review',
         label: 'Описания ИИ',
         href: '/moderation/descriptions',
         match: ['/moderation/descriptions'],
@@ -110,6 +121,7 @@ export const navSections: NavSection[] = [
       },
       {
         id: 'moderation.reviews',
+        helpChapter: 'moderation',
         label: 'Отзывы',
         href: '/moderation/reviews',
         match: ['/moderation/reviews'],
@@ -126,6 +138,7 @@ export const navSections: NavSection[] = [
     tabs: [
       {
         id: 'catalog.books',
+        helpChapter: 'adding-content',
         label: 'Книги',
         href: '/catalog/books',
         match: ['/catalog/books'],
@@ -133,6 +146,7 @@ export const navSections: NavSection[] = [
       },
       {
         id: 'catalog.authors',
+        helpChapter: 'adding-content',
         label: 'Авторы',
         href: '/catalog/authors',
         match: ['/catalog/authors'],
@@ -140,6 +154,7 @@ export const navSections: NavSection[] = [
       },
       {
         id: 'catalog.genres',
+        helpChapter: 'adding-content',
         label: 'Жанры',
         href: '/catalog/genres',
         match: ['/catalog/genres'],
@@ -147,6 +162,7 @@ export const navSections: NavSection[] = [
       },
       {
         id: 'catalog.screen-works',
+        helpChapter: 'screen-works',
         label: 'Фильмы и сериалы',
         href: '/catalog/screen-works',
         match: ['/catalog/screen-works'],
@@ -161,6 +177,7 @@ export const navSections: NavSection[] = [
     tabs: [
       {
         id: 'collections.list',
+        helpChapter: 'collections',
         label: 'Подборки',
         href: '/collections',
         match: ['/collections'],
@@ -176,6 +193,7 @@ export const navSections: NavSection[] = [
     tabs: [
       {
         id: 'import.books',
+        helpChapter: 'adding-content',
         label: 'Книги',
         // Default sub-page; the bare /import/books path redirects here.
         href: '/import/books/wikidata',
@@ -204,6 +222,7 @@ export const navSections: NavSection[] = [
       },
       {
         id: 'import.authors',
+        helpChapter: 'adding-content',
         label: 'Авторы',
         // Default sub-page; the bare /import/authors path redirects here.
         href: '/import/authors/manual',
@@ -233,6 +252,7 @@ export const navSections: NavSection[] = [
       },
       {
         id: 'import.genres',
+        helpChapter: 'adding-content',
         label: 'Жанры',
         // Default sub-page; the bare /import/genres path redirects here.
         href: '/import/genres/manual',
@@ -253,14 +273,55 @@ export const navSections: NavSection[] = [
           },
         ],
       },
-      { id: 'import.jobs', label: 'Задачи', href: '/import/jobs', match: ['/import/jobs'], roles: ['admin'] },
+      {
+        id: 'import.jobs',
+        helpChapter: 'import-jobs',
+        label: 'Задачи',
+        href: '/import/jobs',
+        match: ['/import/jobs'],
+        roles: ['admin'],
+      },
     ],
   },
   {
     id: 'users',
     label: 'Пользователи',
     icon: Users,
-    tabs: [{ id: 'users.list', label: 'Пользователи', href: '/users', match: ['/users'], roles: ['admin'] }],
+    tabs: [
+      {
+        id: 'users.list',
+        helpChapter: 'users-roles',
+        label: 'Пользователи',
+        href: '/users',
+        match: ['/users'],
+        roles: ['admin'],
+      },
+    ],
+  },
+  {
+    id: 'help',
+    label: 'Справка',
+    icon: CircleHelp,
+    tabs: [
+      {
+        id: 'help.index',
+        helpChapter: null,
+        label: 'Справка',
+        href: '/help',
+        match: ['/help'],
+        roles: ['admin', 'moderator'],
+      },
+      ...helpChapters.map(
+        (chapter): NavTab => ({
+          id: `help.${chapter.slug}`,
+          helpChapter: null,
+          label: chapter.title,
+          href: `/help/${chapter.slug}`,
+          match: [`/help/${chapter.slug}`],
+          roles: chapter.roles,
+        })
+      ),
+    ],
   },
 ];
 
@@ -379,4 +440,23 @@ export function getHomeTab(
 /** The user's home href; falls back to `/` when the role sees nothing. */
 export function getHomeHref(role: string | undefined, sections: NavSection[] = navSections): string {
   return getHomeTab(role, sections)?.href ?? '/';
+}
+
+/**
+ * Href of the help chapter for the section owning `pathname`, or null when
+ * the path has no chapter (help itself, bare base paths, unknown paths) or the
+ * chapter is not available to `role`.
+ */
+export function getHelpHrefForPath(
+  pathname: string,
+  role: string | undefined,
+  sections: NavSection[] = navSections
+): string | null {
+  const loc = resolveNavLocation(pathname, sections);
+  if (!loc || !loc.tab) return null;
+  const slug = loc.subtab?.helpChapter ?? loc.tab.helpChapter;
+  if (!slug) return null;
+  const chapter = helpChapters.find((c) => c.slug === slug);
+  if (!chapter || !role || !(chapter.roles as string[]).includes(role)) return null;
+  return `/help/${slug}`;
 }

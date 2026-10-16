@@ -6,6 +6,11 @@
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
+    "@bookhaven/admin#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/docs/admin-guide/**"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
     "dev": {
       "cache": false,
       "persistent": true

@@ -60,7 +60,7 @@ Status: standard workflow since 2026-10-13. Every product area has a living spec
 |---|---|
 | `catalog-import` | book lookup, book file import, Wikidata book harvest, Wikidata author import, Wikidata genre import, Wikidata matching rules, the admin «Импорт» section, Wikidata author enrichment |
 | `catalog-moderation` | entity status and public visibility, bulk status, moderation queues, duplicate hints, author merge, genre merge |
-| `catalog-admin` | dashboard, catalog lists, book editing, author editing, genre editing |
+| `catalog-admin` | dashboard, catalog lists, book editing, author editing, genre editing, admin help |
 | `auth` | registration, session (login, tokens, refresh, logout), email verification, password reset, authorization (bearer/cookie, roles, page guards) |
 | `users` | own profile, public profile, admin user list, admin role change |
 | `reviews` | book ratings, book reviews, review likes, review moderation, review-like notifications |
@@ -101,6 +101,7 @@ After each merge tell `/f` what happened ("PR #N in dev merged", then "PR #N in 
 - A MODIFIED requirement keeps every existing scenario **under its exact name**; the CLI treats a renamed scenario as dropped. Rewrite WHEN/THEN under the old name and add new scenarios alongside.
 - Baseline specs describe current behavior as-is, bugs included; the bug is filed as an issue and fixed through a normal change (for example #366, #378).
 - No `/opsx:*` commands, no global install, no devDependency.
+- **Admin guide.** A feature that changes admin UX (labels, pages, flows, roles) updates the matching chapter in `docs/admin-guide/` in the same PR: the planner lists the chapter in `tasks.md`, review-qa checks it. The same files are shown in the admin app at `/help`. A new admin section or tab also gets a `helpChapter` in `apps/admin/src/shared/config/navigation.ts` (and a chapter in the registry `shared/config/help.ts` if it needs a new one).
 
 ### CLI
 
