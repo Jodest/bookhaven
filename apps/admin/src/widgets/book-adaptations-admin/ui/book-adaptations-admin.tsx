@@ -1,24 +1,21 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AdminAdaptationSyncReport, AdminBookAdaptation, ScreenWorkKind } from '@bookhaven/api-client';
+import type { AdminAdaptationSyncReport, AdminBookAdaptation } from '@bookhaven/api-client';
 import { Badge, Button } from '@bookhaven/ui';
 import { adminBooksApi } from '@/entities/book';
+import { kindLabel } from '@/entities/screen-work';
+import { LinkScreenWorkDialog } from '@/features/link-screen-work';
 import { syncErrorMessage, syncItemText, useSyncAdaptations } from '@/features/sync-adaptations';
+import { buildEditHref } from '@/shared/lib';
 
 // «Экранизации» section of the admin book edit page (openspec
 // screen-works/book-adaptations): every linked adaptation including hidden
-// ones, hide/show per link and the Wikidata sync for QID books.
-
-const KIND_LABELS: Record<ScreenWorkKind, string> = {
-  film: 'Фильм',
-  tv_film: 'Телефильм',
-  series: 'Сериал',
-  animated_film: 'Мультфильм',
-  animated_series: 'Мультсериал',
-  teleplay: 'Телеспектакль',
-};
+// ones, hide/show, edit and (manual links) delete per link, manual add and
+// the Wikidata sync for QID books.
 
 interface BookAdaptationsAdminProps {
   bookId: string;
@@ -34,7 +31,10 @@ interface Banner {
 
 export function BookAdaptationsAdmin({ bookId, bookTitle, hasQid }: BookAdaptationsAdminProps) {
   const queryClient = useQueryClient();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [banner, setBanner] = useState<Banner | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const syncMutation = useSyncAdaptations();
 
   const queryKey = ['admin', 'books', bookId, 'adaptations'];
@@ -51,6 +51,14 @@ export function BookAdaptationsAdmin({ bookId, bookTitle, hasQid }: BookAdaptati
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (workId: string) => adminBooksApi.deleteAdaptation(bookId, workId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'screen-works'] });
+    },
+  });
+
   const handleToggle = (item: AdminBookAdaptation) => {
     setBanner(null);
     hideMutation.mutate(
@@ -59,6 +67,14 @@ export function BookAdaptationsAdmin({ bookId, bookTitle, hasQid }: BookAdaptati
         onError: () => setBanner({ type: 'error', message: 'Не удалось изменить видимость экранизации.' }),
       }
     );
+  };
+
+  const handleDelete = (item: AdminBookAdaptation) => {
+    setBanner(null);
+    if (!confirm(`Удалить связь с «${item.title}»? Сам фильм останется в каталоге.`)) return;
+    deleteMutation.mutate(item.id, {
+      onError: () => setBanner({ type: 'error', message: 'Не удалось удалить связь.' }),
+    });
   };
 
   const handleSync = () => {
@@ -77,6 +93,7 @@ export function BookAdaptationsAdmin({ bookId, bookTitle, hasQid }: BookAdaptati
   };
 
   const items = data?.items ?? [];
+  const busy = hideMutation.isPending || deleteMutation.isPending;
 
   return (
     <section className="space-y-3 rounded-lg border p-4" aria-labelledby="book-adaptations-admin-title">
@@ -84,11 +101,16 @@ export function BookAdaptationsAdmin({ bookId, bookTitle, hasQid }: BookAdaptati
         <h2 id="book-adaptations-admin-title" className="text-lg font-semibold">
           Экранизации
         </h2>
-        {hasQid && (
-          <Button variant="outline" size="sm" disabled={syncMutation.isPending} onClick={handleSync}>
-            Найти экранизации в Wikidata
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+            Добавить экранизацию
           </Button>
-        )}
+          {hasQid && (
+            <Button variant="outline" size="sm" disabled={syncMutation.isPending} onClick={handleSync}>
+              Найти экранизации в Wikidata
+            </Button>
+          )}
+        </div>
       </div>
 
       {banner && (
@@ -116,24 +138,54 @@ export function BookAdaptationsAdmin({ bookId, bookTitle, hasQid }: BookAdaptati
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{item.title}</span>
                   {item.hidden && <Badge variant="outline">Скрыта</Badge>}
+                  {item.source === 'manual' && <Badge variant="secondary">Вручную</Badge>}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {[item.year ? String(item.year) : null, KIND_LABELS[item.kind] ?? item.kind, item.director]
+                  {[item.year ? String(item.year) : null, kindLabel(item.kind), item.director]
                     .filter(Boolean)
                     .join(' · ')}
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={hideMutation.isPending}
-                onClick={() => handleToggle(item)}
-              >
-                {item.hidden ? 'Показать' : 'Скрыть'}
-              </Button>
+              <div className="flex flex-wrap gap-1">
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => handleToggle(item)}>
+                  {item.hidden ? 'Показать' : 'Скрыть'}
+                </Button>
+                <Button asChild variant="ghost" size="sm">
+                  <Link
+                    href={
+                      buildEditHref(
+                        `/catalog/screen-works/${encodeURIComponent(item.id)}/edit`,
+                        pathname,
+                        searchParams
+                      ) as any
+                    }
+                  >
+                    Изменить
+                  </Link>
+                </Button>
+                {item.source === 'manual' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    disabled={busy}
+                    onClick={() => handleDelete(item)}
+                  >
+                    Удалить
+                  </Button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
+      )}
+
+      {dialogOpen && (
+        <LinkScreenWorkDialog
+          target={{ type: 'book', id: bookId, linkedIds: items.map((i) => i.id) }}
+          onClose={() => setDialogOpen(false)}
+          onAdded={(message) => setBanner({ type: 'success', message })}
+        />
       )}
     </section>
   );

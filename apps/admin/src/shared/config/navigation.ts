@@ -145,6 +145,13 @@ export const navSections: NavSection[] = [
         match: ['/catalog/genres'],
         roles: ['admin'],
       },
+      {
+        id: 'catalog.screen-works',
+        label: 'Фильмы и сериалы',
+        href: '/catalog/screen-works',
+        match: ['/catalog/screen-works'],
+        roles: ['admin'],
+      },
     ],
   },
   {

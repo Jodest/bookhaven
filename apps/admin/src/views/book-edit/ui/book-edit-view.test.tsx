@@ -12,6 +12,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
   useParams: () => ({ id: 'b1' }),
   useSearchParams: () => searchParamsValue,
+  usePathname: () => '/catalog/x/b1/edit',
 }));
 
 const getMock = vi.fn();
