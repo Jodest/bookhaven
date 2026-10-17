@@ -81,6 +81,16 @@
 // in chunks of 100. Nothing is added to a collection or the catalog: the
 // match against the catalog is computed when an admin reads the draft. When
 // not active, its server is not set up and the model is never called.
+//
+// AI genre suggestions (AI_GENRES_ENABLED and the shared ANTHROPIC_API_KEY,
+// off by default; see internal/modules/aigenres): admins queue
+// ai_genres:analyze from the API, and a weekly cron (AI_GENRES_CRON, empty =
+// none) enqueues ai_genres:scheduled, which analyzes only when the genres
+// changed since the last clean run. Both run on their own server (queue
+// ai_genres, Concurrency 1), one paced model call per batch. The analysis
+// only stores suggestions: no genre, book or collection is ever changed by
+// the worker. When not active, its server and schedule are not set up and
+// the model is never called.
 package main
 
 import (
@@ -99,6 +109,8 @@ import (
 	aicollservice "github.com/bookhaven/backend/internal/modules/aicollections/service"
 	aidescrepository "github.com/bookhaven/backend/internal/modules/aidescriptions/repository"
 	aidescservice "github.com/bookhaven/backend/internal/modules/aidescriptions/service"
+	aigenresrepository "github.com/bookhaven/backend/internal/modules/aigenres/repository"
+	aigenresservice "github.com/bookhaven/backend/internal/modules/aigenres/service"
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
@@ -216,8 +228,12 @@ func main() {
 		curatorSrv       *asynq.Server
 		descSrv          *asynq.Server
 		collSrv          *asynq.Server
+		genresSrv        *asynq.Server
 	)
 	shutdownServers := func() {
+		if genresSrv != nil {
+			genresSrv.Shutdown()
+		}
 		if collSrv != nil {
 			collSrv.Shutdown()
 		}
@@ -386,6 +402,35 @@ func main() {
 		logger.Info("AI collection drafts disabled")
 	}
 
+	// AI genre suggestions: only when switched on and a key is set.
+	if cfg.AIGenresActive() {
+		client := llm.NewAnthropic(cfg.AnthropicAPIKey, cfg.AIGenresModel)
+		genresRepo := aigenresrepository.NewGormRepository(db)
+		analyzer := aigenresservice.NewAnalyzer(client, genresRepo, adminService, cfg.AIGenresModel, cfg.AIGenresBatch, logger)
+		genresHandlers := aigenresservice.NewHandlers(analyzer, genresRepo, adminService, cfg.AIGenresModel, logger)
+
+		genresMux := asynq.NewServeMux()
+		genresMux.HandleFunc(aigenresservice.TaskTypeAnalyze, genresHandlers.HandleAnalyze)
+		genresMux.HandleFunc(aigenresservice.TaskTypeScheduled, genresHandlers.HandleScheduled)
+
+		genresSrv = asynq.NewServer(redisOpt, aiGenresServerConfig(zapAsynqLogger{logger}))
+		if err := genresSrv.Start(genresMux); err != nil {
+			genresSrv = nil
+			shutdownServers()
+			logger.Fatal("failed to start AI genres asynq server", zap.Error(err))
+		}
+		// Never log the API key.
+		logger.Info("AI genre suggestions enabled",
+			zap.String("queue", aigenresservice.QueueName),
+			zap.String("model", cfg.AIGenresModel),
+			zap.Int("batch", cfg.AIGenresBatch))
+	} else {
+		if cfg.AIGenresEnabled {
+			logger.Warn("AI_GENRES_ENABLED is set but ANTHROPIC_API_KEY is empty; AI genre suggestions disabled")
+		}
+		logger.Info("AI genre suggestions disabled")
+	}
+
 	scheduler := asynq.NewScheduler(
 		redisOpt,
 		&asynq.SchedulerOpts{
@@ -425,6 +470,13 @@ func main() {
 			zap.String("cron", cfg.AIModerationCron),
 			zap.Int("batch", cfg.AIModerationBatch),
 			zap.String("model", cfg.AIModerationModel),
+			zap.String("location", "UTC"))
+	}
+
+	if cfg.AIGenresActive() && cfg.AIGenresCron != "" {
+		logger.Info("AI genre analysis schedule enabled",
+			zap.String("task", aigenresservice.TaskTypeScheduled),
+			zap.String("cron", cfg.AIGenresCron),
 			zap.String("location", "UTC"))
 	}
 
@@ -522,6 +574,18 @@ func aiCollectionsServerConfig(logger asynq.Logger) asynq.Config {
 	}
 }
 
+// aiGenresServerConfig is the config of the AI genre suggestions server (its
+// own queue, Concurrency 1: one analysis at a time, one model call at a time).
+func aiGenresServerConfig(logger asynq.Logger) asynq.Config {
+	return asynq.Config{
+		Queues: map[string]int{
+			aigenresservice.QueueName: 1,
+		},
+		Concurrency: 1,
+		Logger:      logger,
+	}
+}
+
 // similarityCronSpec runs the similar-books recompute daily at 03:30 (the
 // scheduler's Location is UTC).
 const similarityCronSpec = "30 3 * * *"
@@ -569,6 +633,11 @@ func registerSchedules(s scheduleRegistrar, cfg *config.Config) error {
 		}
 		if _, err := s.Register(cfg.AIModerationCron, task, aimodservice.ScheduledSweepOptions()...); err != nil {
 			return fmt.Errorf("register AI moderation sweep (%q): %w", cfg.AIModerationCron, err)
+		}
+	}
+	if cfg.AIGenresActive() && cfg.AIGenresCron != "" {
+		if _, err := s.Register(cfg.AIGenresCron, aigenresservice.NewScheduledTask(), aigenresservice.ScheduledOptions()...); err != nil {
+			return fmt.Errorf("register AI genre analysis (%q): %w", cfg.AIGenresCron, err)
 		}
 	}
 	return nil

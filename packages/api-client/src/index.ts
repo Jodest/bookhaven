@@ -667,6 +667,124 @@ export type AdminGenreMergeUndoCode =
   | 'source_not_alias'
   | 'qid_conflict';
 
+// ---- AI genre suggestions (openspec catalog-moderation/ai-genre-suggestions) ----
+
+export type AdminGenreAISuggestionKind = 'duplicate' | 'narrow' | 'junk';
+export type AdminGenreAISuggestionStatus = 'open' | 'applied' | 'dismissed' | 'stale';
+export type AdminGenreAIReasonCode =
+  | 'spelling'
+  | 'language'
+  | 'synonym'
+  | 'too_narrow'
+  | 'not_a_genre'
+  | 'date'
+  | 'marketing'
+  | 'format';
+export type AdminGenreAIRunStatus = 'queued' | 'running' | 'done' | 'failed';
+export type AdminGenreAIRunTrigger = 'manual' | 'scheduled';
+
+export interface AdminGenreAISampleBook {
+  id: string;
+  title: string;
+  status: string;
+}
+
+// One genre of a suggestion with its current values. A genre that no longer
+// exists (exists = false) shows the name stored with the suggestion.
+export interface AdminGenreAISuggestionGenre {
+  id: string;
+  name: string;
+  status: AdminGenreStatus | '';
+  merged: boolean;
+  exists: boolean;
+  wikidata_qid: string | null;
+  books_total: number;
+  sample_books: AdminGenreAISampleBook[];
+}
+
+export interface AdminGenreAISuggestion {
+  id: string;
+  kind: AdminGenreAISuggestionKind;
+  status: AdminGenreAISuggestionStatus;
+  reason_codes: AdminGenreAIReasonCode[];
+  reason: string;
+  /** 0..1 */
+  confidence: number;
+  model: string;
+  prompt_version: number;
+  created_at: string;
+  decided_at: string | null;
+  /** Computed at read time for open suggestions: a genre changed since the analysis. */
+  stale: boolean;
+  /** The suggested merge target; null for junk. */
+  target: { id: string; name: string } | null;
+  /** Every genre of the suggestion, target first. */
+  genres: AdminGenreAISuggestionGenre[];
+  /** The target actually used by an applied merge. */
+  applied_target: { id: string; name: string } | null;
+}
+
+export interface AdminGenreAISuggestionListParams {
+  status?: AdminGenreAISuggestionStatus;
+  kind?: AdminGenreAISuggestionKind;
+  page?: number;
+  limit?: number;
+}
+
+export interface AdminGenreAIRun {
+  id: string;
+  trigger: AdminGenreAIRunTrigger;
+  status: AdminGenreAIRunStatus;
+  batches_total: number;
+  batches_done: number;
+  suggestions_created: number;
+  error_code: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+// Response of GET /api/v1/admin/genres/ai-suggestions/status. open_count
+// includes stale suggestions that are still open.
+export interface AdminGenreAIStatus {
+  enabled: boolean;
+  model: string;
+  prompt_version: number;
+  open_count: number;
+  last_run: AdminGenreAIRun | null;
+}
+
+// Response of POST /api/v1/admin/genres/ai-suggestions/:id/apply. merge is
+// set for a merge suggestion, status_report for a junk one.
+export interface AdminGenreAIApplyResult {
+  suggestion: AdminGenreAISuggestion;
+  merge: AdminGenreMergeBatchResult | null;
+  status_report: AdminGenreBulkStatusReport | null;
+}
+
+export interface AdminGenreAIApplyItem {
+  id: string;
+  /** Another merge target; not allowed for junk suggestions. */
+  target_id?: string;
+}
+
+export interface AdminGenreAIItemError {
+  suggestion_id: string;
+  message: string;
+}
+
+export interface AdminGenreAIBulkApplyReport {
+  processed: number;
+  applied: number;
+  stale: number;
+  errors: AdminGenreAIItemError[];
+}
+
+export interface AdminGenreAIBulkDismissReport {
+  processed: number;
+  dismissed: number;
+  errors: AdminGenreAIItemError[];
+}
+
 /** Fields enrichment can fill. */
 export type AdminAuthorEnrichmentField = 'birth_date' | 'death_date' | 'photo';
 
@@ -3115,6 +3233,52 @@ export const api = {
           `/api/v1/admin/ai-collections/drafts?${new URLSearchParams({ collection_id: collectionId })}`
         ),
       get: (id: string) => fetcher<AdminAiCollectionDraftDetail>(`/api/v1/admin/ai-collections/drafts/${id}`),
+    },
+    genreAiSuggestions: {
+      list: (params?: AdminGenreAISuggestionListParams) => {
+        const queryParams: Record<string, string> = {};
+        if (params?.status) queryParams.status = params.status;
+        if (params?.kind) queryParams.kind = params.kind;
+        if (params?.page !== undefined) queryParams.page = String(params.page);
+        if (params?.limit !== undefined) queryParams.limit = String(params.limit);
+        return fetcher<{ items: AdminGenreAISuggestion[]; total: number }>(
+          `/api/v1/admin/genres/ai-suggestions?${new URLSearchParams(queryParams)}`
+        );
+      },
+      status: () => fetcher<AdminGenreAIStatus>('/api/v1/admin/genres/ai-suggestions/status'),
+      // Errors: 409 an analysis is already queued or running, 502 queueing
+      // failed, 503 AI genre analysis disabled.
+      analyze: () =>
+        fetcher<{ run_id: string }>('/api/v1/admin/genres/ai-suggestions/analyze', {
+          method: 'POST',
+          body: JSON.stringify({}),
+        }),
+      // Irreversible for merges. targetId overrides the suggested target.
+      // Errors: 400 (target_id on a junk suggestion, bad merge input), 404
+      // suggestion or chosen target not found, 409 not open or stale.
+      apply: (id: string, targetId?: string) =>
+        fetcher<AdminGenreAIApplyResult>(`/api/v1/admin/genres/ai-suggestions/${id}/apply`, {
+          method: 'POST',
+          body: JSON.stringify(targetId ? { target_id: targetId } : {}),
+        }),
+      // 1..50 distinct items, applied one after another (each merge in its
+      // own transaction). Errors: 400 malformed request.
+      bulkApply: (items: AdminGenreAIApplyItem[]) =>
+        fetcher<AdminGenreAIBulkApplyReport>('/api/v1/admin/genres/ai-suggestions/apply', {
+          method: 'POST',
+          body: JSON.stringify({ items }),
+        }),
+      // Errors: 404 not found, 409 not open.
+      dismiss: (id: string) =>
+        fetcher<AdminGenreAISuggestion>(`/api/v1/admin/genres/ai-suggestions/${id}/dismiss`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        }),
+      bulkDismiss: (ids: string[]) =>
+        fetcher<AdminGenreAIBulkDismissReport>('/api/v1/admin/genres/ai-suggestions/dismiss', {
+          method: 'POST',
+          body: JSON.stringify({ ids }),
+        }),
     },
     aiDescriptions: {
       status: () => fetcher<AdminAIDescriptionStatus>('/api/v1/admin/ai-descriptions/status'),

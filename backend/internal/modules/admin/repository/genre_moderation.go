@@ -440,3 +440,72 @@ func (r *GormRepository) PreviewGenreMerge(ctx context.Context, sourceIDs []uuid
 	}
 	return preview, nil
 }
+
+// GenreStateRow is the current state of one genre (alias rows included), read
+// by the AI genre suggestions to decide staleness and to show current values.
+type GenreStateRow struct {
+	ID           uuid.UUID
+	Name         string
+	Status       string
+	MergedIntoID *uuid.UUID
+	WikidataQID  *string
+	BooksTotal   int64
+}
+
+type genreStateScanRow struct {
+	ID           uuid.UUID
+	Name         string
+	Status       string
+	MergedIntoID *uuid.UUID `gorm:"column:merged_into_id"`
+	WikidataQID  *string    `gorm:"column:wikidata_qid"`
+	BooksTotal   int64
+}
+
+// ListGenreAnalysisCandidates returns every non-alias genre whose status is
+// pending or published with its linked-books count (the AI genre analysis
+// pool), ordered by name then id. Rejected genres and aliases never appear.
+func (r *GormRepository) ListGenreAnalysisCandidates(ctx context.Context) ([]GenreModerationRow, error) {
+	var scanned []genreModerationScanRow
+	if err := r.db.WithContext(ctx).Table("genres").Joins(genreBookStatsJoin).
+		Where("genres.merged_into_id IS NULL AND genres.status IN ?",
+			[]string{catalogDomain.GenreStatusPending, catalogDomain.GenreStatusPublished}).
+		Select("genres.id, genres.name, genres.slug, genres.status, genres.wikidata_qid, genres.created_at, " +
+			"COALESCE(s.books_total, 0) AS books_total, COALESCE(s.books_visible, 0) AS books_visible").
+		Order("genres.name ASC, genres.id ASC").
+		Scan(&scanned).Error; err != nil {
+		return nil, err
+	}
+	rows := make([]GenreModerationRow, 0, len(scanned))
+	for _, s := range scanned {
+		rows = append(rows, GenreModerationRow{
+			Genre: catalogDomain.Genre{
+				ID: s.ID, Name: s.Name, Slug: s.Slug, Status: s.Status,
+				WikidataQID: s.WikidataQID, CreatedAt: s.CreatedAt,
+			},
+			BooksTotal:   s.BooksTotal,
+			BooksVisible: s.BooksVisible,
+		})
+	}
+	return rows, nil
+}
+
+// GenresByIDs returns the current state of the genres among ids, aliases and
+// rejected ones included. Ids that do not exist are simply absent.
+func (r *GormRepository) GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]GenreStateRow, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var scanned []genreStateScanRow
+	if err := r.db.WithContext(ctx).Table("genres").Joins(genreBookStatsJoin).
+		Where("genres.id IN ?", ids).
+		Select("genres.id, genres.name, genres.status, genres.merged_into_id, genres.wikidata_qid, " +
+			"COALESCE(s.books_total, 0) AS books_total").
+		Scan(&scanned).Error; err != nil {
+		return nil, err
+	}
+	rows := make([]GenreStateRow, 0, len(scanned))
+	for _, s := range scanned {
+		rows = append(rows, GenreStateRow(s))
+	}
+	return rows, nil
+}

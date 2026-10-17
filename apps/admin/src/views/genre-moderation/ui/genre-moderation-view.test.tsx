@@ -15,6 +15,22 @@ vi.mock('next/navigation', () => ({
 
 const queueMock = vi.fn();
 const bulkStatusMock = vi.fn();
+const aiStatusMock = vi.fn();
+
+vi.mock('@/entities/genre-ai-suggestion', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/genre-ai-suggestion')>()),
+  adminGenreAiSuggestionsApi: {
+    status: (...args: unknown[]) => aiStatusMock(...args),
+  },
+}));
+
+const aiStatus = (enabled: boolean, openCount: number) => ({
+  enabled,
+  model: 'claude-sonnet-5-5',
+  prompt_version: 1,
+  open_count: openCount,
+  last_run: null,
+});
 
 vi.mock('@/entities/genre', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/genre')>()),
@@ -127,6 +143,8 @@ describe('GenreModerationView', () => {
     pushMock.mockReset();
     queueMock.mockReset();
     bulkStatusMock.mockReset();
+    aiStatusMock.mockReset();
+    aiStatusMock.mockResolvedValue(aiStatus(false, 0));
     queueMock.mockResolvedValue({ items: [makeItem(), secondItem], total: 2, page: 1, limit: 20 });
   });
 
@@ -386,6 +404,26 @@ describe('GenreModerationView', () => {
       'href',
       '/moderation/genres/merges?undo=merge-b'
     );
+  });
+
+  it('links to the AI suggestions page with the open count', async () => {
+    aiStatusMock.mockResolvedValue(aiStatus(true, 4));
+    renderView();
+    const link = await screen.findByRole('link', { name: 'Предложения ИИ (4)' });
+    expect(link).toHaveAttribute('href', '/moderation/genres/ai-suggestions');
+  });
+
+  it('keeps the link while suggestions remain although the analysis is off', async () => {
+    aiStatusMock.mockResolvedValue(aiStatus(false, 2));
+    renderView();
+    expect(await screen.findByRole('link', { name: 'Предложения ИИ (2)' })).toBeInTheDocument();
+  });
+
+  it('hides the link when the analysis is off and nothing is open', async () => {
+    renderView();
+    await waitFor(() => expect(aiStatusMock).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText('Война и мир')).toBeInTheDocument());
+    expect(screen.queryByRole('link', { name: /Предложения ИИ/ })).not.toBeInTheDocument();
   });
 
   it('shows the pending empty state', async () => {

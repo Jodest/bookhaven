@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import {
   AdminGenre,
   AdminGenreHint,
@@ -11,6 +12,7 @@ import {
 } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import { adminGenresApi, GenreStatusBadge } from '@/entities/genre';
+import { adminGenreAiSuggestionsApi, GENRE_AI_STATUS_QUERY_KEY } from '@/entities/genre-ai-suggestion';
 import { SampleBooksCell } from '@/entities/book';
 import { BatchMergeGenresDialog, MergeGenreDialog } from '@/features/merge-genre';
 import {
@@ -85,6 +87,14 @@ const switchedSuffix = (collectionsSwitched: number) =>
 export function GenreModerationView() {
   const [overlay, setOverlay] = useState<MergeOverlay | null>(null);
   const statusMutation = useGenreStatusMutation();
+  // The entry to the AI suggestions page: shown while the analysis is on or
+  // open suggestions remain (they stay reachable after it is switched off).
+  const aiStatus = useQuery({
+    queryKey: GENRE_AI_STATUS_QUERY_KEY,
+    queryFn: () => adminGenreAiSuggestionsApi.status(),
+    refetchOnWindowFocus: true,
+  });
+  const showAiLink = !!aiStatus.data && (aiStatus.data.enabled || aiStatus.data.open_count > 0);
 
   const openMerge = (ctx: ModerationRowContext, source: AdminGenre, initialCanonical?: AdminGenre) => {
     ctx.notify(null);
@@ -151,10 +161,15 @@ export function GenreModerationView() {
       filters={FILTERS}
       columns={columns}
       renderToolbar={() => (
-        <div className="text-sm">
+        <div className="flex flex-wrap items-center gap-4 text-sm">
           <Link href="/moderation/genres/merges" className="underline">
             История слияний
           </Link>
+          {showAiLink && aiStatus.data && (
+            <Link href={'/moderation/genres/ai-suggestions' as any} className="text-primary hover:underline">
+              Предложения ИИ ({aiStatus.data.open_count})
+            </Link>
+          )}
         </div>
       )}
       renderRowActions={(item, ctx) => (

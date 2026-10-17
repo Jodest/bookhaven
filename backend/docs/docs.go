@@ -4659,6 +4659,557 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/genres/ai-suggestions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. status — open (по умолчанию), applied, dismissed или stale; kind — duplicate, narrow или junk (необязательно); page и limit (по умолчанию 20, не более 50). Открытые предложения идут по убыванию уверенности, затем новые первыми; остальные — по времени решения, новые первыми. У каждого предложения genres перечисляет все его жанры (целевой первым) с текущими значениями; жанр, которого больше нет, показывается с сохранённым названием и exists = false. stale вычисляется при чтении для открытых предложений: жанр предложения удалён, слит или отклонён после анализа. Работает и при выключенной функции.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Предложения ИИ по жанрам (админ)",
+                "parameters": [
+                    {
+                        "enum": [
+                            "open",
+                            "applied",
+                            "dismissed",
+                            "stale"
+                        ],
+                        "type": "string",
+                        "default": "open",
+                        "description": "Статус",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "duplicate",
+                            "narrow",
+                            "junk"
+                        ],
+                        "type": "string",
+                        "description": "Вид предложения",
+                        "name": "kind",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Страница",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Размер страницы",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.listResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/ai-suggestions/analyze": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Тело пустое или {}. Ставит в очередь один ручной запуск анализа всех жанров на модерации и опубликованных (не слитых), независимо от того, менялись ли они. Предложения составляет воркер; жанры не меняются. 202 — run_id запуска; 409 — анализ уже в очереди или идёт; 502 — не удалось поставить задачу в очередь (запуск помечается failed); 503 — анализ выключен.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Запустить ИИ-анализ жанров (админ)",
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.analyzeResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/ai-suggestions/apply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. items — от 1 до 50 элементов {id, target_id?} без повторов id; иначе 400 и ничего не меняется. Каждый элемент применяется так же, как одиночным запросом, по очереди в порядке запроса; каждое слияние — своя транзакция, сбой элемента не отменяет предыдущие. Предложение, ставшее устаревшим из-за предыдущего элемента, помечается stale и считается в stale. errors — элементы, которые не найдены, не открыты или не удались. Слияние необратимо.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Применить несколько предложений ИИ по жанрам (админ)",
+                "parameters": [
+                    {
+                        "description": "Предложения для применения",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.bulkApplyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.bulkApplyResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/ai-suggestions/dismiss": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. ids — от 1 до 50 UUID (повторы убираются), иначе 400. Жанры не меняются. errors — предложения, которые не найдены или не открыты.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Отклонить несколько предложений ИИ по жанрам (админ)",
+                "parameters": [
+                    {
+                        "description": "ID предложений",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.bulkDismissRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.bulkDismissResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/ai-suggestions/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin. enabled — включён ли анализ (флаг AI_GENRES_ENABLED и ключ API заданы), model — модель, prompt_version — версия промпта, open_count — число открытых предложений (устаревшие включены), last_run — последний запуск анализа или null. Работает и при выключенной функции.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Статус ИИ-анализа жанров (админ)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.statusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/ai-suggestions/{id}/apply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Необязательное тело {\"target_id\"}. Для duplicate/narrow жанры сливаются через пакетное слияние в одной транзакции: целевой жанр — target_id или предложенный; если он среди жанров предложения, источники — остальные жанры, иначе источниками становятся все жанры предложения. Для junk жанр получает статус rejected через массовую смену статуса, target_id для junk недопустим (400). Устаревшее предложение (жанр удалён, слит или отклонён) не применяется: оно помечается stale, жанры не меняются, 409. 404 — предложение не найдено, либо выбранный target_id не найден или уже слит (ничего не меняется); 409 — предложение не открыто или устарело. Слияние необратимо. Ответ: suggestion, merge (результат слияния или null), status_report (отчёт о смене статуса для junk или null).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Применить предложение ИИ по жанрам (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID предложения (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "target_id — другой целевой жанр",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.applyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.applyResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/ai-suggestions/{id}/dismiss": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Жанры не меняются. Открытое предложение (в том числе устаревшее при чтении) становится dismissed с администратором и временем решения; ИИ больше не предложит тот же набор жанров. 404 — предложение не найдено; 409 — предложение не открыто.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Отклонить предложение ИИ по жанрам (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID предложения (UUID)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_aigenres_transport_http.suggestionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/genres/bulk-status": {
             "post": {
                 "security": [
@@ -12866,6 +13417,388 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.analyzeResponse": {
+            "type": "object",
+            "properties": {
+                "run_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.applyRequest": {
+            "type": "object",
+            "properties": {
+                "target_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.applyResponse": {
+            "type": "object",
+            "properties": {
+                "merge": {
+                    "$ref": "#/definitions/internal_modules_aigenres_transport_http.mergeResponse"
+                },
+                "status_report": {
+                    "$ref": "#/definitions/internal_modules_aigenres_transport_http.statusReportResponse"
+                },
+                "suggestion": {
+                    "$ref": "#/definitions/internal_modules_aigenres_transport_http.suggestionResponse"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.bulkApplyItem": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "target_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.bulkApplyRequest": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aigenres_transport_http.bulkApplyItem"
+                    }
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.bulkApplyResponse": {
+            "type": "object",
+            "properties": {
+                "applied": {
+                    "type": "integer"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aigenres_transport_http.itemErrorResponse"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "stale": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.bulkDismissRequest": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.bulkDismissResponse": {
+            "type": "object",
+            "properties": {
+                "dismissed": {
+                    "type": "integer"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aigenres_transport_http.itemErrorResponse"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.genreRefResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.itemErrorResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "suggestion_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.listResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aigenres_transport_http.suggestionResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.mergeGenreResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "wikidata_qid": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.mergeResponse": {
+            "type": "object",
+            "properties": {
+                "books_reassigned": {
+                    "type": "integer"
+                },
+                "collections_switched": {
+                    "type": "integer"
+                },
+                "genre": {
+                    "$ref": "#/definitions/internal_modules_aigenres_transport_http.mergeGenreResponse"
+                },
+                "sources_merged": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.runResponse": {
+            "type": "object",
+            "properties": {
+                "batches_done": {
+                    "type": "integer"
+                },
+                "batches_total": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "error_code": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "done",
+                        "failed"
+                    ]
+                },
+                "suggestions_created": {
+                    "type": "integer"
+                },
+                "trigger": {
+                    "type": "string",
+                    "enum": [
+                        "manual",
+                        "scheduled"
+                    ]
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.sampleBookResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.statusReportResponse": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aigenres_transport_http.statusReportRowError"
+                    }
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.statusReportRowError": {
+            "type": "object",
+            "properties": {
+                "genre_id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.statusResponse": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enabled: the flag and the API key are both set.",
+                    "type": "boolean"
+                },
+                "last_run": {
+                    "$ref": "#/definitions/internal_modules_aigenres_transport_http.runResponse"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "open_count": {
+                    "type": "integer"
+                },
+                "prompt_version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.suggestionGenreResponse": {
+            "type": "object",
+            "properties": {
+                "books_total": {
+                    "type": "integer"
+                },
+                "exists": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "merged": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sample_books": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aigenres_transport_http.sampleBookResponse"
+                    }
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "published",
+                        "rejected"
+                    ]
+                },
+                "wikidata_qid": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_aigenres_transport_http.suggestionResponse": {
+            "type": "object",
+            "properties": {
+                "applied_target": {
+                    "$ref": "#/definitions/internal_modules_aigenres_transport_http.genreRefResponse"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "decided_at": {
+                    "type": "string"
+                },
+                "genres": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_aigenres_transport_http.suggestionGenreResponse"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "duplicate",
+                        "narrow",
+                        "junk"
+                    ]
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt_version": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "reason_codes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "stale": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "open",
+                        "applied",
+                        "dismissed",
+                        "stale"
+                    ]
+                },
+                "target": {
+                    "$ref": "#/definitions/internal_modules_aigenres_transport_http.genreRefResponse"
                 }
             }
         },

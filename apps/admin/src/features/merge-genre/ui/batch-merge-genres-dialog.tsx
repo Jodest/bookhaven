@@ -1,13 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AdminGenre, AdminGenreMergeBatchResult, ApiError } from '@bookhaven/api-client';
-import { Button, Input } from '@bookhaven/ui';
+import { Button } from '@bookhaven/ui';
 import { COLLECTIONS_QUERY_KEY } from '@/entities/curated-collection';
 import { DASHBOARD_QUERY_KEY } from '@/entities/dashboard';
-import { adminGenresApi, GenreStatusBadge } from '@/entities/genre';
-import { MergePreviewSummary } from './merge-preview-summary';
+import { adminGenresApi, GenreStatusBadge, GenreTargetSearch, MergePreviewSummary } from '@/entities/genre';
 
 interface BatchMergeGenresDialogProps {
   // The selected queue rows, in queue order. All of them are merged except
@@ -44,21 +43,7 @@ export function BatchMergeGenresDialog({ genres, onClose, onMerged }: BatchMerge
   const queryClient = useQueryClient();
   const [choice, setChoice] = useState<string | null>(null);
   const [other, setOther] = useState<AdminGenre | null>(null);
-  const [search, setSearch] = useState('');
   const [previewReady, setPreviewReady] = useState(false);
-
-  const trimmedSearch = search.trim();
-  const searching = choice === OTHER_TARGET && other === null;
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'genres', 'merge-candidates', trimmedSearch],
-    queryFn: () => adminGenresApi.list({ search: trimmedSearch, limit: 20 }),
-    enabled: searching && trimmedSearch.length > 0,
-  });
-
-  // A selected genre can never be offered as the "other" target.
-  const selectedIds = new Set(genres.map((g) => g.id));
-  const candidates = (data?.items ?? []).filter((g) => !selectedIds.has(g.id));
 
   const target = choice === OTHER_TARGET ? other : (genres.find((g) => g.id === choice) ?? null);
   const sources = target ? genres.filter((g) => g.id !== target.id) : [];
@@ -126,48 +111,8 @@ export function BatchMergeGenresDialog({ genres, onClose, onMerged }: BatchMerge
 
         {choice === OTHER_TARGET && (
           <div className="space-y-2">
-            {other ? (
-              <div className="flex items-center justify-between rounded-md border p-2">
-                <span className="flex items-center gap-2">
-                  <span className="font-medium">{other.name}</span>
-                  <GenreStatusBadge status={other.status} />
-                </span>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setOther(null)}>
-                  Изменить
-                </Button>
-              </div>
-            ) : (
-              <>
-                <Input
-                  aria-label="Поиск целевого жанра"
-                  placeholder="Поиск жанра по названию"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                {trimmedSearch.length > 0 && (
-                  <div className="max-h-48 overflow-y-auto rounded-md border">
-                    {isLoading ? (
-                      <div className="p-2 text-sm text-muted-foreground">Поиск...</div>
-                    ) : candidates.length === 0 ? (
-                      <div className="p-2 text-sm text-muted-foreground">Жанры не найдены.</div>
-                    ) : (
-                      candidates.map((g) => (
-                        <button
-                          key={g.id}
-                          type="button"
-                          aria-label={g.name}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                          onClick={() => setOther(g)}
-                        >
-                          <span>{g.name}</span>
-                          <GenreStatusBadge status={g.status} />
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </>
-            )}
+            {/* A selected genre can never be offered as the "other" target. */}
+            <GenreTargetSearch value={other} onChange={setOther} excludeIds={genres.map((g) => g.id)} />
           </div>
         )}
 
