@@ -6,8 +6,7 @@ import { AdminGenre, ApiError } from '@bookhaven/api-client';
 import { Button, Input } from '@bookhaven/ui';
 import { COLLECTIONS_QUERY_KEY } from '@/entities/curated-collection';
 import { DASHBOARD_QUERY_KEY } from '@/entities/dashboard';
-import { adminGenresApi, GenreStatusBadge } from '@/entities/genre';
-import { MergePreviewSummary } from './merge-preview-summary';
+import { adminGenresApi, GenreStatusBadge, MergePreviewSummary } from '@/entities/genre';
 
 interface MergeGenreDialogProps {
   // The genre the "Слить" action was triggered on: it becomes an alias of

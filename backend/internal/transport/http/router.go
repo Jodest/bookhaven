@@ -6,6 +6,7 @@ import (
 	aicuratorhttp "github.com/bookhaven/backend/internal/modules/aicurator/transport/http"
 	aicollectionshttp "github.com/bookhaven/backend/internal/modules/aicollections/transport/http"
 	aidescriptionshttp "github.com/bookhaven/backend/internal/modules/aidescriptions/transport/http"
+	aigenreshttp "github.com/bookhaven/backend/internal/modules/aigenres/transport/http"
 	aimodhttp "github.com/bookhaven/backend/internal/modules/aimoderation/transport/http"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	cataloghttp "github.com/bookhaven/backend/internal/modules/catalog/transport/http"
@@ -174,6 +175,14 @@ type AICollectionsDeps struct {
 	Service aicollectionshttp.DraftService
 }
 
+// AIGenresDeps configures the AI genre suggestion endpoints
+// (/admin/genres/ai-suggestions): Service is the aigenres service (it carries
+// config.AIGenresActive() and the model id; the API never calls the model).
+// Its analysis task is queued on the shared asynq client.
+type AIGenresDeps struct {
+	Service aigenreshttp.SuggestionService
+}
+
 // RegisterAdminRoutes registers admin-only API routes under /api/v1/admin.
 // harvestEnqueuer/harvestInspector are the small interfaces the new
 // harvest/transport/http.Handler depends on (satisfied by a real
@@ -192,6 +201,7 @@ func RegisterAdminRoutes(
 	aiCurator AICuratorDeps,
 	aiDescriptions AIDescriptionsDeps,
 	aiCollections AICollectionsDeps,
+	aiGenres AIGenresDeps,
 	curatedService *curatedservice.Service,
 	screenWorksService *screenworksservice.Service,
 ) {
@@ -253,6 +263,17 @@ func RegisterAdminRoutes(
 
 	genres := admin.Group("/genres", adminRole)
 	genres.GET("", adminHandler.ListGenres)
+	if aiGenres.Service != nil {
+		sugHandler := aigenreshttp.NewHandler(harvestEnqueuer, aiGenres.Service)
+		// Static ai-suggestions routes before the /:id ones.
+		genres.GET("/ai-suggestions", sugHandler.ListSuggestions)
+		genres.GET("/ai-suggestions/status", sugHandler.SuggestionsStatus)
+		genres.POST("/ai-suggestions/analyze", sugHandler.Analyze, requireBearer)
+		genres.POST("/ai-suggestions/apply", sugHandler.ApplySuggestions, requireBearer)
+		genres.POST("/ai-suggestions/dismiss", sugHandler.DismissSuggestions, requireBearer)
+		genres.POST("/ai-suggestions/:id/apply", sugHandler.ApplySuggestion, requireBearer)
+		genres.POST("/ai-suggestions/:id/dismiss", sugHandler.DismissSuggestion, requireBearer)
+	}
 	genres.GET("/moderation", adminHandler.ListGenreModerationQueue)
 	genres.GET("/wikidata-search", adminHandler.SearchWikidataGenres)
 	genres.POST("/import-wikidata", adminHandler.ImportWikidataGenre, requireBearer)

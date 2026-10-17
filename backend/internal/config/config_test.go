@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 // setSMTPEnv clears every SMTP-related variable so the host environment
 // (or a stray .env) cannot leak into a test case.
@@ -423,6 +426,59 @@ func TestLoad_AICollections(t *testing.T) {
 	}
 	if cfg.AIDescriptionsActive() {
 		t.Error("the collections flag must not switch on AI descriptions")
+	}
+}
+
+func setAIGenresEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	setSMTPEnv(t, nil)
+	for _, k := range []string{"AI_GENRES_ENABLED", "AI_GENRES_MODEL", "AI_GENRES_BATCH", "ANTHROPIC_API_KEY", "AI_COLLECTIONS_ENABLED", "AI_MODERATION_ENABLED"} {
+		t.Setenv(k, "")
+	}
+	// An unset cron means the default; an empty one disables the schedule.
+	t.Setenv("AI_GENRES_CRON", "")
+	if err := os.Unsetenv("AI_GENRES_CRON"); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestLoad_AIGenres(t *testing.T) {
+	setAIGenresEnv(t, nil)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AIGenresEnabled || cfg.AIGenresActive() {
+		t.Error("AI genre suggestions must be off by default")
+	}
+	if cfg.AIGenresModel != "claude-sonnet-5-5" || cfg.AIGenresCron != "0 3 * * 1" || cfg.AIGenresBatch != 300 {
+		t.Errorf("unexpected defaults: %q %q %d", cfg.AIGenresModel, cfg.AIGenresCron, cfg.AIGenresBatch)
+	}
+
+	setAIGenresEnv(t, map[string]string{"AI_GENRES_ENABLED": "true"})
+	cfg, _ = Load()
+	if !cfg.AIGenresEnabled || cfg.AIGenresActive() {
+		t.Error("the flag without a key must not be active")
+	}
+
+	setAIGenresEnv(t, map[string]string{"AI_GENRES_ENABLED": "true", "ANTHROPIC_API_KEY": "sk-test", "AI_GENRES_MODEL": " claude-haiku-5-5 ", "AI_GENRES_CRON": ""})
+	cfg, _ = Load()
+	if !cfg.AIGenresActive() || cfg.AIGenresModel != "claude-haiku-5-5" || cfg.AIGenresCron != "" {
+		t.Errorf("active=%v model=%q cron=%q", cfg.AIGenresActive(), cfg.AIGenresModel, cfg.AIGenresCron)
+	}
+	if cfg.AICollectionsActive() || cfg.AIModerationActive() {
+		t.Error("the genres flag must not switch on other AI features")
+	}
+
+	for raw, want := range map[string]int{"10": 10, "0": 1, "9999": 500, "abc": 300} {
+		setAIGenresEnv(t, map[string]string{"AI_GENRES_BATCH": raw})
+		cfg, _ = Load()
+		if cfg.AIGenresBatch != want {
+			t.Errorf("batch %q = %d, want %d", raw, cfg.AIGenresBatch, want)
+		}
 	}
 }
 

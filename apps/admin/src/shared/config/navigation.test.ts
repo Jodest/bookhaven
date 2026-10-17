@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canAccessSubtab,
+  canAccessTab,
   getHelpHrefForPath,
   getHomeHref,
   getSectionHref,
@@ -34,6 +35,7 @@ describe('resolveNavLocation', () => {
     ['/moderation/books', 'moderation.books'],
     ['/moderation/authors', 'moderation.authors'],
     ['/moderation/genres', 'moderation.genres'],
+    ['/moderation/genres/ai-suggestions', 'moderation.genres'],
     ['/moderation/descriptions', 'moderation.descriptions'],
     ['/moderation/reviews', 'moderation.reviews'],
     ['/import/books', 'import.books'],
@@ -373,5 +375,25 @@ describe('help links', () => {
     expect(getTabById('help.adding-content')!.roles).toEqual(['admin']);
     expect(tabIdOf('/help/adding-content')).toBe('help.adding-content');
     expect(tabIdOf('/help/no-such')).toBe('help.index');
+  });
+});
+
+describe('AI genre suggestions page', () => {
+  const path = '/moderation/genres/ai-suggestions';
+
+  it('stays inside the «Жанры» tab of «Модерация»', () => {
+    const loc = resolveNavLocation(path);
+    expect(loc?.section?.id).toBe('moderation');
+    expect(loc && !loc.isBasePath ? loc.tab.id : null).toBe('moderation.genres');
+  });
+
+  it('is admin-only: the owning tab is closed to moderators and users', () => {
+    const loc = resolveNavLocation(path);
+    const tab = loc && !loc.isBasePath ? loc.tab : null;
+    expect(tab).not.toBeNull();
+    expect(canAccessTab(tab!, 'admin')).toBe(true);
+    expect(canAccessTab(tab!, 'moderator')).toBe(false);
+    expect(canAccessTab(tab!, 'user')).toBe(false);
+    expect(canAccessTab(tab!, undefined)).toBe(false);
   });
 });

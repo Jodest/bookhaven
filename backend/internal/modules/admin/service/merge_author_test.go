@@ -521,3 +521,11 @@ func (f *fakeMergeAuthorsRepository) FindBooksByNormalizedISBNs(ctx context.Cont
 func (f *fakeMergeAuthorsRepository) FindBooksByAuthorIDs(ctx context.Context, authorIDs, excludeIDs []uuid.UUID) ([]repository.BookHintCandidate, error) {
 	return nil, nil
 }
+
+func (f *fakeMergeAuthorsRepository) ListGenreAnalysisCandidates(ctx context.Context) ([]repository.GenreModerationRow, error) {
+	return nil, nil
+}
+
+func (f *fakeMergeAuthorsRepository) GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]repository.GenreStateRow, error) {
+	return nil, nil
+}

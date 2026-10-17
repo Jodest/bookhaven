@@ -59,7 +59,7 @@ CREATE TABLE book_screen_works (book_id TEXT NOT NULL, screen_work_id TEXT NOT N
 
 	e := echo.New()
 	RegisterAdminRoutes(e, adminservice.NewService(nil), fakeAuth, &countingEnqueuer{}, nil, nil,
-		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{}, AICollectionsDeps{}, nil, svc)
+		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{}, AICollectionsDeps{}, AIGenresDeps{}, nil, svc)
 	RegisterRoutes(e, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, svc, fakeAuth, fakeAuth, nil)
 
 	do := func(method, path, role, bearer, body string) (int, []byte) {
@@ -224,7 +224,7 @@ func TestScreenWorksSyncNotConfigured(t *testing.T) {
 	svc := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), nil, nil)
 	e := echo.New()
 	RegisterAdminRoutes(e, adminservice.NewService(nil), fakeAuth, &countingEnqueuer{}, nil, nil,
-		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{}, AICollectionsDeps{}, nil, svc)
+		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{}, AICollectionsDeps{}, AIGenresDeps{}, nil, svc)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/books/sync-adaptations", strings.NewReader(`{"ids":["`+uuid.NewString()+`"]}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	req.Header.Set("X-Test-Role", string(usersdomain.RoleAdmin))
