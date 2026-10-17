@@ -182,14 +182,32 @@ type fakeSimilarCache struct {
 	sets    int
 	lastSet []uuid.UUID
 	lastTTL time.Duration
+	gen     int64
+	genErr  error
+	// beforeSet, when set, runs at the start of Set (simulates an
+	// invalidation landing while the list was being computed).
+	beforeSet func()
+}
+
+// invalidate bumps the generation and drops every entry.
+func (c *fakeSimilarCache) invalidate() {
+	c.gen++
+	c.data = map[uuid.UUID][]uuid.UUID{}
+}
+
+func (c *fakeSimilarCache) Generation(ctx context.Context) (int64, error) {
+	return c.gen, c.genErr
 }
 
 func newFakeSimilarCache() *fakeSimilarCache {
 	return &fakeSimilarCache{data: map[uuid.UUID][]uuid.UUID{}}
 }
 
-func (c *fakeSimilarCache) Get(ctx context.Context, bookID uuid.UUID) ([]uuid.UUID, bool, error) {
+func (c *fakeSimilarCache) Get(ctx context.Context, gen int64, bookID uuid.UUID) ([]uuid.UUID, bool, error) {
 	c.gets++
+	if gen != c.gen {
+		return nil, false, nil
+	}
 	if c.getErr != nil {
 		return nil, false, c.getErr
 	}
@@ -197,14 +215,19 @@ func (c *fakeSimilarCache) Get(ctx context.Context, bookID uuid.UUID) ([]uuid.UU
 	return ids, ok, nil
 }
 
-func (c *fakeSimilarCache) Set(ctx context.Context, bookID uuid.UUID, ids []uuid.UUID, ttl time.Duration) error {
+func (c *fakeSimilarCache) Set(ctx context.Context, gen int64, bookID uuid.UUID, ids []uuid.UUID, ttl time.Duration) error {
+	if c.beforeSet != nil {
+		c.beforeSet()
+	}
 	c.sets++
 	c.lastSet = ids
 	c.lastTTL = ttl
 	if c.setErr != nil {
 		return c.setErr
 	}
-	c.data[bookID] = ids
+	if gen == c.gen { // an entry under an older generation is unreachable
+		c.data[bookID] = ids
+	}
 	return nil
 }
 
@@ -394,5 +417,62 @@ func TestListSimilarBooks_CandidateErrorPropagates(t *testing.T) {
 	_, err := svc.ListSimilarBooks(context.Background(), src.ID, 8)
 	if err == nil || errors.Is(err, ErrBookNotFound) {
 		t.Fatalf("expected wrapped repo error, got %v", err)
+	}
+}
+
+func TestListSimilarBooks_EmptyResultUsesShortTTL(t *testing.T) {
+	repo := newFakeRepository()
+	cache := newFakeSimilarCache()
+	svc := NewService(repo, WithSimilarCache(cache))
+	src, _ := seedSimilar(repo, 0)
+
+	books, err := svc.ListSimilarBooks(context.Background(), src.ID, 8)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(books) != 0 {
+		t.Fatalf("expected no books, got %d", len(books))
+	}
+	if cache.sets != 1 {
+		t.Fatalf("expected the empty list to be cached once, got %d sets", cache.sets)
+	}
+	if cache.lastTTL != similarCacheEmptyTTL || cache.lastTTL >= similarCacheTTL {
+		t.Fatalf("expected short empty TTL, got %v", cache.lastTTL)
+	}
+}
+
+func TestListSimilarBooks_InvalidateDuringComputeDoesNotCacheStaleList(t *testing.T) {
+	repo := newFakeRepository()
+	cache := newFakeSimilarCache()
+	svc := NewService(repo, WithSimilarCache(cache))
+	src, _ := seedSimilar(repo, 3)
+	cache.beforeSet = cache.invalidate
+
+	if _, err := svc.ListSimilarBooks(context.Background(), src.ID, 8); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cache.beforeSet = nil
+	if _, err := svc.ListSimilarBooks(context.Background(), src.ID, 8); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.candidateCalls != 2 {
+		t.Fatalf("stale list computed before the invalidation was served from cache (candidate calls %d)", repo.candidateCalls)
+	}
+}
+
+func TestListSimilarBooks_GenerationErrorSkipsCache(t *testing.T) {
+	repo := newFakeRepository()
+	cache := newFakeSimilarCache()
+	cache.genErr = errors.New("redis down")
+	svc := NewService(repo, WithSimilarCache(cache))
+	src, want := seedSimilar(repo, 3)
+
+	books, err := svc.ListSimilarBooks(context.Background(), src.ID, 8)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertIDs(t, bookIDs(books), want)
+	if cache.gets != 0 || cache.sets != 0 {
+		t.Fatalf("expected no cache Get/Set without a generation, got gets=%d sets=%d", cache.gets, cache.sets)
 	}
 }
