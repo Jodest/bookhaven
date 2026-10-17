@@ -50,9 +50,6 @@ export function Header({ notificationSlot }: HeaderProps) {
                     <Link href="/shelves">Мои полки</Link>
                   </Button>
                   <Button variant="ghost" asChild>
-                    <Link href="/lists">Мои списки</Link>
-                  </Button>
-                  <Button variant="ghost" asChild>
                     <Link href="/challenge">Читательский вызов</Link>
                   </Button>
                 </>

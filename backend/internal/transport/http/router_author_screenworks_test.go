@@ -65,7 +65,7 @@ CREATE TABLE author_screen_works (author_id TEXT NOT NULL, screen_work_id TEXT N
 	e := echo.New()
 	RegisterAdminRoutes(e, adminservice.NewService(nil), fakeAuth, &countingEnqueuer{}, nil, nil,
 		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{}, AICollectionsDeps{}, AIGenresDeps{}, nil, svc)
-	RegisterRoutes(e, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, svc, fakeAuth, fakeAuth, nil)
+	RegisterRoutes(e, nil, nil, nil, nil, nil, nil, nil, nil, nil, svc, fakeAuth, fakeAuth, nil)
 
 	do := func(method, path, role, bearer, body string) (int, []byte) {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))

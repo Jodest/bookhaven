@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/shelves/domain"
@@ -21,6 +22,8 @@ var (
 	ErrBookNotOnShelf        = repository.ErrBookNotOnShelf
 	ErrDefaultShelfImmutable = errors.New("default shelf cannot be modified")
 	ErrInvalidName           = errors.New("invalid shelf name")
+	ErrInvalidDescription    = errors.New("invalid shelf description")
+	ErrNothingToUpdate       = errors.New("nothing to update")
 )
 
 // Service provides shelves logic.
@@ -60,17 +63,33 @@ func (s *Service) ListShelves(ctx context.Context, userID uuid.UUID, bookID *uui
 }
 
 // CreateShelf creates a custom shelf for a user.
-func (s *Service) CreateShelf(ctx context.Context, userID uuid.UUID, name string) (*domain.Shelf, error) {
+// Description is optional; isPublic defaults to true when nil.
+func (s *Service) CreateShelf(ctx context.Context, userID uuid.UUID, name string, description *string, isPublic *bool) (*domain.Shelf, error) {
 	name = strings.TrimSpace(name)
-	if len(name) < 2 || len(name) > 100 {
+	if !validName(name) {
 		return nil, ErrInvalidName
 	}
 
+	desc := ""
+	if description != nil {
+		desc = strings.TrimSpace(*description)
+		if !validDescription(desc) {
+			return nil, ErrInvalidDescription
+		}
+	}
+
+	public := true
+	if isPublic != nil {
+		public = *isPublic
+	}
+
 	shelf := &domain.Shelf{
-		ID:     uuid.New(),
-		UserID: userID,
-		Name:   name,
-		Type:   domain.ShelfTypeCustom,
+		ID:          uuid.New(),
+		UserID:      userID,
+		Name:        name,
+		Type:        domain.ShelfTypeCustom,
+		Description: desc,
+		IsPublic:    public,
 	}
 
 	if err := s.repo.Create(ctx, shelf); err != nil {
@@ -114,10 +133,9 @@ func (s *Service) GetShelf(ctx context.Context, userID uuid.UUID, shelfID uuid.U
 	return shelf, books, total, nil
 }
 
-// ListPublicByUser returns all shelves owned by the user that have at least
+// ListPublicByUser returns the user's public shelves that have at least
 // one visible book, with BooksCount computed over visible books only.
-// Shelves are unconditionally public (see OQ-003 resolution) - there is no
-// privacy flag to filter on, unlike lists' IsPublic.
+// Private shelves are skipped.
 func (s *Service) ListPublicByUser(ctx context.Context, userID uuid.UUID) ([]domain.Shelf, error) {
 	shelves, err := s.repo.ListByUserVisible(ctx, userID)
 	if err != nil {
@@ -126,7 +144,7 @@ func (s *Service) ListPublicByUser(ctx context.Context, userID uuid.UUID) ([]dom
 
 	public := make([]domain.Shelf, 0, len(shelves))
 	for _, sh := range shelves {
-		if sh.BooksCount > 0 {
+		if sh.IsPublic && sh.BooksCount > 0 {
 			public = append(public, sh)
 		}
 	}
@@ -135,8 +153,8 @@ func (s *Service) ListPublicByUser(ctx context.Context, userID uuid.UUID) ([]dom
 }
 
 // GetPublicShelf returns a shelf with paginated, visible-only books. Unlike
-// GetShelf, it performs no ownership check: shelves are unconditionally
-// public, so any existing shelf ID is viewable by anyone.
+// GetShelf, it performs no ownership check. A private shelf is reported as not
+// found for everyone, including its owner (who uses GetShelf instead).
 func (s *Service) GetPublicShelf(ctx context.Context, shelfID uuid.UUID, page, limit int) (*domain.Shelf, []catalogDomain.Book, int64, error) {
 	shelf, err := s.repo.GetByID(ctx, shelfID)
 	if err != nil {
@@ -144,6 +162,10 @@ func (s *Service) GetPublicShelf(ctx context.Context, shelfID uuid.UUID, page, l
 			return nil, nil, 0, ErrShelfNotFound
 		}
 		return nil, nil, 0, fmt.Errorf("get shelf: %w", err)
+	}
+
+	if !shelf.IsPublic {
+		return nil, nil, 0, ErrShelfNotFound
 	}
 
 	if page <= 0 {
@@ -166,11 +188,40 @@ func (s *Service) GetPublicShelf(ctx context.Context, shelfID uuid.UUID, page, l
 	return shelf, books, total, nil
 }
 
-// RenameShelf renames a custom shelf.
-func (s *Service) RenameShelf(ctx context.Context, userID uuid.UUID, shelfID uuid.UUID, name string) (*domain.Shelf, error) {
-	name = strings.TrimSpace(name)
-	if len(name) < 2 || len(name) > 100 {
-		return nil, ErrInvalidName
+// UpdateShelfInput holds the optional fields of a partial shelf update.
+type UpdateShelfInput struct {
+	Name        *string
+	Description *string
+	IsPublic    *bool
+}
+
+func validName(name string) bool {
+	n := utf8.RuneCountInString(name)
+	return n >= 2 && n <= 100
+}
+
+func validDescription(desc string) bool {
+	return utf8.RuneCountInString(desc) <= 2000
+}
+
+// UpdateShelf partially updates a custom shelf (name, description, privacy).
+func (s *Service) UpdateShelf(ctx context.Context, userID uuid.UUID, shelfID uuid.UUID, in UpdateShelfInput) (*domain.Shelf, error) {
+	if in.Name == nil && in.Description == nil && in.IsPublic == nil {
+		return nil, ErrNothingToUpdate
+	}
+
+	var name, desc string
+	if in.Name != nil {
+		name = strings.TrimSpace(*in.Name)
+		if !validName(name) {
+			return nil, ErrInvalidName
+		}
+	}
+	if in.Description != nil {
+		desc = strings.TrimSpace(*in.Description)
+		if !validDescription(desc) {
+			return nil, ErrInvalidDescription
+		}
 	}
 
 	shelf, err := s.repo.GetByID(ctx, shelfID)
@@ -189,7 +240,15 @@ func (s *Service) RenameShelf(ctx context.Context, userID uuid.UUID, shelfID uui
 		return nil, ErrDefaultShelfImmutable
 	}
 
-	shelf.Name = name
+	if in.Name != nil {
+		shelf.Name = name
+	}
+	if in.Description != nil {
+		shelf.Description = desc
+	}
+	if in.IsPublic != nil {
+		shelf.IsPublic = *in.IsPublic
+	}
 	if err := s.repo.Update(ctx, shelf); err != nil {
 		return nil, fmt.Errorf("update shelf: %w", err)
 	}

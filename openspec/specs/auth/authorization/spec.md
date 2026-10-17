@@ -14,7 +14,7 @@ An endpoint that requires authentication SHALL accept the access token from an `
 - **THEN** the request is authenticated
 
 ### Requirement: Optional authentication
-Endpoints with optional authentication (for example public shelves and lists, book reviews, user profiles) SHALL treat a request without a token, with an invalid token or from an unconfirmed user as anonymous instead of failing.
+Endpoints with optional authentication (for example public shelves, book reviews and user profiles) SHALL treat a request without a token, with an invalid token or from an unconfirmed user as anonymous instead of failing.
 
 #### Scenario: Invalid token on a public page
 - **WHEN** a request with an expired token reads a public shelf

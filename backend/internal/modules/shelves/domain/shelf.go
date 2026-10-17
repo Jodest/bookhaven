@@ -21,10 +21,16 @@ const (
 
 // Shelf represents a user's bookshelf.
 type Shelf struct {
-	ID         uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	UserID     uuid.UUID `gorm:"type:uuid;not null"`
-	Name       string    `gorm:"not null"`
-	Type       ShelfType `gorm:"type:shelf_type;not null;default:'custom'"`
+	ID     uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	UserID uuid.UUID `gorm:"type:uuid;not null"`
+	Name   string    `gorm:"not null"`
+	Type   ShelfType `gorm:"type:shelf_type;not null;default:'custom'"`
+	// Description is an optional free-text description (custom shelves only).
+	Description string `gorm:"type:text;not null"`
+	// IsPublic is false for private custom shelves. Default shelves are always public.
+	// No gorm default tag on purpose: GORM would replace a false zero value with the
+	// default on create. The DB default (true) covers raw inserts.
+	IsPublic   bool `gorm:"not null"`
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	BooksCount int64                `gorm:"-"`
