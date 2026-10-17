@@ -144,6 +144,12 @@ type Repository interface {
 	// ListGenreHintCandidates returns every non-rejected, non-alias genre
 	// (the similar-name hint pool) in one query.
 	ListGenreHintCandidates(ctx context.Context) ([]catalogDomain.Genre, error)
+	// ListGenreAnalysisCandidates lists the non-alias pending/published
+	// genres with their linked-books counts (AI genre analysis pool).
+	ListGenreAnalysisCandidates(ctx context.Context) ([]GenreModerationRow, error)
+	// GenresByIDs returns the current state of the genres among ids (aliases
+	// and rejected included); missing ids are absent from the result.
+	GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]GenreStateRow, error)
 	// SetGenreStatus updates only the status of one non-alias genre. found
 	// is false when no such genre exists (unknown id or alias).
 	SetGenreStatus(ctx context.Context, id uuid.UUID, status string) (found bool, err error)

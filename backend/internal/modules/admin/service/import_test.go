@@ -933,3 +933,11 @@ func (f *fakeImportRepository) FindBooksByNormalizedISBNs(ctx context.Context, i
 func (f *fakeImportRepository) FindBooksByAuthorIDs(ctx context.Context, authorIDs, excludeIDs []uuid.UUID) ([]repository.BookHintCandidate, error) {
 	return nil, nil
 }
+
+func (f *fakeImportRepository) ListGenreAnalysisCandidates(ctx context.Context) ([]repository.GenreModerationRow, error) {
+	return nil, nil
+}
+
+func (f *fakeImportRepository) GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]repository.GenreStateRow, error) {
+	return nil, nil
+}

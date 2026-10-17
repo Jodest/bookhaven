@@ -1198,3 +1198,11 @@ func (f *fakeAdminRepository) CountAIReviewCandidates(ctx context.Context, promp
 func (f *fakeAdminRepository) LoadBooksForReview(ctx context.Context, ids []uuid.UUID) ([]catalogDomain.Book, error) {
 	return nil, nil
 }
+
+func (f *fakeAdminRepository) ListGenreAnalysisCandidates(ctx context.Context) ([]adminrepository.GenreModerationRow, error) {
+	return nil, nil
+}
+
+func (f *fakeAdminRepository) GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]adminrepository.GenreStateRow, error) {
+	return nil, nil
+}

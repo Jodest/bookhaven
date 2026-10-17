@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import {
   AdminGenre,
   AdminGenreHint,
@@ -10,6 +12,7 @@ import {
 } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import { adminGenresApi, GenreStatusBadge } from '@/entities/genre';
+import { adminGenreAiSuggestionsApi, GENRE_AI_STATUS_QUERY_KEY } from '@/entities/genre-ai-suggestion';
 import { SampleBooksCell } from '@/entities/book';
 import { BatchMergeGenresDialog, MergeGenreDialog } from '@/features/merge-genre';
 import {
@@ -77,6 +80,14 @@ const switchedSuffix = (collectionsSwitched: number) =>
 export function GenreModerationView() {
   const [overlay, setOverlay] = useState<MergeOverlay | null>(null);
   const statusMutation = useGenreStatusMutation();
+  // The entry to the AI suggestions page: shown while the analysis is on or
+  // open suggestions remain (they stay reachable after it is switched off).
+  const aiStatus = useQuery({
+    queryKey: GENRE_AI_STATUS_QUERY_KEY,
+    queryFn: () => adminGenreAiSuggestionsApi.status(),
+    refetchOnWindowFocus: true,
+  });
+  const showAiLink = !!aiStatus.data && (aiStatus.data.enabled || aiStatus.data.open_count > 0);
 
   const openMerge = (ctx: ModerationRowContext, source: AdminGenre, initialCanonical?: AdminGenre) => {
     ctx.notify(null);
@@ -147,6 +158,15 @@ export function GenreModerationView() {
           Слить
         </Button>
       )}
+      renderToolbar={() =>
+        showAiLink && aiStatus.data ? (
+          <div>
+            <Link href={'/moderation/genres/ai-suggestions' as any} className="text-sm text-primary hover:underline">
+              Предложения ИИ ({aiStatus.data.open_count})
+            </Link>
+          </div>
+        ) : null
+      }
       renderBulkActions={(selected, controls) => (
         <Button
           size="sm"

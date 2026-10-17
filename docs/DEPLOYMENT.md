@@ -238,6 +238,25 @@ Cost per chunk of 100 books (assumptions: about 1k input tokens of system prompt
 
 The daily cap of 20 drafts per admin bounds the worst case at about $15 per admin per day on Sonnet. Token counts are stored per draft: `SELECT model, sum(input_tokens), sum(output_tokens) FROM ai_collection_drafts GROUP BY model;` (only the last 30 days are kept).
 
+### AI genre suggestions
+
+Off by default. The AI analysis of the genre catalog is active only when `AI_GENRES_ENABLED=true` **and** `ANTHROPIC_API_KEY` is set — the same key as the other AI features, but a separate switch. A flag without a key logs `AI_GENRES_ENABLED is set but ANTHROPIC_API_KEY is empty; AI genre suggestions disabled` in the worker and the feature stays off.
+
+The analysis proposes three kinds of suggestions on `/moderation/genres/ai-suggestions`: duplicate genres to merge (spelling, language, synonyms), overly narrow genres to merge into a general one, and "genres" that are not genres (a year, a marketing label, a format) to reject. **The AI never changes a genre by itself, whatever its confidence**: an admin applies a suggestion (through the existing batch genre merge with its preview, or the genre bulk status) or dismisses it. A dismissed suggestion is not proposed again for the same set of genres; a suggestion whose genres changed since the analysis (merged, rejected, deleted) is marked stale and cannot be applied.
+
+**Both `backend` (api) and `worker` need the flag and the key.** The api never calls the model; it records a run and queues `ai_genres:analyze`, and uses the same switch for `enabled` in `GET /admin/genres/ai-suggestions/status` and the 503 of `POST /admin/genres/ai-suggestions/analyze`. When the feature is off, existing suggestions stay visible and can still be applied or dismissed.
+
+A run goes on its own queue `ai_genres` (Concurrency 1, one model call per second at most): the 100 most popular published genres go into every request without sample books, the other pending and published genres are sent in batches of `AI_GENRES_BATCH` with up to two book titles each. **At most 10 requests per run**, so a very large catalog is covered over several runs. A transient API failure (rate limit, overload, network) stops the run; suggestions of earlier batches are kept and the next scheduled or manual run continues. A scheduled run makes no model call at all when no candidate genre was added, renamed or changed status or QID since the last clean run. A run that stays queued or running for more than 2 hours is treated as failed (`interrupted`). Runs older than 180 days are deleted; suggestions are kept (dismissed ones are the memory).
+
+| Variable | Meaning |
+|---|---|
+| `AI_GENRES_ENABLED` | `true` turns the AI genre analysis on (with `ANTHROPIC_API_KEY`). Default `false`, also in dev and CI. |
+| `AI_GENRES_MODEL` | Exact model id. Default `claude-sonnet-5-5` (judging whether two names mean one genre, across languages, needs language knowledge); `claude-haiku-5-5` to cut cost. Blank means the default. |
+| `AI_GENRES_CRON` | UTC cron spec of the scheduled run. Default `0 3 * * 1` (Monday 03:00 UTC). Set it empty to disable the schedule (manual runs only); in compose the empty value is passed through. |
+| `AI_GENRES_BATCH` | Non-anchor genres per model request. Default `300`, at most `500` (larger values are clamped). |
+
+Cost: the system prompt is cached; a full run is at most 10 requests of about 100 anchor genres (≈ 12 tokens each) plus a batch of up to 500 genres with samples (≈ 45 tokens each), so ≈ 240k input and up to ≈ 80k output tokens in the worst case — about $1.3 per run on Sonnet ($2 / $10 per 1M), about $0.07 on Haiku. A small catalog is one request (a few cents). With the weekly default and the change check, a quiet catalog costs nothing. Token counts are stored per run: `SELECT created_at, model, batches_done, suggestions_created, input_tokens, output_tokens FROM genre_ai_runs ORDER BY created_at DESC;` (migration 000032).
+
 ## Email (SMTP)
 
 Transactional email (verification, password reset, later notifications) is sent asynchronously: the api enqueues an `email:send` task on the `email` asynq queue and the **worker** delivers it over SMTP (see `backend/internal/pkg/mailer` and [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md)). Only the `worker` container receives the SMTP variables; the `backend` (api) container never talks to SMTP.

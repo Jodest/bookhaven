@@ -85,6 +85,23 @@ type Config struct {
 	// (AICollectionsActive); both api and worker need both.
 	AICollectionsEnabled bool
 	AICollectionsModel   string
+
+	// AI genre suggestions (a background analysis proposes genre merges and
+	// rejections to the admin; see internal/modules/aigenres). Active only
+	// when AI_GENRES_ENABLED is true and ANTHROPIC_API_KEY is set
+	// (AIGenresActive); both api and worker need both. AIGenresCron is a UTC
+	// cron spec (empty = no schedule); AIGenresBatch is the number of
+	// non-anchor genres per model request.
+	AIGenresEnabled bool
+	AIGenresModel   string
+	AIGenresCron    string
+	AIGenresBatch   int
+}
+
+// AIGenresActive reports whether AI genre suggestions are switched on and
+// have an API key.
+func (c *Config) AIGenresActive() bool {
+	return c.AIGenresEnabled && strings.TrimSpace(c.AnthropicAPIKey) != ""
 }
 
 // AICollectionsActive reports whether AI collection drafts are switched on
@@ -140,6 +157,15 @@ const DefaultAIDescriptionsModel = "claude-sonnet-5-5"
 // DefaultAICollectionsModel is the AI collection drafts' default model id
 // (Sonnet: recall of real, correctly attributed works is the whole value).
 const DefaultAICollectionsModel = "claude-sonnet-5-5"
+
+// AI genre suggestions defaults: Sonnet (judging whether two names denote one
+// genre needs language knowledge), weekly on Monday 03:00 UTC.
+const (
+	DefaultAIGenresModel = "claude-sonnet-5-5"
+	DefaultAIGenresCron  = "0 3 * * 1"
+	DefaultAIGenresBatch = 300
+	MaxAIGenresBatch     = 500
+)
 
 // defaultMailFrom is used when MAIL_FROM is unset (dev / Mailpit).
 const defaultMailFrom = "BookHaven <noreply@bookhaven.local>"
@@ -200,6 +226,20 @@ func Load() (*Config, error) {
 	if cfg.AICollectionsModel == "" {
 		cfg.AICollectionsModel = DefaultAICollectionsModel
 	}
+
+	cfg.AIGenresEnabled = parseBoolEnv("AI_GENRES_ENABLED")
+	cfg.AIGenresModel = strings.TrimSpace(getEnv("AI_GENRES_MODEL", DefaultAIGenresModel))
+	if cfg.AIGenresModel == "" {
+		cfg.AIGenresModel = DefaultAIGenresModel
+	}
+	// Unlike the other crons, an explicitly empty AI_GENRES_CRON disables the
+	// schedule (the analysis then runs only on demand).
+	if raw, ok := os.LookupEnv("AI_GENRES_CRON"); ok {
+		cfg.AIGenresCron = strings.TrimSpace(raw)
+	} else {
+		cfg.AIGenresCron = DefaultAIGenresCron
+	}
+	cfg.AIGenresBatch = parseClampedInt(getEnv("AI_GENRES_BATCH", ""), DefaultAIGenresBatch, MaxAIGenresBatch)
 
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
 	if err != nil || smtpPort <= 0 || smtpPort > 65535 {

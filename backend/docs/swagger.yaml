@@ -1660,6 +1660,258 @@ definitions:
       total:
         type: integer
     type: object
+  internal_modules_aigenres_transport_http.analyzeResponse:
+    properties:
+      run_id:
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.applyRequest:
+    properties:
+      target_id:
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.applyResponse:
+    properties:
+      merge:
+        $ref: '#/definitions/internal_modules_aigenres_transport_http.mergeResponse'
+      status_report:
+        $ref: '#/definitions/internal_modules_aigenres_transport_http.statusReportResponse'
+      suggestion:
+        $ref: '#/definitions/internal_modules_aigenres_transport_http.suggestionResponse'
+    type: object
+  internal_modules_aigenres_transport_http.bulkApplyItem:
+    properties:
+      id:
+        type: string
+      target_id:
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.bulkApplyRequest:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.bulkApplyItem'
+        type: array
+    type: object
+  internal_modules_aigenres_transport_http.bulkApplyResponse:
+    properties:
+      applied:
+        type: integer
+      errors:
+        items:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.itemErrorResponse'
+        type: array
+      processed:
+        type: integer
+      stale:
+        type: integer
+    type: object
+  internal_modules_aigenres_transport_http.bulkDismissRequest:
+    properties:
+      ids:
+        items:
+          type: string
+        type: array
+    type: object
+  internal_modules_aigenres_transport_http.bulkDismissResponse:
+    properties:
+      dismissed:
+        type: integer
+      errors:
+        items:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.itemErrorResponse'
+        type: array
+      processed:
+        type: integer
+    type: object
+  internal_modules_aigenres_transport_http.genreRefResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.itemErrorResponse:
+    properties:
+      message:
+        type: string
+      suggestion_id:
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.listResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.suggestionResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  internal_modules_aigenres_transport_http.mergeGenreResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+      status:
+        type: string
+      wikidata_qid:
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.mergeResponse:
+    properties:
+      books_reassigned:
+        type: integer
+      collections_switched:
+        type: integer
+      genre:
+        $ref: '#/definitions/internal_modules_aigenres_transport_http.mergeGenreResponse'
+      sources_merged:
+        type: integer
+    type: object
+  internal_modules_aigenres_transport_http.runResponse:
+    properties:
+      batches_done:
+        type: integer
+      batches_total:
+        type: integer
+      created_at:
+        type: string
+      error_code:
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      status:
+        enum:
+        - queued
+        - running
+        - done
+        - failed
+        type: string
+      suggestions_created:
+        type: integer
+      trigger:
+        enum:
+        - manual
+        - scheduled
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.sampleBookResponse:
+    properties:
+      id:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.statusReportResponse:
+    properties:
+      errors:
+        items:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.statusReportRowError'
+        type: array
+      processed:
+        type: integer
+      updated:
+        type: integer
+    type: object
+  internal_modules_aigenres_transport_http.statusReportRowError:
+    properties:
+      genre_id:
+        type: string
+      message:
+        type: string
+      name:
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.statusResponse:
+    properties:
+      enabled:
+        description: 'Enabled: the flag and the API key are both set.'
+        type: boolean
+      last_run:
+        $ref: '#/definitions/internal_modules_aigenres_transport_http.runResponse'
+      model:
+        type: string
+      open_count:
+        type: integer
+      prompt_version:
+        type: integer
+    type: object
+  internal_modules_aigenres_transport_http.suggestionGenreResponse:
+    properties:
+      books_total:
+        type: integer
+      exists:
+        type: boolean
+      id:
+        type: string
+      merged:
+        type: boolean
+      name:
+        type: string
+      sample_books:
+        items:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.sampleBookResponse'
+        type: array
+      status:
+        enum:
+        - pending
+        - published
+        - rejected
+        type: string
+      wikidata_qid:
+        type: string
+    type: object
+  internal_modules_aigenres_transport_http.suggestionResponse:
+    properties:
+      applied_target:
+        $ref: '#/definitions/internal_modules_aigenres_transport_http.genreRefResponse'
+      confidence:
+        type: number
+      created_at:
+        type: string
+      decided_at:
+        type: string
+      genres:
+        items:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.suggestionGenreResponse'
+        type: array
+      id:
+        type: string
+      kind:
+        enum:
+        - duplicate
+        - narrow
+        - junk
+        type: string
+      model:
+        type: string
+      prompt_version:
+        type: integer
+      reason:
+        type: string
+      reason_codes:
+        items:
+          type: string
+        type: array
+      stale:
+        type: boolean
+      status:
+        enum:
+        - open
+        - applied
+        - dismissed
+        - stale
+        type: string
+      target:
+        $ref: '#/definitions/internal_modules_aigenres_transport_http.genreRefResponse'
+    type: object
   internal_modules_aimoderation_transport_http.aiReviewRequest:
     properties:
       all_unreviewed:
@@ -7026,6 +7278,399 @@ paths:
       security:
       - BearerAuth: []
       summary: Слить жанр в другой (админ)
+      tags:
+      - admin
+  /admin/genres/ai-suggestions:
+    get:
+      description: 'Требуется роль admin. status — open (по умолчанию), applied, dismissed
+        или stale; kind — duplicate, narrow или junk (необязательно); page и limit
+        (по умолчанию 20, не более 50). Открытые предложения идут по убыванию уверенности,
+        затем новые первыми; остальные — по времени решения, новые первыми. У каждого
+        предложения genres перечисляет все его жанры (целевой первым) с текущими значениями;
+        жанр, которого больше нет, показывается с сохранённым названием и exists =
+        false. stale вычисляется при чтении для открытых предложений: жанр предложения
+        удалён, слит или отклонён после анализа. Работает и при выключенной функции.'
+      parameters:
+      - default: open
+        description: Статус
+        enum:
+        - open
+        - applied
+        - dismissed
+        - stale
+        in: query
+        name: status
+        type: string
+      - description: Вид предложения
+        enum:
+        - duplicate
+        - narrow
+        - junk
+        in: query
+        name: kind
+        type: string
+      - default: 1
+        description: Страница
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Размер страницы
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aigenres_transport_http.listResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Предложения ИИ по жанрам (админ)
+      tags:
+      - admin
+  /admin/genres/ai-suggestions/{id}/apply:
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Необязательное тело {"target_id"}.
+        Для duplicate/narrow жанры сливаются через пакетное слияние в одной транзакции:
+        целевой жанр — target_id или предложенный; если он среди жанров предложения,
+        источники — остальные жанры, иначе источниками становятся все жанры предложения.
+        Для junk жанр получает статус rejected через массовую смену статуса, target_id
+        для junk недопустим (400). Устаревшее предложение (жанр удалён, слит или отклонён)
+        не применяется: оно помечается stale, жанры не меняются, 409. 404 — предложение
+        не найдено, либо выбранный target_id не найден или уже слит (ничего не меняется);
+        409 — предложение не открыто или устарело. Слияние необратимо. Ответ: suggestion,
+        merge (результат слияния или null), status_report (отчёт о смене статуса для
+        junk или null).'
+      parameters:
+      - description: ID предложения (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: target_id — другой целевой жанр
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.applyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aigenres_transport_http.applyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Применить предложение ИИ по жанрам (админ)
+      tags:
+      - admin
+  /admin/genres/ai-suggestions/{id}/dismiss:
+    post:
+      description: Требуется роль admin и Bearer-токен. Жанры не меняются. Открытое
+        предложение (в том числе устаревшее при чтении) становится dismissed с администратором
+        и временем решения; ИИ больше не предложит тот же набор жанров. 404 — предложение
+        не найдено; 409 — предложение не открыто.
+      parameters:
+      - description: ID предложения (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aigenres_transport_http.suggestionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Отклонить предложение ИИ по жанрам (админ)
+      tags:
+      - admin
+  /admin/genres/ai-suggestions/analyze:
+    post:
+      description: Требуется роль admin и Bearer-токен. Тело пустое или {}. Ставит
+        в очередь один ручной запуск анализа всех жанров на модерации и опубликованных
+        (не слитых), независимо от того, менялись ли они. Предложения составляет воркер;
+        жанры не меняются. 202 — run_id запуска; 409 — анализ уже в очереди или идёт;
+        502 — не удалось поставить задачу в очередь (запуск помечается failed); 503
+        — анализ выключен.
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/internal_modules_aigenres_transport_http.analyzeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Запустить ИИ-анализ жанров (админ)
+      tags:
+      - admin
+  /admin/genres/ai-suggestions/apply:
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен. items — от 1 до 50 элементов
+        {id, target_id?} без повторов id; иначе 400 и ничего не меняется. Каждый элемент
+        применяется так же, как одиночным запросом, по очереди в порядке запроса;
+        каждое слияние — своя транзакция, сбой элемента не отменяет предыдущие. Предложение,
+        ставшее устаревшим из-за предыдущего элемента, помечается stale и считается
+        в stale. errors — элементы, которые не найдены, не открыты или не удались.
+        Слияние необратимо.
+      parameters:
+      - description: Предложения для применения
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.bulkApplyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aigenres_transport_http.bulkApplyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Применить несколько предложений ИИ по жанрам (админ)
+      tags:
+      - admin
+  /admin/genres/ai-suggestions/dismiss:
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен. ids — от 1 до 50 UUID (повторы
+        убираются), иначе 400. Жанры не меняются. errors — предложения, которые не
+        найдены или не открыты.
+      parameters:
+      - description: ID предложений
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_aigenres_transport_http.bulkDismissRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aigenres_transport_http.bulkDismissResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Отклонить несколько предложений ИИ по жанрам (админ)
+      tags:
+      - admin
+  /admin/genres/ai-suggestions/status:
+    get:
+      description: Требуется роль admin. enabled — включён ли анализ (флаг AI_GENRES_ENABLED
+        и ключ API заданы), model — модель, prompt_version — версия промпта, open_count
+        — число открытых предложений (устаревшие включены), last_run — последний запуск
+        анализа или null. Работает и при выключенной функции.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_aigenres_transport_http.statusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Статус ИИ-анализа жанров (админ)
       tags:
       - admin
   /admin/genres/bulk-status:
