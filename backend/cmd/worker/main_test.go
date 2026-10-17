@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bookhaven/backend/internal/config"
+	aigenresservice "github.com/bookhaven/backend/internal/modules/aigenres/service"
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
@@ -219,6 +220,64 @@ func TestAICollectionsServerConfig(t *testing.T) {
 	}
 	if !reflect.DeepEqual(c.Queues, map[string]int{"ai_collections": 1}) {
 		t.Errorf("Queues = %v, want map[ai_collections:1]", c.Queues)
+	}
+}
+
+func TestAIGenresServerConfig(t *testing.T) {
+	c := aiGenresServerConfig(nil)
+	if c.Concurrency != 1 {
+		t.Errorf("Concurrency = %d, want 1", c.Concurrency)
+	}
+	if !reflect.DeepEqual(c.Queues, map[string]int{"ai_genres": 1}) {
+		t.Errorf("Queues = %v, want map[ai_genres:1]", c.Queues)
+	}
+}
+
+func TestRegisterSchedules_AIGenresWhenActive(t *testing.T) {
+	f := &fakeRegistrar{}
+	cfg := &config.Config{AIGenresEnabled: true, AnthropicAPIKey: "sk-test", AIGenresCron: "0 3 * * 1"}
+	if err := registerSchedules(f, cfg); err != nil {
+		t.Fatalf("registerSchedules: %v", err)
+	}
+	if len(f.regs) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	}
+	r := f.regs[1]
+	if r.cronspec != "0 3 * * 1" || r.task.Type() != aigenresservice.TaskTypeScheduled {
+		t.Errorf("registration = %q %q", r.cronspec, r.task.Type())
+	}
+	var queue string
+	for _, o := range r.opts {
+		if o.Type() == asynq.QueueOpt {
+			queue = o.Value().(string)
+		}
+	}
+	if queue != "ai_genres" {
+		t.Errorf("queue = %q, want ai_genres", queue)
+	}
+}
+
+func TestRegisterSchedules_AIGenresNotScheduled(t *testing.T) {
+	for name, cfg := range map[string]*config.Config{
+		"flag off":   {AnthropicAPIKey: "sk-test", AIGenresCron: "0 3 * * 1"},
+		"key absent": {AIGenresEnabled: true, AIGenresCron: "0 3 * * 1"},
+		"empty cron": {AIGenresEnabled: true, AnthropicAPIKey: "sk-test", AIGenresCron: ""},
+	} {
+		f := &fakeRegistrar{}
+		if err := registerSchedules(f, cfg); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(f.regs) != 1 {
+			t.Errorf("%s: expected only the similarity schedule, got %d", name, len(f.regs))
+		}
+	}
+}
+
+func TestRegisterSchedules_InvalidAIGenresCronFails(t *testing.T) {
+	f := &fakeRegistrar{errFor: "bad"}
+	cfg := &config.Config{AIGenresEnabled: true, AnthropicAPIKey: "sk-test", AIGenresCron: "bad"}
+	if err := registerSchedules(f, cfg); err == nil || !strings.Contains(err.Error(), "AI genre analysis") {
+		t.Fatalf("expected a registration error, got %v", err)
 	}
 }
 

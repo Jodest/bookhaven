@@ -8,8 +8,9 @@ const listMock = vi.fn();
 const mergeMock = vi.fn();
 const previewMock = vi.fn();
 
-vi.mock('@/entities/genre', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/entities/genre')>()),
+// The preview summary and the genre search live in entities/genre and use its
+// api module, so the mock targets that module (the entity index re-exports it).
+vi.mock('@/entities/genre/api', () => ({
   adminGenresApi: {
     list: (...args: unknown[]) => listMock(...args),
     merge: (...args: unknown[]) => mergeMock(...args),

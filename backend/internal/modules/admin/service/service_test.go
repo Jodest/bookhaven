@@ -1284,3 +1284,35 @@ func (f *fakeRepository) mergeGenreRows(sourceID, targetID uuid.UUID) error {
 	source.Status = catalogDomain.GenreStatusRejected
 	return nil
 }
+
+func (f *fakeRepository) genreBooksTotal(id uuid.UUID) int64 {
+	for _, r := range f.genreModRows {
+		if r.Genre.ID == id {
+			return r.BooksTotal
+		}
+	}
+	return 0
+}
+
+func (f *fakeRepository) ListGenreAnalysisCandidates(ctx context.Context) ([]repository.GenreModerationRow, error) {
+	var out []repository.GenreModerationRow
+	for _, g := range f.genres {
+		if g.IsAlias() || g.Status == catalogDomain.GenreStatusRejected {
+			continue
+		}
+		out = append(out, repository.GenreModerationRow{Genre: g, BooksTotal: f.genreBooksTotal(g.ID)})
+	}
+	return out, nil
+}
+
+func (f *fakeRepository) GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]repository.GenreStateRow, error) {
+	var out []repository.GenreStateRow
+	for _, id := range ids {
+		for _, g := range f.genres {
+			if g.ID == id {
+				out = append(out, repository.GenreStateRow{ID: g.ID, Name: g.Name, Status: g.Status, MergedIntoID: g.MergedIntoID, WikidataQID: g.WikidataQID, BooksTotal: f.genreBooksTotal(g.ID)})
+			}
+		}
+	}
+	return out, nil
+}

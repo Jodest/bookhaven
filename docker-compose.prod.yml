@@ -65,6 +65,10 @@ services:
       AI_DESCRIPTIONS_MODEL: ${AI_DESCRIPTIONS_MODEL:-claude-sonnet-5-5}
       AI_COLLECTIONS_ENABLED: ${AI_COLLECTIONS_ENABLED:-false}
       AI_COLLECTIONS_MODEL: ${AI_COLLECTIONS_MODEL:-claude-sonnet-5-5}
+      AI_GENRES_ENABLED: ${AI_GENRES_ENABLED:-false}
+      AI_GENRES_MODEL: ${AI_GENRES_MODEL:-claude-sonnet-5-5}
+      AI_GENRES_CRON: ${AI_GENRES_CRON-0 3 * * 1}
+      AI_GENRES_BATCH: ${AI_GENRES_BATCH:-300}
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,6 +115,10 @@ services:
       AI_DESCRIPTIONS_MODEL: ${AI_DESCRIPTIONS_MODEL:-claude-sonnet-5-5}
       AI_COLLECTIONS_ENABLED: ${AI_COLLECTIONS_ENABLED:-false}
       AI_COLLECTIONS_MODEL: ${AI_COLLECTIONS_MODEL:-claude-sonnet-5-5}
+      AI_GENRES_ENABLED: ${AI_GENRES_ENABLED:-false}
+      AI_GENRES_MODEL: ${AI_GENRES_MODEL:-claude-sonnet-5-5}
+      AI_GENRES_CRON: ${AI_GENRES_CRON-0 3 * * 1}
+      AI_GENRES_BATCH: ${AI_GENRES_BATCH:-300}
     depends_on:
       postgres:
         condition: service_healthy
