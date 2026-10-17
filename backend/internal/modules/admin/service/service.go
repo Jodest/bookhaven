@@ -68,6 +68,10 @@ type Service struct {
 	// authorFilmSyncer syncs films about a freshly imported author (see
 	// author_import.go). Nil unless configured via WithAuthorFilmSyncer.
 	authorFilmSyncer AuthorFilmSyncer
+	// collectionRecomputer refreshes automatic curated collections switched
+	// by a genre merge (see merge_genre.go). Nil unless configured via
+	// WithCollectionRecomputer.
+	collectionRecomputer CollectionRecomputer
 	// genreSource backs the Wikidata genre search and import (see
 	// genre_import.go). Nil unless configured via WithGenreWikidataSource.
 	genreSource GenreWikidataSource

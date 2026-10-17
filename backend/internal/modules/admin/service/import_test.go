@@ -910,8 +910,16 @@ func (f *fakeImportRepository) SetBookStatus(ctx context.Context, id uuid.UUID, 
 	return false, nil
 }
 
-func (f *fakeImportRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (int64, error) {
-	return 0, nil
+func (f *fakeImportRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (repository.GenreMergeResult, error) {
+	return repository.GenreMergeResult{}, nil
+}
+
+func (f *fakeImportRepository) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (repository.GenreMergeResult, error) {
+	return repository.GenreMergeResult{}, nil
+}
+
+func (f *fakeImportRepository) PreviewGenreMerge(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (repository.GenreMergePreview, error) {
+	return repository.GenreMergePreview{}, nil
 }
 
 func (f *fakeImportRepository) ListBooksForModeration(ctx context.Context, filter repository.BookModerationFilter) ([]catalogDomain.Book, int64, error) {

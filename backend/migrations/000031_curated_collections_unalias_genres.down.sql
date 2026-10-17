@@ -1,0 +1,1 @@
+-- No-op: the previous (stale) genre link of the switched collections is not restorable.

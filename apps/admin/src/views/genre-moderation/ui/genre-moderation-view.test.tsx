@@ -25,6 +25,25 @@ vi.mock('@/entities/genre', async (importOriginal) => ({
 }));
 
 vi.mock('@/features/merge-genre', () => ({
+  BatchMergeGenresDialog: (props: {
+    genres: AdminGenre[];
+    onMerged: (result: unknown, targetName: string) => void;
+  }) => (
+    <div data-testid="batch-merge-dialog">
+      {props.genres.map((g) => g.name).join(',')}
+      <button
+        type="button"
+        onClick={() =>
+          props.onMerged(
+            { genre: props.genres[0], sources_merged: 2, books_reassigned: 5, collections_switched: 1 },
+            'роман'
+          )
+        }
+      >
+        finish-batch
+      </button>
+    </div>
+  ),
   MergeGenreDialog: (props: { source: AdminGenre; initialCanonical?: AdminGenre }) => (
     <div data-testid="merge-dialog">
       {props.source.name}|{props.initialCanonical?.name ?? ''}
@@ -310,6 +329,27 @@ describe('GenreModerationView', () => {
 
     fireEvent.click(within(rowOf('эпос')).getByRole('button', { name: 'Слить' }));
     expect(screen.getByTestId('merge-dialog').textContent).toBe('эпос|');
+  });
+
+  it('offers "Слить выбранные" for the selection and opens the batch dialog in queue order', async () => {
+    renderView();
+    await waitFor(() => expect(screen.getByText('Война и мир')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /Слить выбранные/ })).not.toBeInTheDocument();
+
+    // Select in reverse order: the dialog still gets the queue order.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Выбрать «эпос»' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Выбрать «романы»' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Слить выбранные (2)' }));
+    expect(screen.getByTestId('batch-merge-dialog')).toHaveTextContent('романы,эпос');
+
+    fireEvent.click(screen.getByRole('button', { name: 'finish-batch' }));
+    await waitFor(() =>
+      expect(
+        screen.getByText('Слито жанров: 2 в «роман». Перенесено книг: 5. Переключено подборок: 1.')
+      ).toBeInTheDocument()
+    );
+    expect(screen.queryByTestId('batch-merge-dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Слить выбранные/ })).not.toBeInTheDocument();
   });
 
   it('shows the pending empty state', async () => {

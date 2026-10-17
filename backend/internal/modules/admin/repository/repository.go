@@ -150,7 +150,16 @@ type Repository interface {
 	// MergeGenres turns sourceID into an alias of targetID in one
 	// transaction (see genre_moderation.go). Returns gorm.ErrRecordNotFound,
 	// changing nothing, when either genre is missing or already an alias.
-	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (booksReassigned int64, err error)
+	// Curated collections linked to the source are re-pointed to the target
+	// in the same transaction.
+	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (GenreMergeResult, error)
+	// MergeGenresBatch merges every source into targetID in one transaction,
+	// in sourceIDs order. Returns gorm.ErrRecordNotFound, changing nothing,
+	// when any source or the target is missing or already an alias.
+	MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (GenreMergeResult, error)
+	// PreviewGenreMerge is the read-only summary of MergeGenresBatch. Returns
+	// gorm.ErrRecordNotFound when any genre is missing or already an alias.
+	PreviewGenreMerge(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (GenreMergePreview, error)
 
 	// Book moderation queue (docs/features/book-moderation-queue.md).
 	// ListBooksForModeration lists books matching filter, newest first,

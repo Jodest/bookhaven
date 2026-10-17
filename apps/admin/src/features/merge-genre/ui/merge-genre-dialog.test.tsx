@@ -6,12 +6,14 @@ import { MergeGenreDialog } from './merge-genre-dialog';
 
 const listMock = vi.fn();
 const mergeMock = vi.fn();
+const previewMock = vi.fn();
 
 vi.mock('@/entities/genre', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/entities/genre')>()),
   adminGenresApi: {
     list: (...args: unknown[]) => listMock(...args),
     merge: (...args: unknown[]) => mergeMock(...args),
+    mergePreview: (...args: unknown[]) => previewMock(...args),
   },
 }));
 
@@ -48,6 +50,8 @@ describe('MergeGenreDialog', () => {
   beforeEach(() => {
     listMock.mockReset();
     mergeMock.mockReset();
+    previewMock.mockReset();
+    previewMock.mockResolvedValue({ books_reassigned: 3, collections: [] });
     listMock.mockResolvedValue({ items: [source, target, rejectedTarget], total: 3, page: 1, limit: 20 });
   });
 
@@ -64,7 +68,7 @@ describe('MergeGenreDialog', () => {
     await pickTarget('роман');
     expect(listMock).toHaveBeenCalledWith({ search: 'ром', limit: 20 });
 
-    expect(screen.getByRole('button', { name: 'Слить «романы» в «роман»' })).toBeEnabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Слить «романы» в «роман»' })).toBeEnabled());
     expect(
       screen.getByText(
         'Книги жанра «романы» будут перенесены в «роман». «романы» исчезнет из списков, но его название и QID продолжат указывать на «роман» при будущих импортах. Действие необратимо.'
@@ -92,19 +96,59 @@ describe('MergeGenreDialog', () => {
   });
 
   it('preselects initialCanonical, merges and invalidates genres, books and dashboard', async () => {
-    mergeMock.mockResolvedValue({ genre: { ...target, wikidata_qid: 'Q123' }, books_reassigned: 2 });
+    mergeMock.mockResolvedValue({
+      genre: { ...target, wikidata_qid: 'Q123' },
+      books_reassigned: 2,
+      collections_switched: 1,
+    });
     const { onMerged, invalidateSpy } = renderDialog(target);
 
     expect(screen.queryByLabelText('Поиск целевого жанра')).not.toBeInTheDocument();
     const confirmButton = screen.getByRole('button', { name: 'Слить «романы» в «роман»' });
-    expect(confirmButton).toBeEnabled();
+    await waitFor(() => expect(confirmButton).toBeEnabled());
 
     fireEvent.click(confirmButton);
-    await waitFor(() => expect(onMerged).toHaveBeenCalledWith(2));
+    await waitFor(() => expect(onMerged).toHaveBeenCalledWith(2, 1));
     expect(mergeMock).toHaveBeenCalledWith('src-1', 'tgt-1');
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'collections'] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'genres'] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'books'] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'dashboard'] });
+  });
+
+  it('previews books and switched collections and gates confirm on the preview', async () => {
+    let resolvePreview: (v: unknown) => void = () => {};
+    previewMock.mockReturnValue(new Promise((resolve) => (resolvePreview = resolve)));
+    renderDialog(target);
+
+    expect(screen.getByText('Считаем последствия…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Слить «романы» в «роман»' })).toBeDisabled();
+    expect(previewMock).toHaveBeenCalledWith(['src-1'], 'tgt-1');
+
+    resolvePreview({
+      books_reassigned: 4,
+      collections: [
+        {
+          id: 'c1',
+          title: 'Лучшие романы',
+          slug: 'luchshie-romany',
+          kind: 'auto',
+          is_published: true,
+          source_genre: { id: 'src-1', name: 'романы' },
+        },
+      ],
+    });
+    expect(await screen.findByText('Будет перенесено книг: 4.')).toBeInTheDocument();
+    expect(screen.getByText('Подборка «Лучшие романы» будет переключена на жанр «роман».')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Слить «романы» в «роман»' })).toBeEnabled());
+  });
+
+  it('shows the merge error text for a failed preview and keeps confirm disabled', async () => {
+    previewMock.mockRejectedValue(new ApiError(404, 'Not Found', 'genre not found'));
+    renderDialog(target);
+
+    expect(await screen.findByText(/Один из жанров не найден/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Слить «романы» в «роман»' })).toBeDisabled();
   });
 
   it('lets the admin replace a preselected target', () => {
@@ -118,7 +162,9 @@ describe('MergeGenreDialog', () => {
     mergeMock.mockRejectedValue(new ApiError(400, 'Bad Request', 'cannot merge a genre into itself'));
     const { onMerged } = renderDialog(target);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Слить «романы» в «роман»' }));
+    const confirmButton = screen.getByRole('button', { name: 'Слить «романы» в «роман»' });
+    await waitFor(() => expect(confirmButton).toBeEnabled());
+    fireEvent.click(confirmButton);
     await waitFor(() => expect(screen.getByText('Нельзя слить жанр с самим собой.')).toBeInTheDocument());
     expect(onMerged).not.toHaveBeenCalled();
   });
@@ -127,7 +173,9 @@ describe('MergeGenreDialog', () => {
     mergeMock.mockRejectedValue(new ApiError(404, 'Not Found', 'genre not found'));
     const { onMerged } = renderDialog(target);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Слить «романы» в «роман»' }));
+    const confirmButton = screen.getByRole('button', { name: 'Слить «романы» в «роман»' });
+    await waitFor(() => expect(confirmButton).toBeEnabled());
+    fireEvent.click(confirmButton);
     await waitFor(() => expect(screen.getByText(/Один из жанров не найден/)).toBeInTheDocument());
     expect(onMerged).not.toHaveBeenCalled();
   });

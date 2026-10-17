@@ -11,7 +11,7 @@ import {
 import { Button } from '@bookhaven/ui';
 import { adminGenresApi, GenreStatusBadge } from '@/entities/genre';
 import { SampleBooksCell } from '@/entities/book';
-import { MergeGenreDialog } from '@/features/merge-genre';
+import { BatchMergeGenresDialog, MergeGenreDialog } from '@/features/merge-genre';
 import {
   bulkGenreStatusConfirmText,
   bulkGenreStatusSummary,
@@ -64,18 +64,23 @@ const buildParams = ({ status, search, page, limit, filters }: ModerationQueueSt
   limit,
 });
 
-interface MergeTarget {
-  source: AdminGenre;
-  initialCanonical?: AdminGenre;
-}
+// The open merge dialog: a single merge (from a row or a hint) or a batch
+// merge of the selected rows.
+type MergeOverlay =
+  | { kind: 'single'; source: AdminGenre; initialCanonical?: AdminGenre }
+  | { kind: 'batch'; genres: AdminGenre[] };
+
+// " Переключено подборок: N." when a merge switched collections, else "".
+const switchedSuffix = (collectionsSwitched: number) =>
+  collectionsSwitched > 0 ? ` Переключено подборок: ${collectionsSwitched}.` : '';
 
 export function GenreModerationView() {
-  const [mergeTarget, setMergeTarget] = useState<MergeTarget | null>(null);
+  const [overlay, setOverlay] = useState<MergeOverlay | null>(null);
   const statusMutation = useGenreStatusMutation();
 
   const openMerge = (ctx: ModerationRowContext, source: AdminGenre, initialCanonical?: AdminGenre) => {
     ctx.notify(null);
-    setMergeTarget({ source, initialCanonical });
+    setOverlay({ kind: 'single', source, initialCanonical });
   };
 
   const columns: ModerationQueueColumn<AdminGenreQueueItem>[] = [
@@ -142,24 +147,54 @@ export function GenreModerationView() {
           Слить
         </Button>
       )}
-      renderOverlay={(controls) =>
-        mergeTarget && (
+      renderBulkActions={(selected, controls) => (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={statusMutation.isPending}
+          onClick={() => {
+            controls.notify(null);
+            setOverlay({ kind: 'batch', genres: selected.map((i) => i.genre) });
+          }}
+        >
+          Слить выбранные ({selected.length})
+        </Button>
+      )}
+      renderOverlay={(controls) => {
+        if (!overlay) return null;
+        if (overlay.kind === 'batch') {
+          return (
+            <BatchMergeGenresDialog
+              genres={overlay.genres}
+              onClose={() => setOverlay(null)}
+              onMerged={(result, targetName) => {
+                setOverlay(null);
+                controls.clearSelection();
+                controls.notify({
+                  type: 'success',
+                  message: `Слито жанров: ${result.sources_merged} в «${targetName}». Перенесено книг: ${result.books_reassigned}.${switchedSuffix(result.collections_switched)}`,
+                });
+              }}
+            />
+          );
+        }
+        return (
           <MergeGenreDialog
-            source={mergeTarget.source}
-            initialCanonical={mergeTarget.initialCanonical}
-            onClose={() => setMergeTarget(null)}
-            onMerged={(booksReassigned) => {
-              const name = mergeTarget.source.name;
-              setMergeTarget(null);
+            source={overlay.source}
+            initialCanonical={overlay.initialCanonical}
+            onClose={() => setOverlay(null)}
+            onMerged={(booksReassigned, collectionsSwitched) => {
+              const name = overlay.source.name;
+              setOverlay(null);
               controls.clearSelection();
               controls.notify({
                 type: 'success',
-                message: `Жанр «${name}» слит. Перенесено книг: ${booksReassigned}.`,
+                message: `Жанр «${name}» слит. Перенесено книг: ${booksReassigned}.${switchedSuffix(collectionsSwitched)}`,
               });
             }}
           />
-        )
-      }
+        );
+      }}
       copy={{
         title: 'Модерация жанров',
         searchPlaceholder: 'Поиск по названию',

@@ -177,8 +177,145 @@ func (r *GormRepository) SetGenreStatus(ctx context.Context, id uuid.UUID, statu
 	return result.RowsAffected > 0, nil
 }
 
+// GenreMergeResult is the outcome of MergeGenres / MergeGenresBatch.
+type GenreMergeResult struct {
+	BooksReassigned     int64
+	SourcesMerged       int
+	CollectionsSwitched int
+	// AutoCollectionIDs are the switched collections with kind = 'auto'.
+	AutoCollectionIDs []uuid.UUID
+	// CarriedQIDFrom is the source whose QID moved to the target, if any.
+	CarriedQIDFrom *uuid.UUID
+	// KeptQIDs maps a source id to the QID it kept on its alias because the
+	// target already had one.
+	KeptQIDs map[uuid.UUID]string
+}
+
+// GenreMergeCollection is a curated collection a merge would switch.
+type GenreMergeCollection struct {
+	ID              uuid.UUID
+	Title           string
+	Slug            string
+	Kind            string
+	IsPublished     bool
+	SourceGenreID   uuid.UUID
+	SourceGenreName string
+}
+
+// GenreMergePreview is the read-only summary of a (batch) genre merge.
+type GenreMergePreview struct {
+	BooksReassigned int64
+	Collections     []GenreMergeCollection
+}
+
+type genreMergeLockRow struct {
+	ID          uuid.UUID
+	WikidataQID *string `gorm:"column:wikidata_qid"`
+}
+
+type switchedCollection struct {
+	ID   uuid.UUID
+	Kind string
+}
+
+// lockGenresForMerge re-reads the non-alias genres among ids (locked FOR
+// UPDATE on Postgres, sorted by id so concurrent merges lock in the same
+// order). Returns gorm.ErrRecordNotFound unless every id is found.
+func lockGenresForMerge(tx *gorm.DB, ids []uuid.UUID) (map[uuid.UUID]*string, error) {
+	lock := ""
+	if tx.Dialector.Name() == "postgres" {
+		lock = " FOR UPDATE"
+	}
+	var rows []genreMergeLockRow
+	if err := tx.Raw("SELECT id, wikidata_qid FROM genres WHERE id IN ? AND merged_into_id IS NULL ORDER BY id"+lock,
+		ids).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	qids := make(map[uuid.UUID]*string, len(rows))
+	for i := range rows {
+		qids[rows[i].ID] = rows[i].WikidataQID
+	}
+	if len(qids) != countDistinct(ids) {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return qids, nil
+}
+
+func countDistinct(ids []uuid.UUID) int {
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	for _, id := range ids {
+		seen[id] = struct{}{}
+	}
+	return len(seen)
+}
+
 // MergeGenres implements Repository.MergeGenres as a single transaction
-// (genre-moderation-queue.md rule 4):
+// (genre-moderation-queue.md rule 4), see mergeGenreInTx for the steps.
+//
+// Both rows are re-read inside the transaction (locked FOR UPDATE on
+// Postgres); a missing or alias row returns gorm.ErrRecordNotFound with
+// nothing changed.
+func (r *GormRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (GenreMergeResult, error) {
+	return r.mergeGenres(ctx, []uuid.UUID{sourceID}, targetID)
+}
+
+// MergeGenresBatch implements Repository.MergeGenresBatch: all rows are
+// locked up front, then each source is merged in request order with the
+// running target QID, so the first source with a QID wins the carry-over.
+func (r *GormRepository) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (GenreMergeResult, error) {
+	return r.mergeGenres(ctx, sourceIDs, targetID)
+}
+
+func (r *GormRepository) mergeGenres(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (GenreMergeResult, error) {
+	for _, id := range sourceIDs {
+		if id == targetID {
+			return GenreMergeResult{}, gorm.ErrRecordNotFound
+		}
+	}
+	var res GenreMergeResult
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res = GenreMergeResult{}
+		ids := append(append([]uuid.UUID{}, sourceIDs...), targetID)
+		qids, err := lockGenresForMerge(tx, ids)
+		if err != nil {
+			return err
+		}
+		targetQID := qids[targetID]
+		for _, sourceID := range sourceIDs {
+			sourceQID := qids[sourceID]
+			books, carried, collections, err := mergeGenreInTx(tx, sourceID, targetID, targetQID, sourceQID)
+			if err != nil {
+				return err
+			}
+			res.BooksReassigned += books
+			res.SourcesMerged++
+			if carried {
+				id := sourceID
+				res.CarriedQIDFrom = &id
+				targetQID = sourceQID
+			} else if sourceQID != nil {
+				if res.KeptQIDs == nil {
+					res.KeptQIDs = map[uuid.UUID]string{}
+				}
+				res.KeptQIDs[sourceID] = *sourceQID
+			}
+			res.CollectionsSwitched += len(collections)
+			for _, c := range collections {
+				if c.Kind == "auto" {
+					res.AutoCollectionIDs = append(res.AutoCollectionIDs, c.ID)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return GenreMergeResult{}, err
+	}
+	return res, nil
+}
+
+// mergeGenreInTx merges one source into the target inside an open
+// transaction whose rows are already locked:
 //  1. Move book_genres rows the target does not already have to the
 //     target (their count is booksReassigned).
 //  2. Delete the remaining source rows (books already linked to both).
@@ -188,76 +325,108 @@ func (r *GormRepository) SetGenreStatus(ctx context.Context, id uuid.UUID, statu
 //     source, then set it on the target (this order keeps the unique
 //     wikidata_qid index happy). Otherwise the source keeps its QID and
 //     the alias resolves it.
-//  5. Turn the source into an alias: merged_into_id = target, status =
+//  5. Re-point curated collections linked to the source to the target.
+//  6. Turn the source into an alias: merged_into_id = target, status =
 //     rejected. Name, slug and any remaining QID stay.
-//
-// Both rows are re-read inside the transaction (locked FOR UPDATE on
-// Postgres); a missing or alias row returns gorm.ErrRecordNotFound with
-// nothing changed.
-func (r *GormRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (int64, error) {
-	var booksReassigned int64
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		lock := ""
-		if tx.Dialector.Name() == "postgres" {
-			lock = " FOR UPDATE"
-		}
-		var rows []struct {
-			ID          uuid.UUID
-			WikidataQID *string `gorm:"column:wikidata_qid"`
-		}
-		if err := tx.Raw("SELECT id, wikidata_qid FROM genres WHERE id IN ? AND merged_into_id IS NULL ORDER BY id"+lock,
-			[]uuid.UUID{sourceID, targetID}).Scan(&rows).Error; err != nil {
-			return err
-		}
-		var source, target *string
-		found := 0
-		for i := range rows {
-			switch rows[i].ID {
-			case sourceID:
-				source = rows[i].WikidataQID
-				found++
-			case targetID:
-				target = rows[i].WikidataQID
-				found++
-			}
-		}
-		if found != 2 || sourceID == targetID {
-			return gorm.ErrRecordNotFound
-		}
-
-		result := tx.Exec(`
-			UPDATE book_genres
-			SET genre_id = ?
-			WHERE genre_id = ?
-			AND book_id NOT IN (SELECT book_id FROM book_genres WHERE genre_id = ?)
-		`, targetID, sourceID, targetID)
-		if result.Error != nil {
-			return result.Error
-		}
-		booksReassigned = result.RowsAffected
-
-		if err := tx.Exec("DELETE FROM book_genres WHERE genre_id = ?", sourceID).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Exec("UPDATE genres SET merged_into_id = ? WHERE merged_into_id = ?", targetID, sourceID).Error; err != nil {
-			return err
-		}
-
-		if source != nil && target == nil {
-			if err := tx.Exec("UPDATE genres SET wikidata_qid = NULL WHERE id = ?", sourceID).Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("UPDATE genres SET wikidata_qid = ? WHERE id = ?", *source, targetID).Error; err != nil {
-				return err
-			}
-		}
-
-		return tx.Exec("UPDATE genres SET merged_into_id = ?, status = ? WHERE id = ?",
-			targetID, catalogDomain.GenreStatusRejected, sourceID).Error
-	})
-	if err != nil {
-		return 0, err
+func mergeGenreInTx(tx *gorm.DB, sourceID, targetID uuid.UUID, targetQID, sourceQID *string) (int64, bool, []switchedCollection, error) {
+	result := tx.Exec(`
+		UPDATE book_genres
+		SET genre_id = ?
+		WHERE genre_id = ?
+		AND book_id NOT IN (SELECT book_id FROM book_genres WHERE genre_id = ?)
+	`, targetID, sourceID, targetID)
+	if result.Error != nil {
+		return 0, false, nil, result.Error
 	}
-	return booksReassigned, nil
+	booksReassigned := result.RowsAffected
+
+	if err := tx.Exec("DELETE FROM book_genres WHERE genre_id = ?", sourceID).Error; err != nil {
+		return 0, false, nil, err
+	}
+
+	if err := tx.Exec("UPDATE genres SET merged_into_id = ? WHERE merged_into_id = ?", targetID, sourceID).Error; err != nil {
+		return 0, false, nil, err
+	}
+
+	carried := false
+	if sourceQID != nil && targetQID == nil {
+		if err := tx.Exec("UPDATE genres SET wikidata_qid = NULL WHERE id = ?", sourceID).Error; err != nil {
+			return 0, false, nil, err
+		}
+		if err := tx.Exec("UPDATE genres SET wikidata_qid = ? WHERE id = ?", *sourceQID, targetID).Error; err != nil {
+			return 0, false, nil, err
+		}
+		carried = true
+	}
+
+	var collections []switchedCollection
+	if err := tx.Raw("SELECT id, kind FROM curated_collections WHERE genre_id = ?", sourceID).Scan(&collections).Error; err != nil {
+		return 0, false, nil, err
+	}
+	if len(collections) > 0 {
+		if err := tx.Exec("UPDATE curated_collections SET genre_id = ?, updated_at = ? WHERE genre_id = ?",
+			targetID, time.Now().UTC(), sourceID).Error; err != nil {
+			return 0, false, nil, err
+		}
+	}
+
+	if err := tx.Exec("UPDATE genres SET merged_into_id = ?, status = ? WHERE id = ?",
+		targetID, catalogDomain.GenreStatusRejected, sourceID).Error; err != nil {
+		return 0, false, nil, err
+	}
+	return booksReassigned, carried, collections, nil
+}
+
+// PreviewGenreMerge implements Repository.PreviewGenreMerge; it only reads.
+func (r *GormRepository) PreviewGenreMerge(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (GenreMergePreview, error) {
+	preview := GenreMergePreview{Collections: []GenreMergeCollection{}}
+	for _, id := range sourceIDs {
+		if id == targetID {
+			return GenreMergePreview{}, gorm.ErrRecordNotFound
+		}
+	}
+	db := r.db.WithContext(ctx)
+
+	ids := append(append([]uuid.UUID{}, sourceIDs...), targetID)
+	var found []uuid.UUID
+	if err := db.Raw("SELECT id FROM genres WHERE id IN ? AND merged_into_id IS NULL", ids).Scan(&found).Error; err != nil {
+		return GenreMergePreview{}, err
+	}
+	if len(found) != countDistinct(ids) {
+		return GenreMergePreview{}, gorm.ErrRecordNotFound
+	}
+
+	if err := db.Raw(`
+		SELECT COUNT(DISTINCT book_id) FROM book_genres
+		WHERE genre_id IN ?
+		AND book_id NOT IN (SELECT book_id FROM book_genres WHERE genre_id = ?)
+	`, sourceIDs, targetID).Scan(&preview.BooksReassigned).Error; err != nil {
+		return GenreMergePreview{}, err
+	}
+
+	var rows []struct {
+		ID          uuid.UUID
+		Title       string
+		Slug        string
+		Kind        string
+		IsPublished bool
+		GenreID     uuid.UUID
+		GenreName   string
+	}
+	if err := db.Raw(`
+		SELECT c.id, c.title, c.slug, c.kind, c.is_published, g.id AS genre_id, g.name AS genre_name
+		FROM curated_collections c
+		JOIN genres g ON g.id = c.genre_id
+		WHERE c.genre_id IN ?
+		ORDER BY c.title, c.id
+	`, sourceIDs).Scan(&rows).Error; err != nil {
+		return GenreMergePreview{}, err
+	}
+	for _, row := range rows {
+		preview.Collections = append(preview.Collections, GenreMergeCollection{
+			ID: row.ID, Title: row.Title, Slug: row.Slug, Kind: row.Kind,
+			IsPublished: row.IsPublished, SourceGenreID: row.GenreID, SourceGenreName: row.GenreName,
+		})
+	}
+	return preview, nil
 }
