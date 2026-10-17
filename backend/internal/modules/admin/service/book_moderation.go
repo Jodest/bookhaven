@@ -66,6 +66,9 @@ func (s *Service) BulkSetBookStatus(ctx context.Context, ids []uuid.UUID, status
 			report.Updated++
 		}
 	}
+	if report.Updated > 0 {
+		s.invalidateSimilar(ctx)
+	}
 	return report, nil
 }
 

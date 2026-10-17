@@ -66,6 +66,7 @@ func (s *Service) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID)
 		}
 		return nil, 0, 0, uuid.Nil, fmt.Errorf("merge genres: %w", err)
 	}
+	s.invalidateSimilar(ctx)
 	s.recomputeSwitchedCollections(ctx, merged.AutoCollectionIDs)
 
 	// Mirror the repository's in-transaction QID carry-over.

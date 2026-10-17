@@ -98,6 +98,7 @@ func (s *Service) UndoGenreMerge(ctx context.Context, mergeID, actorID uuid.UUID
 	if err != nil {
 		return nil, mapGenreMergeUndoError(err, "undo genre merge")
 	}
+	s.invalidateSimilar(ctx)
 	s.recomputeSwitchedCollections(ctx, res.AutoCollectionIDs)
 
 	// Re-read the target: the QID may have been taken back from it.

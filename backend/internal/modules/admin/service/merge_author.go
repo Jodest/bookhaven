@@ -66,6 +66,7 @@ func (s *Service) MergeAuthors(ctx context.Context, duplicateID, canonicalID uui
 	if err != nil {
 		return nil, 0, fmt.Errorf("merge authors: %w", err)
 	}
+	s.invalidateSimilar(ctx)
 
 	// Mirror the repository's in-transaction identity carry-over.
 	if dup.ExternalSource != nil && dup.ExternalID != nil {

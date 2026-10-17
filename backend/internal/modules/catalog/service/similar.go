@@ -26,6 +26,9 @@ const (
 	genrePool       = 100
 	perAuthorCap    = 2
 	similarCacheTTL = 6 * time.Hour
+	// similarCacheEmptyTTL is short so an empty list (typically a book whose
+	// neighbours are not published yet) heals quickly.
+	similarCacheEmptyTTL = 5 * time.Minute
 )
 
 // Score weights. score = AuthorWeight*authorMatch + GenreWeight*jaccard +
@@ -45,8 +48,13 @@ const (
 // Implementations must be fail-fast; the service treats any error as a miss
 // (Get) or ignores it (Set).
 type SimilarCache interface {
-	Get(ctx context.Context, bookID uuid.UUID) (ids []uuid.UUID, ok bool, err error)
-	Set(ctx context.Context, bookID uuid.UUID, ids []uuid.UUID, ttl time.Duration) error
+	// Generation returns the current invalidation generation. The service
+	// reads it once per request, before Get and the live compute, and passes
+	// it to Get and Set so that a list computed from pre-invalidation data
+	// can only land under the old (unreachable) generation.
+	Generation(ctx context.Context) (int64, error)
+	Get(ctx context.Context, gen int64, bookID uuid.UUID) (ids []uuid.UUID, ok bool, err error)
+	Set(ctx context.Context, gen int64, bookID uuid.UUID, ids []uuid.UUID, ttl time.Duration) error
 }
 
 // similarScore computes the ranking score of one candidate.
@@ -226,10 +234,17 @@ func (s *Service) ListSimilarBooks(ctx context.Context, bookID uuid.UUID, limit 
 		ids = pre
 	}
 	cached := len(ids) > 0
+	var gen int64
+	genOK := false
 	if !cached && s.similarCache != nil {
-		cachedIDs, ok, cacheErr := s.similarCache.Get(ctx, bookID)
-		if cacheErr == nil && ok {
-			ids, cached = cachedIDs, true
+		// A failed generation read disables both read and write for this
+		// request (the list is just computed live).
+		if g, genErr := s.similarCache.Generation(ctx); genErr == nil {
+			gen, genOK = g, true
+			cachedIDs, ok, cacheErr := s.similarCache.Get(ctx, gen, bookID)
+			if cacheErr == nil && ok {
+				ids, cached = cachedIDs, true
+			}
 		}
 	}
 	if !cached {
@@ -238,9 +253,13 @@ func (s *Service) ListSimilarBooks(ctx context.Context, bookID uuid.UUID, limit 
 			return nil, fmt.Errorf("list similar candidates: %w", err)
 		}
 		ids = rankSimilar(len(src.GenreIDs), src.AuthorIDs, cands, MaxSimilarLimit)
-		if s.similarCache != nil {
+		if s.similarCache != nil && genOK {
 			// A failed cache write must never fail the request.
-			_ = s.similarCache.Set(ctx, bookID, ids, similarCacheTTL)
+			ttl := similarCacheTTL
+			if len(ids) == 0 {
+				ttl = similarCacheEmptyTTL
+			}
+			_ = s.similarCache.Set(ctx, gen, bookID, ids, ttl)
 		}
 	}
 

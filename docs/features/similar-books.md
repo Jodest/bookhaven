@@ -220,7 +220,17 @@ Use `db.Raw(sql, map[string]interface{}{...}).Scan(&rows)` with GORM named param
 
 Wiring in `cmd/api/main.go`: reuse the existing `redisClient` (the plain go-redis client added for rate limiting in #158). Call `catalogservice.NewService(catalogRepo, catalogservice.WithSimilarCache(catalogrepository.NewRedisSimilarCache(redisClient)))`. Do not add a new client or new config.
 
-### Cache invalidation: TTL only (recommended)
+### Cache invalidation: empty-list TTL + generation counter (#490)
+
+Update after #490: the "TTL only" decision below proved too weak. An empty list was cached for 6h while an author's books were still being published from the moderation queue, so a book showed no similar books for hours. Two changes:
+
+- **Short TTL for empty lists.** `ListSimilarBooks` caches a non-empty list for 6h (`similarCacheTTL`) and an empty list for 5 minutes (`similarCacheEmptyTTL`).
+- **Generation-based invalidation.** One book change affects the lists of many other books, so single-key deletion is not enough. Redis holds a counter `similar:v1:gen`. Entry keys embed the generation: `similar:v1:g<gen>:<book_id>` (a missing counter is generation 0). `RedisSimilarCache.Invalidate` does `INCR`, which makes every older entry unreachable; they expire by their own TTL. A request costs one extra `GET` (the generation). Redis errors never fail a request.
+- **Triggers.** The admin service (`admin/service`, interface `SimilarInvalidator`, option `WithSimilarInvalidator`, nil-safe) calls `Invalidate` after a successful write: `CreateBook` (only when created published), `UpdateBook`, `UpdateAuthor`, `UpdateGenre`, `BulkSetBookStatus`, `BulkSetAuthorStatus`, `BulkSetGenreStatus` (when at least one row was updated; the AI genre rejection goes through it), `MergeGenres`, `MergeGenresBatch`, `UndoGenreMerge`, `MergeAuthors`, and the bulk/CSV `ImportBooks` (per created published row, after its transaction commits; the transaction-scoped service copy has no invalidator, so nothing fires before commit or on rollback). A failed invalidation is logged and never fails the admin write. Wired in `cmd/api/main.go` and `cmd/worker/main.go` (harvest creates books through the admin service).
+- The precomputed `book_similarities` list (stage 2) is not touched.
+- **No stale write after a bump.** `ListSimilarBooks` reads the generation once (`SimilarCache.Generation`) before the cache read and the live compute, and passes that same value to `Get` and `Set`. A list computed from pre-commit data and written after a concurrent `Invalidate` therefore lands under the old, unreachable generation. If the generation read fails, the request skips both cache read and write and just computes live.
+
+### Cache invalidation: TTL only (original decision, superseded above)
 
 There are no explicit hooks. This is acceptable because:
 - Only the **ranked ID list** is cached, never book payloads. Covers, titles, ratings and authors are re-read from the DB on every request, so admin edits and new ratings show up immediately.
