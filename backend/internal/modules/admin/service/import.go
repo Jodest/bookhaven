@@ -226,6 +226,11 @@ func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStat
 		}
 		return 0, importRowCreated{}, err
 	}
+	// After the commit (CreateBook inside the tx has no invalidator). Only
+	// a published row changes the visible similar-books lists.
+	if input.Status == nil || *input.Status == catalogDomain.BookStatusPublished {
+		s.invalidateSimilar(ctx)
+	}
 	return importOutcomeCreated, created, nil
 }
 

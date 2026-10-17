@@ -102,10 +102,13 @@ func main() {
 	// ranking cache (see docs/features/similar-books.md).
 	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
 	defer redisClient.Close()
+	// Shared by the catalog service (reads/writes) and the admin service
+	// (invalidation after book, author and genre writes).
+	similarCache := catalogrepository.NewRedisSimilarCache(redisClient)
 
 	// Services
 	catalogService := catalogservice.NewService(catalogRepo,
-		catalogservice.WithSimilarCache(catalogrepository.NewRedisSimilarCache(redisClient)),
+		catalogservice.WithSimilarCache(similarCache),
 		catalogservice.WithPrecomputedSimilar(catalogrepository.NewGormSimilarityRepository(db)))
 	// bookdata.NewOpenLibraryClient() is constructed with no options, mirroring
 	// backend/cmd/worker/main.go's own zero-config construction (see
@@ -130,6 +133,7 @@ func main() {
 	// collections it switches.
 	curatedService := curatedservice.NewService(curatedrepository.NewGormRepository(db)).WithLogger(logger)
 	adminService := adminservice.NewService(adminRepo,
+		adminservice.WithSimilarInvalidator(similarCache),
 		adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()),
 		adminservice.WithAuthorFetcher(wikidataClient),
 		adminservice.WithAuthorEnrichmentSource(wikidataClient),

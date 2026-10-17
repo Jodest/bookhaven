@@ -75,6 +75,11 @@ type Service struct {
 	// genreSource backs the Wikidata genre search and import (see
 	// genre_import.go). Nil unless configured via WithGenreWikidataSource.
 	genreSource GenreWikidataSource
+	// similarInvalidator drops the cached similar-books lists after writes
+	// that change book visibility or composition (see
+	// similar_invalidate.go). Nil unless configured via
+	// WithSimilarInvalidator.
+	similarInvalidator SimilarInvalidator
 	// genreClassifyTimeout bounds each genre classification call; zero
 	// means defaultGenreClassifyTimeout (tests shorten it).
 	genreClassifyTimeout time.Duration
@@ -149,6 +154,11 @@ func NewService(repo repository.Repository, opts ...Option) *Service {
 func (s *Service) withRepo(repo repository.Repository) *Service {
 	c := *s
 	c.repo = repo
+	// The copy runs inside a transaction: invalidating the similar-books
+	// cache before commit would let a concurrent request cache a list built
+	// from pre-commit data under the new generation. Callers invalidate
+	// after the transaction commits.
+	c.similarInvalidator = nil
 	return &c
 }
 
@@ -339,6 +349,9 @@ func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDoma
 		}
 		return nil, fmt.Errorf("create book: %w", err)
 	}
+	if status == catalogDomain.BookStatusPublished {
+		s.invalidateSimilar(ctx)
+	}
 
 	return s.repo.GetBookByID(ctx, book.ID)
 }
@@ -435,6 +448,7 @@ func (s *Service) UpdateBook(ctx context.Context, id uuid.UUID, input BookInput)
 		}
 		return nil, fmt.Errorf("update book: %w", err)
 	}
+	s.invalidateSimilar(ctx)
 
 	return s.repo.GetBookByID(ctx, id)
 }
@@ -682,6 +696,7 @@ func (s *Service) UpdateAuthor(ctx context.Context, id uuid.UUID, input AuthorIn
 		}
 		return nil, fmt.Errorf("update author: %w", err)
 	}
+	s.invalidateSimilar(ctx)
 
 	return author, nil
 }
@@ -859,6 +874,7 @@ func (s *Service) UpdateGenre(ctx context.Context, id uuid.UUID, input GenreInpu
 		}
 		return nil, fmt.Errorf("update genre: %w", err)
 	}
+	s.invalidateSimilar(ctx)
 
 	return genre, nil
 }

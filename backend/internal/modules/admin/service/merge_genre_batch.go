@@ -97,6 +97,7 @@ func (s *Service) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, t
 		}
 		return nil, fmt.Errorf("merge genres batch: %w", err)
 	}
+	s.invalidateSimilar(ctx)
 	s.recomputeSwitchedCollections(ctx, merged.AutoCollectionIDs)
 
 	for sourceID, qid := range merged.KeptQIDs {

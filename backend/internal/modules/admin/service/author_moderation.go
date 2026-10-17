@@ -202,6 +202,9 @@ func (s *Service) BulkSetAuthorStatus(ctx context.Context, ids []uuid.UUID, stat
 			report.Updated++
 		}
 	}
+	if report.Updated > 0 {
+		s.invalidateSimilar(ctx)
+	}
 	return report, nil
 }
 

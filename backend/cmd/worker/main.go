@@ -123,6 +123,7 @@ import (
 	"github.com/bookhaven/backend/internal/pkg/llm"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -147,7 +148,12 @@ func main() {
 	// enrichment (Wikidata + Commons), so both share one rate limiter
 	// (docs/features/author-wikidata-enrichment.md rule 8).
 	wikidataClient := bookdata.NewWikidataClient()
+	// Harvested books that are created already published change the cached
+	// similar-books lists, so the worker invalidates them like the api does.
+	similarRedis := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
+	defer similarRedis.Close()
 	adminService := adminservice.NewService(adminRepo,
+		adminservice.WithSimilarInvalidator(catalogrepository.NewRedisSimilarCache(similarRedis)),
 		adminservice.WithAuthorEnrichmentSource(wikidataClient),
 		adminservice.WithLogger(logger))
 	// WithWorkDescriptionLookup is opted in here (harvest enrichment) only -
