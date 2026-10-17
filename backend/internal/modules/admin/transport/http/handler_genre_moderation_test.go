@@ -43,17 +43,17 @@ func (f *fakeAdminService) BulkSetGenreStatus(ctx context.Context, ids []uuid.UU
 	return adminService.GenreBulkStatusReport{Processed: len(ids), Updated: len(ids), Errors: []adminService.GenreBulkStatusRowError{}}, nil
 }
 
-func (f *fakeAdminService) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (*catalogDomain.Genre, int64, int, error) {
+func (f *fakeAdminService) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (*catalogDomain.Genre, int64, int, uuid.UUID, error) {
 	f.mergeGenresCalled = true
 	f.lastMergeGenreSource = sourceID
 	f.lastMergeGenreTarget = targetID
 	if f.mergeGenresErr != nil {
-		return nil, 0, 0, f.mergeGenresErr
+		return nil, 0, 0, uuid.Nil, f.mergeGenresErr
 	}
 	if f.mergeGenresResult != nil {
-		return f.mergeGenresResult, f.mergeGenresBooks, f.mergeGenresSwitched, nil
+		return f.mergeGenresResult, f.mergeGenresBooks, f.mergeGenresSwitched, f.mergeGenresID, nil
 	}
-	return &catalogDomain.Genre{ID: targetID, Name: "роман", Slug: "roman", Status: catalogDomain.GenreStatusPublished}, f.mergeGenresBooks, f.mergeGenresSwitched, nil
+	return &catalogDomain.Genre{ID: targetID, Name: "роман", Slug: "roman", Status: catalogDomain.GenreStatusPublished}, f.mergeGenresBooks, f.mergeGenresSwitched, f.mergeGenresID, nil
 }
 
 func (f *fakeAdminService) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (*adminService.GenreBatchMergeOutcome, error) {

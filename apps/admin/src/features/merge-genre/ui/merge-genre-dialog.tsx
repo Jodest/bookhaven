@@ -16,9 +16,9 @@ interface MergeGenreDialogProps {
   // changeable via "Изменить".
   initialCanonical?: AdminGenre;
   onClose: () => void;
-  // Called once the merge succeeds, with the number of books reassigned and
-  // of curated collections switched to the target.
-  onMerged: (booksReassigned: number, collectionsSwitched: number) => void;
+  // Called once the merge succeeds, with the number of books reassigned, of
+  // curated collections switched to the target and the merge journal id.
+  onMerged: (booksReassigned: number, collectionsSwitched: number, mergeId: string) => void;
 }
 
 // Texts shared by a failed merge and a failed preview.
@@ -38,7 +38,8 @@ function mergeErrorMessage(err: unknown): string {
 // search (adminGenresApi.list, which never returns merged genres). Unlike
 // the author merge the source is not deleted: it becomes a hidden alias
 // whose name and QID keep resolving to the target on future imports. The
-// merge is irreversible, so the confirm button stays disabled until a
+// merge is journaled (it can be undone from the merge history), but the
+// confirm button stays disabled until a
 // distinct target is selected and its preview (books to move, collections to
 // switch) has loaded.
 export function MergeGenreDialog({ source, initialCanonical, onClose, onMerged }: MergeGenreDialogProps) {
@@ -70,7 +71,7 @@ export function MergeGenreDialog({ source, initialCanonical, onClose, onMerged }
       queryClient.invalidateQueries({ queryKey: ['admin', 'books'] });
       queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: COLLECTIONS_QUERY_KEY });
-      onMerged(result.books_reassigned, result.collections_switched);
+      onMerged(result.books_reassigned, result.collections_switched, result.merge_id);
     },
   });
 
@@ -142,7 +143,7 @@ export function MergeGenreDialog({ source, initialCanonical, onClose, onMerged }
         <p className="text-sm text-destructive">
           Книги жанра «{source.name}» будут перенесены в {targetName}. «{source.name}» исчезнет из
           списков, но его название и QID продолжат указывать на {targetName} при будущих импортах.
-          Действие необратимо.
+          Слияние можно будет отменить в «Истории слияний».
         </p>
 
         {canonical?.status === 'rejected' && (

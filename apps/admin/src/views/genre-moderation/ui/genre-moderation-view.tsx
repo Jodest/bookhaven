@@ -73,6 +73,13 @@ type MergeOverlay =
   | { kind: 'single'; source: AdminGenre; initialCanonical?: AdminGenre }
   | { kind: 'batch'; genres: AdminGenre[] };
 
+// "Отменить" link of a success message: opens the merge history with the
+// undo dialog of that merge.
+const undoAction = (mergeId: string) => ({
+  label: 'Отменить',
+  href: `/moderation/genres/merges?undo=${mergeId}` as const,
+});
+
 // " Переключено подборок: N." when a merge switched collections, else "".
 const switchedSuffix = (collectionsSwitched: number) =>
   collectionsSwitched > 0 ? ` Переключено подборок: ${collectionsSwitched}.` : '';
@@ -153,20 +160,23 @@ export function GenreModerationView() {
       getStatus={(item) => item.genre.status}
       filters={FILTERS}
       columns={columns}
+      renderToolbar={() => (
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <Link href="/moderation/genres/merges" className="underline">
+            История слияний
+          </Link>
+          {showAiLink && aiStatus.data && (
+            <Link href={'/moderation/genres/ai-suggestions' as any} className="text-primary hover:underline">
+              Предложения ИИ ({aiStatus.data.open_count})
+            </Link>
+          )}
+        </div>
+      )}
       renderRowActions={(item, ctx) => (
         <Button variant="ghost" size="sm" disabled={ctx.statusPending} onClick={() => openMerge(ctx, item.genre)}>
           Слить
         </Button>
       )}
-      renderToolbar={() =>
-        showAiLink && aiStatus.data ? (
-          <div>
-            <Link href={'/moderation/genres/ai-suggestions' as any} className="text-sm text-primary hover:underline">
-              Предложения ИИ ({aiStatus.data.open_count})
-            </Link>
-          </div>
-        ) : null
-      }
       renderBulkActions={(selected, controls) => (
         <Button
           size="sm"
@@ -193,6 +203,7 @@ export function GenreModerationView() {
                 controls.notify({
                   type: 'success',
                   message: `Слито жанров: ${result.sources_merged} в «${targetName}». Перенесено книг: ${result.books_reassigned}.${switchedSuffix(result.collections_switched)}`,
+                  action: undoAction(result.merge_id),
                 });
               }}
             />
@@ -203,13 +214,14 @@ export function GenreModerationView() {
             source={overlay.source}
             initialCanonical={overlay.initialCanonical}
             onClose={() => setOverlay(null)}
-            onMerged={(booksReassigned, collectionsSwitched) => {
+            onMerged={(booksReassigned, collectionsSwitched, mergeId) => {
               const name = overlay.source.name;
               setOverlay(null);
               controls.clearSelection();
               controls.notify({
                 type: 'success',
                 message: `Жанр «${name}» слит. Перенесено книг: ${booksReassigned}.${switchedSuffix(collectionsSwitched)}`,
+                action: undoAction(mergeId),
               });
             }}
           />

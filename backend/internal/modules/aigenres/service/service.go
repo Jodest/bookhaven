@@ -371,7 +371,8 @@ func (s *Service) Apply(ctx context.Context, userID, id uuid.UUID, targetOverrid
 				sources = append(sources, g.GenreID)
 			}
 		}
-		outcome, err := s.applier.MergeGenresBatch(ctx, sources, chosen)
+		// The merge journal records the applying admin as the actor.
+		outcome, err := s.applier.MergeGenresBatch(adminservice.WithActor(ctx, userID), sources, chosen)
 		if err != nil {
 			switch {
 			case isMergeInputError(err):

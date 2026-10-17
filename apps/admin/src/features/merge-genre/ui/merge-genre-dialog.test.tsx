@@ -72,7 +72,7 @@ describe('MergeGenreDialog', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Слить «романы» в «роман»' })).toBeEnabled());
     expect(
       screen.getByText(
-        'Книги жанра «романы» будут перенесены в «роман». «романы» исчезнет из списков, но его название и QID продолжат указывать на «роман» при будущих импортах. Действие необратимо.'
+        'Книги жанра «романы» будут перенесены в «роман». «романы» исчезнет из списков, но его название и QID продолжат указывать на «роман» при будущих импортах. Слияние можно будет отменить в «Истории слияний».'
       )
     ).toBeInTheDocument();
     expect(screen.queryByText(/Целевой жанр отклонён/)).not.toBeInTheDocument();
@@ -101,6 +101,7 @@ describe('MergeGenreDialog', () => {
       genre: { ...target, wikidata_qid: 'Q123' },
       books_reassigned: 2,
       collections_switched: 1,
+      merge_id: 'merge-1',
     });
     const { onMerged, invalidateSpy } = renderDialog(target);
 
@@ -109,7 +110,7 @@ describe('MergeGenreDialog', () => {
     await waitFor(() => expect(confirmButton).toBeEnabled());
 
     fireEvent.click(confirmButton);
-    await waitFor(() => expect(onMerged).toHaveBeenCalledWith(2, 1));
+    await waitFor(() => expect(onMerged).toHaveBeenCalledWith(2, 1, 'merge-1'));
     expect(mergeMock).toHaveBeenCalledWith('src-1', 'tgt-1');
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'collections'] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['admin', 'genres'] });

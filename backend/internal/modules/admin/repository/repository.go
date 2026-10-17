@@ -158,11 +158,17 @@ type Repository interface {
 	// changing nothing, when either genre is missing or already an alias.
 	// Curated collections linked to the source are re-pointed to the target
 	// in the same transaction.
-	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (GenreMergeResult, error)
+	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID, actorID *uuid.UUID) (GenreMergeResult, error)
 	// MergeGenresBatch merges every source into targetID in one transaction,
 	// in sourceIDs order. Returns gorm.ErrRecordNotFound, changing nothing,
 	// when any source or the target is missing or already an alias.
-	MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (GenreMergeResult, error)
+	MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID, actorID *uuid.UUID) (GenreMergeResult, error)
+	// ListGenreMerges, PreviewGenreMergeUndo and UndoGenreMerge: the merge
+	// journal (genre_merge_undo.go). The last two return gorm.ErrRecordNotFound
+	// for an unknown entry and *GenreMergeUndoBlockedError when blocked.
+	ListGenreMerges(ctx context.Context, page, limit int) ([]GenreMergeEntry, int64, error)
+	PreviewGenreMergeUndo(ctx context.Context, mergeID uuid.UUID) (GenreMergeUndoPreview, error)
+	UndoGenreMerge(ctx context.Context, mergeID uuid.UUID, actorID uuid.UUID) (GenreMergeUndoResult, error)
 	// PreviewGenreMerge is the read-only summary of MergeGenresBatch. Returns
 	// gorm.ErrRecordNotFound when any genre is missing or already an alias.
 	PreviewGenreMerge(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (GenreMergePreview, error)

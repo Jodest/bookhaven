@@ -41,7 +41,7 @@ function renderDialog(suggestion = mergeSuggestion()) {
 
 const applyResult = {
   suggestion: mergeSuggestion({ status: 'applied' }),
-  merge: { genre: scifi, sources_merged: 2, books_reassigned: 5, collections_switched: 1 },
+  merge: { genre: scifi, merge_id: 'm', sources_merged: 2, books_reassigned: 5, collections_switched: 1 },
   status_report: null,
 };
 
@@ -65,7 +65,7 @@ describe('ApplySuggestionDialog', () => {
     expect(screen.getAllByRole('radio')).toHaveLength(4);
     expect(screen.getByRole('radio', { name: /Фэнтези/ })).toBeChecked();
     expect(screen.getByLabelText('Другой жанр…')).not.toBeChecked();
-    expect(screen.getByText(/Действие необратимо/)).toBeInTheDocument();
+    expect(screen.getByText(/Слияние можно будет отменить в «Истории слияний»/)).toBeInTheDocument();
     await waitFor(() =>
       expect(previewMock).toHaveBeenCalledWith([fentezi.id, fantasyEn.id], fantasy.id)
     );

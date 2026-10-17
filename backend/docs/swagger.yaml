@@ -833,6 +833,89 @@ definitions:
       name:
         type: string
     type: object
+  internal_modules_admin_transport_http.genreMergeEntryResponse:
+    properties:
+      books_reassigned:
+        type: integer
+      collections_switched:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: string
+      performed_by:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeUserRef'
+      sources:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeGenreRef'
+        type: array
+      target:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeGenreRef'
+      undone_at:
+        type: string
+      undone_by:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeUserRef'
+    type: object
+  internal_modules_admin_transport_http.genreMergeGenreRef:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.genreMergeListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeEntryResponse'
+        type: array
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.genreMergeUndoBlockedResponse:
+    properties:
+      code:
+        type: string
+      error:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.genreMergeUndoPreviewResponse:
+    properties:
+      books_relinked:
+        type: integer
+      books_returned:
+        type: integer
+      collections:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeCollection'
+        type: array
+      merge:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeEntryResponse'
+    type: object
+  internal_modules_admin_transport_http.genreMergeUndoResponse:
+    properties:
+      books_relinked:
+        type: integer
+      books_returned:
+        type: integer
+      collections_switched_back:
+        type: integer
+      genre:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+      sources_restored:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.genreMergeUserRef:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
   internal_modules_admin_transport_http.genreQueueItemResponse:
     properties:
       books_total:
@@ -1081,6 +1164,8 @@ definitions:
         type: integer
       genre:
         $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+      merge_id:
+        type: string
       sources_merged:
         type: integer
     type: object
@@ -1106,6 +1191,8 @@ definitions:
         type: integer
       genre:
         $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+      merge_id:
+        type: string
     type: object
   internal_modules_admin_transport_http.moderateReviewRequest:
     properties:
@@ -7225,7 +7312,8 @@ paths:
         в canonical_id (без дублей); жанр id становится отклонённым алиасом canonical_id
         и сохраняет название и slug, поэтому будущие импорты его названия или QID
         указывают на canonical_id. QID переносится, только если у canonical_id его
-        нет. Необратимо.
+        нет. Слияние записывается в журнал (merge_id в ответе) и может быть отменено
+        через POST /admin/genres/merges/{id}/undo.
       parameters:
       - description: ID сливаемого жанра
         in: path
@@ -7826,7 +7914,8 @@ paths:
         от первого жанра в порядке запроса, у которого он есть, если у target_id его
         нет. Подборки, привязанные к сливаемым жанрам, переключаются на target_id
         (автоматические сразу пересчитываются). Всё или ничего: если любой жанр не
-        найден или уже слит — 404 и ничего не меняется. Необратимо.'
+        найден или уже слит — 404 и ничего не меняется. Всё слияние — одна запись
+        журнала (merge_id в ответе), отменяется целиком через POST /admin/genres/merges/{id}/undo.'
       parameters:
       - description: ID сливаемых жанров и ID жанра, который остаётся
         in: body
@@ -7932,6 +8021,175 @@ paths:
       security:
       - BearerAuth: []
       summary: Предпросмотр слияния жанров (админ)
+      tags:
+      - admin
+  /admin/genres/merges:
+    get:
+      description: Требуется роль admin и Bearer-токен. Журнал слияний (одиночных
+        и пакетных) от новых к старым; пакетное слияние — одна запись. Слияния, выполненные
+        до появления журнала, в списке отсутствуют и не отменяются. limit по умолчанию
+        20, максимум 100.
+      parameters:
+      - default: 1
+        description: Номер страницы
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Размер страницы
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: История слияний жанров (админ)
+      tags:
+      - admin
+  /admin/genres/merges/{id}/undo:
+    post:
+      description: 'Требуется роль admin и Bearer-токен. Без тела. Целиком (все жанры
+        пакетного слияния) в одной транзакции возвращает записанное состояние: исходные
+        жанры снова обычные, с прежним статусом и QID, их книги, алиасы и подборки
+        возвращаются; всё, что изменилось после слияния (удалённые книги и подборки,
+        снятые связи, переназначенные подборки), пропускается. Автоматические подборки
+        пересчитываются после отмены. Если отмена небезопасна — 409 с кодом (already_undone,
+        target_missing, target_merged, source_missing, source_not_alias, qid_conflict)
+        и ничего не меняется. Слияния без записи в журнале (до появления журнала)
+        отменить нельзя.'
+      parameters:
+      - description: ID записи журнала слияний
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeUndoResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeUndoBlockedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Отменить слияние жанров (админ)
+      tags:
+      - admin
+  /admin/genres/merges/{id}/undo-preview:
+    get:
+      description: Требуется роль admin и Bearer-токен. Только чтение, ничего не меняет.
+        Возвращает запись журнала, число книг, которые вернутся в исходные жанры (books_returned)
+        или снова получат исходный жанр, оставаясь в целевом (books_relinked), и подборки,
+        которые вернутся к исходным жанрам. Если отмена невозможна — 409 с кодом (already_undone,
+        target_missing, target_merged, source_missing, source_not_alias, qid_conflict).
+      parameters:
+      - description: ID записи журнала слияний
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeUndoPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeUndoBlockedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Предпросмотр отмены слияния жанров (админ)
       tags:
       - admin
   /admin/genres/moderation:

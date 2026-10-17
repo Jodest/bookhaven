@@ -17,10 +17,10 @@ const genre = { id: 'g', name: 'Фэнтези', slug: 'f', status: 'published' 
 describe('suggestion messages', () => {
   it('reports a merge, with the switched collections only when there are some', () => {
     expect(
-      mergeSuccessMessage({ genre, sources_merged: 2, books_reassigned: 5, collections_switched: 0 }, 'Фэнтези')
+      mergeSuccessMessage({ genre, merge_id: 'm', sources_merged: 2, books_reassigned: 5, collections_switched: 0 }, 'Фэнтези')
     ).toBe('Жанры слиты в «Фэнтези». Перенесено книг: 5.');
     expect(
-      mergeSuccessMessage({ genre, sources_merged: 2, books_reassigned: 5, collections_switched: 2 }, 'Фэнтези')
+      mergeSuccessMessage({ genre, merge_id: 'm', sources_merged: 2, books_reassigned: 5, collections_switched: 2 }, 'Фэнтези')
     ).toBe('Жанры слиты в «Фэнтези». Перенесено книг: 5. Переключено подборок: 2.');
   });
 

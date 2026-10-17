@@ -239,7 +239,7 @@ describe('GenreAiSuggestionsView', () => {
   it('applies a merge suggestion through the dialog and reports books and switched collections', async () => {
     applyMock.mockResolvedValue({
       suggestion: { ...suggestion(), status: 'applied' },
-      merge: { genre: { id: 'g1', name: 'Фэнтези', slug: 'f', status: 'published', wikidata_qid: null }, sources_merged: 1, books_reassigned: 5, collections_switched: 1 },
+      merge: { genre: { id: 'g1', name: 'Фэнтези', slug: 'f', status: 'published', wikidata_qid: null }, merge_id: 'm', sources_merged: 1, books_reassigned: 5, collections_switched: 1 },
       status_report: null,
     });
     renderView();

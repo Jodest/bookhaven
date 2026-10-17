@@ -45,7 +45,7 @@ export function BulkApplyDialog({ suggestions, onClose, onApplied }: BulkApplyDi
       >
         <h2 className="text-lg font-semibold">Применить выбранные предложения ({suggestions.length})</h2>
         <p className="text-sm text-destructive">
-          Слияния необратимы. Предложения применяются по очереди с предложенными целевыми жанрами;
+          Слияния можно будет отменить в «Истории слияний». Предложения применяются по очереди с предложенными целевыми жанрами;
           каждое слияние — отдельная транзакция.
         </p>
 
