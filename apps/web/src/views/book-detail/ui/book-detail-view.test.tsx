@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { Book } from '@bookhaven/api-client';
 import type { ImgHTMLAttributes } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,11 +28,11 @@ vi.mock('next/image', () => ({
 }));
 
 vi.mock('next/navigation', () => ({ notFound: vi.fn() }));
-vi.mock('@/features/add-to-list', () => ({ AddToListButton: () => null }));
+vi.mock('@/features/add-to-list', () => ({ AddToListPopover: () => <div data-testid="add-to-list" /> }));
 vi.mock('@/features/rate-book', () => ({ BookRating: () => null }));
-vi.mock('@/features/shelve-book', () => ({ ShelveBookButtons: () => null }));
-vi.mock('@/widgets/reviews-section', () => ({ ReviewsSection: () => null }));
-vi.mock('@/widgets/similar-books', () => ({ SimilarBooks: () => null }));
+vi.mock('@/features/shelve-book', () => ({ BookShelfActions: () => null }));
+vi.mock('@/widgets/reviews-section', () => ({ ReviewsSection: () => <section><h2>Рецензии</h2></section> }));
+vi.mock('@/widgets/similar-books', () => ({ SimilarBooks: () => <section><h2>Похожие книги</h2></section> }));
 
 const author = {
   biography: null,
@@ -193,5 +193,176 @@ describe('BookDetailView adaptations', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Отцы и дети' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Экранизации' })).not.toBeInTheDocument();
     expect(screen.queryByText(/boom|ошибк/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('BookDetailView side requests', () => {
+  it('starts both side requests before either resolves', async () => {
+    getBook.mockResolvedValue(book);
+    forBook.mockReturnValue(new Promise(() => {}));
+    adaptationsForBook.mockReturnValue(new Promise(() => {}));
+
+    // The view never resolves (both requests hang) but must have started both.
+    void BookDetailView({ slug: 'fathers-and-sons' });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(forBook).toHaveBeenCalledWith('b1');
+    expect(adaptationsForBook).toHaveBeenCalledWith('b1');
+  });
+
+  it('renders the page when both side requests fail', async () => {
+    getBook.mockResolvedValue(book);
+    forBook.mockRejectedValue(new Error('boom'));
+    adaptationsForBook.mockRejectedValue(new Error('boom'));
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Отцы и дети' })).toBeInTheDocument();
+  });
+});
+
+describe('BookDetailView layout and summary', () => {
+  it('has no rating badge on the cover', async () => {
+    getBook.mockResolvedValue({ ...book, rating: 4.3, ratingsCount: 12, coverUrl: 'https://x.test/c.jpg' });
+
+    const { container } = render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(container.querySelector('.bg-highlight')).toBeNull();
+  });
+
+  it('shows plural forms and a link to the reviews section', async () => {
+    getBook.mockResolvedValue({ ...book, rating: 4.3, ratingsCount: 21, reviewsCount: 3 });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.getByText('21 оценка')).toBeInTheDocument();
+    expect(screen.getByText('4.3')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '3 рецензии' })).toHaveAttribute('href', '#reviews');
+  });
+
+  it('shows the empty summary for a book without ratings and reviews', async () => {
+    getBook.mockResolvedValue(book);
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.getByText('Пока нет оценок')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Написать рецензию' })).toHaveAttribute('href', '#reviews');
+  });
+
+  it('orders full-width sections: adaptations, similar, reviews', async () => {
+    getBook.mockResolvedValue(book);
+    adaptationsForBook.mockResolvedValue({
+      items: [
+        { id: 'w1', title: 'Фильм', original_title: null, kind: 'film', year: 1958, director: null, imdb_url: null, kinopoisk_url: null },
+      ],
+      total: 1,
+    });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    const adaptations = screen.getByRole('heading', { name: 'Экранизации' });
+    const similar = screen.getByRole('heading', { name: 'Похожие книги' });
+    const reviews = screen.getByRole('heading', { name: 'Рецензии' });
+    expect(adaptations.compareDocumentPosition(similar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(similar.compareDocumentPosition(reviews) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe('BookDetailView details and genres', () => {
+  it('renders a definition list with the language and omits missing terms', async () => {
+    getBook.mockResolvedValue(book);
+
+    const { container } = render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(container.querySelector('dl')).not.toBeNull();
+    expect(screen.getByText('Год издания').nextElementSibling).toHaveTextContent('1862');
+    expect(screen.getByText('Язык').nextElementSibling).toHaveTextContent('Русский');
+    expect(screen.queryByText('Страниц')).not.toBeInTheDocument();
+    expect(screen.queryByText('ISBN')).not.toBeInTheDocument();
+  });
+
+  it('links genres to the filtered catalog', async () => {
+    getBook.mockResolvedValue({ ...book, genres: [{ id: 'g1', name: 'Роман', slug: 'roman' }] });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.getByRole('link', { name: 'Роман' })).toHaveAttribute('href', '/books?genre_id=g1');
+  });
+});
+
+describe('BookDetailView description behaviour', () => {
+  it('keeps paragraphs and collapses a long description with Ещё / Свернуть', async () => {
+    const long = 'Абзац один.\n\n' + 'Длинный текст. '.repeat(40);
+    getBook.mockResolvedValue({ ...book, description: long });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    const text = screen.getByText(/Абзац один\./);
+    expect(text).toHaveClass('whitespace-pre-line', 'line-clamp-6');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
+    expect(text).not.toHaveClass('line-clamp-6');
+    fireEvent.click(screen.getByRole('button', { name: 'Свернуть' }));
+    expect(text).toHaveClass('line-clamp-6');
+  });
+
+  it('a short description has no toggle', async () => {
+    getBook.mockResolvedValue({ ...book, description: 'Коротко.' });
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.queryByRole('button', { name: 'Ещё' })).not.toBeInTheDocument();
+  });
+});
+
+describe('BookDetailView JSON-LD', () => {
+  it('embeds a Book without aggregateRating when there are no ratings', async () => {
+    getBook.mockResolvedValue(book);
+
+    const { container } = render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    const script = container.querySelector('script[type="application/ld+json"]') as HTMLElement;
+    const ld = JSON.parse(script.textContent as string);
+    expect(ld['@type']).toBe('Book');
+    expect(ld).not.toHaveProperty('aggregateRating');
+  });
+});
+
+describe('BookDetailView JSON-LD escaping', () => {
+  it('never lets a title break out of the script tag', async () => {
+    const title = '</script><img onerror=x>';
+    getBook.mockResolvedValue({ ...book, title });
+
+    const { container } = render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    const script = container.querySelector('script[type="application/ld+json"]') as HTMLElement;
+    expect(script.innerHTML).not.toContain('<');
+    expect(JSON.parse(script.textContent as string).name).toBe(title);
+  });
+});
+
+describe('BookDetailView actions column', () => {
+  it('puts «В список» in the sticky aside, before the content column', async () => {
+    getBook.mockResolvedValue(book);
+
+    const { container } = render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    const aside = container.querySelector('aside') as HTMLElement;
+    expect(aside.querySelector('[data-testid="add-to-list"]')).not.toBeNull();
+    expect(aside).toHaveClass('md:sticky');
+  });
+
+  it('renders the sections inside the content column, after the genres', async () => {
+    getBook.mockResolvedValue({ ...book, genres: [{ id: 'g1', name: 'Роман', slug: 'roman' }] });
+
+    const { container } = render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    const aside = container.querySelector('aside') as HTMLElement;
+    const genre = screen.getByRole('link', { name: 'Роман' });
+    const similar = screen.getByRole('heading', { name: 'Похожие книги' });
+    const reviews = screen.getByRole('heading', { name: 'Рецензии' });
+    expect(aside.contains(similar)).toBe(false);
+    expect(genre.compareDocumentPosition(similar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(similar.compareDocumentPosition(reviews) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
