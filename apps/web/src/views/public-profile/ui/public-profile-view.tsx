@@ -73,7 +73,7 @@ export function PublicProfileView({ id }: PublicProfileViewProps) {
     );
   }
 
-  const { user, lists, shelves } = profile;
+  const { user, shelves } = profile;
   const displayName = user.name ?? 'Без имени';
   const joinedDate = new Date(user.joinedAt).toLocaleDateString('ru-RU', {
     year: 'numeric',
@@ -109,33 +109,6 @@ export function PublicProfileView({ id }: PublicProfileViewProps) {
         </div>
 
         <div className="mt-8">
-          <h2 className="font-display text-xl font-semibold">Публичные списки</h2>
-
-          {lists.length === 0 ? (
-            <p className="mt-4 text-muted-foreground">Публичных списков пока нет</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {lists.map((list) => (
-                <li key={list.id} className="rounded-lg border p-4">
-                  <Link
-                    href={`/lists/public/${list.id}`}
-                    className="text-base font-semibold leading-tight hover:underline"
-                  >
-                    {list.title}
-                  </Link>
-                  {list.description && (
-                    <p className="mt-1 text-sm text-muted-foreground">{list.description}</p>
-                  )}
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {list.booksCount} {pluralizeBooks(list.booksCount)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="mt-8">
           <h2 className="font-display text-xl font-semibold">Полки</h2>
 
           {shelves.length === 0 ? (
@@ -150,6 +123,9 @@ export function PublicProfileView({ id }: PublicProfileViewProps) {
                   >
                     {shelfTypeLabels[shelf.type] ?? shelf.name}
                   </Link>
+                  {shelf.type === 'custom' && shelf.description && (
+                    <p className="mt-1 text-sm text-muted-foreground">{shelf.description}</p>
+                  )}
                   <p className="mt-1 text-sm text-muted-foreground">
                     {shelf.booksCount} {pluralizeBooks(shelf.booksCount)}
                   </p>

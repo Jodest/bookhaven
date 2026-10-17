@@ -12,26 +12,22 @@ import (
 	"github.com/bookhaven/backend/internal/infrastructure/validator"
 	adminrepository "github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
-	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
-	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
 	aicollrepository "github.com/bookhaven/backend/internal/modules/aicollections/repository"
 	aicollservice "github.com/bookhaven/backend/internal/modules/aicollections/service"
-	aigenresrepository "github.com/bookhaven/backend/internal/modules/aigenres/repository"
-	aigenresservice "github.com/bookhaven/backend/internal/modules/aigenres/service"
+	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
+	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
 	aidescrepository "github.com/bookhaven/backend/internal/modules/aidescriptions/repository"
 	aidescservice "github.com/bookhaven/backend/internal/modules/aidescriptions/service"
-	curatedrepository "github.com/bookhaven/backend/internal/modules/curated/repository"
-	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
-	screenworksrepository "github.com/bookhaven/backend/internal/modules/screenworks/repository"
-	screenworksservice "github.com/bookhaven/backend/internal/modules/screenworks/service"
+	aigenresrepository "github.com/bookhaven/backend/internal/modules/aigenres/repository"
+	aigenresservice "github.com/bookhaven/backend/internal/modules/aigenres/service"
 	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
+	curatedrepository "github.com/bookhaven/backend/internal/modules/curated/repository"
+	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
 	homerepository "github.com/bookhaven/backend/internal/modules/home/repository"
 	homeservice "github.com/bookhaven/backend/internal/modules/home/service"
-	listsrepository "github.com/bookhaven/backend/internal/modules/lists/repository"
-	listsservice "github.com/bookhaven/backend/internal/modules/lists/service"
 	notificationsrepository "github.com/bookhaven/backend/internal/modules/notifications/repository"
 	notificationsservice "github.com/bookhaven/backend/internal/modules/notifications/service"
 	ratingsrepository "github.com/bookhaven/backend/internal/modules/ratings/repository"
@@ -40,6 +36,8 @@ import (
 	readingchallengesservice "github.com/bookhaven/backend/internal/modules/reading_challenges/service"
 	reviewsrepository "github.com/bookhaven/backend/internal/modules/reviews/repository"
 	reviewsservice "github.com/bookhaven/backend/internal/modules/reviews/service"
+	screenworksrepository "github.com/bookhaven/backend/internal/modules/screenworks/repository"
+	screenworksservice "github.com/bookhaven/backend/internal/modules/screenworks/service"
 	shelvesrepository "github.com/bookhaven/backend/internal/modules/shelves/repository"
 	shelvesservice "github.com/bookhaven/backend/internal/modules/shelves/service"
 	"github.com/bookhaven/backend/internal/modules/users/repository"
@@ -91,7 +89,6 @@ func main() {
 	catalogRepo := catalogrepository.NewGormRepository(db)
 	adminRepo := adminrepository.NewGormRepository(db)
 	shelvesRepo := shelvesrepository.NewGormRepository(db)
-	listsRepo := listsrepository.NewGormRepository(db)
 	ratingsRepo := ratingsrepository.NewGormRepository(db)
 	reviewsRepo := reviewsrepository.NewGormRepository(db)
 	readingChallengesRepo := readingchallengesrepository.NewGormRepository(db)
@@ -142,7 +139,6 @@ func main() {
 		adminservice.WithCollectionRecomputer(curatedService),
 		adminservice.WithLogger(logger))
 	shelvesService := shelvesservice.NewService(shelvesRepo)
-	listsService := listsservice.NewService(listsRepo)
 	ratingsService := ratingsservice.NewService(ratingsRepo)
 	reviewsService := reviewsservice.NewService(reviewsRepo)
 	readingChallengesService := readingchallengesservice.NewService(readingChallengesRepo)
@@ -257,7 +253,7 @@ func main() {
 	// AI descriptions (openspec catalog-admin/ai-descriptions): one
 	// repository backs the public fallback reader and the admin service.
 	aiDescriptionsRepo := aidescrepository.NewGormRepository(db)
-	httptransport.RegisterRoutes(e, catalogService, shelvesService, listsService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, curatedService, screenWorksService, authMiddleware, optionalAuth, aiDescriptionsRepo)
+	httptransport.RegisterRoutes(e, catalogService, shelvesService, ratingsService, reviewsService, usersService, readingChallengesService, notificationsService, homeService, curatedService, screenWorksService, authMiddleware, optionalAuth, aiDescriptionsRepo)
 
 	// Admin routes
 	httptransport.RegisterAdminRoutes(e, adminService, authMiddleware, taskClient, harvestInspector, wikidataClient,

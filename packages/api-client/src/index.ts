@@ -18,19 +18,11 @@ export interface PublicProfile {
     profileType: 'reader' | 'librarian' | 'bookseller' | 'other';
     joinedAt: string;
   };
-  lists: {
-    id: string;
-    title: string;
-    description: string;
-    isPublic: boolean;
-    booksCount: number;
-    createdAt: string;
-    updatedAt: string;
-  }[];
   shelves: {
     id: string;
     name: string;
     type: Shelf['type'];
+    description: string;
     booksCount: number;
     createdAt: string;
   }[];
@@ -215,50 +207,13 @@ export interface Shelf {
   userId: string;
   name: string;
   type: 'reading' | 'read' | 'want_to_read' | 'abandoned' | 'favorite' | 'custom';
+  /** Empty string means no description. Custom shelves only. */
+  description: string;
+  /** Private custom shelves are hidden from the public profile and public page. */
+  isPublic: boolean;
   booksCount: number;
   hasBook?: boolean;
   books?: Book[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface BookList {
-  id: string;
-  userId: string;
-  user: Pick<User, 'id' | 'name' | 'avatarUrl'>;
-  title: string;
-  description: string | null;
-  isPublic: boolean;
-  books: Book[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface List {
-  id: string;
-  userId: string;
-  title: string;
-  description: string;
-  isPublic: boolean;
-  booksCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ListDetail {
-  list: List;
-  items: Book[];
-  total: number;
-  page: number;
-  limit: number;
-}
-
-export interface PublicList {
-  id: string;
-  title: string;
-  description: string;
-  isPublic: boolean;
-  booksCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1932,21 +1887,6 @@ type RawAuthorDetail = Omit<RawAuthor, 'books'> & {
   photo_attribution?: AuthorPhotoAttribution | null;
 };
 
-type RawList = List & {
-  user_id: string;
-  is_public: boolean;
-  books_count: number;
-  created_at: string;
-  updated_at?: string;
-};
-
-type RawPublicList = PublicList & {
-  is_public: boolean;
-  books_count: number;
-  created_at: string;
-  updated_at?: string;
-};
-
 function normalizeAuthor(raw: RawAuthor): Author {
   return {
     ...raw,
@@ -2223,27 +2163,6 @@ function normalizeAuthorDetail(raw: RawAuthorDetail): Author {
   };
 }
 
-function normalizeList(raw: RawList): List {
-  return {
-    ...raw,
-    userId: raw.user_id,
-    isPublic: raw.is_public,
-    booksCount: raw.books_count,
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at ?? raw.created_at,
-  };
-}
-
-function normalizePublicList(raw: RawPublicList): PublicList {
-  return {
-    ...raw,
-    isPublic: raw.is_public,
-    booksCount: raw.books_count,
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at ?? raw.created_at,
-  };
-}
-
 // Backend returns snake_case for shelves; normalize to the camelCase Shelf
 // type. The list endpoint's items (shelfListItemResponse) omit user_id and
 // updated_at - they're not needed there - so those fields are optional on
@@ -2253,6 +2172,8 @@ type RawShelf = {
   user_id?: string;
   name: string;
   type: Shelf['type'];
+  description?: string;
+  is_public?: boolean;
   books_count: number;
   has_book?: boolean;
   created_at: string;
@@ -2265,6 +2186,8 @@ function normalizeShelf(raw: RawShelf): Shelf {
     userId: raw.user_id ?? '',
     name: raw.name,
     type: raw.type,
+    description: raw.description ?? '',
+    isPublic: raw.is_public ?? true,
     booksCount: raw.books_count,
     hasBook: raw.has_book,
     createdAt: raw.created_at,
@@ -2273,11 +2196,12 @@ function normalizeShelf(raw: RawShelf): Shelf {
 }
 
 // Shape of a shelf entry in PublicProfile.shelves (publicShelfActivityResponse
-// on the backend) - no user_id/updated_at, mirroring PublicList above.
+// on the backend) - no user_id/updated_at/is_public (private shelves are never listed).
 type RawPublicShelf = {
   id: string;
   name: string;
   type: Shelf['type'];
+  description?: string;
   books_count: number;
   created_at: string;
 };
@@ -2287,6 +2211,7 @@ function normalizePublicShelf(raw: RawPublicShelf): PublicProfile['shelves'][num
     id: raw.id,
     name: raw.name,
     type: raw.type,
+    description: raw.description ?? '',
     booksCount: raw.books_count,
     createdAt: raw.created_at,
   };
@@ -2532,7 +2457,6 @@ export const api = {
           profile_type: 'reader' | 'librarian' | 'bookseller' | 'other';
           joined_at: string;
         };
-        lists: RawPublicList[];
         shelves: RawPublicShelf[];
       }>(`/api/v1/users/${id}`);
       return {
@@ -2543,7 +2467,6 @@ export const api = {
           profileType: raw.user.profile_type,
           joinedAt: raw.user.joined_at,
         },
-        lists: raw.lists.map(normalizePublicList),
         shelves: raw.shelves.map(normalizePublicShelf),
       };
     },
@@ -2595,14 +2518,14 @@ export const api = {
         items: raw.items.map(normalizeBook),
       };
     },
-    create: async (data: { name: string }) => {
+    create: async (data: { name: string; description?: string; is_public?: boolean }) => {
       const raw = await fetcher<RawShelf>('/api/v1/shelves', {
         method: 'POST',
         body: JSON.stringify(data),
       });
       return normalizeShelf(raw);
     },
-    rename: async (id: string, data: { name: string }) => {
+    update: async (id: string, data: { name?: string; description?: string; is_public?: boolean }) => {
       const raw = await fetcher<RawShelf>(`/api/v1/shelves/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
@@ -2701,84 +2624,6 @@ export const api = {
       fetcher<{ status: string }>('/api/v1/notifications/read-all', {
         method: 'POST',
       }),
-  },
-  lists: {
-    list: async (params?: { book_id?: string }) => {
-      const queryParams: Record<string, string> = {};
-      if (params?.book_id) {
-        queryParams.book_id = params.book_id;
-      }
-      const query = new URLSearchParams(queryParams).toString();
-      const raw = await fetcher<{
-        items: RawList[];
-        total: number;
-        book_in_lists?: string[];
-      }>(
-        `/api/v1/lists${query ? `?${query}` : ''}`
-      );
-      return {
-        ...raw,
-        items: raw.items.map(normalizeList),
-      };
-    },
-    create: async (data: { title: string; description?: string; is_public?: boolean }) => {
-      const raw = await fetcher<RawList>('/api/v1/lists', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-      return normalizeList(raw);
-    },
-    get: async (id: string, params?: { page?: number; limit?: number }) => {
-      const queryParams: Record<string, string> = {};
-      if (params?.page !== undefined) queryParams.page = String(params.page);
-      if (params?.limit !== undefined) queryParams.limit = String(params.limit);
-      const query = new URLSearchParams(queryParams).toString();
-      const raw = await fetcher<Omit<ListDetail, 'list' | 'items'> & { list: RawList; items: RawBook[] }>(
-        `/api/v1/lists/${id}${query ? `?${query}` : ''}`
-      );
-      return {
-        ...raw,
-        list: normalizeList(raw.list),
-        items: raw.items.map(normalizeBook),
-      };
-    },
-    update: async (id: string, data: { title?: string; description?: string; is_public?: boolean }) => {
-      const raw = await fetcher<RawList>(`/api/v1/lists/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      });
-      return normalizeList(raw);
-    },
-    remove: (id: string) =>
-      fetcher<{ status: string }>(`/api/v1/lists/${id}`, { method: 'DELETE' }),
-    addBook: (id: string, bookId: string) =>
-      fetcher<{ status: string }>(`/api/v1/lists/${id}/books`, {
-        method: 'POST',
-        body: JSON.stringify({ book_id: bookId }),
-      }),
-    removeBook: (id: string, bookId: string) =>
-      fetcher<{ status: string }>(`/api/v1/lists/${id}/books/${bookId}`, {
-        method: 'DELETE',
-      }),
-    reorder: (id: string, bookIds: string[]) =>
-      fetcher<{ status: string }>(`/api/v1/lists/${id}/books/reorder`, {
-        method: 'PATCH',
-        body: JSON.stringify({ book_ids: bookIds }),
-      }),
-    getPublic: async (id: string, params?: { page?: number; limit?: number }) => {
-      const queryParams: Record<string, string> = {};
-      if (params?.page !== undefined) queryParams.page = String(params.page);
-      if (params?.limit !== undefined) queryParams.limit = String(params.limit);
-      const query = new URLSearchParams(queryParams).toString();
-      const raw = await fetcher<Omit<ListDetail, 'list' | 'items'> & { list: RawPublicList; items: RawBook[] }>(
-        `/api/v1/lists/public/${id}${query ? `?${query}` : ''}`
-      );
-      return {
-        ...raw,
-        list: normalizePublicList(raw.list),
-        items: raw.items.map(normalizeBook),
-      };
-    },
   },
   collections: {
     list: (params?: { limit?: number }) =>

@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 const createShelfSchema = z.object({
   name: z.string().trim().min(2, 'Минимум 2 символа').max(100, 'Максимум 100 символов'),
+  description: z.string().trim().max(2000, 'Максимум 2000 символов').optional(),
 });
 
 type CreateShelfForm = z.infer<typeof createShelfSchema>;
@@ -50,7 +51,10 @@ export function ShelvesView() {
   const onCreate = async (data: CreateShelfForm) => {
     setError(null);
     try {
-      await shelvesApi.create({ name: data.name });
+      await shelvesApi.create({
+        name: data.name,
+        ...(data.description ? { description: data.description } : {}),
+      });
       reset();
       await fetchShelves();
     } catch (err) {
@@ -61,11 +65,21 @@ export function ShelvesView() {
   const onRename = async (id: string, name: string) => {
     setError(null);
     try {
-      await shelvesApi.rename(id, { name });
+      await shelvesApi.update(id, { name });
       setEditingId(null);
       await fetchShelves();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка переименования полки');
+    }
+  };
+
+  const onTogglePrivacy = async (shelf: Shelf) => {
+    setError(null);
+    try {
+      await shelvesApi.update(shelf.id, { is_public: !shelf.isPublic });
+      await fetchShelves();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка изменения видимости полки');
     }
   };
 
@@ -107,20 +121,33 @@ export function ShelvesView() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onCreate)} className="mt-6 flex max-w-md gap-2">
-        <div className="flex-1">
-          <input
-            {...register('name')}
-            placeholder="Название новой полки"
+      <form onSubmit={handleSubmit(onCreate)} className="mt-6 max-w-md space-y-2">
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <input
+              {...register('name')}
+              placeholder="Название новой полки"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+            />
+            {errors.name && (
+              <p className="mt-1 text-sm text-destructive">{errors.name.message}</p>
+            )}
+          </div>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Создание...' : 'Создать'}
+          </Button>
+        </div>
+        <div>
+          <textarea
+            {...register('description')}
+            placeholder="Описание (необязательно)"
+            rows={2}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
           />
-          {errors.name && (
-            <p className="mt-1 text-sm text-destructive">{errors.name.message}</p>
+          {errors.description && (
+            <p className="mt-1 text-sm text-destructive">{errors.description.message}</p>
           )}
         </div>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Создание...' : 'Создать'}
-        </Button>
       </form>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -134,6 +161,7 @@ export function ShelvesView() {
             isEditing={editingId === shelf.id}
             onStartEdit={() => setEditingId(shelf.id)}
             onRename={onRename}
+            onTogglePrivacy={onTogglePrivacy}
             onDelete={onDelete}
           />
         ))}
@@ -147,6 +175,7 @@ interface ShelfCardProps {
   isEditing?: boolean;
   onStartEdit?: () => void;
   onRename?: (id: string, name: string) => Promise<void>;
+  onTogglePrivacy?: (shelf: Shelf) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
 }
 
@@ -155,6 +184,7 @@ function ShelfCard({
   isEditing,
   onStartEdit,
   onRename,
+  onTogglePrivacy,
   onDelete,
 }: ShelfCardProps) {
   const [editName, setEditName] = useState(shelf.name);
@@ -188,14 +218,27 @@ function ShelfCard({
         </Link>
       )}
 
+      {shelf.type === 'custom' && !shelf.isPublic && (
+        <span className="mt-2 inline-block rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+          Приватная
+        </span>
+      )}
+
+      {shelf.type === 'custom' && shelf.description && (
+        <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{shelf.description}</p>
+      )}
+
       <p className="mt-2 text-sm text-muted-foreground">
         {shelf.booksCount} {pluralizeBooks(shelf.booksCount)}
       </p>
 
       {shelf.type === 'custom' && !isEditing && (
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={onStartEdit}>
             Переименовать
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onTogglePrivacy?.(shelf)}>
+            {shelf.isPublic ? 'Сделать приватной' : 'Сделать публичной'}
           </Button>
           <Button
             variant="destructive"

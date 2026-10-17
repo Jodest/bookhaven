@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,10 +57,11 @@ func (f *fakeRepository) EnsureDefaultShelves(ctx context.Context, userID uuid.U
 		}
 		if !exists {
 			s := &domain.Shelf{
-				ID:     uuid.New(),
-				UserID: userID,
-				Name:   d.name,
-				Type:   d.typ,
+				ID:       uuid.New(),
+				UserID:   userID,
+				Name:     d.name,
+				Type:     d.typ,
+				IsPublic: true,
 			}
 			f.shelves[s.ID] = s
 		}
@@ -258,7 +260,7 @@ func TestCreateShelf(t *testing.T) {
 	userID := uuid.New()
 	svc, _ := setupTestService()
 
-	shelf, err := svc.CreateShelf(ctx, userID, "Классика")
+	shelf, err := svc.CreateShelf(ctx, userID, "Классика", nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -267,6 +269,47 @@ func TestCreateShelf(t *testing.T) {
 	}
 	if shelf.Name != "Классика" {
 		t.Fatalf("expected name Классика, got %s", shelf.Name)
+	}
+	if !shelf.IsPublic || shelf.Description != "" {
+		t.Fatalf("expected public shelf with empty description, got %+v", shelf)
+	}
+}
+
+func TestCreateShelf_PrivateWithDescription(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setupTestService()
+	desc := "  Для отпуска  "
+	private := false
+
+	shelf, err := svc.CreateShelf(ctx, uuid.New(), "Отпуск", &desc, &private)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if shelf.IsPublic {
+		t.Fatal("expected private shelf")
+	}
+	if shelf.Description != "Для отпуска" {
+		t.Fatalf("description not trimmed: %q", shelf.Description)
+	}
+}
+
+func TestCreateShelf_LengthLimitsCountRunes(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setupTestService()
+
+	if _, err := svc.CreateShelf(ctx, uuid.New(), strings.Repeat("я", 100), nil, nil); err != nil {
+		t.Fatalf("100 Cyrillic letters must be accepted: %v", err)
+	}
+	if _, err := svc.CreateShelf(ctx, uuid.New(), strings.Repeat("я", 101), nil, nil); !errors.Is(err, ErrInvalidName) {
+		t.Fatalf("expected ErrInvalidName for 101 runes, got %v", err)
+	}
+	ok := strings.Repeat("ж", 2000)
+	if _, err := svc.CreateShelf(ctx, uuid.New(), "Полка", &ok, nil); err != nil {
+		t.Fatalf("2000-rune description must be accepted: %v", err)
+	}
+	tooLong := strings.Repeat("ж", 2001)
+	if _, err := svc.CreateShelf(ctx, uuid.New(), "Полка", &tooLong, nil); !errors.Is(err, ErrInvalidDescription) {
+		t.Fatalf("expected ErrInvalidDescription, got %v", err)
 	}
 }
 
@@ -277,7 +320,7 @@ func TestCreateShelf_InvalidName(t *testing.T) {
 
 	cases := []string{"", "a", "   a   "}
 	for _, name := range cases {
-		_, err := svc.CreateShelf(ctx, userID, name)
+		_, err := svc.CreateShelf(ctx, userID, name, nil, nil)
 		if !errors.Is(err, ErrInvalidName) {
 			t.Fatalf("expected ErrInvalidName for %q, got %v", name, err)
 		}
@@ -310,34 +353,91 @@ func TestGetShelf_NotFound(t *testing.T) {
 	}
 }
 
-func TestRenameShelf(t *testing.T) {
+func TestUpdateShelf_Name(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	svc, repo := setupTestService()
 
-	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom}
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom, IsPublic: true}
 	repo.shelves[shelf.ID] = shelf
 
-	renamed, err := svc.RenameShelf(ctx, userID, shelf.ID, "Новое имя")
+	newName := "Новое имя"
+	updated, err := svc.UpdateShelf(ctx, userID, shelf.ID, UpdateShelfInput{Name: &newName})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if renamed.Name != "Новое имя" {
-		t.Fatalf("expected name Новое имя, got %s", renamed.Name)
+	if updated.Name != "Новое имя" || !updated.IsPublic {
+		t.Fatalf("unexpected result %+v", updated)
 	}
 }
 
-func TestRenameShelf_DefaultImmutable(t *testing.T) {
+func TestUpdateShelf_PrivacyAndDescription(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	svc, repo := setupTestService()
 
-	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Хочу прочитать", Type: domain.ShelfTypeWantToRead}
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom, IsPublic: true}
 	repo.shelves[shelf.ID] = shelf
 
-	_, err := svc.RenameShelf(ctx, userID, shelf.ID, "Новое имя")
-	if !errors.Is(err, ErrDefaultShelfImmutable) {
-		t.Fatalf("expected ErrDefaultShelfImmutable, got %v", err)
+	private := false
+	desc := "Описание"
+	updated, err := svc.UpdateShelf(ctx, userID, shelf.ID, UpdateShelfInput{IsPublic: &private, Description: &desc})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updated.IsPublic || updated.Description != "Описание" || updated.Name != "Моя" {
+		t.Fatalf("unexpected result %+v", updated)
+	}
+}
+
+func TestUpdateShelf_DefaultImmutable(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	svc, repo := setupTestService()
+
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Читаю", Type: domain.ShelfTypeReading, IsPublic: true}
+	repo.shelves[shelf.ID] = shelf
+
+	private := false
+	newName := "Новое имя"
+	desc := "x"
+	for _, in := range []UpdateShelfInput{{Name: &newName}, {IsPublic: &private}, {Description: &desc}} {
+		if _, err := svc.UpdateShelf(ctx, userID, shelf.ID, in); !errors.Is(err, ErrDefaultShelfImmutable) {
+			t.Fatalf("expected ErrDefaultShelfImmutable, got %v", err)
+		}
+	}
+}
+
+func TestUpdateShelf_NothingToUpdate(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := setupTestService()
+	if _, err := svc.UpdateShelf(ctx, uuid.New(), uuid.New(), UpdateShelfInput{}); !errors.Is(err, ErrNothingToUpdate) {
+		t.Fatalf("expected ErrNothingToUpdate, got %v", err)
+	}
+}
+
+func TestUpdateShelf_Forbidden(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := setupTestService()
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: uuid.New(), Name: "Моя", Type: domain.ShelfTypeCustom, IsPublic: true}
+	repo.shelves[shelf.ID] = shelf
+
+	private := false
+	if _, err := svc.UpdateShelf(ctx, uuid.New(), shelf.ID, UpdateShelfInput{IsPublic: &private}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+}
+
+func TestUpdateShelf_DescriptionTooLong(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	svc, repo := setupTestService()
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom, IsPublic: true}
+	repo.shelves[shelf.ID] = shelf
+
+	desc := strings.Repeat("ж", 2001)
+	if _, err := svc.UpdateShelf(ctx, userID, shelf.ID, UpdateShelfInput{Description: &desc}); !errors.Is(err, ErrInvalidDescription) {
+		t.Fatalf("expected ErrInvalidDescription, got %v", err)
 	}
 }
 
@@ -578,9 +678,9 @@ func TestListPublicByUser_ExcludesEmptyAndHiddenOnlyShelves(t *testing.T) {
 	repo.books[visibleBook] = &catalogDomain.Book{ID: visibleBook, Title: "Visible"}
 	repo.books[hiddenBook] = &catalogDomain.Book{ID: hiddenBook, Title: "Hidden", Status: catalogDomain.BookStatusRejected}
 
-	withVisible := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "С видимой книгой", Type: domain.ShelfTypeCustom}
-	onlyHidden := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Только скрытая", Type: domain.ShelfTypeCustom}
-	empty := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Пустая", Type: domain.ShelfTypeCustom}
+	withVisible := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "С видимой книгой", Type: domain.ShelfTypeCustom, IsPublic: true}
+	onlyHidden := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Только скрытая", Type: domain.ShelfTypeCustom, IsPublic: true}
+	empty := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Пустая", Type: domain.ShelfTypeCustom, IsPublic: true}
 	repo.shelves[withVisible.ID] = withVisible
 	repo.shelves[onlyHidden.ID] = onlyHidden
 	repo.shelves[empty.ID] = empty
@@ -625,7 +725,7 @@ func TestGetPublicShelf_AnyOwner(t *testing.T) {
 	ownerID := uuid.New()
 	svc, repo := setupTestService()
 
-	shelf := &domain.Shelf{ID: uuid.New(), UserID: ownerID, Name: "Чужая", Type: domain.ShelfTypeCustom}
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: ownerID, Name: "Чужая", Type: domain.ShelfTypeCustom, IsPublic: true}
 	repo.shelves[shelf.ID] = shelf
 
 	result, _, _, err := svc.GetPublicShelf(ctx, shelf.ID, 1, 20)
@@ -652,7 +752,7 @@ func TestGetPublicShelf_ExcludesHiddenBooks(t *testing.T) {
 	userID := uuid.New()
 	svc, repo := setupTestService()
 
-	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom}
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom, IsPublic: true}
 	repo.shelves[shelf.ID] = shelf
 
 	visibleBook := uuid.New()
@@ -671,6 +771,46 @@ func TestGetPublicShelf_ExcludesHiddenBooks(t *testing.T) {
 	}
 	if len(books) != 1 || books[0].ID != visibleBook {
 		t.Fatalf("expected only visible book, got %+v", books)
+	}
+}
+
+func TestGetPublicShelf_PrivateIsNotFoundEvenForOwner(t *testing.T) {
+	ctx := context.Background()
+	ownerID := uuid.New()
+	svc, repo := setupTestService()
+
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: ownerID, Name: "Тайная", Type: domain.ShelfTypeCustom, IsPublic: false}
+	repo.shelves[shelf.ID] = shelf
+
+	if _, _, _, err := svc.GetPublicShelf(ctx, shelf.ID, 1, 20); !errors.Is(err, ErrShelfNotFound) {
+		t.Fatalf("expected ErrShelfNotFound, got %v", err)
+	}
+	// The owner still reads it through the authenticated endpoint.
+	if _, _, _, err := svc.GetShelf(ctx, ownerID, shelf.ID, 1, 20); err != nil {
+		t.Fatalf("owner must read private shelf: %v", err)
+	}
+}
+
+func TestListPublicByUser_ExcludesPrivateShelves(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	svc, repo := setupTestService()
+
+	book := uuid.New()
+	repo.books[book] = &catalogDomain.Book{ID: book, Title: "B"}
+	pub := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Открытая", Type: domain.ShelfTypeCustom, IsPublic: true}
+	priv := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Тайная", Type: domain.ShelfTypeCustom, IsPublic: false}
+	repo.shelves[pub.ID] = pub
+	repo.shelves[priv.ID] = priv
+	repo.items[shelfBookKey{shelfID: pub.ID, bookID: book}] = time.Now()
+	repo.items[shelfBookKey{shelfID: priv.ID, bookID: book}] = time.Now()
+
+	shelves, err := svc.ListPublicByUser(ctx, userID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(shelves) != 1 || shelves[0].ID != pub.ID {
+		t.Fatalf("expected only the public shelf, got %+v", shelves)
 	}
 }
 

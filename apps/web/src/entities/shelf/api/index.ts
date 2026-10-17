@@ -5,7 +5,7 @@ export const shelvesApi = {
   get: api.shelves.get,
   getPublic: api.shelves.getPublic,
   create: api.shelves.create,
-  rename: api.shelves.rename,
+  update: api.shelves.update,
   remove: api.shelves.remove,
   addBook: api.shelves.addBook,
   removeBook: api.shelves.removeBook,

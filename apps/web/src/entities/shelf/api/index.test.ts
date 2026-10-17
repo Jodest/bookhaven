@@ -45,6 +45,8 @@ describe('shelvesApi normalization', () => {
       userId: '',
       name: 'Reading',
       type: 'reading',
+      description: '',
+      isPublic: true,
       booksCount: 3,
       hasBook: true,
       createdAt: '2024-01-01T00:00:00Z',
@@ -79,6 +81,8 @@ describe('shelvesApi normalization', () => {
       userId: 'user-1',
       name: 'Reading',
       type: 'reading',
+      description: '',
+      isPublic: true,
       booksCount: 1,
       hasBook: undefined,
       createdAt: '2024-01-01T00:00:00Z',
@@ -113,6 +117,8 @@ describe('shelvesApi normalization', () => {
       userId: 'user-1',
       name: 'Reading',
       type: 'reading',
+      description: '',
+      isPublic: true,
       booksCount: 1,
       hasBook: undefined,
       createdAt: '2024-01-01T00:00:00Z',
@@ -145,10 +151,38 @@ describe('shelvesApi normalization', () => {
       userId: 'user-1',
       name: 'Favorites',
       type: 'custom',
+      description: '',
+      isPublic: true,
       booksCount: 0,
       hasBook: undefined,
       createdAt: '2024-01-01T00:00:00Z',
       updatedAt: '2024-01-01T00:00:00Z',
     });
+  });
+
+  it('update() PATCHes and normalizes description and is_public', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        id: 'shelf-2',
+        user_id: 'user-1',
+        name: 'Favorites',
+        type: 'custom',
+        description: 'Мои любимые',
+        is_public: false,
+        books_count: 0,
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await shelvesApi.update('shelf-2', { is_public: false });
+
+    expect(result.isPublic).toBe(false);
+    expect(result.description).toBe('Мои любимые');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/shelves/shelf-2'),
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ is_public: false }) })
+    );
   });
 });

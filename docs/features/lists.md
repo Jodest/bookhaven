@@ -1,6 +1,6 @@
 # Lists: viewing
 
-Status: implemented
+Status: superseded by openspec/changes/merge-lists-into-shelves (lists were merged into custom shelves; the text below is frozen history)
 
 ## Goal
 

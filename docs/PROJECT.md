@@ -11,7 +11,7 @@ BookHaven is a social book catalog for the Russian/CIS market, inspired by Goodr
 - User shelves
 - Ratings
 - Reviews
-- User lists
+- Custom shelves with a description and privacy
 - User profiles
 - Administration
 
