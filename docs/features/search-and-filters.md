@@ -47,6 +47,9 @@ Enable users to search the book catalog by text and filter results by genre, aut
 - Year range filter is inclusive: books with `published_year` between `year_from` and `year_to` (inclusive) are returned.
 - Maximum results per page: 100 (existing limit).
 - Default results per page: 20 (existing default).
+- Every sort order ends with `books.id ASC` as a unique tiebreaker, so paging is deterministic (no duplicated or skipped books between pages).
+- The genre filter is ANY (OR) and duplicate-free: a book with several selected genres appears once and counts once in `total` (the author and genre filters use `EXISTS`, not joins).
+- The web catalog requests 24 books per page (`limit=24`); the API default stays 20.
 
 ## UX
 
@@ -60,7 +63,7 @@ Enable users to search the book catalog by text and filter results by genre, aut
 - **Sort selector**: Dropdown or button group: По рейтингу (default), По дате (newest), По названию (A-Z).
 - **Active filters bar**: Horizontal row of removable chips above the book grid. Shows "Сбросить все" button.
 - **Book grid**: Existing card layout, unchanged.
-- **Pagination**: Existing pagination, updated to preserve all filter params in links.
+- **Pagination**: numbered link-based pager plus "Показать ещё"; see `docs/features/catalog-pagination.md`.
 - **Loading state**: Skeleton placeholders while filters are loading or results are fetching.
 - **Empty state**: Friendly message when no books match: "По вашему запросу ничего не найдено. Попробуйте изменить фильтры."
 
