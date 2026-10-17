@@ -194,7 +194,7 @@ describe('ModerationQueue', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Найти' }));
     expect(pushMock).toHaveBeenLastCalledWith(`/moderation/things?search=${encodeURIComponent('бе')}`);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Вперед' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }));
     expect(pushMock).toHaveBeenLastCalledWith('/moderation/things?page=3');
   });
 
