@@ -4,6 +4,7 @@ import { readingChallengesApi } from '@/entities/reading-challenge';
 import { isApiError, ReadingChallenge } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -55,6 +56,7 @@ export function ManageReadingChallengeGoal({
 }: ManageReadingChallengeGoalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const {
     register,
@@ -74,6 +76,8 @@ export function ManageReadingChallengeGoal({
     setSaveError(null);
     try {
       const updated = await readingChallengesApi.upsert(year, { goal: data.goal });
+      // The home challenge card caches this year under ['reading-challenges', year, userId].
+      void queryClient.invalidateQueries({ queryKey: ['reading-challenges', year] });
       setIsEditing(false);
       reset();
       onSaved(updated);

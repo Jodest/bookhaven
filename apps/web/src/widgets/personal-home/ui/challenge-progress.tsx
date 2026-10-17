@@ -1,17 +1,36 @@
+'use client';
+
 import type { ReadingChallenge } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
+import { useCurrentReadingChallenge } from '../model/use-personal-home';
+import { CardSkeleton } from './row-skeleton';
 
-interface ChallengeProgressProps {
+interface ChallengeCardProps {
   year: number;
   challenge: ReadingChallenge;
 }
 
 /**
- * This year's reading-challenge card: progress toward the goal (same bar
- * markup as ManageReadingChallengeGoal), or a CTA to set a goal.
+ * This year's reading-challenge card for the home sidebar (logged-in only):
+ * skeleton while loading, nothing for guests, while the session resolves, or
+ * on error.
  */
-export function ChallengeProgress({ year, challenge }: ChallengeProgressProps) {
+export function ChallengeProgress() {
+  const { year, query } = useCurrentReadingChallenge();
+
+  if (query.isPending) {
+    // Disabled queries (guest / resolving session) stay pending: render nothing.
+    return query.fetchStatus === 'idle' ? null : <CardSkeleton label="Читательский вызов" />;
+  }
+  if (!query.data) {
+    return null;
+  }
+  return <ChallengeCard year={year} challenge={query.data} />;
+}
+
+/** Progress toward the goal (same bar markup as ManageReadingChallengeGoal), or a CTA to set a goal. */
+function ChallengeCard({ year, challenge }: ChallengeCardProps) {
   const { goal, booksRead, progressPercent, completed } = challenge;
 
   return (

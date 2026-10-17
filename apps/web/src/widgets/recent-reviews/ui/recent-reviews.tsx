@@ -51,7 +51,7 @@ export function RecentReviews({ reviews, className }: RecentReviewsProps) {
       <h2 id="recent-reviews-heading" className="font-display text-xl font-semibold md:text-2xl">
         Свежие рецензии
       </h2>
-      <ul className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <ul className="mt-4 grid grid-cols-1 gap-4 2xl:grid-cols-3">
         {reviews.map((review) => (
           <li key={review.id}>
             <article className="flex h-full flex-col rounded-xl border bg-card p-4 text-card-foreground shadow-sm">
