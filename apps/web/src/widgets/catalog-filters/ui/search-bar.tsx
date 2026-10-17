@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { SearchInputForm } from '@/shared/ui';
 
@@ -17,13 +17,24 @@ export function SearchBar({ onSearch }: SearchBarProps) {
     setValue(searchParams.get('search') || '');
   }, [searchParams]);
 
-  // Debounced search
+  // Keep latest callback in a ref so its identity changes don't retrigger the debounce
+  const onSearchRef = useRef(onSearch);
   useEffect(() => {
+    onSearchRef.current = onSearch;
+  });
+
+  const urlSearch = searchParams.get('search') || '';
+  const urlSearchRef = useRef(urlSearch);
+  urlSearchRef.current = urlSearch;
+
+  // Debounced search: only when the user changed the text (not when synced from URL)
+  useEffect(() => {
+    if (value === urlSearchRef.current) return;
     const timer = setTimeout(() => {
-      onSearch(value);
+      onSearchRef.current(value);
     }, 300);
     return () => clearTimeout(timer);
-  }, [value, onSearch]);
+  }, [value]);
 
   return <SearchInputForm value={value} onChange={setValue} onSubmit={onSearch} />;
 }
