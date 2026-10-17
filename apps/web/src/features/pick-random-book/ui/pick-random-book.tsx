@@ -22,7 +22,8 @@ interface PickVars {
 
 /**
  * "Что почитать?" roulette: picks a random well-rated book (optionally in
- * a genre) via GET /home/random. "Ещё вариант" excludes the book shown.
+ * a genre) via GET /home/random. Compact: lives in the narrow home sidebar,
+ * so the select and button are always stacked. "Ещё вариант" excludes the book shown.
  */
 export function PickRandomBook({ genres, className }: PickRandomBookProps) {
   const [genreId, setGenreId] = useState('');
@@ -45,22 +46,21 @@ export function PickRandomBook({ genres, className }: PickRandomBookProps) {
   return (
     <section
       aria-labelledby="pick-random-book-heading"
-      className={`rounded-2xl border bg-card p-5 text-card-foreground shadow-sm md:p-6 ${className ?? ''}`}
+      className={`rounded-2xl border bg-card p-5 text-card-foreground shadow-sm ${className ?? ''}`}
     >
-      <h2 id="pick-random-book-heading" className="font-display text-xl font-semibold md:text-2xl">
+      <h2 id="pick-random-book-heading" className="font-display text-lg font-semibold">
         Что почитать?
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
         Подберём случайную книгу с хорошими оценками читателей.
       </p>
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="mt-4 flex flex-col gap-3">
         <label htmlFor="pick-random-genre" className="sr-only">
           Жанр
         </label>
         <Select
           id="pick-random-genre"
-          className="sm:max-w-xs"
           value={genreId}
           onChange={(e) => setGenreId(e.target.value)}
           options={[

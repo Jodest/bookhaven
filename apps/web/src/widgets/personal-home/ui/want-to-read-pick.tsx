@@ -1,20 +1,42 @@
+'use client';
+
 import type { Book } from '@bookhaven/api-client';
 import { formatRatingSummary } from '@/shared/lib/format-date-ru';
 import { Star } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { usePersonalHome } from '../model/use-personal-home';
+import { CardSkeleton } from './row-skeleton';
 
-interface WantToReadPickProps {
+interface WantToReadCardProps {
   shelfId: string;
   total: number;
   book: Book;
 }
 
 /**
- * One book from the user's "Хочу прочитать" shelf, picked server-side per
- * user and day (stable across reloads).
+ * One book from the user's "Хочу прочитать" shelf (picked server-side per
+ * user and day), shown in the home main column for logged-in users: skeleton
+ * while loading, nothing for guests, while the session resolves, when the
+ * shelf is empty or on error.
  */
-export function WantToReadPick({ shelfId, total, book }: WantToReadPickProps) {
+export function WantToReadPick() {
+  const { enabled, query } = usePersonalHome();
+
+  if (!enabled) {
+    return null;
+  }
+  if (query.isPending) {
+    return <CardSkeleton label="Из вашего «Хочу прочитать»" />;
+  }
+  const pick = query.data?.wantToReadPick;
+  if (!pick?.book) {
+    return null;
+  }
+  return <WantToReadCard shelfId={pick.shelfId} total={pick.total} book={pick.book} />;
+}
+
+function WantToReadCard({ shelfId, total, book }: WantToReadCardProps) {
   const rating = formatRatingSummary(book.rating, book.ratingsCount);
 
   return (

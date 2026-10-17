@@ -18,7 +18,7 @@ export function CuratedCollectionsRow({ collections }: CuratedCollectionsRowProp
           Все подборки
         </Link>
       </div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {collections.map((c) => (
           <CollectionCard key={c.id} collection={c} headingLevel="h3" />
         ))}

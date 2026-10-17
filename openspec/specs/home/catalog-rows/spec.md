@@ -7,11 +7,11 @@ Gives visitors three quick ways into the catalog: what is new, what readers rate
 ## Requirements
 
 ### Requirement: New books
-«Новое в каталоге» SHALL show up to 10 published books in the order defined by `catalog-moderation/entity-status` (first-publication time, newest first). Its link «Весь каталог» opens `/books?sort=new`, which sorts by publication year instead (see `catalog-moderation/entity-status`).
+«Новое в каталоге» SHALL hold up to 10 published books in the order defined by `catalog-moderation/entity-status` (first-publication time, newest first); the page shows the first ones that fit in one row. Its link «Весь каталог» opens `/books?sort=new`, which sorts by publication year instead (see `catalog-moderation/entity-status`).
 
 #### Scenario: Row size
 - **WHEN** 25 books are published
-- **THEN** «Новое в каталоге» shows 10 of them
+- **THEN** `new_books` in the home payload holds 10 of them
 
 ### Requirement: Top rated
 «Высоко оценённые» SHALL show up to 10 published books with a rating of at least 4.0 and at least 3 ratings, by rating, then by number of ratings. Its link «Смотреть все» opens `/books?sort=rating`.
