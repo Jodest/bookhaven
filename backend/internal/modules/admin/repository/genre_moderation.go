@@ -189,6 +189,8 @@ type GenreMergeResult struct {
 	// KeptQIDs maps a source id to the QID it kept on its alias because the
 	// target already had one.
 	KeptQIDs map[uuid.UUID]string
+	// MergeID is the merge journal entry written for this merge.
+	MergeID uuid.UUID
 }
 
 // GenreMergeCollection is a curated collection a merge would switch.
@@ -255,18 +257,18 @@ func countDistinct(ids []uuid.UUID) int {
 // Both rows are re-read inside the transaction (locked FOR UPDATE on
 // Postgres); a missing or alias row returns gorm.ErrRecordNotFound with
 // nothing changed.
-func (r *GormRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (GenreMergeResult, error) {
-	return r.mergeGenres(ctx, []uuid.UUID{sourceID}, targetID)
+func (r *GormRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID, actorID *uuid.UUID) (GenreMergeResult, error) {
+	return r.mergeGenres(ctx, []uuid.UUID{sourceID}, targetID, actorID)
 }
 
 // MergeGenresBatch implements Repository.MergeGenresBatch: all rows are
 // locked up front, then each source is merged in request order with the
 // running target QID, so the first source with a QID wins the carry-over.
-func (r *GormRepository) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (GenreMergeResult, error) {
-	return r.mergeGenres(ctx, sourceIDs, targetID)
+func (r *GormRepository) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID, actorID *uuid.UUID) (GenreMergeResult, error) {
+	return r.mergeGenres(ctx, sourceIDs, targetID, actorID)
 }
 
-func (r *GormRepository) mergeGenres(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (GenreMergeResult, error) {
+func (r *GormRepository) mergeGenres(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID, actorID *uuid.UUID) (GenreMergeResult, error) {
 	for _, id := range sourceIDs {
 		if id == targetID {
 			return GenreMergeResult{}, gorm.ErrRecordNotFound
@@ -281,8 +283,13 @@ func (r *GormRepository) mergeGenres(ctx context.Context, sourceIDs []uuid.UUID,
 			return err
 		}
 		targetQID := qids[targetID]
-		for _, sourceID := range sourceIDs {
+		var journal []*genreMergeSnapshot
+		for i, sourceID := range sourceIDs {
 			sourceQID := qids[sourceID]
+			snap, err := snapshotGenreForMerge(tx, sourceID, targetID, i)
+			if err != nil {
+				return err
+			}
 			books, carried, collections, err := mergeGenreInTx(tx, sourceID, targetID, targetQID, sourceQID)
 			if err != nil {
 				return err
@@ -305,8 +312,11 @@ func (r *GormRepository) mergeGenres(ctx context.Context, sourceIDs []uuid.UUID,
 					res.AutoCollectionIDs = append(res.AutoCollectionIDs, c.ID)
 				}
 			}
+			snap.finish(carried, collections)
+			journal = append(journal, snap)
 		}
-		return nil
+		res.MergeID, err = writeGenreMergeJournal(tx, targetID, actorID, res, journal)
+		return err
 	})
 	if err != nil {
 		return GenreMergeResult{}, err

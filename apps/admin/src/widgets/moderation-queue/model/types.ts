@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { Route } from 'next';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { PaginatedResponse } from '@bookhaven/api-client';
 
@@ -7,6 +8,8 @@ export type ModerationStatus = 'pending' | 'published' | 'rejected';
 export interface ModerationFeedback {
   type: 'success' | 'error';
   message: string;
+  /** Optional link shown after the message (e.g. "Отменить"). */
+  action?: { label: string; href: Route };
 }
 
 export interface ModerationStatusChange {

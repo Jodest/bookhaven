@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   AdminGenre,
   AdminGenreHint,
@@ -69,6 +70,13 @@ const buildParams = ({ status, search, page, limit, filters }: ModerationQueueSt
 type MergeOverlay =
   | { kind: 'single'; source: AdminGenre; initialCanonical?: AdminGenre }
   | { kind: 'batch'; genres: AdminGenre[] };
+
+// "Отменить" link of a success message: opens the merge history with the
+// undo dialog of that merge.
+const undoAction = (mergeId: string) => ({
+  label: 'Отменить',
+  href: `/moderation/genres/merges?undo=${mergeId}` as const,
+});
 
 // " Переключено подборок: N." when a merge switched collections, else "".
 const switchedSuffix = (collectionsSwitched: number) =>
@@ -142,6 +150,13 @@ export function GenreModerationView() {
       getStatus={(item) => item.genre.status}
       filters={FILTERS}
       columns={columns}
+      renderToolbar={() => (
+        <div className="text-sm">
+          <Link href="/moderation/genres/merges" className="underline">
+            История слияний
+          </Link>
+        </div>
+      )}
       renderRowActions={(item, ctx) => (
         <Button variant="ghost" size="sm" disabled={ctx.statusPending} onClick={() => openMerge(ctx, item.genre)}>
           Слить
@@ -173,6 +188,7 @@ export function GenreModerationView() {
                 controls.notify({
                   type: 'success',
                   message: `Слито жанров: ${result.sources_merged} в «${targetName}». Перенесено книг: ${result.books_reassigned}.${switchedSuffix(result.collections_switched)}`,
+                  action: undoAction(result.merge_id),
                 });
               }}
             />
@@ -183,13 +199,14 @@ export function GenreModerationView() {
             source={overlay.source}
             initialCanonical={overlay.initialCanonical}
             onClose={() => setOverlay(null)}
-            onMerged={(booksReassigned, collectionsSwitched) => {
+            onMerged={(booksReassigned, collectionsSwitched, mergeId) => {
               const name = overlay.source.name;
               setOverlay(null);
               controls.clearSelection();
               controls.notify({
                 type: 'success',
                 message: `Жанр «${name}» слит. Перенесено книг: ${booksReassigned}.${switchedSuffix(collectionsSwitched)}`,
+                action: undoAction(mergeId),
               });
             }}
           />

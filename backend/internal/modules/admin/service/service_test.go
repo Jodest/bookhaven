@@ -76,6 +76,18 @@ type fakeRepository struct {
 	previewGenreMergeCalls int
 	previewGenreMergeErr   error
 	previewGenreMerge      repository.GenreMergePreview
+	// Merge journal: id returned by the merges, the actor they received, and
+	// the history/undo doubles (genre_merge_undo_test.go).
+	mergeJournalID   uuid.UUID
+	lastMergeActor   *uuid.UUID
+	listMergesPage   int
+	listMergesLimit  int
+	listMergesResult []repository.GenreMergeEntry
+	undoPreview      repository.GenreMergeUndoPreview
+	undoResult       repository.GenreMergeUndoResult
+	undoErr          error
+	undoCalls        int
+	undoActor        uuid.UUID
 
 	// Book moderation queue (book_moderation_queue_test.go): bookModRows
 	// backs ListBooksForModeration; isbnCandidates / authorCandidates back
@@ -1210,8 +1222,9 @@ func (f *fakeRepository) SetGenreStatus(ctx context.Context, id uuid.UUID, statu
 
 // MergeGenres mirrors the repository's alias semantics on the in-memory
 // genres (book links are not modeled; mergeGenresBooks is returned).
-func (f *fakeRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (repository.GenreMergeResult, error) {
+func (f *fakeRepository) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID, actorID *uuid.UUID) (repository.GenreMergeResult, error) {
 	f.mergeGenresCalls++
+	f.lastMergeActor = actorID
 	if f.mergeGenresErr != nil {
 		return repository.GenreMergeResult{}, f.mergeGenresErr
 	}
@@ -1223,13 +1236,15 @@ func (f *fakeRepository) MergeGenres(ctx context.Context, sourceID, targetID uui
 		SourcesMerged:       1,
 		CollectionsSwitched: f.mergeGenresCollections,
 		AutoCollectionIDs:   f.mergeGenresAutoIDs,
+		MergeID:             f.mergeJournalID,
 	}, nil
 }
 
 // MergeGenresBatch merges every source in order (not atomic in the fake; the
 // tests that need not-found use missing ids up front).
-func (f *fakeRepository) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (repository.GenreMergeResult, error) {
+func (f *fakeRepository) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID, actorID *uuid.UUID) (repository.GenreMergeResult, error) {
 	f.mergeBatchCalls++
+	f.lastMergeActor = actorID
 	f.lastMergeBatchSources = sourceIDs
 	f.lastMergeBatchTarget = targetID
 	if f.mergeBatchErr != nil {
@@ -1245,7 +1260,29 @@ func (f *fakeRepository) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.
 		SourcesMerged:       len(sourceIDs),
 		CollectionsSwitched: f.mergeGenresCollections,
 		AutoCollectionIDs:   f.mergeGenresAutoIDs,
+		MergeID:             f.mergeJournalID,
 	}, nil
+}
+
+func (f *fakeRepository) ListGenreMerges(ctx context.Context, page, limit int) ([]repository.GenreMergeEntry, int64, error) {
+	f.listMergesPage, f.listMergesLimit = page, limit
+	return f.listMergesResult, int64(len(f.listMergesResult)), nil
+}
+
+func (f *fakeRepository) PreviewGenreMergeUndo(ctx context.Context, mergeID uuid.UUID) (repository.GenreMergeUndoPreview, error) {
+	if f.undoErr != nil {
+		return repository.GenreMergeUndoPreview{}, f.undoErr
+	}
+	return f.undoPreview, nil
+}
+
+func (f *fakeRepository) UndoGenreMerge(ctx context.Context, mergeID uuid.UUID, actorID uuid.UUID) (repository.GenreMergeUndoResult, error) {
+	f.undoCalls++
+	f.undoActor = actorID
+	if f.undoErr != nil {
+		return repository.GenreMergeUndoResult{}, f.undoErr
+	}
+	return f.undoResult, nil
 }
 
 func (f *fakeRepository) PreviewGenreMerge(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (repository.GenreMergePreview, error) {

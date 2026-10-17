@@ -260,7 +260,7 @@ func TestMergeGenres_Service(t *testing.T) {
 	t.Run("self merge", func(t *testing.T) {
 		svc, repo := newService()
 		id := uuid.New()
-		if _, _, _, err := svc.MergeGenres(ctx, id, id); !errors.Is(err, ErrCannotMergeGenreIntoSelf) {
+		if _, _, _, _, err := svc.MergeGenres(ctx, id, id); !errors.Is(err, ErrCannotMergeGenreIntoSelf) {
 			t.Fatalf("expected ErrCannotMergeGenreIntoSelf, got %v", err)
 		}
 		if repo.mergeGenresCalls != 0 {
@@ -279,7 +279,7 @@ func TestMergeGenres_Service(t *testing.T) {
 			"alias source":   {alias.ID, target.ID},
 			"alias target":   {target.ID, alias.ID},
 		} {
-			if _, _, _, err := svc.MergeGenres(ctx, pair[0], pair[1]); !errors.Is(err, ErrGenreNotFound) {
+			if _, _, _, _, err := svc.MergeGenres(ctx, pair[0], pair[1]); !errors.Is(err, ErrGenreNotFound) {
 				t.Fatalf("%s: expected ErrGenreNotFound, got %v", name, err)
 			}
 		}
@@ -293,7 +293,7 @@ func TestMergeGenres_Service(t *testing.T) {
 		a, b := queueGenre("а", "pending"), queueGenre("б", "pending")
 		repo.genres = []catalogDomain.Genre{a, b}
 		repo.mergeGenresErr = gorm.ErrRecordNotFound
-		if _, _, _, err := svc.MergeGenres(ctx, a.ID, b.ID); !errors.Is(err, ErrGenreNotFound) {
+		if _, _, _, _, err := svc.MergeGenres(ctx, a.ID, b.ID); !errors.Is(err, ErrGenreNotFound) {
 			t.Fatalf("expected ErrGenreNotFound, got %v", err)
 		}
 	})
@@ -305,7 +305,7 @@ func TestMergeGenres_Service(t *testing.T) {
 		repo.genres = []catalogDomain.Genre{source, target}
 		repo.mergeGenresBooks = 2
 
-		got, books, _, err := svc.MergeGenres(ctx, source.ID, target.ID)
+		got, books, _, _, err := svc.MergeGenres(ctx, source.ID, target.ID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -320,7 +320,7 @@ func TestMergeGenres_Service(t *testing.T) {
 		target := catalogDomain.Genre{ID: uuid.New(), Name: "роман", Slug: "roman", Status: "published", WikidataQID: strPtr("Q8261")}
 		repo.genres = []catalogDomain.Genre{source, target}
 
-		got, _, _, err := svc.MergeGenres(ctx, source.ID, target.ID)
+		got, _, _, _, err := svc.MergeGenres(ctx, source.ID, target.ID)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

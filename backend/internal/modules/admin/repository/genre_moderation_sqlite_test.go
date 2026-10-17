@@ -61,6 +61,9 @@ func newGenreModRepo(t *testing.T) *genreModFixture {
 	if err := db.Exec(genreModerationDDL).Error; err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
+	if err := db.Exec(genreMergeJournalDDL).Error; err != nil {
+		t.Fatalf("create journal schema: %v", err)
+	}
 	return &genreModFixture{t: t, repo: &GormRepository{db: db}, db: db, base: time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC)}
 }
 
@@ -333,7 +336,7 @@ func TestMergeGenres_MovesLinksAndBecomesAlias(t *testing.T) {
 	both := f.book("Оба", false, source, target)
 	onlyTarget := f.book("Только цель", false, target)
 
-	res, err := f.repo.MergeGenres(ctx, source, target)
+	res, err := f.repo.MergeGenres(ctx, source, target, nil)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
 	}
@@ -367,7 +370,7 @@ func TestMergeGenres_MovesLinksAndBecomesAlias(t *testing.T) {
 	if _, err := f.repo.GetGenreByID(ctx, source); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("GetGenreByID(alias): expected not found, got %v", err)
 	}
-	if _, err := f.repo.MergeGenres(ctx, source, target); !errors.Is(err, gorm.ErrRecordNotFound) {
+	if _, err := f.repo.MergeGenres(ctx, source, target, nil); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("merging an alias again: expected not found, got %v", err)
 	}
 }
@@ -377,7 +380,7 @@ func TestMergeGenres_BothHaveQID(t *testing.T) {
 	target := f.genre("роман", "roman", "published", strPtr("Q8261"))
 	source := f.genre("романы", "romany", "pending", strPtr("Q123"))
 
-	if _, err := f.repo.MergeGenres(context.Background(), source, target); err != nil {
+	if _, err := f.repo.MergeGenres(context.Background(), source, target, nil); err != nil {
 		t.Fatalf("merge: %v", err)
 	}
 	if q := f.load(source).WikidataQID; q == nil || *q != "Q123" {
@@ -393,7 +396,7 @@ func TestMergeGenres_MissingTargetChangesNothing(t *testing.T) {
 	source := f.genre("романы", "romany", "pending", nil)
 	book := f.book("Книга", false, source)
 
-	if _, err := f.repo.MergeGenres(context.Background(), source, uuid.New()); !errors.Is(err, gorm.ErrRecordNotFound) {
+	if _, err := f.repo.MergeGenres(context.Background(), source, uuid.New(), nil); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("expected not found, got %v", err)
 	}
 	if row := f.load(source); row.MergedIntoID != nil || row.Status != "pending" {
@@ -420,7 +423,7 @@ func TestMergeGenres_Atomic(t *testing.T) {
 		t.Fatalf("create trigger: %v", err)
 	}
 
-	if _, err := f.repo.MergeGenres(context.Background(), source, target); err == nil {
+	if _, err := f.repo.MergeGenres(context.Background(), source, target, nil); err == nil {
 		t.Fatal("expected the forced failure")
 	}
 	if links := f.links(book); len(links) != 1 || links[0] != source.String() {

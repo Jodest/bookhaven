@@ -35,7 +35,13 @@ vi.mock('@/features/merge-genre', () => ({
         type="button"
         onClick={() =>
           props.onMerged(
-            { genre: props.genres[0], sources_merged: 2, books_reassigned: 5, collections_switched: 1 },
+            {
+              genre: props.genres[0],
+              sources_merged: 2,
+              books_reassigned: 5,
+              collections_switched: 1,
+              merge_id: 'merge-b',
+            },
             'роман'
           )
         }
@@ -44,9 +50,16 @@ vi.mock('@/features/merge-genre', () => ({
       </button>
     </div>
   ),
-  MergeGenreDialog: (props: { source: AdminGenre; initialCanonical?: AdminGenre }) => (
+  MergeGenreDialog: (props: {
+    source: AdminGenre;
+    initialCanonical?: AdminGenre;
+    onMerged: (booksReassigned: number, collectionsSwitched: number, mergeId: string) => void;
+  }) => (
     <div data-testid="merge-dialog">
       {props.source.name}|{props.initialCanonical?.name ?? ''}
+      <button type="button" onClick={() => props.onMerged(4, 0, 'merge-s')}>
+        finish-single
+      </button>
     </div>
   ),
 }));
@@ -323,12 +336,31 @@ describe('GenreModerationView', () => {
     expect(screen.getByTestId('merge-dialog')).toHaveTextContent('романы|роман');
   });
 
+  it('links to the merge history', async () => {
+    renderView();
+    await waitFor(() => expect(screen.getByText('Война и мир')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'История слияний' })).toHaveAttribute('href', '/moderation/genres/merges');
+  });
+
+  it('offers to undo a single merge from the success message', async () => {
+    renderView();
+    await waitFor(() => expect(screen.getByText('Война и мир')).toBeInTheDocument());
+
+    fireEvent.click(within(rowOf('романы')).getByRole('button', { name: 'Слить' }));
+    fireEvent.click(screen.getByRole('button', { name: 'finish-single' }));
+    await waitFor(() => expect(screen.getByText(/Жанр «романы» слит\. Перенесено книг: 4\./)).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'Отменить' })).toHaveAttribute(
+      'href',
+      '/moderation/genres/merges?undo=merge-s'
+    );
+  });
+
   it('opens the merge dialog without a target from the row action', async () => {
     renderView();
     await waitFor(() => expect(screen.getByText('Война и мир')).toBeInTheDocument());
 
     fireEvent.click(within(rowOf('эпос')).getByRole('button', { name: 'Слить' }));
-    expect(screen.getByTestId('merge-dialog').textContent).toBe('эпос|');
+    expect(screen.getByTestId('merge-dialog').textContent).toBe('эпос|finish-single');
   });
 
   it('offers "Слить выбранные" for the selection and opens the batch dialog in queue order', async () => {
@@ -350,6 +382,10 @@ describe('GenreModerationView', () => {
     );
     expect(screen.queryByTestId('batch-merge-dialog')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Слить выбранные/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Отменить' })).toHaveAttribute(
+      'href',
+      '/moderation/genres/merges?undo=merge-b'
+    );
   });
 
   it('shows the pending empty state', async () => {
