@@ -1,3 +1,5 @@
+import type { Route } from 'next';
+
 /**
  * Validates that a redirect target is a safe, same-origin, relative path.
  *
@@ -51,4 +53,9 @@ export function loginHrefWithRedirect(redirect: string | null | undefined): stri
   return isSafeRedirectPath(redirect)
     ? `/login?${new URLSearchParams({ redirect }).toString()}`
     : '/login';
+}
+
+/** Typed wrapper of `loginHrefWithRedirect` for `<Link href>` (typedRoutes). */
+export function loginHref(redirect: string): Route {
+  return loginHrefWithRedirect(redirect) as Route;
 }

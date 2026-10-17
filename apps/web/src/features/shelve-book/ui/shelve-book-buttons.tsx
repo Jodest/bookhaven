@@ -1,13 +1,15 @@
 'use client';
 
-import { shelvesApi } from '@/entities/shelf';
-import { useAuthStore } from '@/entities/session';
-import { Shelf } from '@bookhaven/api-client';
+import { loginHref } from '@/shared/lib/safe-redirect';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-
-type DefaultShelfType = 'want_to_read' | 'reading' | 'read';
+import {
+  type DefaultShelfType,
+  defaultTypeLabels,
+  defaultTypeOrder,
+  isDefaultType,
+  useBookShelves,
+} from '../model/use-book-shelves';
 
 interface ShelveBookButtonsProps {
   bookId: string;
@@ -20,16 +22,6 @@ interface ShelveBookButtonsProps {
   loginRedirect?: string;
 }
 
-const defaultTypeLabels: Record<string, string> = {
-  want_to_read: 'Хочу прочитать',
-  reading: 'Читаю',
-  read: 'Прочитано',
-};
-
-const defaultTypeOrder: DefaultShelfType[] = ['want_to_read', 'reading', 'read'];
-// Shelf.type is a wider union (custom shelves); compare as plain strings.
-const isDefaultType = (type: string) => (defaultTypeOrder as string[]).includes(type);
-
 export function ShelveBookButtons({
   bookId,
   slug,
@@ -39,105 +31,28 @@ export function ShelveBookButtons({
 }: ShelveBookButtonsProps) {
   const visibleTypes = defaultTypeOrder.filter((type) => types.includes(type));
   const redirectTarget = loginRedirect ?? `/books/${slug}`;
-  const { isAuthenticated } = useAuthStore();
-  const [shelves, setShelves] = useState<Shelf[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    let cancelled = false;
-    setLoading(true);
-    shelvesApi
-      .list({ book_id: bookId })
-      .then((response) => {
-        if (!cancelled) {
-          setShelves(response.items);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Ошибка загрузки полок');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, bookId]);
-
-  const handleDefaultToggle = async (shelf: Shelf) => {
-    if (!isAuthenticated) return;
-
-    const wasActive = shelf.hasBook;
-    const targetType = shelf.type;
-
-    setShelves((prev) =>
-      prev.map((s) => {
-        if (isDefaultType(s.type)) {
-          return { ...s, hasBook: s.type === targetType ? !wasActive : false };
-        }
-        return s;
-      })
-    );
-
-    try {
-      if (wasActive) {
-        await shelvesApi.removeBook(shelf.id, bookId);
-      } else {
-        await shelvesApi.addBook(shelf.id, bookId);
-      }
-    } catch (err) {
-      setShelves((prev) =>
-        prev.map((s) => {
-          if (isDefaultType(s.type)) {
-            return { ...s, hasBook: s.type === targetType ? wasActive : s.hasBook };
-          }
-          return s;
-        })
-      );
-      setError(err instanceof Error ? err.message : 'Ошибка обновления полки');
-    }
-  };
-
-  const handleCustomToggle = async (shelf: Shelf) => {
-    if (!isAuthenticated) return;
-
-    const wasActive = shelf.hasBook;
-
-    setShelves((prev) =>
-      prev.map((s) => (s.id === shelf.id ? { ...s, hasBook: !wasActive } : s))
-    );
-
-    try {
-      if (wasActive) {
-        await shelvesApi.removeBook(shelf.id, bookId);
-      } else {
-        await shelvesApi.addBook(shelf.id, bookId);
-      }
-    } catch (err) {
-      setShelves((prev) =>
-        prev.map((s) => (s.id === shelf.id ? { ...s, hasBook: wasActive } : s))
-      );
-      setError(err instanceof Error ? err.message : 'Ошибка обновления полки');
-    }
-  };
+  const { isAuthenticated, shelves, status, error, toggleDefault, toggleCustom } =
+    useBookShelves(bookId);
+  const loading = status === 'loading';
 
   if (!isAuthenticated) {
     return (
       <div className="flex flex-wrap gap-2">
         {visibleTypes.map((type) => (
           <Button key={type} variant="outline" asChild>
-            <Link href={`/login?redirect=${redirectTarget}`}>
-              {defaultTypeLabels[type]}
-            </Link>
+            <Link href={loginHref(redirectTarget)}>{defaultTypeLabels[type]}</Link>
           </Button>
+        ))}
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-wrap gap-2" aria-busy="true">
+        <span className="sr-only">Загрузка полок</span>
+        {visibleTypes.map((type) => (
+          <div key={type} className="h-10 w-32 animate-pulse rounded-md bg-muted" />
         ))}
       </div>
     );
@@ -162,8 +77,7 @@ export function ShelveBookButtons({
             <Button
               key={type}
               variant={shelf.hasBook ? 'default' : 'outline'}
-              onClick={() => handleDefaultToggle(shelf)}
-              disabled={loading}
+              onClick={() => toggleDefault(shelf)}
             >
               {defaultTypeLabels[type]}
             </Button>
@@ -183,8 +97,7 @@ export function ShelveBookButtons({
                 <input
                   type="checkbox"
                   checked={shelf.hasBook || false}
-                  onChange={() => handleCustomToggle(shelf)}
-                  disabled={loading}
+                  onChange={() => toggleCustom(shelf)}
                 />
                 {shelf.name}
               </label>

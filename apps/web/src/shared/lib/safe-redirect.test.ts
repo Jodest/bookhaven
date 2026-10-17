@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isAuthPagePath,
   isSafeRedirectPath,
+  loginHref,
   loginHrefWithRedirect,
   postLoginRedirectPath,
 } from './safe-redirect';
@@ -78,4 +79,11 @@ describe('postLoginRedirectPath', () => {
       expect(postLoginRedirectPath(value)).toBe('/profile');
     }
   );
+});
+
+describe('loginHref', () => {
+  it('encodes the return path', () => {
+    expect(loginHref('/books/abc')).toBe('/login?redirect=%2Fbooks%2Fabc');
+    expect(loginHref('/')).toBe('/login?redirect=%2F');
+  });
 });
