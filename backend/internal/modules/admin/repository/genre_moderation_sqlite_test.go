@@ -34,6 +34,7 @@ CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', status 
 CREATE TABLE book_genres (book_id TEXT NOT NULL, genre_id TEXT NOT NULL, PRIMARY KEY (book_id, genre_id));
 CREATE TABLE authors (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'published');
 CREATE TABLE reviews (id TEXT PRIMARY KEY, is_hidden BOOLEAN NOT NULL DEFAULT 0, deleted_at DATETIME);
+CREATE TABLE curated_collections (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'manual', size INTEGER NOT NULL, source TEXT, source_url TEXT, genre_id TEXT, is_published BOOLEAN NOT NULL DEFAULT 0, published_at DATETIME, rule_metric TEXT, rule_period_days INTEGER, rule_min_ratings INTEGER, rule_confidence INTEGER, computed_at DATETIME, baseline_at DATETIME, created_at DATETIME, updated_at DATETIME);
 `
 
 type genreModFixture struct {
@@ -332,12 +333,12 @@ func TestMergeGenres_MovesLinksAndBecomesAlias(t *testing.T) {
 	both := f.book("Оба", false, source, target)
 	onlyTarget := f.book("Только цель", false, target)
 
-	n, err := f.repo.MergeGenres(ctx, source, target)
+	res, err := f.repo.MergeGenres(ctx, source, target)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
 	}
-	if n != 1 {
-		t.Fatalf("expected 1 book reassigned, got %d", n)
+	if res.BooksReassigned != 1 || res.SourcesMerged != 1 || res.CollectionsSwitched != 0 {
+		t.Fatalf("unexpected result: %+v", res)
 	}
 	for _, b := range []uuid.UUID{onlySource, both, onlyTarget} {
 		if links := f.links(b); len(links) != 1 || links[0] != target.String() {

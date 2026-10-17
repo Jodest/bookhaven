@@ -4860,6 +4860,174 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/genres/merge-batch": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Каждый жанр из source_ids (не более 100, без дубликатов, порядок сохраняется) сливается в target_id в одной транзакции с той же семантикой, что и одиночное слияние: книги переносятся без дублей, жанр становится отклонённым алиасом target_id, QID переносится от первого жанра в порядке запроса, у которого он есть, если у target_id его нет. Подборки, привязанные к сливаемым жанрам, переключаются на target_id (автоматические сразу пересчитываются). Всё или ничего: если любой жанр не найден или уже слит — 404 и ничего не меняется. Необратимо.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Слить несколько жанров в один (админ)",
+                "parameters": [
+                    {
+                        "description": "ID сливаемых жанров и ID жанра, который остаётся",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.mergeGenreBatchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.mergeGenreBatchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/genres/merge-preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Только чтение, ничего не меняет. Для source_ids (не более 100, без дубликатов) и target_id возвращает число книг, которые будут перенесены (книги, уже связанные с target_id, не считаются), и подборки, привязанные к сливаемым жанрам и подлежащие переключению. Одиночное слияние просматривается одним элементом в source_ids.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Предпросмотр слияния жанров (админ)",
+                "parameters": [
+                    {
+                        "description": "ID сливаемых жанров и ID жанра, который остаётся",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.mergeGenreBatchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.mergeGenrePreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/genres/moderation": {
             "get": {
                 "security": [
@@ -11084,6 +11252,40 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.genreMergeCollection": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "is_published": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "source_genre": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.genreMergeCollectionSource"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.genreMergeCollectionSource": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_admin_transport_http.genreQueueItemResponse": {
             "type": "object",
             "properties": {
@@ -11430,6 +11632,51 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_modules_admin_transport_http.mergeGenreBatchRequest": {
+            "type": "object",
+            "properties": {
+                "source_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "target_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.mergeGenreBatchResponse": {
+            "type": "object",
+            "properties": {
+                "books_reassigned": {
+                    "type": "integer"
+                },
+                "collections_switched": {
+                    "type": "integer"
+                },
+                "genre": {
+                    "$ref": "#/definitions/internal_modules_admin_transport_http.genreResponse"
+                },
+                "sources_merged": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.mergeGenrePreviewResponse": {
+            "type": "object",
+            "properties": {
+                "books_reassigned": {
+                    "type": "integer"
+                },
+                "collections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_admin_transport_http.genreMergeCollection"
+                    }
+                }
+            }
+        },
         "internal_modules_admin_transport_http.mergeGenreRequest": {
             "type": "object",
             "properties": {
@@ -11442,6 +11689,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "books_reassigned": {
+                    "type": "integer"
+                },
+                "collections_switched": {
                     "type": "integer"
                 },
                 "genre": {

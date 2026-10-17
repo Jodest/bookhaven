@@ -305,6 +305,15 @@ func (s *Service) recomputeLogged(ctx context.Context, id uuid.UUID) {
 	}
 }
 
+// RecomputeCollections recomputes the given collections with a reset
+// baseline, as after a genre change (used when a genre merge switches
+// automatic collections to another genre). Failures are only logged.
+func (s *Service) RecomputeCollections(ctx context.Context, ids []uuid.UUID) {
+	for _, id := range ids {
+		s.recomputeLogged(ctx, id)
+	}
+}
+
 // Update applies a partial update.
 func (s *Service) Update(ctx context.Context, id uuid.UUID, in UpdateInput) (*domain.Collection, error) {
 	c, err := s.repo.GetByID(ctx, id)

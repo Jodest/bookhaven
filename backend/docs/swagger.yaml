@@ -811,6 +811,28 @@ definitions:
           ViaAlias is the merged genre the match was followed through, null
           for a direct match.
     type: object
+  internal_modules_admin_transport_http.genreMergeCollection:
+    properties:
+      id:
+        type: string
+      is_published:
+        type: boolean
+      kind:
+        type: string
+      slug:
+        type: string
+      source_genre:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeCollectionSource'
+      title:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.genreMergeCollectionSource:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
   internal_modules_admin_transport_http.genreQueueItemResponse:
     properties:
       books_total:
@@ -1042,6 +1064,35 @@ definitions:
       books_reassigned:
         type: integer
     type: object
+  internal_modules_admin_transport_http.mergeGenreBatchRequest:
+    properties:
+      source_ids:
+        items:
+          type: string
+        type: array
+      target_id:
+        type: string
+    type: object
+  internal_modules_admin_transport_http.mergeGenreBatchResponse:
+    properties:
+      books_reassigned:
+        type: integer
+      collections_switched:
+        type: integer
+      genre:
+        $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
+      sources_merged:
+        type: integer
+    type: object
+  internal_modules_admin_transport_http.mergeGenrePreviewResponse:
+    properties:
+      books_reassigned:
+        type: integer
+      collections:
+        items:
+          $ref: '#/definitions/internal_modules_admin_transport_http.genreMergeCollection'
+        type: array
+    type: object
   internal_modules_admin_transport_http.mergeGenreRequest:
     properties:
       canonical_id:
@@ -1050,6 +1101,8 @@ definitions:
   internal_modules_admin_transport_http.mergeGenreResponse:
     properties:
       books_reassigned:
+        type: integer
+      collections_switched:
         type: integer
       genre:
         $ref: '#/definitions/internal_modules_admin_transport_http.genreResponse'
@@ -7115,6 +7168,125 @@ paths:
       security:
       - BearerAuth: []
       summary: Импортировать литературный жанр из Wikidata по QID (админ)
+      tags:
+      - admin
+  /admin/genres/merge-batch:
+    post:
+      consumes:
+      - application/json
+      description: 'Требуется роль admin и Bearer-токен. Каждый жанр из source_ids
+        (не более 100, без дубликатов, порядок сохраняется) сливается в target_id
+        в одной транзакции с той же семантикой, что и одиночное слияние: книги переносятся
+        без дублей, жанр становится отклонённым алиасом target_id, QID переносится
+        от первого жанра в порядке запроса, у которого он есть, если у target_id его
+        нет. Подборки, привязанные к сливаемым жанрам, переключаются на target_id
+        (автоматические сразу пересчитываются). Всё или ничего: если любой жанр не
+        найден или уже слит — 404 и ничего не меняется. Необратимо.'
+      parameters:
+      - description: ID сливаемых жанров и ID жанра, который остаётся
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.mergeGenreBatchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.mergeGenreBatchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Слить несколько жанров в один (админ)
+      tags:
+      - admin
+  /admin/genres/merge-preview:
+    post:
+      consumes:
+      - application/json
+      description: Требуется роль admin и Bearer-токен. Только чтение, ничего не меняет.
+        Для source_ids (не более 100, без дубликатов) и target_id возвращает число
+        книг, которые будут перенесены (книги, уже связанные с target_id, не считаются),
+        и подборки, привязанные к сливаемым жанрам и подлежащие переключению. Одиночное
+        слияние просматривается одним элементом в source_ids.
+      parameters:
+      - description: ID сливаемых жанров и ID жанра, который остаётся
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_admin_transport_http.mergeGenreBatchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_admin_transport_http.mergeGenrePreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Предпросмотр слияния жанров (админ)
       tags:
       - admin
   /admin/genres/moderation:

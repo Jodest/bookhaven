@@ -41,7 +41,9 @@ type Service interface {
 	UpdateGenre(ctx context.Context, id uuid.UUID, input adminService.GenreInput) (*catalogDomain.Genre, error)
 	ListGenreModerationQueue(ctx context.Context, filter repository.GenreModerationFilter, page, limit int) ([]adminService.GenreQueueItem, int64, error)
 	BulkSetGenreStatus(ctx context.Context, ids []uuid.UUID, status string) (adminService.GenreBulkStatusReport, error)
-	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (*catalogDomain.Genre, int64, error)
+	MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (genre *catalogDomain.Genre, booksReassigned int64, collectionsSwitched int, err error)
+	MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (*adminService.GenreBatchMergeOutcome, error)
+	PreviewGenreMerge(ctx context.Context, sourceIDs []uuid.UUID, targetID uuid.UUID) (*repository.GenreMergePreview, error)
 	SearchWikidataGenres(ctx context.Context, query string) (*adminService.GenreSearchResult, error)
 	ImportWikidataGenre(ctx context.Context, qid string) (*adminService.GenreImportResult, error)
 	ListReviews(ctx context.Context, filter repository.ReviewFilter) ([]reviewsDomain.Review, int64, error)
@@ -391,10 +393,50 @@ type mergeGenreRequest struct {
 }
 
 // mergeGenreResponse is returned on a successful merge: the target genre
-// (with a carried QID) plus how many books were reassigned.
+// (with a carried QID) plus how many books were reassigned and how many
+// curated collections were switched to the target.
 type mergeGenreResponse struct {
-	Genre           genreResponse `json:"genre"`
-	BooksReassigned int64         `json:"books_reassigned"`
+	Genre               genreResponse `json:"genre"`
+	BooksReassigned     int64         `json:"books_reassigned"`
+	CollectionsSwitched int           `json:"collections_switched"`
+}
+
+// mergeGenreBatchRequest is the body of POST /admin/genres/merge-batch and
+// POST /admin/genres/merge-preview: the sources (merged in this order) and
+// the target that stays.
+type mergeGenreBatchRequest struct {
+	SourceIDs []string `json:"source_ids"`
+	TargetID  string   `json:"target_id"`
+}
+
+// mergeGenreBatchResponse is returned on a successful batch merge.
+type mergeGenreBatchResponse struct {
+	Genre               genreResponse `json:"genre"`
+	SourcesMerged       int           `json:"sources_merged"`
+	BooksReassigned     int64         `json:"books_reassigned"`
+	CollectionsSwitched int           `json:"collections_switched"`
+}
+
+// genreMergeCollectionSource is the genre a collection is linked to now.
+type genreMergeCollectionSource struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// genreMergeCollection is a curated collection a merge would switch.
+type genreMergeCollection struct {
+	ID          uuid.UUID                  `json:"id"`
+	Title       string                     `json:"title"`
+	Slug        string                     `json:"slug"`
+	Kind        string                     `json:"kind"`
+	IsPublished bool                       `json:"is_published"`
+	SourceGenre genreMergeCollectionSource `json:"source_genre"`
+}
+
+// mergeGenrePreviewResponse is the read-only summary of a genre merge.
+type mergeGenrePreviewResponse struct {
+	BooksReassigned int64                  `json:"books_reassigned"`
+	Collections     []genreMergeCollection `json:"collections"`
 }
 
 type moderateReviewRequest struct {
@@ -1809,7 +1851,7 @@ func (h *Handler) MergeGenres(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid canonical_id"})
 	}
 
-	genre, booksReassigned, err := h.service.MergeGenres(ctx, sourceID, targetID)
+	genre, booksReassigned, collectionsSwitched, err := h.service.MergeGenres(ctx, sourceID, targetID)
 	if err != nil {
 		switch {
 		case errors.Is(err, adminService.ErrCannotMergeGenreIntoSelf):
@@ -1822,8 +1864,133 @@ func (h *Handler) MergeGenres(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, mergeGenreResponse{
-		Genre:           toGenreResponse(*genre),
-		BooksReassigned: booksReassigned,
+		Genre:               toGenreResponse(*genre),
+		BooksReassigned:     booksReassigned,
+		CollectionsSwitched: collectionsSwitched,
+	})
+}
+
+// parseGenreMergeBatchRequest binds and validates the ids of a batch merge
+// or preview request; on failure it has already written the 400 response.
+func parseGenreMergeBatchRequest(c echo.Context) (sourceIDs []uuid.UUID, targetID uuid.UUID, ok bool) {
+	var req mergeGenreBatchRequest
+	if err := c.Bind(&req); err != nil {
+		_ = c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return nil, uuid.Nil, false
+	}
+	targetID, err := uuid.Parse(req.TargetID)
+	if err != nil {
+		_ = c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid target_id"})
+		return nil, uuid.Nil, false
+	}
+	sourceIDs = make([]uuid.UUID, 0, len(req.SourceIDs))
+	for _, raw := range req.SourceIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			_ = c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid genre id: %q", raw)})
+			return nil, uuid.Nil, false
+		}
+		sourceIDs = append(sourceIDs, id)
+	}
+	return sourceIDs, targetID, true
+}
+
+// isGenreMergeInputError reports the validation errors that map to HTTP 400.
+func isGenreMergeInputError(err error) bool {
+	return errors.Is(err, adminService.ErrGenreMergeNoSources) ||
+		errors.Is(err, adminService.ErrGenreMergeDuplicateSource) ||
+		errors.Is(err, adminService.ErrGenreMergeTooLarge) ||
+		errors.Is(err, adminService.ErrCannotMergeGenreIntoSelf)
+}
+
+// MergeGenresBatch godoc
+// @Summary Слить несколько жанров в один (админ)
+// @Description Требуется роль admin и Bearer-токен. Каждый жанр из source_ids (не более 100, без дубликатов, порядок сохраняется) сливается в target_id в одной транзакции с той же семантикой, что и одиночное слияние: книги переносятся без дублей, жанр становится отклонённым алиасом target_id, QID переносится от первого жанра в порядке запроса, у которого он есть, если у target_id его нет. Подборки, привязанные к сливаемым жанрам, переключаются на target_id (автоматические сразу пересчитываются). Всё или ничего: если любой жанр не найден или уже слит — 404 и ничего не меняется. Необратимо.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body mergeGenreBatchRequest true "ID сливаемых жанров и ID жанра, который остаётся"
+// @Success 200 {object} mergeGenreBatchResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/genres/merge-batch [post]
+func (h *Handler) MergeGenresBatch(c echo.Context) error {
+	sourceIDs, targetID, ok := parseGenreMergeBatchRequest(c)
+	if !ok {
+		return nil
+	}
+
+	outcome, err := h.service.MergeGenresBatch(c.Request().Context(), sourceIDs, targetID)
+	if err != nil {
+		switch {
+		case isGenreMergeInputError(err):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, adminService.ErrGenreNotFound):
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "genre not found"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to merge genres"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, mergeGenreBatchResponse{
+		Genre:               toGenreResponse(*outcome.Genre),
+		SourcesMerged:       outcome.SourcesMerged,
+		BooksReassigned:     outcome.BooksReassigned,
+		CollectionsSwitched: outcome.CollectionsSwitched,
+	})
+}
+
+// PreviewGenreMerge godoc
+// @Summary Предпросмотр слияния жанров (админ)
+// @Description Требуется роль admin и Bearer-токен. Только чтение, ничего не меняет. Для source_ids (не более 100, без дубликатов) и target_id возвращает число книг, которые будут перенесены (книги, уже связанные с target_id, не считаются), и подборки, привязанные к сливаемым жанрам и подлежащие переключению. Одиночное слияние просматривается одним элементом в source_ids.
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body mergeGenreBatchRequest true "ID сливаемых жанров и ID жанра, который остаётся"
+// @Success 200 {object} mergeGenrePreviewResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/genres/merge-preview [post]
+func (h *Handler) PreviewGenreMerge(c echo.Context) error {
+	sourceIDs, targetID, ok := parseGenreMergeBatchRequest(c)
+	if !ok {
+		return nil
+	}
+
+	preview, err := h.service.PreviewGenreMerge(c.Request().Context(), sourceIDs, targetID)
+	if err != nil {
+		switch {
+		case isGenreMergeInputError(err):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		case errors.Is(err, adminService.ErrGenreNotFound):
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "genre not found"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to preview genre merge"})
+		}
+	}
+
+	collections := make([]genreMergeCollection, 0, len(preview.Collections))
+	for _, col := range preview.Collections {
+		collections = append(collections, genreMergeCollection{
+			ID:          col.ID,
+			Title:       col.Title,
+			Slug:        col.Slug,
+			Kind:        col.Kind,
+			IsPublished: col.IsPublished,
+			SourceGenre: genreMergeCollectionSource{ID: col.SourceGenreID, Name: col.SourceGenreName},
+		})
+	}
+	return c.JSON(http.StatusOK, mergeGenrePreviewResponse{
+		BooksReassigned: preview.BooksReassigned,
+		Collections:     collections,
 	})
 }
 

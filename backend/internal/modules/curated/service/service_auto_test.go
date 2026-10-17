@@ -311,3 +311,34 @@ func TestRecomputeAll_ContinuesAfterFailure(t *testing.T) {
 		t.Fatal("manual collection must be untouched")
 	}
 }
+
+func TestRecomputeCollections(t *testing.T) {
+	s, db := setup(t)
+	ctx := context.Background()
+	a := book(t, db, catalogDomain.BookStatusPublished)
+	readShelf(t, db, a, "read")
+	c, err := s.Create(ctx, autoIn(domain.MetricMostRead))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Recompute(ctx, c.ID); err != nil { // gives it a baseline
+		t.Fatal(err)
+	}
+	manual, err := s.Create(ctx, CreateInput{Title: "Ручная", Size: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Auto collections get a fresh snapshot without a baseline; a manual id
+	// is only logged, nothing fails.
+	s.RecomputeCollections(ctx, []uuid.UUID{c.ID, manual.ID, uuid.New()})
+
+	got, _ := s.repo.GetByID(ctx, c.ID)
+	if got.BaselineAt != nil || got.ComputedAt == nil {
+		t.Fatalf("auto collection must be recomputed without baseline: %+v", got)
+	}
+	gotManual, _ := s.repo.GetByID(ctx, manual.ID)
+	if gotManual.ComputedAt != nil {
+		t.Fatalf("manual collection must stay untouched: %+v", gotManual)
+	}
+}
