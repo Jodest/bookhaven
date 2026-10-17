@@ -37,7 +37,7 @@ function batchMergeErrorMessage(err: unknown): string {
 // BatchMergeGenresDialog merges several selected genres into one target,
 // all-or-nothing (adminGenresApi.mergeBatch). The target is either one of the
 // selected genres (radio) or any other genre found via a name search. Like
-// MergeGenreDialog it is irreversible, so confirm stays disabled until there
+// MergeGenreDialog it is journaled and can be undone, but confirm stays disabled until there
 // is at least one source and the preview has loaded.
 export function BatchMergeGenresDialog({ genres, onClose, onMerged }: BatchMergeGenresDialogProps) {
   const queryClient = useQueryClient();
@@ -118,8 +118,8 @@ export function BatchMergeGenresDialog({ genres, onClose, onMerged }: BatchMerge
 
         <p className="text-sm text-destructive">
           Книги выбранных жанров будут перенесены в {targetName}. Слитые жанры исчезнут из списков,
-          но их названия и QID продолжат указывать на {targetName} при будущих импортах. Действие
-          необратимо.
+          но их названия и QID продолжат указывать на {targetName} при будущих импортах. Слияние
+          можно будет отменить в «Истории слияний».
         </p>
 
         {target?.status === 'rejected' && (

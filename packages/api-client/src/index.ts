@@ -583,6 +583,8 @@ export interface AdminGenreMergeResult {
   genre: AdminGenre;
   books_reassigned: number;
   collections_switched: number;
+  // Id of the merge journal entry (undo with api.admin.genres.undoMerge).
+  merge_id: string;
 }
 
 // Response of POST /api/v1/admin/genres/merge-batch.
@@ -591,6 +593,7 @@ export interface AdminGenreMergeBatchResult {
   sources_merged: number;
   books_reassigned: number;
   collections_switched: number;
+  merge_id: string;
 }
 
 // A curated collection a genre merge would switch to the target.
@@ -608,6 +611,61 @@ export interface AdminGenreMergePreview {
   books_reassigned: number;
   collections: AdminGenreMergeCollection[];
 }
+
+// A user or genre named in the merge journal.
+export interface AdminGenreMergeRef {
+  id: string;
+  name: string;
+}
+
+// One merge journal entry (single merge, or all sources of a batch merge).
+export interface AdminGenreMergeEntry {
+  id: string;
+  created_at: string;
+  performed_by: AdminGenreMergeRef | null;
+  target: AdminGenreMergeRef;
+  sources: AdminGenreMergeRef[];
+  books_reassigned: number;
+  collections_switched: number;
+  undone_at: string | null;
+  undone_by: AdminGenreMergeRef | null;
+}
+
+// Response of GET /api/v1/admin/genres/merges.
+export interface AdminGenreMergeList {
+  items: AdminGenreMergeEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+// Response of GET /api/v1/admin/genres/merges/:id/undo-preview (read-only).
+// collections[].source_genre is the genre the collection returns to.
+export interface AdminGenreMergeUndoPreview {
+  merge: AdminGenreMergeEntry;
+  books_returned: number;
+  books_relinked: number;
+  collections: AdminGenreMergeCollection[];
+}
+
+// Response of POST /api/v1/admin/genres/merges/:id/undo. genre is the target
+// as it is after the undo.
+export interface AdminGenreMergeUndoResult {
+  genre: AdminGenre;
+  sources_restored: number;
+  books_returned: number;
+  books_relinked: number;
+  collections_switched_back: number;
+}
+
+// ApiError.code of a 409 from the undo and its preview.
+export type AdminGenreMergeUndoCode =
+  | 'already_undone'
+  | 'target_missing'
+  | 'target_merged'
+  | 'source_missing'
+  | 'source_not_alias'
+  | 'qid_conflict';
 
 // ---- AI genre suggestions (openspec catalog-moderation/ai-genre-suggestions) ----
 
@@ -3026,15 +3084,15 @@ export const api = {
           method: 'POST',
           body: JSON.stringify({ ids, status }),
         }),
-      // Irreversible: sourceId becomes an alias of canonicalId. Errors: 400
-      // self-merge, 404 missing or already merged genre.
+      // sourceId becomes an alias of canonicalId; undo with undoMerge. Errors:
+      // 400 self-merge, 404 missing or already merged genre.
       merge: (sourceId: string, canonicalId: string) =>
         fetcher<AdminGenreMergeResult>(`/api/v1/admin/genres/${sourceId}/merge`, {
           method: 'POST',
           body: JSON.stringify({ canonical_id: canonicalId }),
         }),
-      // Irreversible, all-or-nothing: every sourceId becomes an alias of
-      // targetId (sources merged in the given order). Errors: 400 empty,
+      // All-or-nothing (one journal entry, undo with undoMerge): every
+      // sourceId becomes an alias of targetId (sources merged in the given order). Errors: 400 empty,
       // duplicate or more than 100 sources, or target among them; 404 any
       // genre missing or already merged.
       mergeBatch: (sourceIds: string[], targetId: string) =>
@@ -3048,6 +3106,28 @@ export const api = {
         fetcher<AdminGenreMergePreview>('/api/v1/admin/genres/merge-preview', {
           method: 'POST',
           body: JSON.stringify({ source_ids: sourceIds, target_id: targetId }),
+        }),
+      // Merge journal, newest first.
+      merges: (params?: { page?: number; limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (params?.page) qs.set('page', String(params.page));
+        if (params?.limit) qs.set('limit', String(params.limit));
+        const query = qs.toString();
+        return fetcher<AdminGenreMergeList>(
+          `/api/v1/admin/genres/merges${query ? `?${query}` : ''}`
+        );
+      },
+      // Read-only summary of undoing a merge. Errors: 400 bad id, 404 unknown
+      // merge, 409 with ApiError.code AdminGenreMergeUndoCode.
+      undoMergePreview: (mergeId: string) =>
+        fetcher<AdminGenreMergeUndoPreview>(
+          `/api/v1/admin/genres/merges/${mergeId}/undo-preview`
+        ),
+      // Undoes the whole merge entry in one transaction. Same 400 / 404 / 409
+      // as undoMergePreview.
+      undoMerge: (mergeId: string) =>
+        fetcher<AdminGenreMergeUndoResult>(`/api/v1/admin/genres/merges/${mergeId}/undo`, {
+          method: 'POST',
         }),
       // Literary-genre candidates from Wikidata. Errors: 400 empty q, 502
       // Wikidata unavailable, 503 not configured.

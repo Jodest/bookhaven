@@ -133,7 +133,7 @@ func TestMergeGenres_RecomputesAutoCollections(t *testing.T) {
 	auto := uuid.New()
 	repo.mergeGenresAutoIDs = []uuid.UUID{auto}
 
-	_, _, switched, err := svc.MergeGenres(context.Background(), a.ID, target.ID)
+	_, _, switched, _, err := svc.MergeGenres(context.Background(), a.ID, target.ID)
 	if err != nil || switched != 3 {
 		t.Fatalf("switched=%d err=%v", switched, err)
 	}

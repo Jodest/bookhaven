@@ -55,6 +55,7 @@ type GenreBatchMergeOutcome struct {
 	SourcesMerged       int
 	BooksReassigned     int64
 	CollectionsSwitched int
+	MergeID             uuid.UUID
 }
 
 // validateGenreMergeInput checks the shared batch/preview input: at least one
@@ -89,7 +90,7 @@ func (s *Service) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, t
 		return nil, err
 	}
 
-	merged, err := s.repo.MergeGenresBatch(ctx, sourceIDs, targetID)
+	merged, err := s.repo.MergeGenresBatch(ctx, sourceIDs, targetID, actorFromContext(ctx))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrGenreNotFound
@@ -118,6 +119,7 @@ func (s *Service) MergeGenresBatch(ctx context.Context, sourceIDs []uuid.UUID, t
 		SourcesMerged:       merged.SourcesMerged,
 		BooksReassigned:     merged.BooksReassigned,
 		CollectionsSwitched: merged.CollectionsSwitched,
+		MergeID:             merged.MergeID,
 	}, nil
 }
 

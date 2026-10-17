@@ -100,7 +100,7 @@ export function ApplySuggestionDialog({ suggestion, onClose, onApplied }: ApplyS
 
         <p className="text-sm text-destructive">
           Книги переносятся в {targetName}. Слитые жанры исчезнут из списков, но их названия и QID
-          продолжат указывать на {targetName}. Действие необратимо.
+          продолжат указывать на {targetName}. Слияние можно будет отменить в «Истории слияний».
         </p>
 
         {target?.status === 'rejected' && (

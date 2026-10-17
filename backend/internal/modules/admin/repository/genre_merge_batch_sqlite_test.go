@@ -42,7 +42,7 @@ func TestMergeGenresBatch_MergesAllSources(t *testing.T) {
 	inTarget := f.book("В цели", false, b, target)
 	onlyC := f.book("Только C", false, c)
 
-	res, err := f.repo.MergeGenresBatch(ctx, []uuid.UUID{a, b, c}, target)
+	res, err := f.repo.MergeGenresBatch(ctx, []uuid.UUID{a, b, c}, target, nil)
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestMergeGenresBatch_FirstQIDInRequestOrderWins(t *testing.T) {
 	a := f.genre("романы", "romany", "pending", strPtr("Q1"))
 	b := f.genre("роман-эпопея", "roman-epopeya", "pending", strPtr("Q2"))
 
-	res, err := f.repo.MergeGenresBatch(context.Background(), []uuid.UUID{b, a}, target)
+	res, err := f.repo.MergeGenresBatch(context.Background(), []uuid.UUID{b, a}, target, nil)
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestMergeGenresBatch_AliasSourceChangesNothing(t *testing.T) {
 	bk := f.book("Книга", false, a)
 	col := f.collection("Подборка", "auto", true, &a)
 
-	_, err := f.repo.MergeGenresBatch(context.Background(), []uuid.UUID{a, merged}, target)
+	_, err := f.repo.MergeGenresBatch(context.Background(), []uuid.UUID{a, merged}, target, nil)
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("expected not found, got %v", err)
 	}
@@ -135,9 +135,9 @@ func TestMergeGenres_SwitchesCollections(t *testing.T) {
 		var res GenreMergeResult
 		var err error
 		if batch {
-			res, err = f.repo.MergeGenresBatch(ctx, []uuid.UUID{a, b}, target)
+			res, err = f.repo.MergeGenresBatch(ctx, []uuid.UUID{a, b}, target, nil)
 		} else {
-			res, err = f.repo.MergeGenres(ctx, a, target)
+			res, err = f.repo.MergeGenres(ctx, a, target, nil)
 			if err == nil {
 				// the single merge leaves b's collection alone
 				if g := f.collectionGenre(auto); g == nil || *g != b.String() {
@@ -209,7 +209,7 @@ func TestPreviewGenreMerge(t *testing.T) {
 	if g := f.collectionGenre(colA); g == nil || *g != a.String() {
 		t.Fatal("preview must not change collections")
 	}
-	res, err := f.repo.MergeGenresBatch(ctx, []uuid.UUID{a, b}, target)
+	res, err := f.repo.MergeGenresBatch(ctx, []uuid.UUID{a, b}, target, nil)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
 	}

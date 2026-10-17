@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '@bookhaven/api-client';
 import {
@@ -235,7 +236,16 @@ export function ModerationQueue<TItem, TParams, TReport extends ModerationStatus
               : 'bg-destructive/10 text-destructive'
           }`}
         >
-          {feedback.message}
+          {feedback.action ? (
+            <span>
+              {feedback.message}
+              <Link href={feedback.action.href} className="ml-2 underline">
+                {feedback.action.label}
+              </Link>
+            </span>
+          ) : (
+            feedback.message
+          )}
           <button type="button" onClick={() => setFeedback(null)} className="ml-4 underline">
             Скрыть
           </button>

@@ -373,6 +373,34 @@ describe('ModerationQueue', () => {
     expect(screen.queryByText('Готово')).not.toBeInTheDocument();
   });
 
+  it('renders the optional feedback action as a link after the message', async () => {
+    let overlayControls: ModerationQueueControls | null = null;
+    renderQueue({
+      renderOverlay: (controls) => {
+        overlayControls = controls;
+        return null;
+      },
+    });
+    await loaded();
+    const controls = overlayControls as unknown as ModerationQueueControls;
+
+    act(() => {
+      controls.notify({
+        type: 'success',
+        message: 'Слито',
+        action: { label: 'Отменить', href: '/moderation/genres/merges?undo=m1' },
+      });
+    });
+    expect(screen.getByText('Слито')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Отменить' })).toHaveAttribute('href', '/moderation/genres/merges?undo=m1');
+
+    act(() => {
+      controls.notify({ type: 'success', message: 'Без действия' });
+    });
+    expect(screen.getByText('Без действия')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Отменить' })).not.toBeInTheDocument();
+  });
+
   it('renderToolbar gets the page items and state; select() checks exactly the given rows on the page', async () => {
     const toolbar = vi.fn((items: Thing[], state: ModerationQueueState, controls: ModerationQueueControls) => (
       <button type="button" onClick={() => controls.select(['t2', 'not-on-page'])}>

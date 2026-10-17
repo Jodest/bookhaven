@@ -10,6 +10,9 @@ export const adminGenresApi = {
   merge: api.admin.genres.merge,
   mergeBatch: api.admin.genres.mergeBatch,
   mergePreview: api.admin.genres.mergePreview,
+  merges: api.admin.genres.merges,
+  undoMergePreview: api.admin.genres.undoMergePreview,
+  undoMerge: api.admin.genres.undoMerge,
   searchWikidata: api.admin.genres.searchWikidata,
   importWikidata: api.admin.genres.importWikidata,
 };

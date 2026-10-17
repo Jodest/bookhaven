@@ -95,6 +95,16 @@ type fakeAdminService struct {
 	mergeGenresErr       error
 	mergeGenresCalled    bool
 	mergeGenresSwitched  int
+	mergeGenresID        uuid.UUID
+
+	// Merge journal doubles (handler_genre_merge_undo_test.go).
+	mergeListPage, mergeListLimit int
+	mergeListResult               *adminService.GenreMergePage
+	mergeUndoPreview              *repository.GenreMergeUndoPreview
+	mergeUndoOutcome              *adminService.GenreMergeUndoOutcome
+	mergeUndoErr                  error
+	mergeUndoActor                uuid.UUID
+
 	mergeBatchCalled     bool
 	lastMergeBatchSrc    []uuid.UUID
 	lastMergeBatchTarget uuid.UUID
