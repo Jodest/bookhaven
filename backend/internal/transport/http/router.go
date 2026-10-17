@@ -257,6 +257,8 @@ func RegisterAdminRoutes(
 	genres.GET("/wikidata-search", adminHandler.SearchWikidataGenres)
 	genres.POST("/import-wikidata", adminHandler.ImportWikidataGenre, requireBearer)
 	genres.POST("/bulk-status", adminHandler.BulkSetGenreStatus, requireBearer)
+	genres.POST("/merge-batch", adminHandler.MergeGenresBatch, requireBearer)
+	genres.POST("/merge-preview", adminHandler.PreviewGenreMerge, requireBearer)
 	genres.POST("", adminHandler.CreateGenre, requireBearer)
 	genres.GET("/:id", adminHandler.GetGenre)
 	genres.PATCH("/:id", adminHandler.UpdateGenre, requireBearer)

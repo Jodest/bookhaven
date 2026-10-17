@@ -29,39 +29,42 @@ var ErrCannotMergeGenreIntoSelf = errors.New("cannot merge a genre into itself")
 // (with a carried QID applied in memory) and the number of reassigned
 // books. Returns ErrCannotMergeGenreIntoSelf when sourceID == targetID and
 // ErrGenreNotFound when either genre is missing or already an alias - in
-// both cases nothing is changed.
-func (s *Service) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (*catalogDomain.Genre, int64, error) {
+// both cases nothing is changed. Curated collections linked to the source
+// are switched to the target in the same transaction (their count is the
+// third result); switched automatic ones are recomputed afterwards.
+func (s *Service) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID) (*catalogDomain.Genre, int64, int, error) {
 	if sourceID == targetID {
-		return nil, 0, ErrCannotMergeGenreIntoSelf
+		return nil, 0, 0, ErrCannotMergeGenreIntoSelf
 	}
 
 	// GetGenreByID hides alias rows, so an alias source or target is a 404.
 	source, err := s.repo.GetGenreByID(ctx, sourceID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, 0, ErrGenreNotFound
+			return nil, 0, 0, ErrGenreNotFound
 		}
-		return nil, 0, fmt.Errorf("get source genre: %w", err)
+		return nil, 0, 0, fmt.Errorf("get source genre: %w", err)
 	}
 	target, err := s.repo.GetGenreByID(ctx, targetID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, 0, ErrGenreNotFound
+			return nil, 0, 0, ErrGenreNotFound
 		}
-		return nil, 0, fmt.Errorf("get target genre: %w", err)
+		return nil, 0, 0, fmt.Errorf("get target genre: %w", err)
 	}
 
 	// Snapshot both rows before the merge rewrites the source.
 	src, result := *source, *target
 
-	booksReassigned, err := s.repo.MergeGenres(ctx, sourceID, targetID)
+	merged, err := s.repo.MergeGenres(ctx, sourceID, targetID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Concurrently merged away between the reads and the merge.
-			return nil, 0, ErrGenreNotFound
+			return nil, 0, 0, ErrGenreNotFound
 		}
-		return nil, 0, fmt.Errorf("merge genres: %w", err)
+		return nil, 0, 0, fmt.Errorf("merge genres: %w", err)
 	}
+	s.recomputeSwitchedCollections(ctx, merged.AutoCollectionIDs)
 
 	// Mirror the repository's in-transaction QID carry-over.
 	if src.WikidataQID != nil {
@@ -77,5 +80,5 @@ func (s *Service) MergeGenres(ctx context.Context, sourceID, targetID uuid.UUID)
 		}
 	}
 
-	return &result, booksReassigned, nil
+	return &result, merged.BooksReassigned, merged.CollectionsSwitched, nil
 }

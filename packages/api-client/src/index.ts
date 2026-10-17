@@ -577,10 +577,36 @@ export interface AdminGenreBulkStatusReport {
 }
 
 // Response of POST /api/v1/admin/genres/:id/merge. genre is the target
-// (with a carried QID); books_reassigned is how many books moved to it.
+// (with a carried QID); books_reassigned is how many books moved to it and
+// collections_switched how many curated collections were switched to it.
 export interface AdminGenreMergeResult {
   genre: AdminGenre;
   books_reassigned: number;
+  collections_switched: number;
+}
+
+// Response of POST /api/v1/admin/genres/merge-batch.
+export interface AdminGenreMergeBatchResult {
+  genre: AdminGenre;
+  sources_merged: number;
+  books_reassigned: number;
+  collections_switched: number;
+}
+
+// A curated collection a genre merge would switch to the target.
+export interface AdminGenreMergeCollection {
+  id: string;
+  title: string;
+  slug: string;
+  kind: 'manual' | 'auto';
+  is_published: boolean;
+  source_genre: { id: string; name: string };
+}
+
+// Response of POST /api/v1/admin/genres/merge-preview (read-only).
+export interface AdminGenreMergePreview {
+  books_reassigned: number;
+  collections: AdminGenreMergeCollection[];
 }
 
 /** Fields enrichment can fill. */
@@ -2888,6 +2914,22 @@ export const api = {
         fetcher<AdminGenreMergeResult>(`/api/v1/admin/genres/${sourceId}/merge`, {
           method: 'POST',
           body: JSON.stringify({ canonical_id: canonicalId }),
+        }),
+      // Irreversible, all-or-nothing: every sourceId becomes an alias of
+      // targetId (sources merged in the given order). Errors: 400 empty,
+      // duplicate or more than 100 sources, or target among them; 404 any
+      // genre missing or already merged.
+      mergeBatch: (sourceIds: string[], targetId: string) =>
+        fetcher<AdminGenreMergeBatchResult>('/api/v1/admin/genres/merge-batch', {
+          method: 'POST',
+          body: JSON.stringify({ source_ids: sourceIds, target_id: targetId }),
+        }),
+      // Read-only summary of a merge (one source previews a single merge).
+      // Same 400 / 404 as mergeBatch.
+      mergePreview: (sourceIds: string[], targetId: string) =>
+        fetcher<AdminGenreMergePreview>('/api/v1/admin/genres/merge-preview', {
+          method: 'POST',
+          body: JSON.stringify({ source_ids: sourceIds, target_id: targetId }),
         }),
       // Literary-genre candidates from Wikidata. Errors: 400 empty q, 502
       // Wikidata unavailable, 503 not configured.

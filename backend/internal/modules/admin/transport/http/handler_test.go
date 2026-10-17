@@ -94,6 +94,15 @@ type fakeAdminService struct {
 	mergeGenresBooks     int64
 	mergeGenresErr       error
 	mergeGenresCalled    bool
+	mergeGenresSwitched  int
+	mergeBatchCalled     bool
+	lastMergeBatchSrc    []uuid.UUID
+	lastMergeBatchTarget uuid.UUID
+	mergeBatchErr        error
+	mergeBatchOutcome    *adminService.GenreBatchMergeOutcome
+	previewCalled        bool
+	previewErr           error
+	previewResult        *repository.GenreMergePreview
 	lastMergeGenreSource uuid.UUID
 	lastMergeGenreTarget uuid.UUID
 

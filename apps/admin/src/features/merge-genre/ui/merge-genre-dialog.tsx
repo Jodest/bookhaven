@@ -4,8 +4,10 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AdminGenre, ApiError } from '@bookhaven/api-client';
 import { Button, Input } from '@bookhaven/ui';
+import { COLLECTIONS_QUERY_KEY } from '@/entities/curated-collection';
 import { DASHBOARD_QUERY_KEY } from '@/entities/dashboard';
 import { adminGenresApi, GenreStatusBadge } from '@/entities/genre';
+import { MergePreviewSummary } from './merge-preview-summary';
 
 interface MergeGenreDialogProps {
   // The genre the "Слить" action was triggered on: it becomes an alias of
@@ -15,8 +17,22 @@ interface MergeGenreDialogProps {
   // changeable via "Изменить".
   initialCanonical?: AdminGenre;
   onClose: () => void;
-  // Called once the merge succeeds, with the number of books reassigned.
-  onMerged: (booksReassigned: number) => void;
+  // Called once the merge succeeds, with the number of books reassigned and
+  // of curated collections switched to the target.
+  onMerged: (booksReassigned: number, collectionsSwitched: number) => void;
+}
+
+// Texts shared by a failed merge and a failed preview.
+function mergeErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 400) {
+      return 'Нельзя слить жанр с самим собой.';
+    }
+    if (err.status === 404) {
+      return 'Один из жанров не найден — возможно, его уже слили. Обновите список и попробуйте снова.';
+    }
+  }
+  return 'Не удалось выполнить слияние. Попробуйте позже.';
 }
 
 // MergeGenreDialog merges `source` into a target genre picked via a name
@@ -24,11 +40,13 @@ interface MergeGenreDialogProps {
 // the author merge the source is not deleted: it becomes a hidden alias
 // whose name and QID keep resolving to the target on future imports. The
 // merge is irreversible, so the confirm button stays disabled until a
-// distinct target is selected.
+// distinct target is selected and its preview (books to move, collections to
+// switch) has loaded.
 export function MergeGenreDialog({ source, initialCanonical, onClose, onMerged }: MergeGenreDialogProps) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [canonical, setCanonical] = useState<AdminGenre | null>(initialCanonical ?? null);
+  const [previewReady, setPreviewReady] = useState(false);
 
   const trimmedSearch = search.trim();
 
@@ -52,25 +70,14 @@ export function MergeGenreDialog({ source, initialCanonical, onClose, onMerged }
       queryClient.invalidateQueries({ queryKey: ['admin', 'genres'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'books'] });
       queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY });
-      onMerged(result.books_reassigned);
+      queryClient.invalidateQueries({ queryKey: COLLECTIONS_QUERY_KEY });
+      onMerged(result.books_reassigned, result.collections_switched);
     },
   });
 
-  const canConfirm = canonical !== null && canonical.id !== source.id && !mergeMutation.isPending;
+  const canConfirm = canonical !== null && canonical.id !== source.id && previewReady && !mergeMutation.isPending;
 
-  const errorMessage = (() => {
-    const err = mergeMutation.error;
-    if (!err) return null;
-    if (err instanceof ApiError) {
-      if (err.status === 400) {
-        return 'Нельзя слить жанр с самим собой.';
-      }
-      if (err.status === 404) {
-        return 'Один из жанров не найден — возможно, его уже слили. Обновите список и попробуйте снова.';
-      }
-    }
-    return 'Не удалось выполнить слияние. Попробуйте позже.';
-  })();
+  const errorMessage = mergeMutation.error ? mergeErrorMessage(mergeMutation.error) : null;
 
   const targetName = canonical ? `«${canonical.name}»` : 'выбранный жанр';
 
@@ -143,6 +150,15 @@ export function MergeGenreDialog({ source, initialCanonical, onClose, onMerged }
           <div className="rounded-md bg-amber-100 p-3 text-sm text-amber-900">
             Целевой жанр отклонён — книги окажутся в скрытом жанре.
           </div>
+        )}
+
+        {canonical && canonical.id !== source.id && (
+          <MergePreviewSummary
+            sourceIds={[source.id]}
+            target={canonical}
+            onReadyChange={setPreviewReady}
+            errorMessage={mergeErrorMessage}
+          />
         )}
 
         {errorMessage && (

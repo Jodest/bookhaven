@@ -124,12 +124,16 @@ func main() {
 	// its rate limiter) with the author enrichment. Built before the admin
 	// service because the direct author import syncs the new author's films.
 	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger)
+	// Built before the admin service: a genre merge recomputes the automatic
+	// collections it switches.
+	curatedService := curatedservice.NewService(curatedrepository.NewGormRepository(db)).WithLogger(logger)
 	adminService := adminservice.NewService(adminRepo,
 		adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()),
 		adminservice.WithAuthorFetcher(wikidataClient),
 		adminservice.WithAuthorEnrichmentSource(wikidataClient),
 		adminservice.WithGenreWikidataSource(wikidataClient),
 		adminservice.WithAuthorFilmSyncer(screenWorksService),
+		adminservice.WithCollectionRecomputer(curatedService),
 		adminservice.WithLogger(logger))
 	shelvesService := shelvesservice.NewService(shelvesRepo)
 	listsService := listsservice.NewService(listsRepo)
@@ -244,7 +248,6 @@ func main() {
 	optionalAuth := middleware.OptionalAuth(authService, usersRepo)
 
 	// Public + protected routes
-	curatedService := curatedservice.NewService(curatedrepository.NewGormRepository(db)).WithLogger(logger)
 	// AI descriptions (openspec catalog-admin/ai-descriptions): one
 	// repository backs the public fallback reader and the admin service.
 	aiDescriptionsRepo := aidescrepository.NewGormRepository(db)
