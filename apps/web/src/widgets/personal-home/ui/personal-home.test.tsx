@@ -3,8 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Book, PersonalHome as PersonalHomeData, ReadingChallenge } from '@bookhaven/api-client';
 import type { ImgHTMLAttributes } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ChallengeProgress } from './challenge-progress';
 import { PersonalHome } from './personal-home';
 import { PersonalRecommendations } from './personal-recommendations';
+import { WantToReadPick } from './want-to-read-pick';
 
 const meMock = vi.fn();
 const challengeMock = vi.fn();
@@ -59,6 +61,8 @@ function renderWidgets() {
   return render(
     <QueryClientProvider client={client}>
       <PersonalHome />
+      <ChallengeProgress />
+      <WantToReadPick />
       <PersonalRecommendations />
     </QueryClientProvider>
   );
@@ -161,5 +165,43 @@ describe('PersonalHome', () => {
     await waitFor(() => expect(screen.queryByTestId('personal-home-skeleton')).not.toBeInTheDocument());
     expect(screen.queryByRole('heading', { name: 'Продолжить чтение' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Вам может понравиться' })).not.toBeInTheDocument();
+  });
+});
+
+describe('standalone widgets', () => {
+  beforeEach(() => loggedIn());
+
+  afterEach(() => {
+    meMock.mockReset();
+    challengeMock.mockReset();
+  });
+
+  it('ChallengeProgress alone does not call /home/me', async () => {
+    challengeMock.mockResolvedValue(challenge());
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ChallengeProgress />
+      </QueryClientProvider>
+    );
+    expect(await screen.findByRole('heading', { name: 'Читательский вызов' })).toBeInTheDocument();
+    expect(meMock).not.toHaveBeenCalled();
+  });
+
+  it('WantToReadPick alone renders only the want-to-read card', async () => {
+    meMock.mockResolvedValue({
+      continueReading: { shelfId: 's', total: 1, books: [makeBook(1)] },
+      recommendations: [],
+      wantToReadPick: { shelfId: 's-wtr', total: 3, book: makeBook(4) },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <WantToReadPick />
+      </QueryClientProvider>
+    );
+    expect(await screen.findByRole('link', { name: 'Вся полка (3)' })).toHaveAttribute('href', '/shelves/s-wtr');
+    expect(screen.queryByRole('heading', { name: 'Продолжить чтение' })).not.toBeInTheDocument();
+    expect(challengeMock).not.toHaveBeenCalled();
   });
 });

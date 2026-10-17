@@ -6,17 +6,28 @@ import { PickRandomBook } from '@/features/pick-random-book';
 import { BookOfTheDay } from '@/widgets/book-of-the-day';
 import { CuratedCollectionsRow } from '@/widgets/curated-collections-row';
 import { LiteraryCalendar } from '@/widgets/literary-calendar';
-import { PersonalHome, PersonalRecommendations } from '@/widgets/personal-home';
+import {
+  ChallengeProgress,
+  PersonalHome,
+  PersonalRecommendations,
+  WantToReadPick,
+} from '@/widgets/personal-home';
 import { RecentReviews } from '@/widgets/recent-reviews';
-import { Button } from '@bookhaven/ui';
-import Link from 'next/link';
 
 /**
- * Home page (see docs/features/home-page-content.md). Public blocks are
- * server-rendered from GET /home; if it fails, only the hero, genre chips
- * and the personal blocks render. The «Подборки» block (openspec home/*)
- * comes from GET /collections?limit=6 and renders independently of /home. Personal blocks (logged-in only) are
- * client-side widgets over GET /home/me. Empty blocks render nothing.
+ * Home page (see docs/features/home-page-content.md). No hero. At lg+ the page
+ * is two columns: a main column (flex-1: «Продолжить чтение», «Книга дня»,
+ * «Из вашего «Хочу прочитать»», «Вам может понравиться», «Новое в каталоге»,
+ * «Высоко оценённые», «Подборки», «Свежие рецензии») and a ~340px sidebar
+ * («Читательский вызов», «Что почитать?», «Литературный календарь»). Below lg
+ * it is one column: «Продолжить чтение», «Книга дня», «Хочу прочитать», the
+ * sidebar blocks, then the remaining rows (the main column is `contents` and
+ * its two groups are reordered with `order-*`). Public blocks are
+ * server-rendered from GET /home; if it fails, the personal blocks, «Что
+ * почитать?» and «Подборки» still render. «Подборки» comes from
+ * GET /collections?limit=6 independently of /home. Personal blocks (logged-in
+ * only) are client-side widgets over GET /home/me. Empty blocks render
+ * nothing (their wrapper groups collapse via `empty:hidden`).
  */
 export async function HomeView() {
   const [home, { items: genres }, collections] = await Promise.all([
@@ -35,87 +46,47 @@ export async function HomeView() {
   const homeCollections = (collections?.items ?? []).filter((c) => c.shown_count > 0).slice(0, 3);
 
   return (
-    <main>
-      <section className="container mx-auto px-4 py-8 sm:px-6 md:py-10 lg:px-8">
-        <div className="mx-auto max-w-2xl text-center">
-          <h1 className="font-display text-5xl font-semibold tracking-tight md:text-6xl">
-            BookHaven
-          </h1>
-          <p className="mt-4 text-sm text-muted-foreground md:text-base">
-            Социальный каталог книг с оценками, ревью и подборками
-          </p>
-          <div className="mt-6 flex justify-center gap-4">
-            <Button size="lg" asChild>
-              <Link href="/books">Найти книгу</Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link href="/shelves">Мои полки</Link>
-            </Button>
+    <main className="container mx-auto px-4 py-8 sm:px-6 md:py-10 lg:px-8">
+      <div className="flex flex-col gap-12 lg:flex-row lg:items-start">
+        <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-12">
+          <div className="order-1 flex min-w-0 flex-col gap-12 empty:hidden lg:order-none">
+            <PersonalHome />
+            <BookOfTheDay data={bookOfTheDay} />
+            <WantToReadPick />
+          </div>
+
+          <div className="order-3 flex min-w-0 flex-col gap-12 empty:hidden lg:order-none">
+            <PersonalRecommendations />
+            {home && (
+              <>
+                <BookRow
+                  title="Новое в каталоге"
+                  books={home.newBooks}
+                  href="/books?sort=new"
+                  linkLabel="Весь каталог"
+                />
+                <BookRow
+                  title="Высоко оценённые"
+                  books={home.topRated}
+                  href="/books?sort=rating"
+                  linkLabel="Смотреть все"
+                />
+              </>
+            )}
+            <CuratedCollectionsRow collections={homeCollections} />
+            {home && <RecentReviews reviews={home.recentReviews} />}
           </div>
         </div>
 
-        {genres.length > 0 && (
-          <div className="mt-8 flex gap-2 overflow-x-auto pb-2">
-            {genres.slice(0, 12).map((genre) => (
-              <Link
-                key={genre.id}
-                href={`/books?genre_id=${genre.id}`}
-                className="shrink-0 rounded-full border bg-card px-4 py-2 text-sm font-medium text-card-foreground shadow-sm transition hover:-translate-y-0.5 hover:shadow-card"
-              >
-                {genre.name}
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <PersonalHome />
-
-      {home && (
-        <div className="container mx-auto space-y-12 px-4 pb-12 sm:px-6 md:pb-16 lg:px-8">
-          {(bookOfTheDay || calendar) && (
-            <div
-              className={
-                bookOfTheDay && calendar
-                  ? 'grid grid-cols-1 items-start gap-6 lg:grid-cols-[3fr_2fr]'
-                  : 'grid grid-cols-1 gap-6'
-              }
-            >
-              <BookOfTheDay data={bookOfTheDay} />
-              <LiteraryCalendar calendar={calendar} />
-            </div>
-          )}
-
-          <PersonalRecommendations />
-
+        <aside
+          aria-label="Дополнительно"
+          className="order-2 grid w-full grid-cols-1 gap-6 lg:order-none lg:w-[340px] lg:shrink-0"
+        >
+          <ChallengeProgress />
           <PickRandomBook genres={genres.map((g) => ({ id: g.id, name: g.name }))} />
-
-          <BookRow
-            title="Новое в каталоге"
-            books={home.newBooks}
-            href="/books?sort=new"
-            linkLabel="Весь каталог"
-          />
-
-          <BookRow
-            title="Высоко оценённые"
-            books={home.topRated}
-            href="/books?sort=rating"
-            linkLabel="Смотреть все"
-          />
-
-          <CuratedCollectionsRow collections={homeCollections} />
-
-          <RecentReviews reviews={home.recentReviews} />
-        </div>
-      )}
-
-      {!home && (
-        <div className="container mx-auto space-y-12 px-4 pb-12 sm:px-6 md:pb-16 lg:px-8">
-          <PersonalRecommendations />
-          <CuratedCollectionsRow collections={homeCollections} />
-        </div>
-      )}
+          <LiteraryCalendar calendar={calendar} />
+        </aside>
+      </div>
     </main>
   );
 }

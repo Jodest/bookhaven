@@ -14,7 +14,7 @@ function eventLabel(event: HomeCalendarEvent): string {
 
 function AuthorAvatar({ name, url }: { name: string; url: string | null }) {
   return (
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-sm font-medium">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-sm font-medium">
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -46,14 +46,14 @@ export function LiteraryCalendar({ calendar, className }: LiteraryCalendarProps)
   return (
     <section
       aria-labelledby="literary-calendar-heading"
-      className={`rounded-2xl border bg-card p-5 text-card-foreground shadow-sm md:p-6 ${className ?? ''}`}
+      className={`rounded-2xl border bg-card p-5 text-card-foreground shadow-sm ${className ?? ''}`}
     >
-      <h2 id="literary-calendar-heading" className="font-display text-xl font-semibold md:text-2xl">
+      <h2 id="literary-calendar-heading" className="font-display text-lg font-semibold">
         {heading}
       </h2>
 
       {hasEvents && (
-        <ul className="mt-4 space-y-4">
+        <ul className="mt-3 space-y-3">
           {calendar.events.map((event) => (
             <li key={`${event.author.id}-${event.type}`} className="flex gap-3">
               <AuthorAvatar name={event.author.name} url={event.author.photoUrl} />
@@ -81,7 +81,7 @@ export function LiteraryCalendar({ calendar, className }: LiteraryCalendarProps)
       )}
 
       {calendar.anniversaries.length > 0 && (
-        <div className={hasEvents ? 'mt-6 border-t pt-4' : 'mt-4'}>
+        <div className={hasEvents ? 'mt-4 border-t pt-3' : 'mt-3'}>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Юбилеи года
           </h3>

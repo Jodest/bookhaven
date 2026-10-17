@@ -54,7 +54,7 @@ PR 1 is shippable on its own. Each PR ticks its own criteria below.
 - [x] Empty blocks are not rendered. There are no empty headings.
 - [x] The book of the day has a "Хочу прочитать" toggle that works for logged-in users. Guests get a link to `/login?redirect=/`. (Component-tested and guest link checked in SSR HTML; logged-in browser check pending, to record in the PR.)
 - [x] Dates are in Russian ("4 октября"). Year counts use correct plural forms ("1 год", "2 года", "5 лет").
-- [ ] The layout works at 360px width: rows scroll horizontally, and the book of the day and the calendar stack. (Implemented with responsive classes; manual check at 360px/1280px pending, to record in the PR.)
+- [ ] The layout works at 360px width: book rows fit the width without horizontal scroll, and the top area stacks in one column. (Implemented with responsive classes; manual check at 360px/1280px pending, to record in the PR.)
 - [x] Backend and web tests listed under Tests pass. Swagger is regenerated.
 
 ### PR 2: personal
@@ -378,13 +378,13 @@ homeService := homeservice.NewService(homerepository.NewGormRepository(db), cata
 | Slice | Type | Content |
 |---|---|---|
 | `entities/home` | api | `homeApi = { get, random, me }` re-exported from api-client (same pattern as `entities/book/api`) |
-| `entities/book/ui/book-row.tsx` | ui | `BookRow({ title, books, href?, linkLabel? })`: horizontal snap-scroll `BookCard` row, the same markup as `SimilarBooks`. Returns `null` for an empty list. `SimilarBooks` is not refactored. |
+| `entities/book/ui/book-row.tsx` | ui | `BookRow({ title, books, href?, linkLabel? })`: one-row responsive `BookCard` grid without horizontal scroll (2/3/4/3/4/5 columns, surplus hidden; see Layout). `SimilarBooks` keeps its own snap-scroll markup. Returns `null` for an empty list. `SimilarBooks` is not refactored. |
 | `shared/lib/format-date-ru.ts` | lib | `formatDayMonth('2026-10-04')` gives "4 октября", via `Intl.DateTimeFormat('ru-RU', {day:'numeric', month:'long', timeZone:'UTC'})` on `YYYY-MM-DDT00:00:00Z`, so server and client agree. `pluralRu(n, ['год','года','лет'])`. `formatYears(n)` gives "212 лет". |
 | `widgets/book-of-the-day` | server ui | Large cover, title, authors, rating with count, excerpt, "Подробнее" link, `ShelveBookButtons` in want-to-read-only mode |
 | `widgets/literary-calendar` | server ui | Heading "Литературный календарь · 4 октября", or "Скоро в календаре · 15 октября" when `!isToday`. Events read "Родился 212 лет назад" / "Умер …", with author avatar, name linking to `/authors/{slug}`, and up to 3 small book links. A "Юбилеи года" sub-list reads "«Мастер и Маргарита» — 100 лет". |
 | `features/pick-random-book` | client | "Что почитать?" card: genre `<select>` (genres passed from SSR; "Любой жанр" default) and a "Подобрать" button. The result shows as a compact horizontal card with an "Ещё вариант" button that passes `excludeId`. `useMutation`. Shows a "Не нашли подходящую книгу" message on `null`, and an inline error on failure. |
 | `widgets/recent-reviews` | server ui | Up to 3 cards: book cover thumbnail plus title link, stars, a quoted excerpt with a "Читать полностью" link to `/books/{slug}`, avatar plus name, and date. Read-only; `ReviewCard` is not reused because it carries owner/like actions. |
-| `widgets/personal-home` | client | Renders `null` unless `isAuthenticated`. Renders nothing while `isLoading`, to avoid a guest-to-user flash. `useQuery(['home','me'])` with `staleTime` 60s and `refetchOnWindowFocus: false`, plus `useQuery(['reading-challenges', year])` in parallel. Sub-blocks: `ContinueReading` (`BookRow`, link "Все (N)"), `ChallengeProgress` (card with bar, same markup as `manage-reading-challenge-goal`, or CTA), `Recommendations` (`BookRow` "Вам может понравиться"), `WantToReadPick` (single card "Из вашего «Хочу прочитать»" with a "Вся полка (N)" link). Skeletons as in `SimilarBooks` while pending. On error the block is hidden. |
+| `widgets/personal-home` | client | Since #468 `PersonalHome` (continue reading), `ChallengeProgress`, `WantToReadPick` and `PersonalRecommendations` are separate exports placed independently on the page, sharing the same queries. Each renders `null` unless `isAuthenticated`. Renders nothing while `isLoading`, to avoid a guest-to-user flash. `useQuery(['home','me'])` with `staleTime` 60s and `refetchOnWindowFocus: false`, plus `useQuery(['reading-challenges', year])` in parallel. Sub-blocks: `ContinueReading` (`BookRow`, link "Все (N)"), `ChallengeProgress` (card with bar, same markup as `manage-reading-challenge-goal`, or CTA), `Recommendations` (`BookRow` "Вам может понравиться"), `WantToReadPick` (single card "Из вашего «Хочу прочитать»" with a "Вся полка (N)" link). Skeletons as in `SimilarBooks` while pending. On error the block is hidden. |
 
 `views/home/ui/home-view.tsx` stays an async server component:
 - It runs `Promise.all([homeApi.get().catch(() => null), genresApi.list().catch(() => ({ items: [] }))])`.
@@ -400,16 +400,20 @@ The book of the day uses `types={['want_to_read']}`, `showCustomShelves={false}`
 
 ### Layout (top to bottom)
 
-1. **Hero:** keep it, compacted (`py-8 md:py-10`), with the same title, subtitle, CTAs and genre chips. Recommendation: keep, because it is the only brand and search entry on the page. Remove only the old "Популярные книги" section.
-2. **Personal section** (logged-in only, client): `ContinueReading` at full width. Then a two-column row at `md`+ with `ChallengeProgress` and `WantToReadPick`, stacked on mobile.
-3. **Book of the day plus calendar:** `lg:grid-cols-[3fr_2fr]`, stacked below `lg`. The cover is about 200px on mobile and 260px on desktop.
-4. Recommendations (logged-in only).
-5. "Что почитать?"
-6. "Новое в каталоге", with a link "Весь каталог" to `/books?sort=new`. Note that `sort=new` orders by `published_year`; the link is a browse aid, not the same list.
-7. "Высоко оценённые", with a link to `/books?sort=rating`.
-8. "Свежие рецензии": 1 column on mobile, 3 at `lg`.
+Reworked in #468 (OpenSpec change `home-layout-sidebar`); the original PR 1/PR 2 layout is kept in the implementation notes below.
 
-Empty or `null` blocks are not rendered. If `home` is `null`, only the hero, genres and personal section render.
+1. **No hero.** No page heading, tagline, CTA buttons or genre chips: the header covers the brand and navigation, the catalog covers genres. Genres are still loaded for the "Что почитать?" select.
+2. **Continue reading** (logged-in only, client): `PersonalHome` is just the `ContinueReading` row.
+3. **Two columns at `lg`+:** a main column (`flex-1`: continue reading, `BookOfTheDay`, `WantToReadPick`, recommendations, "Новое в каталоге", "Высоко оценённые", "Подборки", "Свежие рецензии") and a 340px sidebar (`ChallengeProgress`, `PickRandomBook`, `LiteraryCalendar`). Below `lg` one column in the order: continue reading, book of the day, want-to-read pick, sidebar blocks, then the remaining rows (the main column is `contents` and its two groups use `order-*`). Wrapper groups use `empty:hidden` so empty widgets leave no gap. "Что почитать?" (select and button stacked) and the calendar are compact for the sidebar.
+4. Recommendations (logged-in only).
+5. "Новое в каталоге", with a link "Весь каталог" to `/books?sort=new`. Note that `sort=new` orders by `published_year`; the link is a browse aid, not the same list.
+6. "Высоко оценённые", with a link to `/books?sort=rating`.
+7. "Подборки" (see openspec `home/catalog-rows`): 2 columns from `sm`, 3 from `xl`.
+8. "Свежие рецензии": 1 column, 3 at `2xl`.
+
+Book rows live in the narrower main column and are a one-row grid without horizontal scroll: 2 / 3 / 4 / 3 / 4 / 5 columns at base / `sm` / `md` / `lg` / `xl` / `2xl`, surplus books hidden by CSS; phones show two rows of two.
+
+Empty or `null` blocks are not rendered. If `home` is `null`, the personal blocks, "Что почитать?" and "Подборки" still render.
 
 ### Copy
 
