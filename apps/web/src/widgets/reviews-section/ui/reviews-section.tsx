@@ -5,6 +5,7 @@ import { useAuthStore } from '@/entities/session';
 import { ReviewForm } from '@/features/write-review';
 import { Review } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
+import { loginHref } from '@/shared/lib/safe-redirect';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
@@ -103,8 +104,8 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
   };
 
   return (
-    <section className="mt-10">
-      <h2 className="text-2xl font-bold">Рецензии</h2>
+    <section id="reviews" className="scroll-mt-24">
+      <h2 className="font-display text-xl font-semibold">Рецензии</h2>
 
       {error && (
         <div className="mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -133,7 +134,7 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
       ) : (
         <div className="mt-4">
           <Button variant="outline" asChild>
-            <Link href={`/login?redirect=/books/${slug}`}>Войдите, чтобы написать рецензию</Link>
+            <Link href={loginHref(`/books/${slug}`)}>Войдите, чтобы написать рецензию</Link>
           </Button>
         </div>
       )}

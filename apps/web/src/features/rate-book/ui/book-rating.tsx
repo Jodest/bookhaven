@@ -2,22 +2,23 @@
 
 import { api } from '@bookhaven/api-client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useId, useState } from 'react';
 import { useAuthStore } from '@/entities/session';
+import { loginHref } from '@/shared/lib/safe-redirect';
 
 interface BookRatingProps {
   bookId: string;
   slug: string;
-  rating: number;
-  ratingsCount: number;
 }
 
-function Star({ fillPercent }: { fillPercent: number }) {
-  const id = `${useId()}-star`;
+function Star({ fillPercent, className = 'h-6 w-6' }: { fillPercent: number; className?: string }) {
+  // useId output contains ':' which is awkward inside url(#...) references.
+  const id = `${useId().replace(/:/g, '')}-star`;
   return (
     <svg
       viewBox="0 0 24 24"
-      className="h-6 w-6"
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
@@ -41,52 +42,33 @@ function Star({ fillPercent }: { fillPercent: number }) {
   );
 }
 
-function useId() {
-  const [id] = useState(() => Math.random().toString(36).slice(2));
-  return id;
-}
-
-function StarRating({ value }: { value: number }) {
-  return (
-    <div className="flex">
-      {[1, 2, 3, 4, 5].map((i) => {
-        const fill = Math.max(0, Math.min(100, (value - (i - 1)) * 100));
-        return <Star key={i} fillPercent={fill} />;
-      })}
-    </div>
-  );
-}
-
 function InteractiveStars({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  const [hoverValue, setHoverValue] = useState(0);
+  const shown = hoverValue || value;
   return (
-    <div className="flex">
+    <div className="flex md:justify-center" onMouseLeave={() => setHoverValue(0)}>
       {[1, 2, 3, 4, 5].map((i) => (
         <button
           key={i}
           type="button"
           onClick={() => onChange(i)}
-          className="p-0.5 focus:outline-none"
+          onMouseEnter={() => setHoverValue(i)}
+          className="rounded p-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`Оценить на ${i}`}
         >
-          <Star fillPercent={i <= value ? 100 : 0} />
+          <Star fillPercent={i <= shown ? 100 : 0} className="h-8 w-8" />
         </button>
       ))}
     </div>
   );
 }
 
-export function BookRating({ bookId, slug, rating, ratingsCount }: BookRatingProps) {
+export function BookRating({ bookId, slug }: BookRatingProps) {
   const { isAuthenticated } = useAuthStore();
-  const [displayRating, setDisplayRating] = useState(rating);
-  const [displayCount, setDisplayCount] = useState(ratingsCount);
+  const router = useRouter();
   const [myRating, setMyRating] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setDisplayRating(rating);
-    setDisplayCount(ratingsCount);
-  }, [rating, ratingsCount]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -117,9 +99,9 @@ export function BookRating({ bookId, slug, rating, ratingsCount }: BookRatingPro
     setError(null);
 
     try {
-      const result = await api.ratings.set(bookId, value);
-      setDisplayRating(result.rating);
-      setDisplayCount(result.ratings_count);
+      await api.ratings.set(bookId, value);
+      // Re-render the server-side rating summary with the new average.
+      router.refresh();
     } catch (err) {
       setMyRating(previousMyRating);
       setError(err instanceof Error ? err.message : 'Ошибка сохранения оценки');
@@ -128,41 +110,25 @@ export function BookRating({ bookId, slug, rating, ratingsCount }: BookRatingPro
     }
   };
 
-  const roundedRating = Math.round(displayRating * 2) / 2;
-
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 md:text-center">
       {error && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        {isAuthenticated ? (
-          <StarRating value={roundedRating} />
-        ) : (
-          <Link href={`/login?redirect=/books/${slug}`} className="flex">
-            <StarRating value={roundedRating} />
-          </Link>
-        )}
-
-        <div className="text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">{displayRating.toFixed(1)}</span>
-          {' · '}
-          {displayCount} оценок
-        </div>
-      </div>
-
       {isAuthenticated ? (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Моя оценка:</span>
+        <>
+          <p className="text-sm text-muted-foreground">
+            {myRating > 0 ? `Моя оценка: ${myRating}` : 'Оцените книгу'}
+          </p>
           <InteractiveStars value={myRating} onChange={handleSetRating} />
-        </div>
+        </>
       ) : (
         <Link
-          href={`/login?redirect=/books/${slug}`}
-          className="text-sm text-primary hover:underline"
+          href={loginHref(`/books/${slug}`)}
+          className="block text-sm text-primary hover:underline"
         >
           Войдите, чтобы оценить
         </Link>

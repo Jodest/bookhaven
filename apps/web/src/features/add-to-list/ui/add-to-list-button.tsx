@@ -4,6 +4,8 @@ import { listsApi } from '@/entities/list';
 import { useAuthStore } from '@/entities/session';
 import { List } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
+import { loginHref } from '@/shared/lib/safe-redirect';
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
@@ -99,7 +101,7 @@ export function AddToListButton({ bookId, slug }: AddToListButtonProps) {
     return (
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" asChild>
-          <Link href={`/login?redirect=/books/${slug}`}>
+          <Link href={loginHref(`/books/${slug}`)}>
             Добавить в список
           </Link>
         </Button>
@@ -116,7 +118,7 @@ export function AddToListButton({ bookId, slug }: AddToListButtonProps) {
       )}
 
       {lists.length > 0 && (
-        <div className="rounded-md border p-3">
+        <div>
           <p className="mb-2 text-sm font-medium">Добавить в список</p>
           <div className="space-y-2">
             {lists.map((list) => (
@@ -140,35 +142,39 @@ export function AddToListButton({ bookId, slug }: AddToListButtonProps) {
         </div>
       )}
 
-      {showCreate ? (
-        <form onSubmit={handleCreateList} className="flex gap-2">
-          <input
-            value={newListTitle}
-            onChange={(e) => setNewListTitle(e.target.value)}
-            placeholder="Название нового списка"
-            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
-          />
-          <Button type="submit" size="sm">
-            Создать
-          </Button>
+      <div className={lists.length > 0 ? 'border-t pt-3' : undefined}>
+        {showCreate ? (
+          <form onSubmit={handleCreateList}>
+            <input
+              autoFocus
+              value={newListTitle}
+              onChange={(e) => setNewListTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  // Cancel the field only; keep the popover open.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setNewListTitle('');
+                  setShowCreate(false);
+                }
+              }}
+              placeholder="Название нового списка"
+              aria-label="Название нового списка"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+            />
+          </form>
+        ) : (
           <Button
-            type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
-            onClick={() => setShowCreate(false)}
+            className="w-full justify-start"
+            onClick={() => setShowCreate(true)}
           >
-            Отмена
+            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+            Новый список
           </Button>
-        </form>
-      ) : (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowCreate(true)}
-        >
-          Создать новый список
-        </Button>
-      )}
+        )}
+      </div>
     </div>
   );
 }

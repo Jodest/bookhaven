@@ -51,16 +51,16 @@ describe('ShelveBookButtons', () => {
     const links = screen.getAllByRole('link');
     expect(links.map((l) => l.textContent)).toEqual(['Хочу прочитать', 'Читаю', 'Прочитано']);
     for (const link of links) {
-      expect(link).toHaveAttribute('href', '/login?redirect=/books/book-1');
+      expect(link).toHaveAttribute('href', '/login?redirect=%2Fbooks%2Fbook-1');
     }
   });
 
-  it('guest with types and loginRedirect: one link to /login?redirect=/', () => {
+  it('guest with types and loginRedirect: one link to the encoded root redirect', () => {
     render(<ShelveBookButtons bookId="b1" slug="book-1" types={['want_to_read']} loginRedirect="/" />);
     const links = screen.getAllByRole('link');
     expect(links).toHaveLength(1);
     expect(links[0]).toHaveTextContent('Хочу прочитать');
-    expect(links[0]).toHaveAttribute('href', '/login?redirect=/');
+    expect(links[0]).toHaveAttribute('href', '/login?redirect=%2F');
   });
 
   it('logged-in defaults: all system buttons and custom shelves', async () => {
@@ -95,5 +95,13 @@ describe('ShelveBookButtons', () => {
 
     fireEvent.click(button);
     await waitFor(() => expect(addBookMock).toHaveBeenCalledWith('s1', 'b1'));
+  });
+  it('shows a skeleton while the shelves load', () => {
+    isAuthenticatedValue = true;
+    listMock.mockReturnValue(new Promise(() => {}));
+    const { container } = render(<ShelveBookButtons bookId="b1" slug="book-1" />);
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
+    expect(screen.getByText('Загрузка полок')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

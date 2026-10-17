@@ -10,11 +10,11 @@ export function BookAdaptations({ items }: BookAdaptationsProps) {
   if (items.length === 0) return null;
 
   return (
-    <section className="mt-8" aria-labelledby="book-adaptations-title">
+    <section aria-labelledby="book-adaptations-title">
       <h2 id="book-adaptations-title" className="font-display text-xl font-semibold">
         Экранизации
       </h2>
-      <ul className="mt-3 space-y-3">
+      <ul className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => (
           <li key={item.id} className="rounded-lg border p-3">
             <p className="font-medium">{item.title}</p>

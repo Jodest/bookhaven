@@ -26,3 +26,4 @@ export { Pagination } from './components/ui/pagination';
 export type { PaginationProps, PaginationLinkProps } from './components/ui/pagination';
 export { getPaginationRange } from './lib/pagination-range';
 export type { PaginationItem } from './lib/pagination-range';
+export { Popover, PopoverTrigger, PopoverAnchor, PopoverContent } from './components/ui/popover';
