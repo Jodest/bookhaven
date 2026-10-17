@@ -90,33 +90,31 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]do
 	if len(filter.GenreID) > 0 {
 		// Only published genres are public filter targets; non-published
 		// genre IDs match nothing (empty result when none is published).
-		query = query.Joins("JOIN book_genres ON book_genres.book_id = books.id").
-			Where("book_genres.genre_id IN ?", filter.GenreID).
-			Where("EXISTS (SELECT 1 FROM genres g WHERE g.id = book_genres.genre_id AND g.status = ?)", domain.GenreStatusPublished)
+		query = query.Where("EXISTS (SELECT 1 FROM book_genres bg JOIN genres g ON g.id = bg.genre_id WHERE bg.book_id = books.id AND bg.genre_id IN ? AND g.status = ?)",
+			filter.GenreID, domain.GenreStatusPublished)
 	}
 
 	if filter.AuthorID != nil {
 		// Only a published author is a public filter target; a
 		// non-published author ID yields an empty result.
-		query = query.Joins("JOIN book_authors ON book_authors.book_id = books.id").
-			Where("book_authors.author_id = ?", filter.AuthorID).
-			Where("EXISTS (SELECT 1 FROM authors a WHERE a.id = book_authors.author_id AND a.status = ?)", domain.AuthorStatusPublished)
+		query = query.Where("EXISTS (SELECT 1 FROM book_authors ba JOIN authors a ON a.id = ba.author_id WHERE ba.book_id = books.id AND ba.author_id = ? AND a.status = ?)",
+			*filter.AuthorID, domain.AuthorStatusPublished)
 	}
 
 	if filter.RatingMin != nil {
-		query = query.Where("rating >= ?", *filter.RatingMin)
+		query = query.Where("books.rating >= ?", *filter.RatingMin)
 	}
 
 	if filter.Language != nil {
-		query = query.Where("language = ?", *filter.Language)
+		query = query.Where("books.language = ?", *filter.Language)
 	}
 
 	if filter.YearFrom != nil {
-		query = query.Where("published_year >= ?", *filter.YearFrom)
+		query = query.Where("books.published_year >= ?", *filter.YearFrom)
 	}
 
 	if filter.YearTo != nil {
-		query = query.Where("published_year <= ?", *filter.YearTo)
+		query = query.Where("books.published_year <= ?", *filter.YearTo)
 	}
 
 	if err := query.Count(&total).Error; err != nil {
@@ -135,12 +133,12 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]do
 		offset = 0
 	}
 
-	order := "rating DESC, created_at DESC"
+	order := "books.rating DESC, books.created_at DESC, books.id ASC"
 	switch filter.Sort {
 	case "new":
-		order = "published_year DESC NULLS LAST, created_at DESC"
+		order = "books.published_year DESC NULLS LAST, books.created_at DESC, books.id ASC"
 	case "title":
-		order = "title ASC"
+		order = "books.title ASC, books.id ASC"
 	}
 
 	if err := query.Order(order).
