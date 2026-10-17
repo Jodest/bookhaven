@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { Route } from 'next';
+import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { booksApi, BookCard } from '@/entities/book';
 import { Book } from '@bookhaven/api-client';
@@ -13,12 +15,40 @@ import {
 import type { FilterChip } from '@/widgets/catalog-filters';
 import { EmptyState } from '@/shared/ui';
 import { SlidersHorizontal } from 'lucide-react';
-import { Button } from '@bookhaven/ui';
+import { Button, Pagination } from '@bookhaven/ui';
+import { buildCatalogPageHref } from '../lib/page-href';
+
+const PAGE_SIZE = 24;
+
+type Status = 'initial' | 'replacing' | 'idle';
 
 function parseNumberParam(value: string | null): number | null {
   if (value === null) return null;
   const num = parseInt(value, 10);
   return isNaN(num) ? null : num;
+}
+
+function parsePage(value: string | null): number {
+  const p = parseNumberParam(value);
+  return p && p > 0 ? p : 1;
+}
+
+// Query for one page, built from the filter part of the URL (`page` excluded).
+function buildListQuery(filterKey: string, page: number) {
+  const params = new URLSearchParams(filterKey);
+  const genreIds = params.getAll('genre_id');
+  return {
+    page,
+    limit: PAGE_SIZE,
+    search: params.get('search') || undefined,
+    genre_id: genreIds.length > 0 ? genreIds : undefined,
+    author_id: params.get('author_id') || undefined,
+    rating_min: parseNumberParam(params.get('rating_min')) || undefined,
+    language: params.get('language') || undefined,
+    year_from: parseNumberParam(params.get('year_from')) || undefined,
+    year_to: parseNumberParam(params.get('year_to')) || undefined,
+    sort: params.get('sort') || 'rating',
+  };
 }
 
 export function CatalogView() {
@@ -28,7 +58,17 @@ export function CatalogView() {
 
   const [books, setBooks] = useState<Book[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [startPage, setStartPage] = useState(() => parsePage(searchParams.get('page')));
+  const [endPage, setEndPage] = useState(() => parsePage(searchParams.get('page')));
+  const [status, setStatus] = useState<Status>('initial');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const requestIdRef = useRef(0);
+  const skipNextUrlSyncRef = useRef(false);
+  const endPageRef = useRef(endPage);
+  const booksCountRef = useRef(0);
+  const lastFilterKeyRef = useRef<string | null>(null);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Filter state - initialize from URL
@@ -55,10 +95,6 @@ export function CatalogView() {
     return parseNumberParam(searchParams.get('year_to'));
   });
   const [sort, setSort] = useState(searchParams.get('sort') || 'rating');
-  const [page, setPage] = useState(() => {
-    const p = parseNumberParam(searchParams.get('page'));
-    return p && p > 0 ? p : 1;
-  });
 
   // Sync state when URL changes (e.g., browser back/forward)
   useEffect(() => {
@@ -71,39 +107,83 @@ export function CatalogView() {
     setYearFrom(parseNumberParam(searchParams.get('year_from')));
     setYearTo(parseNumberParam(searchParams.get('year_to')));
     setSort(searchParams.get('sort') || 'rating');
-    const p = parseNumberParam(searchParams.get('page'));
-    setPage(p && p > 0 ? p : 1);
   }, [searchParams]);
 
-  // Fetch books when filters change
+  // Everything except `page` identifies the filter set; `urlPage` is the page.
+  const filterParams = new URLSearchParams(searchParams.toString());
+  filterParams.delete('page');
+  const filterKey = filterParams.toString();
+  const urlPage = parsePage(searchParams.get('page'));
+
   useEffect(() => {
-    async function fetchBooks() {
-      setLoading(true);
-      try {
-        const result = await booksApi.list({
-          page,
-          limit: 20,
-          search: search || undefined,
-          genre_id: genreIds.length > 0 ? genreIds : undefined,
-          author_id: authorId || undefined,
-          rating_min: ratingMin || undefined,
-          language: language || undefined,
-          year_from: yearFrom || undefined,
-          year_to: yearTo || undefined,
-          sort,
-        });
+    const sameFilters = lastFilterKeyRef.current === filterKey;
+    lastFilterKeyRef.current = filterKey;
+    const skip = skipNextUrlSyncRef.current;
+    skipNextUrlSyncRef.current = false;
+    // "Show more" already loaded this page and only rewrote the URL.
+    if (skip && sameFilters && urlPage === endPageRef.current) return;
+
+    const requestId = ++requestIdRef.current;
+    setLoadingMore(false);
+    setLoadMoreError(false);
+    setStatus(booksCountRef.current === 0 ? 'initial' : 'replacing');
+
+    booksApi
+      .list(buildListQuery(filterKey, urlPage))
+      .then((result) => {
+        if (requestId !== requestIdRef.current) return;
+        booksCountRef.current = result.items.length;
+        endPageRef.current = urlPage;
         setBooks(result.items);
         setTotal(result.total);
-      } catch (err) {
+        setStartPage(urlPage);
+        setEndPage(urlPage);
+        setStatus('idle');
+      })
+      .catch((err) => {
+        if (requestId !== requestIdRef.current) return;
         console.error('Failed to fetch books:', err);
+        booksCountRef.current = 0;
         setBooks([]);
         setTotal(0);
-      } finally {
-        setLoading(false);
-      }
+        setStatus('idle');
+      });
+  }, [filterKey, urlPage]);
+
+  const loadMore = useCallback(async () => {
+    const nextPage = endPageRef.current + 1;
+    const requestId = ++requestIdRef.current;
+    setLoadingMore(true);
+    setLoadMoreError(false);
+    try {
+      const result = await booksApi.list(buildListQuery(filterKey, nextPage));
+      if (requestId !== requestIdRef.current) return;
+      setBooks((prev) => {
+        const seen = new Set(prev.map((b) => b.id));
+        const merged = [...prev, ...result.items.filter((b) => !seen.has(b.id))];
+        booksCountRef.current = merged.length;
+        return merged;
+      });
+      setTotal(result.total);
+      setEndPage(nextPage);
+      endPageRef.current = nextPage;
+      skipNextUrlSyncRef.current = true;
+      window.history.replaceState(null, '', buildCatalogPageHref(pathname, searchParams, nextPage));
+    } catch (err) {
+      if (requestId !== requestIdRef.current) return;
+      console.error('Failed to load more books:', err);
+      setLoadMoreError(true);
+    } finally {
+      if (requestId === requestIdRef.current) setLoadingMore(false);
     }
-    fetchBooks();
-  }, [page, search, genreIds, authorId, ratingMin, language, yearFrom, yearTo, sort]);
+  }, [filterKey, pathname, searchParams]);
+
+  const scrollToGrid = useCallback(() => {
+    const reduce =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    gridRef.current?.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+  }, []);
 
   // Update URL when filters change
   const updateURL = useCallback(
@@ -134,7 +214,6 @@ export function CatalogView() {
   const handleSearch = useCallback(
     (value: string) => {
       setSearch(value);
-      setPage(1);
       updateURL({ search: value || undefined, page: undefined });
     },
     [updateURL]
@@ -143,7 +222,6 @@ export function CatalogView() {
   const handleGenreChange = useCallback(
     (newGenreIds: string[]) => {
       setGenreIds(newGenreIds);
-      setPage(1);
       updateURL({ genre_id: newGenreIds.length > 0 ? newGenreIds : undefined, page: undefined });
     },
     [updateURL]
@@ -153,7 +231,6 @@ export function CatalogView() {
     (newAuthorId: string | null, newAuthorName: string | null) => {
       setAuthorId(newAuthorId);
       setAuthorName(newAuthorName);
-      setPage(1);
       updateURL({
         author_id: newAuthorId || undefined,
         author_name: newAuthorName || undefined,
@@ -166,7 +243,6 @@ export function CatalogView() {
   const handleRatingChange = useCallback(
     (newRating: number | null) => {
       setRatingMin(newRating);
-      setPage(1);
       updateURL({ rating_min: newRating || undefined, page: undefined });
     },
     [updateURL]
@@ -175,7 +251,6 @@ export function CatalogView() {
   const handleLanguageChange = useCallback(
     (newLanguage: string | null) => {
       setLanguage(newLanguage);
-      setPage(1);
       updateURL({ language: newLanguage || undefined, page: undefined });
     },
     [updateURL]
@@ -184,7 +259,6 @@ export function CatalogView() {
   const handleYearFromChange = useCallback(
     (year: number | null) => {
       setYearFrom(year);
-      setPage(1);
       updateURL({ year_from: year || undefined, page: undefined });
     },
     [updateURL]
@@ -193,7 +267,6 @@ export function CatalogView() {
   const handleYearToChange = useCallback(
     (year: number | null) => {
       setYearTo(year);
-      setPage(1);
       updateURL({ year_to: year || undefined, page: undefined });
     },
     [updateURL]
@@ -202,16 +275,7 @@ export function CatalogView() {
   const handleSortChange = useCallback(
     (newSort: string) => {
       setSort(newSort);
-      setPage(1);
       updateURL({ sort: newSort, page: undefined });
-    },
-    [updateURL]
-  );
-
-  const handlePageChange = useCallback(
-    (newPage: number) => {
-      setPage(newPage);
-      updateURL({ page: newPage > 1 ? newPage : undefined });
     },
     [updateURL]
   );
@@ -226,7 +290,6 @@ export function CatalogView() {
     setYearFrom(null);
     setYearTo(null);
     setSort('rating');
-    setPage(1);
     router.push(pathname as any, { scroll: false });
   }, [pathname, router]);
 
@@ -289,8 +352,8 @@ export function CatalogView() {
     });
   }
 
-  const limit = 20;
-  const totalPages = Math.ceil(total / limit);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const remaining = Math.min(PAGE_SIZE, total - endPage * PAGE_SIZE);
 
   return (
     <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
@@ -341,7 +404,7 @@ export function CatalogView() {
             <SortSelector sort={sort} onSortChange={handleSortChange} />
           </div>
 
-          {loading ? (
+          {status === 'initial' ? (
             <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div
@@ -351,37 +414,70 @@ export function CatalogView() {
               ))}
             </div>
           ) : books.length === 0 ? (
-            <EmptyState />
+            total > 0 ? (
+              <div className="py-12 text-center">
+                <p className="mb-3 text-muted-foreground">На этой странице книг нет</p>
+                <Link
+                  href={buildCatalogPageHref(pathname, searchParams, totalPages) as Route}
+                  scroll={false}
+                  className="text-primary underline underline-offset-4"
+                >
+                  Перейти на последнюю страницу
+                </Link>
+              </div>
+            ) : (
+              <EmptyState />
+            )
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {books.map((book) => (
-                  <BookCard key={book.id} book={book} />
-                ))}
+              <div
+                ref={gridRef}
+                aria-busy={status === 'replacing'}
+                className={`scroll-mt-6 ${
+                  status === 'replacing'
+                    ? 'pointer-events-none opacity-50 transition-opacity'
+                    : 'transition-opacity'
+                }`}
+              >
+                <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {books.map((book) => (
+                    <BookCard key={book.id} book={book} />
+                  ))}
+                </div>
               </div>
 
-              {totalPages > 1 && (
-                <div className="mt-8 flex justify-center gap-2">
-                  {page > 1 && (
-                    <button
-                      onClick={() => handlePageChange(page - 1)}
-                      className="rounded-md border px-4 py-2 hover:bg-accent"
-                    >
-                      Назад
-                    </button>
-                  )}
-                  <span className="px-4 py-2">
-                    Страница {page} из {totalPages}
-                  </span>
-                  {page < totalPages && (
-                    <button
-                      onClick={() => handlePageChange(page + 1)}
-                      className="rounded-md border px-4 py-2 hover:bg-accent"
-                    >
-                      Вперед
-                    </button>
+              {endPage < totalPages && (
+                <div className="mt-8 flex flex-col items-stretch gap-2 sm:items-center">
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    disabled={loadingMore || status !== 'idle'}
+                    aria-busy={loadingMore}
+                    onClick={loadMore}
+                  >
+                    {loadingMore ? 'Загрузка…' : `Показать ещё ${remaining}`}
+                  </Button>
+                  {loadMoreError && (
+                    <p role="alert" className="text-center text-sm text-destructive">
+                      Не удалось загрузить книги
+                    </p>
                   )}
                 </div>
+              )}
+
+              {totalPages > 1 && (
+                <Pagination
+                  className="mt-6"
+                  page={endPage}
+                  prevPage={startPage - 1}
+                  nextPage={endPage + 1}
+                  totalPages={totalPages}
+                  getHref={(p) => buildCatalogPageHref(pathname, searchParams, p)}
+                  onPageChange={scrollToGrid}
+                  renderLink={({ href, ...rest }) => (
+                    <Link href={href as Route} scroll={false} {...rest} />
+                  )}
+                />
               )}
             </>
           )}

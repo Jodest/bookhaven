@@ -177,7 +177,7 @@ describe('CatalogList', () => {
       renderList();
       await loaded();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Вперед' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }));
       expect(pushMock).toHaveBeenLastCalledWith('/catalog/things?status=published&page=2');
     });
 
