@@ -28,7 +28,6 @@ vi.mock('next/image', () => ({
 }));
 
 vi.mock('next/navigation', () => ({ notFound: vi.fn() }));
-vi.mock('@/features/add-to-list', () => ({ AddToListPopover: () => <div data-testid="add-to-list" /> }));
 vi.mock('@/features/rate-book', () => ({ BookRating: () => null }));
 vi.mock('@/features/shelve-book', () => ({ BookShelfActions: () => null }));
 vi.mock('@/widgets/reviews-section', () => ({ ReviewsSection: () => <section><h2>Рецензии</h2></section> }));
@@ -342,13 +341,13 @@ describe('BookDetailView JSON-LD escaping', () => {
 });
 
 describe('BookDetailView actions column', () => {
-  it('puts «В список» in the sticky aside, before the content column', async () => {
+  it('keeps the actions in the sticky aside, before the content column', async () => {
     getBook.mockResolvedValue(book);
 
     const { container } = render(await BookDetailView({ slug: 'fathers-and-sons' }));
 
     const aside = container.querySelector('aside') as HTMLElement;
-    expect(aside.querySelector('[data-testid="add-to-list"]')).not.toBeNull();
+    expect(aside.querySelector('[data-testid="add-to-list"]')).toBeNull();
     expect(aside).toHaveClass('md:sticky');
   });
 

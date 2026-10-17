@@ -59,11 +59,6 @@ export function Footer() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/lists" className="hover:text-background hover:underline">
-                    Мои списки
-                  </Link>
-                </li>
-                <li>
                   <Link href="/challenge" className="hover:text-background hover:underline">
                     Читательский вызов
                   </Link>

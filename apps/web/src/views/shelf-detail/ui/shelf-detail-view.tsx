@@ -11,11 +11,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-const renameShelfSchema = z.object({
+const editShelfSchema = z.object({
   name: z.string().trim().min(2, 'Минимум 2 символа').max(100, 'Максимум 100 символов'),
+  description: z.string().trim().max(2000, 'Максимум 2000 символов'),
 });
 
-type RenameShelfForm = z.infer<typeof renameShelfSchema>;
+type EditShelfForm = z.infer<typeof editShelfSchema>;
 
 interface ShelfDetailViewProps {
   id: string;
@@ -37,8 +38,8 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<RenameShelfForm>({
-    resolver: zodResolver(renameShelfSchema),
+  } = useForm<EditShelfForm>({
+    resolver: zodResolver(editShelfSchema),
   });
 
   const fetchShelf = useCallback(
@@ -51,7 +52,7 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
         setBooks(response.items);
         setTotal(response.total);
         setPage(response.page);
-        reset({ name: response.shelf.name });
+        reset({ name: response.shelf.name, description: response.shelf.description });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Ошибка загрузки полки');
       } finally {
@@ -65,14 +66,25 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
     fetchShelf(1);
   }, [fetchShelf]);
 
-  const onRename = async (data: RenameShelfForm) => {
+  const onEdit = async (data: EditShelfForm) => {
     setError(null);
     try {
-      await shelvesApi.rename(id, { name: data.name });
+      await shelvesApi.update(id, { name: data.name, description: data.description });
       setIsEditing(false);
       await fetchShelf(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка переименования полки');
+      setError(err instanceof Error ? err.message : 'Ошибка сохранения полки');
+    }
+  };
+
+  const onTogglePrivacy = async () => {
+    if (!shelf) return;
+    setError(null);
+    try {
+      await shelvesApi.update(id, { is_public: !shelf.isPublic });
+      await fetchShelf(page);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка изменения видимости полки');
     }
   };
 
@@ -110,32 +122,55 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
   return (
     <main className="container mx-auto px-4 py-12 sm:px-6 md:py-16 lg:px-8">
       {isEditing && shelf ? (
-        <form onSubmit={handleSubmit(onRename)} className="flex max-w-md items-start gap-2">
-          <div className="flex-1">
+        <form onSubmit={handleSubmit(onEdit)} className="max-w-md space-y-2">
+          <div>
             <input
               {...register('name')}
+              aria-label="Название"
               className="w-full rounded-md border bg-background px-3 py-2 text-3xl font-bold outline-none focus:ring-2 focus:ring-primary"
             />
             {errors.name && (
               <p className="mt-1 text-sm text-destructive">{errors.name.message}</p>
             )}
           </div>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? 'Сохранение...' : 'Сохранить'}
-          </Button>
-          <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
-            Отмена
-          </Button>
+          <div>
+            <textarea
+              {...register('description')}
+              aria-label="Описание"
+              placeholder="Описание (необязательно)"
+              rows={3}
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+            />
+            {errors.description && (
+              <p className="mt-1 text-sm text-destructive">{errors.description.message}</p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Сохранение...' : 'Сохранить'}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
+              Отмена
+            </Button>
+          </div>
         </form>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
             {shelf?.name}
+            {shelf?.type === 'custom' && !shelf.isPublic && (
+              <span className="ml-3 inline-block rounded-full bg-muted px-2 py-0.5 align-middle text-xs font-normal text-muted-foreground">
+                Приватная
+              </span>
+            )}
           </h1>
           {shelf?.type === 'custom' && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setIsEditing(true)}>
-                Переименовать
+                Редактировать
+              </Button>
+              <Button variant="outline" onClick={onTogglePrivacy}>
+                {shelf.isPublic ? 'Сделать приватной' : 'Сделать публичной'}
               </Button>
               <Button variant="destructive" onClick={onDelete}>
                 Удалить
@@ -149,6 +184,12 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
         <div className="mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </div>
+      )}
+
+      {shelf?.type === 'custom' && shelf.description && !isEditing && (
+        <p className="mt-2 max-w-2xl whitespace-pre-line text-muted-foreground">
+          {shelf.description}
+        </p>
       )}
 
       <p className="mt-2 text-muted-foreground">

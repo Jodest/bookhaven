@@ -24,11 +24,15 @@ func NewHandler(service *service.Service) *Handler {
 }
 
 type createShelfRequest struct {
-	Name string `json:"name" validate:"required,min=2,max=100"`
+	Name        string  `json:"name" validate:"required,min=2,max=100"`
+	Description *string `json:"description" validate:"omitempty,max=2000"`
+	IsPublic    *bool   `json:"is_public"`
 }
 
-type renameShelfRequest struct {
-	Name string `json:"name" validate:"required,min=2,max=100"`
+type updateShelfRequest struct {
+	Name        *string `json:"name" validate:"omitempty,min=2,max=100"`
+	Description *string `json:"description" validate:"omitempty,max=2000"`
+	IsPublic    *bool   `json:"is_public"`
 }
 
 type addBookRequest struct {
@@ -64,22 +68,26 @@ type bookListItemResponse struct {
 }
 
 type shelfResponse struct {
-	ID         string    `json:"id"`
-	UserID     string    `json:"user_id"`
-	Name       string    `json:"name"`
-	Type       string    `json:"type"`
-	BooksCount int64     `json:"books_count"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	Name        string    `json:"name"`
+	Type        string    `json:"type"`
+	Description string    `json:"description"`
+	IsPublic    bool      `json:"is_public"`
+	BooksCount  int64     `json:"books_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type shelfListItemResponse struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Type       string    `json:"type"`
-	BooksCount int64     `json:"books_count"`
-	HasBook    *bool     `json:"has_book,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Type        string    `json:"type"`
+	Description string    `json:"description"`
+	IsPublic    bool      `json:"is_public"`
+	BooksCount  int64     `json:"books_count"`
+	HasBook     *bool     `json:"has_book,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type listShelvesResponse struct {
@@ -161,13 +169,15 @@ func toBookListItemResponse(b catalogDomain.Book) bookListItemResponse {
 
 func toShelfResponse(s domain.Shelf) shelfResponse {
 	return shelfResponse{
-		ID:         s.ID.String(),
-		UserID:     s.UserID.String(),
-		Name:       s.Name,
-		Type:       string(s.Type),
-		BooksCount: s.BooksCount,
-		CreatedAt:  s.CreatedAt,
-		UpdatedAt:  s.UpdatedAt,
+		ID:          s.ID.String(),
+		UserID:      s.UserID.String(),
+		Name:        s.Name,
+		Type:        string(s.Type),
+		Description: s.Description,
+		IsPublic:    s.IsPublic,
+		BooksCount:  s.BooksCount,
+		CreatedAt:   s.CreatedAt,
+		UpdatedAt:   s.UpdatedAt,
 	}
 }
 
@@ -221,11 +231,13 @@ func (h *Handler) ListShelves(c echo.Context) error {
 	items := make([]shelfListItemResponse, 0, len(shelves))
 	for _, s := range shelves {
 		item := shelfListItemResponse{
-			ID:         s.ID.String(),
-			Name:       s.Name,
-			Type:       string(s.Type),
-			BooksCount: s.BooksCount,
-			CreatedAt:  s.CreatedAt,
+			ID:          s.ID.String(),
+			Name:        s.Name,
+			Type:        string(s.Type),
+			Description: s.Description,
+			IsPublic:    s.IsPublic,
+			BooksCount:  s.BooksCount,
+			CreatedAt:   s.CreatedAt,
 		}
 		if bookID != nil {
 			item.HasBook = &s.HasBook
@@ -245,7 +257,7 @@ func (h *Handler) ListShelves(c echo.Context) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param body body createShelfRequest true "Название полки"
+// @Param body body createShelfRequest true "Название, описание и приватность полки"
 // @Success 201 {object} shelfResponse
 // @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
@@ -267,10 +279,13 @@ func (h *Handler) CreateShelf(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	shelf, err := h.service.CreateShelf(ctx, userID, req.Name)
+	shelf, err := h.service.CreateShelf(ctx, userID, req.Name, req.Description, req.IsPublic)
 	if err != nil {
 		if errors.Is(err, service.ErrInvalidName) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid shelf name"})
+		}
+		if errors.Is(err, service.ErrInvalidDescription) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid shelf description"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create shelf"})
 	}
@@ -345,7 +360,7 @@ func (h *Handler) GetShelf(c echo.Context) error {
 
 // GetPublicShelf godoc
 // @Summary Получить публичную полку с книгами
-// @Description Доступно без авторизации; полки не приватны, проверка владельца не выполняется
+// @Description Доступно без авторизации. Приватная полка возвращает 404 (в том числе владельцу); владелец управляет ею через GET /shelves/{id}
 // @Tags shelves
 // @Produce json
 // @Param id path string true "ID полки"
@@ -398,14 +413,15 @@ func (h *Handler) GetPublicShelf(c echo.Context) error {
 	})
 }
 
-// RenameShelf godoc
-// @Summary Переименовать полку
+// UpdateShelf godoc
+// @Summary Изменить полку
+// @Description Частичное обновление: название, описание, приватность. Дефолтные полки изменить нельзя (400)
 // @Tags shelves
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path string true "ID полки"
-// @Param body body renameShelfRequest true "Новое название"
+// @Param body body updateShelfRequest true "Изменяемые поля"
 // @Success 200 {object} shelfResponse
 // @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
@@ -413,7 +429,7 @@ func (h *Handler) GetPublicShelf(c echo.Context) error {
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Router /shelves/{id} [patch]
-func (h *Handler) RenameShelf(c echo.Context) error {
+func (h *Handler) UpdateShelf(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	userID, err := getUserID(c)
@@ -426,7 +442,7 @@ func (h *Handler) RenameShelf(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid shelf id"})
 	}
 
-	var req renameShelfRequest
+	var req updateShelfRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
@@ -434,17 +450,18 @@ func (h *Handler) RenameShelf(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	shelf, err := h.service.RenameShelf(ctx, userID, shelfID, req.Name)
+	shelf, err := h.service.UpdateShelf(ctx, userID, shelfID, service.UpdateShelfInput{Name: req.Name, Description: req.Description, IsPublic: req.IsPublic})
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrShelfNotFound):
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "shelf not found"})
 		case errors.Is(err, service.ErrForbidden):
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
-		case errors.Is(err, service.ErrDefaultShelfImmutable), errors.Is(err, service.ErrInvalidName):
+		case errors.Is(err, service.ErrDefaultShelfImmutable), errors.Is(err, service.ErrInvalidName),
+			errors.Is(err, service.ErrInvalidDescription), errors.Is(err, service.ErrNothingToUpdate):
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		default:
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to rename shelf"})
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update shelf"})
 		}
 	}
 

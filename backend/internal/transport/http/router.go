@@ -3,8 +3,8 @@ package http
 import (
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
 	adminhttp "github.com/bookhaven/backend/internal/modules/admin/transport/http"
-	aicuratorhttp "github.com/bookhaven/backend/internal/modules/aicurator/transport/http"
 	aicollectionshttp "github.com/bookhaven/backend/internal/modules/aicollections/transport/http"
+	aicuratorhttp "github.com/bookhaven/backend/internal/modules/aicurator/transport/http"
 	aidescriptionshttp "github.com/bookhaven/backend/internal/modules/aidescriptions/transport/http"
 	aigenreshttp "github.com/bookhaven/backend/internal/modules/aigenres/transport/http"
 	aimodhttp "github.com/bookhaven/backend/internal/modules/aimoderation/transport/http"
@@ -15,8 +15,6 @@ import (
 	harvesthttp "github.com/bookhaven/backend/internal/modules/harvest/transport/http"
 	homeservice "github.com/bookhaven/backend/internal/modules/home/service"
 	homehttp "github.com/bookhaven/backend/internal/modules/home/transport/http"
-	listsservice "github.com/bookhaven/backend/internal/modules/lists/service"
-	listshttp "github.com/bookhaven/backend/internal/modules/lists/transport/http"
 	notificationsservice "github.com/bookhaven/backend/internal/modules/notifications/service"
 	notificationshttp "github.com/bookhaven/backend/internal/modules/notifications/transport/http"
 	ratingsservice "github.com/bookhaven/backend/internal/modules/ratings/service"
@@ -44,7 +42,6 @@ func RegisterRoutes(
 	e *echo.Echo,
 	catalogService *catalogservice.Service,
 	shelvesService *shelvesservice.Service,
-	listsService *listsservice.Service,
 	ratingsService *ratingsservice.Service,
 	reviewsService *reviewsservice.Service,
 	usersService *usersservice.Service,
@@ -77,23 +74,11 @@ func RegisterRoutes(
 	shelves.GET("", shelvesHandler.ListShelves)
 	shelves.POST("", shelvesHandler.CreateShelf)
 	shelves.GET("/:id", shelvesHandler.GetShelf)
-	shelves.PATCH("/:id", shelvesHandler.RenameShelf)
+	shelves.PATCH("/:id", shelvesHandler.UpdateShelf)
 	shelves.DELETE("/:id", shelvesHandler.DeleteShelf)
 	shelves.POST("/:id/books", shelvesHandler.AddBook)
 	shelves.DELETE("/:id/books/:bookId", shelvesHandler.RemoveBook)
 	api.GET("/shelves/public/:id", shelvesHandler.GetPublicShelf, optionalAuth)
-
-	listsHandler := listshttp.NewHandler(listsService)
-	lists := api.Group("/lists", authMiddleware)
-	lists.GET("", listsHandler.ListLists)
-	lists.POST("", listsHandler.CreateList)
-	lists.GET("/:id", listsHandler.GetList)
-	lists.PATCH("/:id", listsHandler.UpdateList)
-	lists.DELETE("/:id", listsHandler.DeleteList)
-	lists.POST("/:id/books", listsHandler.AddBook)
-	lists.DELETE("/:id/books/:bookId", listsHandler.RemoveBook)
-	lists.PATCH("/:id/books/reorder", listsHandler.ReorderBooks)
-	api.GET("/lists/public/:id", listsHandler.GetPublicList, optionalAuth)
 
 	ratingsHandler := ratingshttp.NewHandler(ratingsService)
 	reviewsHandler := reviewshttp.NewHandler(reviewsService)
@@ -108,7 +93,7 @@ func RegisterRoutes(
 	reviews.DELETE("/:id", reviewsHandler.DeleteReview)
 	reviews.POST("/:id/likes", reviewsHandler.ToggleLike)
 
-	usersHandler := usershttp.NewHandler(usersService, listsService, shelvesService)
+	usersHandler := usershttp.NewHandler(usersService, shelvesService)
 	api.GET("/users/:id", usersHandler.GetUser, optionalAuth)
 	api.PATCH("/users/me", usersHandler.UpdateMe, authMiddleware)
 

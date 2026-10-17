@@ -64,7 +64,7 @@ Status: standard workflow since 2026-10-13. Every product area has a living spec
 | `auth` | registration, session (login, tokens, refresh, logout), email verification, password reset, authorization (bearer/cookie, roles, page guards) |
 | `users` | own profile, public profile, admin user list, admin role change |
 | `reviews` | book ratings, book reviews, review likes, review moderation, review-like notifications |
-| `collections` | shelves, shelf books, lists, list books, public collections |
+| `collections` | shelves, shelf books, public collections |
 | `home` | home page (payload, cache, layout), book of the day, literary calendar, catalog rows, random book, personal blocks |
 | `reading-challenges` | goals, progress |
 | `screen-works` | screen adaptations of books (films, series, cartoons, teleplays), the public book-page block, admin hide/show of an adaptation link |

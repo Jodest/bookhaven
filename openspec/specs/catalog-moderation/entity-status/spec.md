@@ -40,7 +40,7 @@ An admin SHALL change one entity's status through `PATCH /api/v1/admin/books/{id
 - **THEN** the response is 400 and nothing changes
 
 ### Requirement: Public visibility of books
-A book SHALL be publicly visible only when its status is `published`. A `pending` or `rejected` book MUST return 404 on its public page and MUST be excluded from public lists, search, the home page, similar books, the list of languages, and the contents of shelves and lists. It MUST NOT be possible to add it to a shelf or list, rate it or review it.
+A book SHALL be publicly visible only when its status is `published`. A `pending` or `rejected` book MUST return 404 on its public page. It MUST be excluded from public lists, search, the home page, similar books, the list of languages and the contents of shelves. It MUST NOT be possible to add it to a shelf, rate it or review it.
 
 #### Scenario: Pending book page
 - **WHEN** a visitor opens the public page of a pending book

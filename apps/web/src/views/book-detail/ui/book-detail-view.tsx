@@ -1,7 +1,6 @@
 import { AuthorNameLink } from '@/entities/author';
 import { CollectionPlaceBadges, collectionsApi } from '@/entities/curated-collection';
 import { BookAdaptations, screenWorksApi } from '@/entities/screen-work';
-import { AddToListPopover } from '@/features/add-to-list';
 import { BookRating } from '@/features/rate-book';
 import { BookShelfActions } from '@/features/shelve-book';
 import { languageNameRu } from '@/shared/lib/language-name';
@@ -82,7 +81,6 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
 
           <div className="space-y-4 max-md:col-span-2 max-md:row-start-2">
             <BookShelfActions bookId={book.id} slug={book.slug} />
-            <AddToListPopover bookId={book.id} slug={book.slug} />
             <BookRating bookId={book.id} slug={book.slug} />
           </div>
         </aside>

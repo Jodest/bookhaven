@@ -38,6 +38,6 @@ describe('Header', () => {
     authValue = { user: { name: 'Аня', email: 'a@b.c' }, isAuthenticated: true, isLoading: false };
     render(<Header />);
     expect(screen.getByRole('link', { name: 'Подборки' })).toHaveAttribute('href', '/top');
-    expect(screen.getByRole('link', { name: 'Мои списки' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Мои списки' })).not.toBeInTheDocument();
   });
 });

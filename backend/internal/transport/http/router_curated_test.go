@@ -36,7 +36,7 @@ CREATE TABLE books (id TEXT PRIMARY KEY, status TEXT);`).Error; err != nil {
 	e := echo.New()
 	RegisterAdminRoutes(e, adminservice.NewService(nil), fakeAuth, &countingEnqueuer{}, nil, nil,
 		AIModerationDeps{}, AICuratorDeps{}, AIDescriptionsDeps{}, AICollectionsDeps{}, AIGenresDeps{}, svc, nil)
-	RegisterRoutes(e, nil, nil, nil, nil, nil, nil, nil, nil, nil, svc, nil, fakeAuth, fakeAuth, nil)
+	RegisterRoutes(e, nil, nil, nil, nil, nil, nil, nil, nil, svc, nil, fakeAuth, fakeAuth, nil)
 
 	do := func(method, path, role, bearer, body string) int {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))

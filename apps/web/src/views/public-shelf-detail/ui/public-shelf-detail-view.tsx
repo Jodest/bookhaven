@@ -94,8 +94,14 @@ export function PublicShelfDetailView({ id }: PublicShelfDetailViewProps) {
         <Badge variant="outline">Полка</Badge>
       </div>
 
+      {shelf?.type === 'custom' && shelf.description && (
+        <p className="mt-2 max-w-2xl whitespace-pre-line text-muted-foreground">
+          {shelf.description}
+        </p>
+      )}
+
       <p className="mt-2 text-muted-foreground">
-        {total} {pluralizeBooks(total)}
+        {total}{pluralizeBooks(total)}
       </p>
 
       {books.length === 0 && !loading ? (

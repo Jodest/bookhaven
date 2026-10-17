@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/bookhaven/backend/internal/infrastructure/validator"
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/shelves/domain"
 	"github.com/bookhaven/backend/internal/modules/shelves/repository"
@@ -176,7 +178,7 @@ func newContext(method, target string) (echo.Context, *httptest.ResponseRecorder
 func TestGetPublicShelf_AnyOwnerWithoutAuth(t *testing.T) {
 	h, repo := setupHandler()
 	ownerID := uuid.New()
-	shelf := &domain.Shelf{ID: uuid.New(), UserID: ownerID, Name: "Чужая полка", Type: domain.ShelfTypeCustom}
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: ownerID, Name: "Чужая полка", Type: domain.ShelfTypeCustom, IsPublic: true}
 	repo.shelves[shelf.ID] = shelf
 
 	bookID := uuid.New()
@@ -245,7 +247,7 @@ func TestGetPublicShelf_NotFound(t *testing.T) {
 func TestGetPublicShelf_Pagination(t *testing.T) {
 	h, repo := setupHandler()
 	userID := uuid.New()
-	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom}
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom, IsPublic: true}
 	repo.shelves[shelf.ID] = shelf
 
 	for i := 0; i < 5; i++ {
@@ -287,7 +289,7 @@ func TestGetPublicShelf_Pagination(t *testing.T) {
 func TestGetPublicShelf_HiddenBooksExcluded(t *testing.T) {
 	h, repo := setupHandler()
 	userID := uuid.New()
-	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom}
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom, IsPublic: true}
 	repo.shelves[shelf.ID] = shelf
 
 	visibleBook := uuid.New()
@@ -315,5 +317,117 @@ func TestGetPublicShelf_HiddenBooksExcluded(t *testing.T) {
 	}
 	if len(body.Items) != 1 || body.Items[0].Title != "Видимая" {
 		t.Fatalf("expected only visible book, got %+v", body.Items)
+	}
+}
+
+func jsonContext(method, target, body, userID string) (echo.Context, *httptest.ResponseRecorder) {
+	e := echo.New()
+	e.Validator = validator.New()
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set("user_id", userID)
+	return c, rec
+}
+
+func TestCreateShelf_WithDescriptionAndPrivacy(t *testing.T) {
+	h, repo := setupHandler()
+	userID := uuid.New()
+
+	c, rec := jsonContext(http.MethodPost, "/api/v1/shelves", `{"name":"Отпуск","description":"Для пляжа","is_public":false}`, userID.String())
+	if err := h.CreateShelf(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body shelfResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Description != "Для пляжа" || body.IsPublic {
+		t.Fatalf("unexpected body %+v", body)
+	}
+	stored := repo.shelves[uuid.MustParse(body.ID)]
+	if stored == nil || stored.IsPublic {
+		t.Fatal("private shelf must be stored as private")
+	}
+}
+
+func TestCreateShelf_DefaultsToPublic(t *testing.T) {
+	h, _ := setupHandler()
+	c, rec := jsonContext(http.MethodPost, "/api/v1/shelves", `{"name":"Классика"}`, uuid.New().String())
+	if err := h.CreateShelf(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body shelfResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if rec.Code != http.StatusCreated || !body.IsPublic || body.Description != "" {
+		t.Fatalf("unexpected response %d %+v", rec.Code, body)
+	}
+}
+
+func patchShelf(h *Handler, shelfID, userID uuid.UUID, body string) *httptest.ResponseRecorder {
+	c, rec := jsonContext(http.MethodPatch, "/api/v1/shelves/"+shelfID.String(), body, userID.String())
+	c.SetPath("/api/v1/shelves/:id")
+	c.SetParamNames("id")
+	c.SetParamValues(shelfID.String())
+	_ = h.UpdateShelf(c)
+	return rec
+}
+
+func TestUpdateShelf_TogglePrivacy(t *testing.T) {
+	h, repo := setupHandler()
+	userID := uuid.New()
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom, IsPublic: true}
+	repo.shelves[shelf.ID] = shelf
+
+	rec := patchShelf(h, shelf.ID, userID, `{"is_public":false}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body shelfResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if body.IsPublic || body.Name != "Моя" {
+		t.Fatalf("unexpected body %+v", body)
+	}
+}
+
+func TestUpdateShelf_DefaultShelfAndEmptyBodyRejected(t *testing.T) {
+	h, repo := setupHandler()
+	userID := uuid.New()
+	def := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Читаю", Type: domain.ShelfTypeReading, IsPublic: true}
+	custom := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: "Моя", Type: domain.ShelfTypeCustom, IsPublic: true}
+	repo.shelves[def.ID] = def
+	repo.shelves[custom.ID] = custom
+
+	if rec := patchShelf(h, def.ID, userID, `{"is_public":false}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("default shelf: expected 400, got %d", rec.Code)
+	}
+	if rec := patchShelf(h, custom.ID, userID, `{}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty body: expected 400, got %d", rec.Code)
+	}
+	if rec := patchShelf(h, custom.ID, uuid.New(), `{"is_public":false}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("other user: expected 403, got %d", rec.Code)
+	}
+}
+
+func TestGetPublicShelf_PrivateReturns404EvenForOwner(t *testing.T) {
+	h, repo := setupHandler()
+	ownerID := uuid.New()
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: ownerID, Name: "Тайная", Type: domain.ShelfTypeCustom, IsPublic: false}
+	repo.shelves[shelf.ID] = shelf
+
+	c, rec := newContext(http.MethodGet, "/api/v1/shelves/public/"+shelf.ID.String())
+	c.Set("user_id", ownerID.String())
+	c.SetPath("/api/v1/shelves/public/:id")
+	c.SetParamNames("id")
+	c.SetParamValues(shelf.ID.String())
+	if err := h.GetPublicShelf(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }

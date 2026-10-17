@@ -60,13 +60,15 @@ func (r *GormRepository) EnsureDefaultShelves(ctx context.Context, userID uuid.U
 }
 
 type shelfListRow struct {
-	ID         uuid.UUID        `gorm:"column:id"`
-	UserID     uuid.UUID        `gorm:"column:user_id"`
-	Name       string           `gorm:"column:name"`
-	Type       domain.ShelfType `gorm:"column:type"`
-	CreatedAt  time.Time        `gorm:"column:created_at"`
-	UpdatedAt  time.Time        `gorm:"column:updated_at"`
-	BooksCount int64            `gorm:"column:books_count"`
+	ID          uuid.UUID        `gorm:"column:id"`
+	UserID      uuid.UUID        `gorm:"column:user_id"`
+	Name        string           `gorm:"column:name"`
+	Type        domain.ShelfType `gorm:"column:type"`
+	Description string           `gorm:"column:description"`
+	IsPublic    bool             `gorm:"column:is_public"`
+	CreatedAt   time.Time        `gorm:"column:created_at"`
+	UpdatedAt   time.Time        `gorm:"column:updated_at"`
+	BooksCount  int64            `gorm:"column:books_count"`
 }
 
 // ListByUser returns all shelves for a user with their book counts.
@@ -97,13 +99,15 @@ func (r *GormRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]do
 	shelves := make([]domain.Shelf, 0, len(rows))
 	for _, row := range rows {
 		shelves = append(shelves, domain.Shelf{
-			ID:         row.ID,
-			UserID:     row.UserID,
-			Name:       row.Name,
-			Type:       row.Type,
-			CreatedAt:  row.CreatedAt,
-			UpdatedAt:  row.UpdatedAt,
-			BooksCount: row.BooksCount,
+			ID:          row.ID,
+			UserID:      row.UserID,
+			Name:        row.Name,
+			Type:        row.Type,
+			Description: row.Description,
+			IsPublic:    row.IsPublic,
+			CreatedAt:   row.CreatedAt,
+			UpdatedAt:   row.UpdatedAt,
+			BooksCount:  row.BooksCount,
 		})
 	}
 
@@ -143,13 +147,15 @@ func (r *GormRepository) ListByUserVisible(ctx context.Context, userID uuid.UUID
 	shelves := make([]domain.Shelf, 0, len(rows))
 	for _, row := range rows {
 		shelves = append(shelves, domain.Shelf{
-			ID:         row.ID,
-			UserID:     row.UserID,
-			Name:       row.Name,
-			Type:       row.Type,
-			CreatedAt:  row.CreatedAt,
-			UpdatedAt:  row.UpdatedAt,
-			BooksCount: row.BooksCount,
+			ID:          row.ID,
+			UserID:      row.UserID,
+			Name:        row.Name,
+			Type:        row.Type,
+			Description: row.Description,
+			IsPublic:    row.IsPublic,
+			CreatedAt:   row.CreatedAt,
+			UpdatedAt:   row.UpdatedAt,
+			BooksCount:  row.BooksCount,
 		})
 	}
 
@@ -176,6 +182,7 @@ func (r *GormRepository) GetByUserAndType(ctx context.Context, userID uuid.UUID,
 
 // Create creates a new shelf.
 func (r *GormRepository) Create(ctx context.Context, shelf *domain.Shelf) error {
+	// Shelf.IsPublic has no gorm default tag, so is_public=false is stored as-is.
 	return r.db.WithContext(ctx).Create(shelf).Error
 }
 
