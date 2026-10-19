@@ -1,13 +1,25 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Shelf } from '@bookhaven/api-client';
 import { ShelvesView } from './shelves-view';
+
+let queryClient: QueryClient;
+
+function render(ui: ReactElement) {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const listMock = vi.fn();
 const updateMock = vi.fn();
 const createMock = vi.fn();
 
-vi.mock('@/entities/shelf', () => ({
+vi.mock('@/entities/shelf', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/shelf')>()),
   shelvesApi: {
     list: () => listMock(),
     update: (...args: unknown[]) => updateMock(...args),

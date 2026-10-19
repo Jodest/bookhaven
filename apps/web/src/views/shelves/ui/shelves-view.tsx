@@ -1,10 +1,13 @@
 'use client';
 
-import { shelvesApi } from '@/entities/shelf';
+import { useAuthStore } from '@/entities/session';
+import { shelfKeys, shelvesApi } from '@/entities/shelf';
+import { invalidateShelfContents, invalidateShelfMeta } from '@/features/shelve-book';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Shelf } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -19,9 +22,9 @@ type CreateShelfForm = z.infer<typeof createShelfSchema>;
 const defaultTypeOrder = ['want_to_read', 'reading', 'read'];
 
 export function ShelvesView() {
-  const [shelves, setShelves] = useState<Shelf[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const {
@@ -33,53 +36,67 @@ export function ShelvesView() {
     resolver: zodResolver(createShelfSchema),
   });
 
-  const fetchShelves = async () => {
-    try {
-      const response = await shelvesApi.list();
-      setShelves(response.items);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки полок');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const query = useQuery({
+    queryKey: shelfKeys.list(user?.id),
+    queryFn: () => shelvesApi.list().then((response) => response.items),
+  });
+  const shelves = query.data ?? [];
+  const loading = query.isPending;
+  const error =
+    actionError ??
+    (query.isError
+      ? query.error instanceof Error
+        ? query.error.message
+        : 'Ошибка загрузки полок'
+      : null);
 
-  useEffect(() => {
-    fetchShelves();
-  }, []);
-
-  const onCreate = async (data: CreateShelfForm) => {
-    setError(null);
-    try {
-      await shelvesApi.create({
+  const createMutation = useMutation({
+    mutationFn: (data: CreateShelfForm) =>
+      shelvesApi.create({
         name: data.name,
         ...(data.description ? { description: data.description } : {}),
-      });
+      }),
+    onSuccess: () => invalidateShelfMeta(queryClient),
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { name?: string; is_public?: boolean } }) =>
+      shelvesApi.update(id, body),
+    onSuccess: () => invalidateShelfMeta(queryClient),
+  });
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => shelvesApi.remove(id),
+    onSuccess: () => invalidateShelfContents(queryClient),
+  });
+
+  const messageOf = (err: unknown, fallback: string) =>
+    err instanceof Error ? err.message : fallback;
+
+  const onCreate = async (data: CreateShelfForm) => {
+    setActionError(null);
+    try {
+      await createMutation.mutateAsync(data);
       reset();
-      await fetchShelves();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка создания полки');
+      setActionError(messageOf(err, 'Ошибка создания полки'));
     }
   };
 
   const onRename = async (id: string, name: string) => {
-    setError(null);
+    setActionError(null);
     try {
-      await shelvesApi.update(id, { name });
+      await updateMutation.mutateAsync({ id, body: { name } });
       setEditingId(null);
-      await fetchShelves();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка переименования полки');
+      setActionError(messageOf(err, 'Ошибка переименования полки'));
     }
   };
 
   const onTogglePrivacy = async (shelf: Shelf) => {
-    setError(null);
+    setActionError(null);
     try {
-      await shelvesApi.update(shelf.id, { is_public: !shelf.isPublic });
-      await fetchShelves();
+      await updateMutation.mutateAsync({ id: shelf.id, body: { is_public: !shelf.isPublic } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка изменения видимости полки');
+      setActionError(messageOf(err, 'Ошибка изменения видимости полки'));
     }
   };
 
@@ -87,12 +104,11 @@ export function ShelvesView() {
     if (!confirm('Удалить полку? Книги будут убраны из неё.')) {
       return;
     }
-    setError(null);
+    setActionError(null);
     try {
-      await shelvesApi.remove(id);
-      await fetchShelves();
+      await removeMutation.mutateAsync(id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления полки');
+      setActionError(messageOf(err, 'Ошибка удаления полки'));
     }
   };
 

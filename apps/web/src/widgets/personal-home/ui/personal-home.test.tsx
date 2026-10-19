@@ -21,11 +21,13 @@ vi.mock('@/entities/session', () => ({
   useAuthStore: () => authState,
 }));
 
-vi.mock('@/entities/home', () => ({
+vi.mock('@/entities/home', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/home')>()),
   homeApi: { me: () => meMock() },
 }));
 
-vi.mock('@/entities/reading-challenge', () => ({
+vi.mock('@/entities/reading-challenge', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/reading-challenge')>()),
   readingChallengesApi: { get: (year: number) => challengeMock(year) },
 }));
 

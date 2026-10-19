@@ -1,18 +1,31 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import type { Shelf } from '@bookhaven/api-client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { homeKeys } from '@/entities/home';
+import { readingChallengeKeys } from '@/entities/reading-challenge';
 import { BookShelfActions } from './book-shelf-actions';
 
 let isAuthenticatedValue = false;
+let queryClient: QueryClient;
+
+function render(ui: ReactElement) {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 const listMock = vi.fn();
 const addBookMock = vi.fn();
 const removeBookMock = vi.fn();
 
 vi.mock('@/entities/session', () => ({
-  useAuthStore: () => ({ isAuthenticated: isAuthenticatedValue }),
+  useAuthStore: () => ({ isAuthenticated: isAuthenticatedValue, user: { id: 'u1' } }),
 }));
 
-vi.mock('@/entities/shelf', () => ({
+vi.mock('@/entities/shelf', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/shelf')>()),
   shelvesApi: {
     list: (params?: unknown) => listMock(params),
     addBook: (shelfId: string, bookId: string) => addBookMock(shelfId, bookId),
@@ -43,6 +56,21 @@ function shelves(opts: { active?: string; custom?: boolean } = {}) {
   return { items, total: items.length };
 }
 
+/** A stateful fake backend: list reflects add/remove, so post-toggle refetches stay consistent. */
+function fakeServer(opts: { active?: string; custom?: boolean } = {}) {
+  let items = shelves(opts).items;
+  const isDefault = (type: string) => ['want_to_read', 'reading', 'read'].includes(type);
+  listMock.mockImplementation(async () => ({ items: items.map((s) => ({ ...s })), total: items.length }));
+  addBookMock.mockImplementation(async (shelfId: string) => {
+    const target = items.find((s) => s.id === shelfId)!;
+    items = items.map((s) => {
+      if (target.type === 'custom') return s.id === shelfId ? { ...s, hasBook: true } : s;
+      return isDefault(s.type) ? { ...s, hasBook: s.id === shelfId } : s;
+    });
+    return {};
+  });
+}
+
 describe('BookShelfActions', () => {
   afterEach(() => {
     isAuthenticatedValue = false;
@@ -53,8 +81,7 @@ describe('BookShelfActions', () => {
 
   it('adds to want_to_read from the primary button when there is no status', async () => {
     isAuthenticatedValue = true;
-    listMock.mockResolvedValue(shelves());
-    addBookMock.mockResolvedValue({});
+    fakeServer();
     render(<BookShelfActions bookId="b1" slug="book-1" />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Хочу прочитать' }));
@@ -64,8 +91,7 @@ describe('BookShelfActions', () => {
 
   it('picks another status from the chooser and closes it', async () => {
     isAuthenticatedValue = true;
-    listMock.mockResolvedValue(shelves());
-    addBookMock.mockResolvedValue({});
+    fakeServer();
     render(<BookShelfActions bookId="b1" slug="book-1" />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Выбрать статус' }));
@@ -104,8 +130,7 @@ describe('BookShelfActions', () => {
 
   it('"На полку" opens the checklist and stays open after a toggle', async () => {
     isAuthenticatedValue = true;
-    listMock.mockResolvedValue(shelves());
-    addBookMock.mockResolvedValue({});
+    fakeServer();
     render(<BookShelfActions bookId="b1" slug="book-1" />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'На полку' }));
@@ -114,6 +139,55 @@ describe('BookShelfActions', () => {
     await waitFor(() => expect(addBookMock).toHaveBeenCalledWith('s4', 'b1'));
     expect(screen.getByLabelText('Отпуск')).toBeChecked();
     expect(screen.getByText('Добавить на полку')).toBeInTheDocument();
+  });
+
+  it('picking "Прочитано" invalidates the reading challenge and home caches', async () => {
+    isAuthenticatedValue = true;
+    fakeServer();
+    const challengeKey = readingChallengeKeys.detail(2026, 'u1');
+    const homeKey = homeKeys.me('u1');
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+    queryClient.setQueryData(challengeKey, { booksRead: 1 });
+    queryClient.setQueryData(homeKey, { currentlyReading: [] });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать статус' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Прочитано' }));
+
+    await waitFor(() => expect(addBookMock).toHaveBeenCalledWith('s3', 'b1'));
+    await waitFor(() => expect(queryClient.getQueryState(challengeKey)?.isInvalidated).toBe(true));
+    expect(queryClient.getQueryState(homeKey)?.isInvalidated).toBe(true);
+  });
+
+  it('restores the previous status and shows the error when "Прочитано" fails', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue(shelves({ active: 's2' }));
+    addBookMock.mockRejectedValue(new Error('fail'));
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Статус: Читаю. Изменить' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Прочитано' }));
+
+    expect(await screen.findByText('fail')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Статус: Читаю. Изменить' })).toBeInTheDocument();
+  });
+
+  it('a failing custom toggle restores the checkbox and keeps the status', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue(shelves({ active: 's2' }));
+    addBookMock.mockRejectedValue(new Error('fail'));
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'На полку' }));
+    fireEvent.click(await screen.findByLabelText('Отпуск'));
+
+    expect(await screen.findByText('fail')).toBeInTheDocument();
+    expect(screen.getByLabelText('Отпуск')).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Статус: Читаю. Изменить' })).toBeInTheDocument();
+  });
+
+  it('an unauthenticated user triggers no list call', () => {
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+    expect(listMock).not.toHaveBeenCalled();
   });
 
   it('has no "На полку" without custom shelves', async () => {

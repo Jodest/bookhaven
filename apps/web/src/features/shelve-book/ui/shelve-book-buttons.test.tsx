@@ -1,17 +1,28 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import type { Shelf } from '@bookhaven/api-client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ShelveBookButtons } from './shelve-book-buttons';
 
 let isAuthenticatedValue = false;
+let queryClient: QueryClient;
+
+function render(ui: ReactElement) {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 const listMock = vi.fn();
 const addBookMock = vi.fn();
 
 vi.mock('@/entities/session', () => ({
-  useAuthStore: () => ({ isAuthenticated: isAuthenticatedValue }),
+  useAuthStore: () => ({ isAuthenticated: isAuthenticatedValue, user: { id: 'u1' } }),
 }));
 
-vi.mock('@/entities/shelf', () => ({
+vi.mock('@/entities/shelf', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/shelf')>()),
   shelvesApi: {
     list: (params?: unknown) => listMock(params),
     addBook: (shelfId: string, bookId: string) => addBookMock(shelfId, bookId),
