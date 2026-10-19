@@ -15,6 +15,7 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 - [x] Search and Filters (see [docs/features/search-and-filters.md](features/search-and-filters.md))
 - [x] ~~Lists — viewing verified~~ (superseded: lists were merged into custom shelves, see below; [docs/features/lists.md](features/lists.md) is kept as history)
 - [x] Lists merged into custom shelves (description + privacy), `/lists` removed — custom shelves get an optional description (up to 2000 characters) and `is_public` (default true); default shelves stay public; a private shelf is hidden from the public profile and `GET /api/v1/shelves/public/{id}` returns 404 for it, the owner manages it through `/api/v1/shelves`; `/api/v1/lists*` and `/lists` pages are removed with no redirects; migration `000034_merge_lists_into_shelves` turns each list into a custom shelf with the same id (books keep `added_at`, list order is dropped); OpenSpec change `merge-lists-into-shelves`
+- [x] Reading-challenge and personal home blocks refresh after a shelf change without reload — web shelves (`useBookShelves`, `/shelves`, shelf page) moved to React Query with query-key factories in entities; shelf-content mutations invalidate shelf, challenge and home caches; OpenSpec change `refresh-progress-after-shelving` (#504, #505)
 - [x] User Profiles (see [docs/features/user-profiles.md](features/user-profiles.md))
 - [x] Admin (see [docs/features/admin.md](features/admin.md))
 - [x] Reading Challenge (see [docs/features/reading-challenge.md](features/reading-challenge.md))

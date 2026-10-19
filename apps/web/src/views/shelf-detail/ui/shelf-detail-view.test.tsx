@@ -1,18 +1,32 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ImgHTMLAttributes } from 'react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ImgHTMLAttributes, ReactElement } from 'react';
+import { homeKeys } from '@/entities/home';
+import { readingChallengeKeys } from '@/entities/reading-challenge';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Shelf } from '@bookhaven/api-client';
 import { ShelfDetailView } from './shelf-detail-view';
 
+let queryClient: QueryClient;
+
+function render(ui: ReactElement) {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
 const getMock = vi.fn();
+const removeBookMock = vi.fn();
 const updateMock = vi.fn();
 
-vi.mock('@/entities/shelf', () => ({
+vi.mock('@/entities/shelf', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/shelf')>()),
   shelvesApi: {
     get: (...args: unknown[]) => getMock(...args),
     update: (...args: unknown[]) => updateMock(...args),
     remove: vi.fn(),
-    removeBook: vi.fn(),
+    removeBook: (...args: unknown[]) => removeBookMock(...args),
   },
 }));
 
@@ -47,6 +61,7 @@ function respond(s: Shelf) {
 describe('ShelfDetailView', () => {
   beforeEach(() => {
     getMock.mockReset();
+    removeBookMock.mockReset().mockResolvedValue(undefined);
     updateMock.mockReset().mockResolvedValue(undefined);
   });
 
@@ -87,5 +102,31 @@ describe('ShelfDetailView', () => {
     expect(screen.queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Сделать/ })).not.toBeInTheDocument();
     expect(screen.queryByText('Приватная')).not.toBeInTheDocument();
+  });
+
+  it('"Убрать с полки" removes the book and invalidates challenge and home caches', async () => {
+    const book = { id: 'b1', slug: 'b-1', title: 'Книга', authors: [], coverUrl: '' };
+    getMock.mockResolvedValue({ shelf: shelf({ name: 'Прочитано', type: 'read' }), items: [book], total: 1, page: 1, limit: 12 });
+    const challengeKey = readingChallengeKeys.detail(2026, undefined);
+    const homeKey = homeKeys.me(undefined);
+    render(<ShelfDetailView id="s1" />);
+    queryClient.setQueryData(challengeKey, { booksRead: 3 });
+    queryClient.setQueryData(homeKey, {});
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Убрать с полки' }));
+
+    await waitFor(() => expect(removeBookMock).toHaveBeenCalledWith('s1', 'b1'));
+    await waitFor(() => expect(queryClient.getQueryState(challengeKey)?.isInvalidated).toBe(true));
+    expect(queryClient.getQueryState(homeKey)?.isInvalidated).toBe(true);
+  });
+
+  it('pagination "Вперёд" requests page 2', async () => {
+    const book = { id: 'b1', slug: 'b-1', title: 'Книга', authors: [], coverUrl: '' };
+    getMock.mockResolvedValue({ shelf: shelf({}), items: [book], total: 30, page: 1, limit: 12 });
+    render(<ShelfDetailView id="s1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Вперёд' }));
+
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith('s1', { page: 2, limit: 12 }));
   });
 });

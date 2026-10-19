@@ -1,6 +1,6 @@
 'use client';
 
-import { readingChallengesApi } from '@/entities/reading-challenge';
+import { readingChallengesApi, readingChallengeKeys } from '@/entities/reading-challenge';
 import { isApiError, ReadingChallenge } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -76,8 +76,7 @@ export function ManageReadingChallengeGoal({
     setSaveError(null);
     try {
       const updated = await readingChallengesApi.upsert(year, { goal: data.goal });
-      // The home challenge card caches this year under ['reading-challenges', year, userId].
-      void queryClient.invalidateQueries({ queryKey: ['reading-challenges', year] });
+      void queryClient.invalidateQueries({ queryKey: readingChallengeKeys.year(year) });
       setIsEditing(false);
       reset();
       onSaved(updated);

@@ -1,12 +1,15 @@
 'use client';
 
-import { shelvesApi } from '@/entities/shelf';
+import { useAuthStore } from '@/entities/session';
+import { shelfKeys, shelvesApi } from '@/entities/shelf';
+import { invalidateShelfContents, invalidateShelfMeta } from '@/features/shelve-book';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Book, Shelf } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -22,15 +25,15 @@ interface ShelfDetailViewProps {
   id: string;
 }
 
+const LIMIT = 12;
+
 export function ShelfDetailView({ id }: ShelfDetailViewProps) {
   const router = useRouter();
-  const [shelf, setShelf] = useState<Shelf | null>(null);
-  const [books, setBooks] = useState<Book[]>([]);
-  const [total, setTotal] = useState(0);
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [limit] = useState(12);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const limit = LIMIT;
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
   const {
@@ -42,49 +45,63 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
     resolver: zodResolver(editShelfSchema),
   });
 
-  const fetchShelf = useCallback(
-    async (targetPage: number) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await shelvesApi.get(id, { page: targetPage, limit });
-        setShelf(response.shelf);
-        setBooks(response.items);
-        setTotal(response.total);
-        setPage(response.page);
-        reset({ name: response.shelf.name, description: response.shelf.description });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Ошибка загрузки полки');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [id, limit, reset]
-  );
+  const query = useQuery({
+    queryKey: shelfKeys.detailPage(user?.id, id, page, limit),
+    queryFn: () => shelvesApi.get(id, { page, limit }),
+    placeholderData: keepPreviousData,
+  });
+  const data = query.data;
+  const shelf: Shelf | null = data?.shelf ?? null;
+  const books: Book[] = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const loading = query.isFetching;
+  const error =
+    actionError ??
+    (query.isError
+      ? query.error instanceof Error
+        ? query.error.message
+        : 'Ошибка загрузки полки'
+      : null);
 
   useEffect(() => {
-    fetchShelf(1);
-  }, [fetchShelf]);
+    if (data?.shelf && !isEditing) {
+      reset({ name: data.shelf.name, description: data.shelf.description });
+    }
+  }, [data?.shelf, isEditing, reset]);
 
-  const onEdit = async (data: EditShelfForm) => {
-    setError(null);
+  const updateMutation = useMutation({
+    mutationFn: (body: { name?: string; description?: string; is_public?: boolean }) =>
+      shelvesApi.update(id, body),
+    onSuccess: () => invalidateShelfMeta(queryClient),
+  });
+  const removeShelfMutation = useMutation({
+    mutationFn: () => shelvesApi.remove(id),
+  });
+  const removeBookMutation = useMutation({
+    mutationFn: (bookId: string) => shelvesApi.removeBook(id, bookId),
+    onSuccess: () => invalidateShelfContents(queryClient),
+  });
+
+  const messageOf = (err: unknown, fallback: string) =>
+    err instanceof Error ? err.message : fallback;
+
+  const onEdit = async (formData: EditShelfForm) => {
+    setActionError(null);
     try {
-      await shelvesApi.update(id, { name: data.name, description: data.description });
+      await updateMutation.mutateAsync({ name: formData.name, description: formData.description });
       setIsEditing(false);
-      await fetchShelf(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка сохранения полки');
+      setActionError(messageOf(err, 'Ошибка сохранения полки'));
     }
   };
 
   const onTogglePrivacy = async () => {
     if (!shelf) return;
-    setError(null);
+    setActionError(null);
     try {
-      await shelvesApi.update(id, { is_public: !shelf.isPublic });
-      await fetchShelf(page);
+      await updateMutation.mutateAsync({ is_public: !shelf.isPublic });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка изменения видимости полки');
+      setActionError(messageOf(err, 'Ошибка изменения видимости полки'));
     }
   };
 
@@ -92,26 +109,28 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
     if (!confirm('Удалить полку? Книги будут убраны из неё.')) {
       return;
     }
-    setError(null);
+    setActionError(null);
     try {
-      await shelvesApi.remove(id);
+      await removeShelfMutation.mutateAsync();
+      // Drop the deleted shelf first so invalidation does not refetch it (404).
+      queryClient.removeQueries({ queryKey: shelfKeys.detail(user?.id, id) });
+      await invalidateShelfContents(queryClient);
       router.push('/shelves');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления полки');
+      setActionError(messageOf(err, 'Ошибка удаления полки'));
     }
   };
 
   const onRemoveBook = async (bookId: string) => {
-    setError(null);
+    setActionError(null);
     try {
-      await shelvesApi.removeBook(id, bookId);
-      await fetchShelf(page);
+      await removeBookMutation.mutateAsync(bookId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка удаления книги');
+      setActionError(messageOf(err, 'Ошибка удаления книги'));
     }
   };
 
-  if (loading && !shelf) {
+  if (query.isPending) {
     return (
       <main className="container mx-auto px-4 py-8">
         <p className="text-muted-foreground">Загрузка...</p>
@@ -241,7 +260,7 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
           <div className="mt-8 flex items-center justify-center gap-4">
             <Button
               variant="outline"
-              onClick={() => fetchShelf(page - 1)}
+              onClick={() => setPage((p) => p - 1)}
               disabled={page <= 1 || loading}
             >
               Назад
@@ -251,7 +270,7 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
             </span>
             <Button
               variant="outline"
-              onClick={() => fetchShelf(page + 1)}
+              onClick={() => setPage((p) => p + 1)}
               disabled={page * limit >= total || loading}
             >
               Вперёд
