@@ -1,7 +1,7 @@
 'use client';
 
-import { homeApi } from '@/entities/home';
-import { readingChallengesApi } from '@/entities/reading-challenge';
+import { homeApi, homeKeys } from '@/entities/home';
+import { readingChallengesApi, readingChallengeKeys } from '@/entities/reading-challenge';
 import { useAuthStore } from '@/entities/session';
 import { useQuery } from '@tanstack/react-query';
 
@@ -17,7 +17,7 @@ export function usePersonalHome() {
   const { user, isAuthenticated, isLoading } = useAuthStore();
   const enabled = !isLoading && isAuthenticated;
   const query = useQuery({
-    queryKey: ['home', 'me', user?.id],
+    queryKey: homeKeys.me(user?.id),
     queryFn: () => homeApi.me(),
     enabled,
     staleTime: STALE_TIME,
@@ -34,7 +34,7 @@ export function useCurrentReadingChallenge() {
   const { user, isAuthenticated, isLoading } = useAuthStore();
   const year = new Date().getFullYear();
   const query = useQuery({
-    queryKey: ['reading-challenges', year, user?.id],
+    queryKey: readingChallengeKeys.detail(year, user?.id),
     queryFn: () => readingChallengesApi.get(year),
     enabled: !isLoading && isAuthenticated,
     staleTime: STALE_TIME,
