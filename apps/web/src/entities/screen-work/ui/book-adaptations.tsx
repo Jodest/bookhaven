@@ -1,12 +1,15 @@
 import type { BookAdaptation } from '@bookhaven/api-client';
+import type { ReactNode } from 'react';
 import { screenWorkKindLabel } from '../lib/kind-label';
 
 interface BookAdaptationsProps {
   items: BookAdaptation[];
+  /** Rendered at the bottom of each card (the book page puts the verdict here). */
+  renderExtra?: (item: BookAdaptation) => ReactNode;
 }
 
 /** «Экранизации» block of the book page. Renders nothing for an empty list. */
-export function BookAdaptations({ items }: BookAdaptationsProps) {
+export function BookAdaptations({ items, renderExtra }: BookAdaptationsProps) {
   if (items.length === 0) return null;
 
   return (
@@ -50,6 +53,7 @@ export function BookAdaptations({ items }: BookAdaptationsProps) {
                 )}
               </p>
             )}
+            {renderExtra?.(item)}
           </li>
         ))}
       </ul>

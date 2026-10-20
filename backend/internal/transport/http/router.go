@@ -124,6 +124,10 @@ func RegisterRoutes(
 	// Screen adaptations of a book (openspec screen-works/book-adaptations): public.
 	screenWorksHandler := screenworkshttp.NewHandler(screenWorksService)
 	api.GET("/books/:id/adaptations", screenWorksHandler.ListBookAdaptations)
+	// «Книга или экранизация?» votes (openspec screen-works/book-adaptations).
+	api.GET("/books/:id/adaptations/verdicts", screenWorksHandler.ListBookVerdicts, optionalAuth)
+	api.PUT("/books/:id/adaptations/:screen_work_id/vote", screenWorksHandler.VoteAdaptation, authMiddleware)
+	api.DELETE("/books/:id/adaptations/:screen_work_id/vote", screenWorksHandler.UnvoteAdaptation, authMiddleware)
 	// Films about an author (openspec screen-works/author-films): public.
 	api.GET("/authors/:id/screen-works", screenWorksHandler.ListAuthorFilms)
 }
