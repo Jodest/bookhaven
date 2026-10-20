@@ -191,6 +191,36 @@ func TestLoad_HarvestScheduleConfigured(t *testing.T) {
 	}
 }
 
+func TestLoad_AdaptationSyncScheduleDefaults(t *testing.T) {
+	setHarvestScheduleEnv(t, map[string]string{"ADAPTATION_SYNC_SCHEDULE_ENABLED": "", "ADAPTATION_SYNC_SCHEDULE_CRON": ""})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.AdaptationSyncScheduleEnabled {
+		t.Error("scheduled adaptation sync must be off by default")
+	}
+	if cfg.AdaptationSyncScheduleCron != "0 5 * * 0" {
+		t.Errorf("AdaptationSyncScheduleCron = %q, want 0 5 * * 0", cfg.AdaptationSyncScheduleCron)
+	}
+}
+
+func TestLoad_AdaptationSyncScheduleConfigured(t *testing.T) {
+	setHarvestScheduleEnv(t, map[string]string{
+		"ADAPTATION_SYNC_SCHEDULE_ENABLED": "true",
+		"ADAPTATION_SYNC_SCHEDULE_CRON":    " 30 6 * * 1 ",
+	})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !cfg.AdaptationSyncScheduleEnabled || cfg.AdaptationSyncScheduleCron != "30 6 * * 1" {
+		t.Errorf("unexpected config: %v %q", cfg.AdaptationSyncScheduleEnabled, cfg.AdaptationSyncScheduleCron)
+	}
+}
+
 func TestLoad_HarvestScheduleParsing(t *testing.T) {
 	cases := []struct {
 		enabled     string

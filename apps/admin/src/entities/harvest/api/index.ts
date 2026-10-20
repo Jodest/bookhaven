@@ -5,6 +5,7 @@ export const adminHarvestApi = {
   listJobs: api.admin.harvest.jobs.list,
   getJob: api.admin.harvest.jobs.get,
   searchAuthors: api.admin.harvest.authors.search,
+  triggerCatalogAdaptationSync: () => api.admin.books.triggerCatalogAdaptationSync(),
 };
 
 // Query key of the harvest jobs list (GET /admin/harvest/jobs).

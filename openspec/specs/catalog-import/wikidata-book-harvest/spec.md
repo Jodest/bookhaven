@@ -107,7 +107,7 @@ A failure on one work SHALL NOT abort the job. The job result MUST contain `tota
 - **THEN** the job shows `processed: 37` and `total: 200`
 
 ### Requirement: Job list and job details
-The system SHALL expose `GET /api/v1/admin/harvest/jobs` with recent jobs grouped by state (active, retry, pending, completed, archived), at most 50 per state, and `GET /api/v1/admin/harvest/jobs/:id`, which returns 404 for a job that is unknown or no longer retained. Both MUST require the `admin` role. Every job MUST carry `trigger` (`manual` or `scheduled`) and `author_qids` (the harvested author QIDs, possibly empty). A job queued before this field existed, or queued from the command line, reports `manual` with an empty list. Job history is limited to what the queue still retains; there is no separate history table. Cancelling or retrying a job from the admin is not supported.
+The system SHALL expose `GET /api/v1/admin/harvest/jobs` with recent jobs grouped by state (active, retry, pending, completed, archived), at most 50 per state, and `GET /api/v1/admin/harvest/jobs/:id`, which returns 404 for a job that is unknown or no longer retained. Both MUST require the `admin` role. Every job MUST carry `trigger` (`manual` or `scheduled`) and `author_qids` (the harvested author QIDs, possibly empty). A job queued before this field existed, or queued from the command line, reports `manual` with an empty list. Every job MUST also carry `kind`: `harvest` for a harvest job and `adaptation_sync` for a catalog adaptation sync job (see `catalog-import/wikidata-adaptation-sync`). A harvest job carries its report in `result` and `adaptation_sync: null`. A catalog adaptation sync job carries `author_qids: []`, `result: null` and its report in `adaptation_sync`. Job history is limited to what the queue still retains; there is no separate history table. Cancelling or retrying a job from the admin is not supported.
 
 #### Scenario: Job aged out
 - **WHEN** an admin requests a job that completed more than 24 hours ago
@@ -121,8 +121,12 @@ The system SHALL expose `GET /api/v1/admin/harvest/jobs` with recent jobs groupe
 - **WHEN** an admin lists jobs after triggering a harvest for `Q7200` from the admin
 - **THEN** that job has `trigger: "manual"` and `author_qids: ["Q7200"]`
 
+#### Scenario: Catalog sync job in the list
+- **WHEN** an admin lists jobs after starting a catalog adaptation sync from the admin
+- **THEN** that job has `kind: "adaptation_sync"`, `trigger: "manual"`, `author_qids: []`, `result: null` and an `adaptation_sync` report, and every harvest job has `kind: "harvest"`
+
 ### Requirement: Jobs page
-The admin SHALL show the jobs at `/import/jobs`, refreshed every 5 seconds: a state badge per job, a trigger badge per job («Авто» for scheduled jobs, «Вручную» otherwise) with the number of harvested authors when known, a progress bar for active jobs, and for finished jobs a summary that expands into the list of errors with reasons and the list of skipped titles.
+The admin SHALL show the jobs at `/import/jobs`, refreshed every 5 seconds: a state badge per job, a trigger badge per job («Авто» for scheduled jobs, «Вручную» otherwise) with the number of harvested authors when known, a progress bar for active jobs, and for finished jobs a summary that expands into the list of errors with reasons and the list of skipped titles. A catalog adaptation sync job shows «Поиск экранизаций» under its trigger badge instead of the number of authors, a progress bar of processed books out of `total` while active, and when completed the summary «Книг: <processed> из <total>, обновлено: <updated>, добавлено экранизаций: <added>, ошибок: <failed>». When it has errors, its summary expands into the listed errors with the book title and the reason «Wikidata недоступна» (`wikidata_unavailable`) or «Не удалось сохранить экранизации» (`save_failed`), followed by «Ещё ошибок: <n>» when `failed` exceeds the listed errors.
 
 #### Scenario: Expanding a report
 - **WHEN** an admin expands a completed job with 2 errors and 3 skips
@@ -131,6 +135,14 @@ The admin SHALL show the jobs at `/import/jobs`, refreshed every 5 seconds: a st
 #### Scenario: Scheduled job badge
 - **WHEN** the list contains a scheduled job for 10 authors
 - **THEN** its row shows the badge «Авто» and «Авторов: 10»
+
+#### Scenario: Completed catalog sync row
+- **WHEN** the list contains a completed manual catalog sync job with `total: 683`, `processed: 683`, `updated: 40`, `added: 75` and `failed: 0`
+- **THEN** its row shows «Вручную», «Поиск экранизаций» and «Книг: 683 из 683, обновлено: 40, добавлено экранизаций: 75, ошибок: 0»
+
+#### Scenario: Catalog sync errors beyond the list
+- **WHEN** an admin expands a completed catalog sync job with `failed: 120` and 50 listed errors
+- **THEN** the 50 errors are shown with their reasons, followed by «Ещё ошибок: 70»
 
 ### Requirement: Scheduled harvest of flagged authors
 When scheduled harvesting is switched on, the worker SHALL periodically harvest, on a configurable schedule (daily by default), authors that are flagged for automatic harvesting, are `published` and have a Wikidata QID. It is switched off by default and is switched on only by deployment configuration. Each run MUST pick at most a configured batch of authors (10 by default, never more than 50). Authors never auto-harvested come first, then the least recently auto-harvested. An author auto-harvested less than 30 days ago MUST NOT be picked. The picked authors MUST be harvested as one ordinary harvest job with the default result limit. That job follows every rule of this capability: serialized processing, retries, create-only idempotency, `pending` books, matching and the report. A picked author whose stored QID does not match `^Q[0-9]+$` MUST be left out of the job and logged. Its last-auto-harvest time MUST still be recorded, so one bad QID never blocks the batch or keeps the run failing. When every picked author has a malformed QID, no job is queued, and those authors' last-auto-harvest times are still recorded. A picked author with a valid QID MUST have its last-auto-harvest time recorded only after its job was queued successfully. A run MUST be skipped without picking anyone while an earlier scheduled job is still pending, active or retrying. A run that finds no eligible author queues nothing. Scheduled harvesting MUST NOT publish anything and MUST NOT change existing books. Manual harvests do not change an author's last-auto-harvest time.

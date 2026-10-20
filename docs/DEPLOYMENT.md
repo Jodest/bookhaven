@@ -132,6 +132,17 @@ Off by default. When `HARVEST_SCHEDULE_ENABLED=true`, the scheduler enqueues a `
 
 The same single-replica rule applies: two workers would double the ticks. The tick's `asynq.Unique(1h)` and the "scheduled job already queued" check are a safety net only. Check `docker compose -f docker-compose.prod.yml logs worker` for `scheduled harvest enabled` and `scheduled harvest job queued`.
 
+### Scheduled catalog adaptation sync
+
+Off by default. The admin action «Найти экранизации для всего каталога» on `/import/jobs` always works; this schedule only repeats it. When `ADAPTATION_SYNC_SCHEDULE_ENABLED=true`, the scheduler enqueues a `screenworks:sync_catalog_tick` task (queue `harvest_schedule`, the same small server as the harvest tick) on `ADAPTATION_SYNC_SCHEDULE_CRON` (UTC). The tick queues **one** catalog adaptation sync job (shown as «Авто» and «Поиск экранизаций» on `/import/jobs`) on the `harvest` queue, so it shares the single worker slot with harvest jobs. The job asks Wikidata about every published book with a QID in chunks of 50 and only adds links: hidden links stay hidden and hand-edited works are untouched. A run is skipped while a catalog sync job is still pending, active or retrying.
+
+| Variable | Meaning |
+|---|---|
+| `ADAPTATION_SYNC_SCHEDULE_ENABLED` | `true` turns the scheduled catalog sync on. Default `false`. When off the worker logs `scheduled adaptation sync disabled`. |
+| `ADAPTATION_SYNC_SCHEDULE_CRON` | Cron spec, UTC. Default `0 5 * * 0` (Sunday 05:00, an hour after the harvest tick). An invalid spec makes the worker exit at startup. |
+
+The `harvest_schedule` server starts when either schedule is enabled. The single-replica rule applies here too. Check `docker compose -f docker-compose.prod.yml logs worker` for `scheduled adaptation sync enabled` and `scheduled adaptation sync job queued`.
+
 ### Automatic collections
 
 **On by default**, unlike the harvest schedule: without it automatic «Подборки» (kind `auto`) never refresh. The scheduler enqueues a `curated:recompute_auto` task (queue `curated`, its own server with Concurrency 1) on `AUTO_COLLECTIONS_SCHEDULE_CRON` (UTC). The task recomputes the stored snapshot of every automatic collection, draft or published, from ratings and the «Прочитано» / «Хочу прочитать» / «Читаю» shelves, and keeps each book's previous position for the «↑/↓/Новинка» indicators. It makes no external calls and costs one aggregate query per collection. A collection that fails keeps its old snapshot and does not stop the others (see the worker log `curated: scheduled recompute failed`). Admins can also press «Пересчитать сейчас» on a collection (`POST /api/v1/admin/collections/{id}/recompute`), which works whether or not the schedule is on.
