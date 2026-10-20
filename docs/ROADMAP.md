@@ -65,6 +65,11 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 Email notifications (#121, in Proposed) can build on the mailer from #157.
 
+Queued 2026-10-20 via /backlog-next (series «Книга или экранизация?»; #508 Find adaptations for the whole catalog + «Есть экранизация» filter is in progress):
+
+1. #509 «Книга или экранизация?» — readers' verdict per adaptation on the book page
+2. #510 Automatic collections from book-vs-adaptation verdicts
+
 ## Proposed (awaiting prioritization)
 
 - [ ] Custom user-created shelves — user-book-shelves business analysis (OQ-001) deferred custom shelves to a future increment needing a schema migration and an exclusivity decision, still unresolved [business-analysis] (proposed 2026-09-30, #94)
