@@ -24,6 +24,8 @@ function job(id: string, state: string): AdminHarvestJob {
     retried: 0,
     trigger: 'manual',
     author_qids: [],
+    kind: 'harvest',
+    adaptation_sync: null,
   };
 }
 

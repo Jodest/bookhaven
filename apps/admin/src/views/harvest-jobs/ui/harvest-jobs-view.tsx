@@ -3,11 +3,18 @@
 import { Fragment, useState } from 'react';
 import Link from 'next/link';
 import {
+  adaptationSyncMoreErrors,
+  adaptationSyncProgress,
+  adaptationSyncReasonLabel,
+  adaptationSyncSummary,
+  hasAdaptationSyncInFlight,
   harvestJobAuthorsLabel,
   harvestJobStateBadgeVariant,
   harvestJobTriggerLabel,
+  isAdaptationSyncJob,
   useHarvestJobs,
 } from '@/entities/harvest';
+import { SyncCatalogAdaptations } from '@/features/sync-catalog-adaptations';
 import { AdminHarvestJob } from '@bookhaven/api-client';
 import {
   Badge,
@@ -37,6 +44,9 @@ function jobResultSummary(job: AdminHarvestJob): string {
 // reflects the previous failed attempt, not the upcoming one) keeps the
 // existing plain-text summary.
 function JobResultCell({ job }: { job: AdminHarvestJob }) {
+  if (isAdaptationSyncJob(job)) {
+    return <AdaptationSyncResultCell job={job} />;
+  }
   if (job.state === 'active') {
     if (!job.result || job.result.total === 0) {
       return <span className="text-muted-foreground">Выполняется…</span>;
@@ -62,6 +72,62 @@ function JobResultCell({ job }: { job: AdminHarvestJob }) {
     );
   }
   return <>{jobResultSummary(job)}</>;
+}
+
+// AdaptationSyncResultCell is the "Результат" cell of a catalog adaptation
+// sync job: progress of processed books while active, the summary otherwise.
+function AdaptationSyncResultCell({ job }: { job: AdminHarvestJob }) {
+  if (job.state === 'active') {
+    const progress = adaptationSyncProgress(job);
+    if (!progress) {
+      return <span className="text-muted-foreground">Выполняется…</span>;
+    }
+    return (
+      <div className="space-y-1">
+        <Progress value={progress.percent} className="w-32" />
+        <div className="text-xs text-muted-foreground">
+          {progress.processed} / {progress.total} ({progress.percent}%)
+        </div>
+      </div>
+    );
+  }
+  if (job.state === 'completed') {
+    return <>{adaptationSyncSummary(job)}</>;
+  }
+  return <>{job.last_error || '—'}</>;
+}
+
+// AdaptationSyncReportRow is the expanded error table of a catalog sync job.
+function AdaptationSyncReportRow({ job }: { job: AdminHarvestJob }) {
+  const errors = job.adaptation_sync?.errors ?? [];
+  const more = adaptationSyncMoreErrors(job);
+
+  return (
+    <TableRow>
+      <TableCell colSpan={5} className="space-y-2 bg-muted/30">
+        <h3 className="text-sm font-semibold">Ошибки</h3>
+        <div className="rounded-lg border bg-background">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Название</TableHead>
+                <TableHead>Причина</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {errors.map((syncError) => (
+                <TableRow key={`${syncError.book_id}-${syncError.reason}`}>
+                  <TableCell>{syncError.title || '—'}</TableCell>
+                  <TableCell>{adaptationSyncReasonLabel(syncError.reason)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        {more && <p className="text-sm text-muted-foreground">{more}</p>}
+      </TableCell>
+    </TableRow>
+  );
 }
 
 // authorEnrichmentSummary is the end-of-job Wikidata author enrichment
@@ -179,15 +245,18 @@ export function HarvestJobsView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Задачи харвеста</h1>
-        <div className="flex gap-2">
-          <Link href={'/moderation/books' as any}>
-            <Button variant="outline">К очереди на проверку</Button>
-          </Link>
-          <Link href={'/moderation/authors' as any}>
-            <Button variant="outline">К авторам на модерации</Button>
-          </Link>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex gap-2">
+            <Link href={'/moderation/books' as any}>
+              <Button variant="outline">К очереди на проверку</Button>
+            </Link>
+            <Link href={'/moderation/authors' as any}>
+              <Button variant="outline">К авторам на модерации</Button>
+            </Link>
+          </div>
+          <SyncCatalogAdaptations running={hasAdaptationSyncInFlight(jobs)} />
         </div>
       </div>
 
@@ -216,11 +285,13 @@ export function HarvestJobsView() {
                 </TableRow>
               )}
               {jobs.map((job) => {
-                const hasReport =
-                  !!job.result &&
-                  (job.result.errors.length > 0 || job.result.skipped_records.length > 0);
+                const isSync = isAdaptationSyncJob(job);
+                const hasReport = isSync
+                  ? (job.adaptation_sync?.errors.length ?? 0) > 0
+                  : !!job.result &&
+                    (job.result.errors.length > 0 || job.result.skipped_records.length > 0);
                 const isExpanded = expandedJobIds.has(job.id);
-                const authorsLabel = harvestJobAuthorsLabel(job);
+                const authorsLabel = isSync ? 'Поиск экранизаций' : harvestJobAuthorsLabel(job);
                 return (
                   <Fragment key={job.id}>
                     <TableRow>
@@ -263,7 +334,7 @@ export function HarvestJobsView() {
                         )}
                       </TableCell>
                     </TableRow>
-                    {isExpanded && hasReport && <JobReportRow job={job} />}
+                    {isExpanded && hasReport && (isSync ? <AdaptationSyncReportRow job={job} /> : <JobReportRow job={job} />)}
                   </Fragment>
                 );
               })}

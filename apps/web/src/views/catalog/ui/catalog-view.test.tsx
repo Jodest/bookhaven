@@ -3,11 +3,15 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CatalogView } from './catalog-view';
 
-type ListQuery = { page?: number; limit?: number };
+type ListQuery = { page?: number; limit?: number; has_adaptation?: boolean };
+type PanelProps = { hasAdaptation: boolean; onHasAdaptationChange: (v: boolean) => void };
+type Chip = { key: string; label: string; onRemove: () => void };
 type Call = { query: ListQuery; resolve: (v: unknown) => void; reject: (e: unknown) => void };
 
 const calls: Call[] = [];
 const push = vi.fn();
+let panelProps: PanelProps[] = [];
+let lastChips: Chip[] = [];
 let searchParamsValue = new URLSearchParams();
 
 vi.mock('next/navigation', () => ({
@@ -45,8 +49,14 @@ vi.mock('@/widgets/catalog-filters', async () => {
   );
   return {
     SearchBar: actual.SearchBar,
-    FilterPanel: () => null,
-    ActiveFilters: () => null,
+    FilterPanel: (props: PanelProps) => {
+      panelProps.push(props);
+      return null;
+    },
+    ActiveFilters: ({ chips }: { chips: Chip[] }) => {
+      lastChips = chips;
+      return null;
+    },
     SortSelector: () => null,
   };
 });
@@ -71,6 +81,8 @@ describe('CatalogView', () => {
 
   beforeEach(() => {
     calls.length = 0;
+    panelProps = [];
+    lastChips = [];
     push.mockReset();
     scrollIntoView.mockReset();
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -233,6 +245,53 @@ describe('CatalogView', () => {
       });
       expect(push).not.toHaveBeenCalled();
       expect(calls[1].query).toMatchObject({ page: 2 });
+    });
+  });
+
+  describe('has_adaptation filter', () => {
+    it('checking the box sets the param and drops the page', async () => {
+      setUrl('page=3&language=ru');
+      render(<CatalogView />);
+      await resolveCall(0, 3, 100);
+      expect(panelProps.at(-1)?.hasAdaptation).toBe(false);
+
+      act(() => panelProps.at(-1)!.onHasAdaptationChange(true));
+
+      expect(push).toHaveBeenCalledTimes(1);
+      const href = String(push.mock.calls[0][0]);
+      expect(href).toContain('has_adaptation=true');
+      expect(href).toContain('language=ru');
+      expect(href).not.toContain('page=');
+    });
+
+    it('a URL with has_adaptation=true shows the box checked, the chip and queries the API', async () => {
+      setUrl('has_adaptation=true');
+      render(<CatalogView />);
+
+      expect(calls[0].query).toMatchObject({ has_adaptation: true });
+      await resolveCall(0, 1, 5, 5);
+      expect(panelProps.at(-1)?.hasAdaptation).toBe(true);
+      expect(lastChips.map((c) => c.label)).toContain('Есть экранизация');
+    });
+
+    it('does not send the param without it, and ignores other values', () => {
+      setUrl('has_adaptation=yes');
+      render(<CatalogView />);
+      expect(calls[0].query.has_adaptation).toBeUndefined();
+      expect(panelProps.at(-1)?.hasAdaptation).toBe(false);
+    });
+
+    it('removing the chip clears the param', async () => {
+      setUrl('has_adaptation=true&language=ru');
+      render(<CatalogView />);
+      await resolveCall(0, 1, 5, 5);
+
+      const chip = lastChips.find((c) => c.key === 'has_adaptation')!;
+      act(() => chip.onRemove());
+
+      const href = String(push.mock.calls[0][0]);
+      expect(href).not.toContain('has_adaptation');
+      expect(href).toContain('language=ru');
     });
   });
 });

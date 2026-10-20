@@ -56,6 +56,9 @@ type BookFilter struct {
 	Language  *string
 	YearFrom  *int
 	YearTo    *int
+	// HasAdaptation keeps only books with at least one visible (not hidden)
+	// adaptation link.
+	HasAdaptation bool
 	Sort      string // "rating" (default), "new", "title"
 	Limit     int
 	Offset    int
@@ -99,6 +102,10 @@ func (r *GormRepository) ListBooks(ctx context.Context, filter BookFilter) ([]do
 		// non-published author ID yields an empty result.
 		query = query.Where("EXISTS (SELECT 1 FROM book_authors ba JOIN authors a ON a.id = ba.author_id WHERE ba.book_id = books.id AND ba.author_id = ? AND a.status = ?)",
 			*filter.AuthorID, domain.AuthorStatusPublished)
+	}
+
+	if filter.HasAdaptation {
+		query = query.Where("EXISTS (SELECT 1 FROM book_screen_works bsw WHERE bsw.book_id = books.id AND NOT bsw.hidden)")
 	}
 
 	if filter.RatingMin != nil {

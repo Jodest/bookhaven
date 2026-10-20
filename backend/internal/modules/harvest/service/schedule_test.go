@@ -196,6 +196,20 @@ func TestScheduleTick_ManualJobsDoNotBlock(t *testing.T) {
 	}
 }
 
+func TestScheduleTick_CatalogSyncJobsDoNotBlock(t *testing.T) {
+	sync := &asynq.TaskInfo{ID: "sync", Queue: QueueName, Type: "screenworks:sync_catalog", Payload: []byte(`{"trigger":"scheduled"}`)}
+	insp := &fakeScheduleInspector{active: []*asynq.TaskInfo{sync}, pending: []*asynq.TaskInfo{sync}}
+	enq := &fakeScheduleEnqueuer{}
+	src := &fakeAuthorSource{candidates: []adminservice.AutoHarvestCandidate{{ID: uuid.New(), QID: "Q7200"}}}
+
+	if err := newTestTick(enq, insp, src, 10).HandleTask(context.Background(), NewScheduleTickTask()); err != nil {
+		t.Fatalf("HandleTask: %v", err)
+	}
+	if len(enq.tasks) != 1 {
+		t.Fatalf("expected 1 enqueue, got %d", len(enq.tasks))
+	}
+}
+
 func TestScheduleTick_NoCandidates(t *testing.T) {
 	enq := &fakeScheduleEnqueuer{}
 	src := &fakeAuthorSource{}

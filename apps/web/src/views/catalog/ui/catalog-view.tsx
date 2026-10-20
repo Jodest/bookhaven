@@ -47,6 +47,7 @@ function buildListQuery(filterKey: string, page: number) {
     language: params.get('language') || undefined,
     year_from: parseNumberParam(params.get('year_from')) || undefined,
     year_to: parseNumberParam(params.get('year_to')) || undefined,
+    has_adaptation: params.get('has_adaptation') === 'true' ? true : undefined,
     sort: params.get('sort') || 'rating',
   };
 }
@@ -94,6 +95,7 @@ export function CatalogView() {
   const [yearTo, setYearTo] = useState<number | null>(() => {
     return parseNumberParam(searchParams.get('year_to'));
   });
+  const [hasAdaptation, setHasAdaptation] = useState(() => searchParams.get('has_adaptation') === 'true');
   const [sort, setSort] = useState(searchParams.get('sort') || 'rating');
 
   // Sync state when URL changes (e.g., browser back/forward)
@@ -106,6 +108,7 @@ export function CatalogView() {
     setLanguage(searchParams.get('language'));
     setYearFrom(parseNumberParam(searchParams.get('year_from')));
     setYearTo(parseNumberParam(searchParams.get('year_to')));
+    setHasAdaptation(searchParams.get('has_adaptation') === 'true');
     setSort(searchParams.get('sort') || 'rating');
   }, [searchParams]);
 
@@ -272,6 +275,14 @@ export function CatalogView() {
     [updateURL]
   );
 
+  const handleHasAdaptationChange = useCallback(
+    (value: boolean) => {
+      setHasAdaptation(value);
+      updateURL({ has_adaptation: value ? 'true' : undefined, page: undefined });
+    },
+    [updateURL]
+  );
+
   const handleSortChange = useCallback(
     (newSort: string) => {
       setSort(newSort);
@@ -289,6 +300,7 @@ export function CatalogView() {
     setLanguage(null);
     setYearFrom(null);
     setYearTo(null);
+    setHasAdaptation(false);
     setSort('rating');
     router.push(pathname as any, { scroll: false });
   }, [pathname, router]);
@@ -352,6 +364,14 @@ export function CatalogView() {
     });
   }
 
+  if (hasAdaptation) {
+    chips.push({
+      key: 'has_adaptation',
+      label: 'Есть экранизация',
+      onRemove: () => handleHasAdaptationChange(false),
+    });
+  }
+
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const remaining = Math.min(PAGE_SIZE, total - endPage * PAGE_SIZE);
 
@@ -394,6 +414,8 @@ export function CatalogView() {
               yearTo={yearTo}
               onYearFromChange={handleYearFromChange}
               onYearToChange={handleYearToChange}
+              hasAdaptation={hasAdaptation}
+              onHasAdaptationChange={handleHasAdaptationChange}
             />
           </div>
         </aside>
@@ -516,6 +538,8 @@ export function CatalogView() {
               yearTo={yearTo}
               onYearFromChange={handleYearFromChange}
               onYearToChange={handleYearToChange}
+              hasAdaptation={hasAdaptation}
+              onHasAdaptationChange={handleHasAdaptationChange}
             />
             <Button
               className="mt-4 w-full"

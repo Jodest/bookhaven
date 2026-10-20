@@ -43,6 +43,13 @@ type Config struct {
 	HarvestScheduleCron    string
 	HarvestScheduleBatch   int
 
+	// Scheduled catalog-wide adaptation sync (worker only; see
+	// internal/modules/screenworks/service CatalogSyncTick). Off unless
+	// ADAPTATION_SYNC_SCHEDULE_ENABLED is true. AdaptationSyncScheduleCron is
+	// a UTC cron spec (weekly by default).
+	AdaptationSyncScheduleEnabled bool
+	AdaptationSyncScheduleCron    string
+
 	// Nightly recompute of automatic curated collections (worker only; see
 	// internal/modules/curated/service). On by default: only an explicit
 	// falsy AUTO_COLLECTIONS_SCHEDULE_ENABLED turns it off. The cron is UTC.
@@ -135,6 +142,9 @@ const (
 	MaxHarvestScheduleBatch     = 50
 )
 
+// DefaultAdaptationSyncScheduleCron is Sunday 05:00 UTC.
+const DefaultAdaptationSyncScheduleCron = "0 5 * * 0"
+
 // DefaultAutoCollectionsScheduleCron is 01:00 UTC (04:00 MSK), before the
 // 03:30 UTC similarity job.
 const DefaultAutoCollectionsScheduleCron = "0 1 * * *"
@@ -196,6 +206,9 @@ func Load() (*Config, error) {
 	cfg.HarvestScheduleEnabled = parseBoolEnv("HARVEST_SCHEDULE_ENABLED")
 	cfg.HarvestScheduleCron = strings.TrimSpace(getEnv("HARVEST_SCHEDULE_CRON", DefaultHarvestScheduleCron))
 	cfg.HarvestScheduleBatch = parseHarvestScheduleBatch(getEnv("HARVEST_SCHEDULE_BATCH", ""))
+
+	cfg.AdaptationSyncScheduleEnabled = parseBoolEnv("ADAPTATION_SYNC_SCHEDULE_ENABLED")
+	cfg.AdaptationSyncScheduleCron = strings.TrimSpace(getEnv("ADAPTATION_SYNC_SCHEDULE_CRON", DefaultAdaptationSyncScheduleCron))
 
 	cfg.AutoCollectionsScheduleEnabled = parseBoolEnvDefaultTrue("AUTO_COLLECTIONS_SCHEDULE_ENABLED")
 	cfg.AutoCollectionsScheduleCron = strings.TrimSpace(getEnv("AUTO_COLLECTIONS_SCHEDULE_CRON", DefaultAutoCollectionsScheduleCron))

@@ -1078,6 +1078,26 @@ export interface AdminHarvestTriggerResponse {
 // the admin UI intentionally does not surface as progress).
 export type AdminHarvestJobTrigger = 'manual' | 'scheduled';
 
+/** 'adaptation_sync' is the catalog-wide Wikidata adaptation sync job. */
+export type AdminHarvestJobKind = 'harvest' | 'adaptation_sync';
+
+export type AdminAdaptationSyncErrorReason = 'wikidata_unavailable' | 'save_failed';
+
+/** Report of a catalog adaptation sync job (written after every chunk). */
+export interface AdminAdaptationSyncResult {
+  total: number;
+  processed: number;
+  /** Books with at least one new link. */
+  updated: number;
+  /** Links created. */
+  added: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+  /** At most the first 50 failed books; `failed` counts all. */
+  errors: { book_id: string; title: string; reason: AdminAdaptationSyncErrorReason }[];
+}
+
 export interface AdminHarvestJob {
   id: string;
   queue: string;
@@ -1090,6 +1110,10 @@ export interface AdminHarvestJob {
   trigger: AdminHarvestJobTrigger;
   /** Harvested author QIDs; [] when unknown. */
   author_qids: string[];
+  /** 'harvest' for harvest jobs, 'adaptation_sync' for the catalog adaptation sync. */
+  kind: AdminHarvestJobKind;
+  /** Report of an 'adaptation_sync' job; null for harvest jobs. */
+  adaptation_sync: AdminAdaptationSyncResult | null;
   result?: {
     processed: number;
     total: number;
@@ -1107,7 +1131,7 @@ export interface AdminHarvestJob {
     // runs, in older job results and when enrichment is not configured.
     authors_enriched?: number;
     author_enrichment_errors?: number;
-  };
+  } | null;
 }
 
 // AdminHarvestAuthorCandidate is one item returned by
@@ -2279,6 +2303,8 @@ export const api = {
       language?: string;
       year_from?: number;
       year_to?: number;
+      /** Only books with a visible adaptation; sent only when true. */
+      has_adaptation?: boolean;
       sort?: string;
     }) => {
       const queryParams: Record<string, string> = {};
@@ -2297,6 +2323,7 @@ export const api = {
         if (params.language) queryParams.language = params.language;
         if (params.year_from !== undefined) queryParams.year_from = String(params.year_from);
         if (params.year_to !== undefined) queryParams.year_to = String(params.year_to);
+        if (params.has_adaptation === true) queryParams.has_adaptation = 'true';
         if (params.sort) queryParams.sort = params.sort;
       }
       // Merge scalar params + genre array params
@@ -2681,6 +2708,13 @@ export const api = {
         fetcher<AdminAdaptationSyncReport>('/api/v1/admin/books/sync-adaptations', {
           method: 'POST',
           body: JSON.stringify({ ids }),
+        }),
+      // Queues the catalog-wide adaptation sync job. Errors: 409
+      // (ApiError.status) a catalog sync is already queued or running,
+      // 502 enqueue failed.
+      triggerCatalogAdaptationSync: () =>
+        fetcher<AdminHarvestTriggerResponse>('/api/v1/admin/books/sync-adaptations/catalog', {
+          method: 'POST',
         }),
       // Every adaptation link of a book, including hidden ones.
       adaptations: (bookId: string) =>
