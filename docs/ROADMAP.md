@@ -126,6 +126,9 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [ ] Error tracking (e.g. Sentry) for API, worker and web apps — unhandled production errors go unnoticed; DEPLOYMENT.md recommends Sentry as a follow-up but it is not tracked [code] (proposed 2026-10-06, #253)
 - [ ] Dependency vulnerability scanning in CI — CI runs build/vet/test/lint only, with no govulncheck, pnpm audit or Dependabot, so known-vulnerable dependencies are never flagged [code] (proposed 2026-10-06, #254)
 - [ ] Annual community "Readers' Choice" book awards voting — readers vote for the year's best books by category, as in LiveLib's Выбор читателей and Goodreads Choice Awards; distinct from external prizes (#214) and list voting (#208) [competitive] (proposed 2026-10-06, #255)
+- [ ] Find adaptations for the whole catalog + «Есть экранизация» catalog filter — adaptations are synced only per book, per ≤50 selected books or after a harvest, so ~5% of the local catalog has any; part 1 of 3 of «Книга или экранизация?» [code] (proposed 2026-10-20, #508)
+- [ ] «Книга или экранизация?» — readers who read a book vote per adaptation whether the book or the adaptation is better, verdict shown on the book page after a vote minimum; no equivalent found on Goodreads/StoryGraph/LiveLib; part 2 of 3 [competitive] (proposed 2026-10-20, #509)
+- [ ] Automatic collections from book-vs-adaptation verdicts — `book_beats_adaptation` / `adaptation_beats_book` metrics for auto collections; part 3 of 3 [code] (proposed 2026-10-20, #510)
 
 ## Technical Debt
 
