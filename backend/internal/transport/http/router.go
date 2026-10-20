@@ -217,6 +217,7 @@ func RegisterAdminRoutes(
 	books.POST("/ai-review", aiReviewHandler.TriggerAIReview, requireBearer)
 	books.GET("/ai-review/status", aiReviewHandler.AIReviewStatus)
 	books.POST("/sync-adaptations", screenWorksHandler.SyncAdaptations, requireBearer)
+	books.POST("/sync-adaptations/catalog", harvestHandler.TriggerCatalogAdaptationSync, requireBearer)
 	books.GET("/:id", adminHandler.GetBook)
 	books.PATCH("/:id", adminHandler.UpdateBook, requireBearer)
 	books.GET("/:id/adaptations", screenWorksHandler.AdminListBookAdaptations)

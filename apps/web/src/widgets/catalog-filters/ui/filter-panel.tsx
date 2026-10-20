@@ -20,6 +20,8 @@ interface FilterPanelProps {
   yearTo: number | null;
   onYearFromChange: (year: number | null) => void;
   onYearToChange: (year: number | null) => void;
+  hasAdaptation: boolean;
+  onHasAdaptationChange: (value: boolean) => void;
 }
 
 export function FilterPanel({
@@ -36,6 +38,8 @@ export function FilterPanel({
   yearTo,
   onYearFromChange,
   onYearToChange,
+  hasAdaptation,
+  onHasAdaptationChange,
 }: FilterPanelProps) {
   return (
     <div className="space-y-6">
@@ -74,6 +78,18 @@ export function FilterPanel({
           onYearFromChange={onYearFromChange}
           onYearToChange={onYearToChange}
         />
+      </div>
+
+      <div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-input"
+            checked={hasAdaptation}
+            onChange={(e) => onHasAdaptationChange(e.target.checked)}
+          />
+          Есть экранизация
+        </label>
       </div>
     </div>
   );

@@ -16,6 +16,9 @@ type Repository interface {
 	// GetBooksForSync reads id, title, status and external ids of the books
 	// that exist (read-only).
 	GetBooksForSync(ctx context.Context, ids []uuid.UUID) ([]domain.BookRef, error)
+	// ListCatalogSyncBookIDs returns the ids of every published book with a
+	// Wikidata QID, oldest first (the catalog-wide sync job's selection).
+	ListCatalogSyncBookIDs(ctx context.Context) ([]uuid.UUID, error)
 	// BookStatus returns the status of a book or domain.ErrBookNotFound.
 	BookStatus(ctx context.Context, id uuid.UUID) (string, error)
 	// SyncBook stores the works and links them to the book in one
@@ -102,6 +105,21 @@ func (r *GormRepository) GetBooksForSync(ctx context.Context, ids []uuid.UUID) (
 		})
 	}
 	return out, nil
+}
+
+func (r *GormRepository) ListCatalogSyncBookIDs(ctx context.Context) ([]uuid.UUID, error) {
+	var rows []bookRow
+	err := r.db.WithContext(ctx).Table("books").Select("id").
+		Where("status = ? AND external_source = ? AND external_id IS NOT NULL", "published", "wikidata").
+		Order("created_at, id").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	return ids, nil
 }
 
 func (r *GormRepository) BookStatus(ctx context.Context, id uuid.UUID) (string, error) {

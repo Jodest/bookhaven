@@ -22,6 +22,7 @@ import (
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
+	screenworksservice "github.com/bookhaven/backend/internal/modules/screenworks/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
@@ -99,7 +100,12 @@ type harvestJobResponse struct {
 	MaxRetry  int                           `json:"max_retry"`
 	Retried   int                           `json:"retried"`
 	LastError string                        `json:"last_error,omitempty"`
-	Result    *harvestservice.HarvestResult `json:"result,omitempty"`
+	Result    *harvestservice.HarvestResult `json:"result"`
+	// Kind is "harvest" or "adaptation_sync" (the catalog-wide adaptation sync).
+	Kind string `json:"kind" enums:"harvest,adaptation_sync"`
+	// AdaptationSync is the report of a catalog adaptation sync job; null for
+	// a harvest job.
+	AdaptationSync *screenworksservice.CatalogSyncResult `json:"adaptation_sync"`
 	// Trigger is how the job was started: "manual" (admin trigger,
 	// cmd/harvest, or a job queued before the field existed) or
 	// "scheduled" (the worker's scheduled harvest).
@@ -117,8 +123,19 @@ func toHarvestJobResponse(info *asynq.TaskInfo) harvestJobResponse {
 		MaxRetry:  info.MaxRetry,
 		Retried:   info.Retried,
 		LastError: info.LastErr,
+		Kind:      "harvest",
 	}
 	resp.Trigger, resp.AuthorQIDs = harvestservice.PayloadMeta(info.Payload)
+	if info.Type == screenworksservice.TaskTypeCatalogSync {
+		resp.Kind = "adaptation_sync"
+		if len(info.Result) > 0 {
+			var result screenworksservice.CatalogSyncResult
+			if err := json.Unmarshal(info.Result, &result); err == nil {
+				resp.AdaptationSync = &result
+			}
+		}
+		return resp
+	}
 	// A TaskInfo.Result that fails to unmarshal is treated as absent, not a
 	// server error - defensive only, not expected to trigger in practice
 	// (Result is untyped []byte from asynq's perspective, but this handler
@@ -179,6 +196,42 @@ func (h *Handler) TriggerHarvest(c echo.Context) error {
 		return c.JSON(http.StatusBadGateway, map[string]string{"error": "failed to enqueue harvest job"})
 	}
 
+	return c.JSON(http.StatusCreated, triggerHarvestResponse{
+		TaskID: info.ID,
+		Queue:  info.Queue,
+		State:  info.State.String(),
+	})
+}
+
+// TriggerCatalogAdaptationSync godoc
+// @Summary Найти экранизации для всего каталога (Wikidata)
+// @Description Требуется роль admin и Bearer-токен. Ставит в очередь одну фоновую задачу, которая синхронизирует экранизации всех опубликованных книг с Wikidata QID. Пока такая задача ожидает, выполняется или повторяется, возвращает 409. Задача делит единственный слот воркера с харвестом и видна в GET /admin/harvest/jobs (kind = adaptation_sync).
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Success 201 {object} triggerHarvestResponse
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 502 {object} map[string]string
+// @Router /admin/books/sync-adaptations/catalog [post]
+func (h *Handler) TriggerCatalogAdaptationSync(c echo.Context) error {
+	running, err := screenworksservice.CatalogSyncInFlight(h.inspector, harvestservice.QueueName)
+	if err != nil {
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": "failed to enqueue adaptation sync job"})
+	}
+	if running {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "adaptation sync already running"})
+	}
+
+	task, err := screenworksservice.NewCatalogSyncTask(screenworksservice.TriggerManual)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to build adaptation sync task"})
+	}
+	info, err := h.enqueuer.Enqueue(task, screenworksservice.CatalogSyncOptions(harvestservice.QueueName)...)
+	if err != nil {
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": "failed to enqueue adaptation sync job"})
+	}
 	return c.JSON(http.StatusCreated, triggerHarvestResponse{
 		TaskID: info.ID,
 		Queue:  info.Queue,

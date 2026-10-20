@@ -45,6 +45,8 @@ function job(id: string, state: string, extra: Partial<AdminHarvestJob> = {}): A
     retried: 0,
     trigger: 'manual',
     author_qids: [],
+    kind: 'harvest',
+    adaptation_sync: null,
     ...extra,
   };
 }

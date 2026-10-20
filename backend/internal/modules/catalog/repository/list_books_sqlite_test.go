@@ -158,3 +158,44 @@ func TestListBooks_DeterministicPaging(t *testing.T) {
 		})
 	}
 }
+
+func TestListBooks_HasAdaptation(t *testing.T) {
+	db := newListBooksDB(t)
+	lbExec(t, db, "CREATE TABLE book_screen_works (book_id TEXT NOT NULL, screen_work_id TEXT NOT NULL, hidden BOOLEAN NOT NULL DEFAULT 0, PRIMARY KEY (book_id, screen_work_id))")
+	g := lbGenre(t, db, "g")
+	now := time.Now()
+	visible := lbBook(t, db, "С экранизацией", 2000, now)
+	onlyHidden := lbBook(t, db, "Скрытая", 2000, now)
+	none := lbBook(t, db, "Без", 2000, now)
+	mixed := lbBook(t, db, "Две", 2000, now)
+	for _, b := range []uuid.UUID{visible, onlyHidden, mixed} {
+		lbExec(t, db, "INSERT INTO book_genres (book_id, genre_id) VALUES (?, ?)", b, g)
+	}
+	lbExec(t, db, "INSERT INTO book_screen_works (book_id, screen_work_id, hidden) VALUES (?, ?, 0)", visible, uuid.NewString())
+	lbExec(t, db, "INSERT INTO book_screen_works (book_id, screen_work_id, hidden) VALUES (?, ?, 1)", onlyHidden, uuid.NewString())
+	lbExec(t, db, "INSERT INTO book_screen_works (book_id, screen_work_id, hidden) VALUES (?, ?, 0)", mixed, uuid.NewString())
+	lbExec(t, db, "INSERT INTO book_screen_works (book_id, screen_work_id, hidden) VALUES (?, ?, 0)", mixed, uuid.NewString())
+	_ = none
+
+	repo := &GormRepository{db: db}
+	got, total, err := repo.ListBooks(context.Background(), BookFilter{HasAdaptation: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(got) != 2 {
+		t.Fatalf("total=%d len=%d, want 2/2 (visible and mixed, once each)", total, len(got))
+	}
+	for _, b := range got {
+		if b.ID == onlyHidden || b.ID == none {
+			t.Fatalf("unexpected book %s", b.Title)
+		}
+	}
+	_, total, err = repo.ListBooks(context.Background(), BookFilter{HasAdaptation: true, GenreID: []uuid.UUID{g}})
+	if err != nil || total != 2 {
+		t.Fatalf("with genre: total=%d err=%v", total, err)
+	}
+	_, total, _ = repo.ListBooks(context.Background(), BookFilter{})
+	if total != 4 {
+		t.Fatalf("unfiltered total=%d, want 4", total)
+	}
+}

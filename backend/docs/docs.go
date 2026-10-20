@@ -3210,6 +3210,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/books/sync-adaptations/catalog": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Ставит в очередь одну фоновую задачу, которая синхронизирует экранизации всех опубликованных книг с Wikidata QID. Пока такая задача ожидает, выполняется или повторяется, возвращает 409. Задача делит единственный слот воркера с харвестом и видна в GET /admin/harvest/jobs (kind = adaptation_sync).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Найти экранизации для всего каталога (Wikidata)",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_harvest_transport_http.triggerHarvestResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/books/{id}": {
             "get": {
                 "security": [
@@ -7908,6 +7969,12 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "description": "Только книги с видимой экранизацией (true)",
+                        "name": "has_adaptation",
+                        "in": "query"
+                    },
+                    {
                         "type": "string",
                         "description": "Сортировка",
                         "name": "sort",
@@ -10647,6 +10714,52 @@ const docTemplate = `{
                     }
                 },
                 "processed": {
+                    "type": "integer"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_screenworks_service.CatalogSyncError": {
+            "type": "object",
+            "properties": {
+                "book_id": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_bookhaven_backend_internal_modules_screenworks_service.CatalogSyncResult": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "type": "integer"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_service.CatalogSyncError"
+                    }
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "unchanged": {
                     "type": "integer"
                 },
                 "updated": {
@@ -14386,6 +14499,14 @@ const docTemplate = `{
         "internal_modules_harvest_transport_http.harvestJobResponse": {
             "type": "object",
             "properties": {
+                "adaptation_sync": {
+                    "description": "AdaptationSync is the report of a catalog adaptation sync job; null for\na harvest job.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_service.CatalogSyncResult"
+                        }
+                    ]
+                },
                 "author_qids": {
                     "description": "AuthorQIDs are the harvested author QIDs; [] when unknown.",
                     "type": "array",
@@ -14395,6 +14516,14 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "kind": {
+                    "description": "Kind is \"harvest\" or \"adaptation_sync\" (the catalog-wide adaptation sync).",
+                    "type": "string",
+                    "enum": [
+                        "harvest",
+                        "adaptation_sync"
+                    ]
                 },
                 "last_error": {
                     "type": "string"

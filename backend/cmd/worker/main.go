@@ -33,6 +33,14 @@
 // and its "scheduled job already queued" check are a defense in depth only.
 // When disabled, neither the tick schedule nor its server is set up.
 //
+// Catalog-wide adaptation sync (screenworks:sync_catalog, see
+// internal/modules/screenworks/service): an admin action queues it on the
+// harvest queue, so it runs in the same single slot as harvest jobs. An
+// optional weekly run (ADAPTATION_SYNC_SCHEDULE_ENABLED, off by default,
+// ADAPTATION_SYNC_SCHEDULE_CRON, UTC) enqueues a screenworks:sync_catalog_tick
+// on the same harvest_schedule server, which is started when either schedule
+// is enabled and registers only the enabled ticks.
+//
 // Automatic curated collections (AUTO_COLLECTIONS_SCHEDULE_ENABLED, on by
 // default; see internal/modules/curated): the scheduler enqueues a
 // curated:recompute_auto task on AUTO_COLLECTIONS_SCHEDULE_CRON (UTC, 01:00
@@ -171,6 +179,7 @@ func main() {
 
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(harvestservice.TaskTypeHarvestWikidataQuery, harvestHandler.HandleTask)
+	mux.HandleFunc(screenworksservice.TaskTypeCatalogSync, screenworksservice.NewCatalogSyncJob(screenWorksService, logger).HandleTask)
 
 	redisOpt := asynq.RedisClientOpt{Addr: cfg.RedisURL}
 	srv := asynq.NewServer(redisOpt, harvestServerConfig(zapAsynqLogger{logger}))
@@ -269,13 +278,19 @@ func main() {
 		}
 	}
 
-	if cfg.HarvestScheduleEnabled {
+	if cfg.HarvestScheduleEnabled || cfg.AdaptationSyncScheduleEnabled {
 		harvestClient = asynq.NewClient(redisOpt)
 		harvestInspector = asynq.NewInspector(redisOpt)
-		tick := harvestservice.NewScheduleTick(harvestClient, harvestInspector, adminService, cfg.HarvestScheduleBatch, logger)
 
 		scheduleMux := asynq.NewServeMux()
-		scheduleMux.HandleFunc(harvestservice.TaskTypeHarvestScheduleTick, tick.HandleTask)
+		if cfg.HarvestScheduleEnabled {
+			tick := harvestservice.NewScheduleTick(harvestClient, harvestInspector, adminService, cfg.HarvestScheduleBatch, logger)
+			scheduleMux.HandleFunc(harvestservice.TaskTypeHarvestScheduleTick, tick.HandleTask)
+		}
+		if cfg.AdaptationSyncScheduleEnabled {
+			syncTick := screenworksservice.NewCatalogSyncTick(harvestClient, harvestInspector, harvestservice.QueueName, logger)
+			scheduleMux.HandleFunc(screenworksservice.TaskTypeCatalogSyncTick, syncTick.HandleTask)
+		}
 
 		scheduleSrv = asynq.NewServer(redisOpt, scheduleServerConfig(zapAsynqLogger{logger}))
 		if err := scheduleSrv.Start(scheduleMux); err != nil {
@@ -283,8 +298,12 @@ func main() {
 			shutdownServers()
 			logger.Fatal("failed to start harvest schedule asynq server", zap.Error(err))
 		}
-	} else {
+	}
+	if !cfg.HarvestScheduleEnabled {
 		logger.Info("scheduled harvest disabled")
+	}
+	if !cfg.AdaptationSyncScheduleEnabled {
+		logger.Info("scheduled adaptation sync disabled")
 	}
 
 	// Automatic collections: the nightly snapshot recompute.
@@ -463,6 +482,12 @@ func main() {
 			zap.Int("batch", cfg.HarvestScheduleBatch),
 			zap.String("location", "UTC"))
 	}
+	if cfg.AdaptationSyncScheduleEnabled {
+		logger.Info("scheduled adaptation sync enabled",
+			zap.String("task", screenworksservice.TaskTypeCatalogSyncTick),
+			zap.String("cron", cfg.AdaptationSyncScheduleCron),
+			zap.String("location", "UTC"))
+	}
 	if cfg.AutoCollectionsScheduleEnabled {
 		logger.Info("scheduled auto collections recompute enabled",
 			zap.String("task", curatedservice.TaskTypeRecomputeAuto),
@@ -604,7 +629,8 @@ type scheduleRegistrar interface {
 
 // registerSchedules registers all periodic tasks: the similarity recompute
 // always, the scheduled-harvest tick only when cfg enables it (on
-// cfg.HarvestScheduleCron), the automatic collections recompute only when
+// cfg.HarvestScheduleCron), the catalog adaptation sync tick only when
+// cfg.AdaptationSyncScheduleEnabled (on cfg.AdaptationSyncScheduleCron), the automatic collections recompute only when
 // cfg.AutoCollectionsScheduleEnabled (on cfg.AutoCollectionsScheduleCron) and
 // the AI moderation sweep only when
 // cfg.AIModerationActive() (on cfg.AIModerationCron); an invalid spec
@@ -623,6 +649,13 @@ func registerSchedules(s scheduleRegistrar, cfg *config.Config) error {
 			harvestservice.NewScheduleTickTask(),
 			harvestservice.ScheduleTickOptions()...); err != nil {
 			return fmt.Errorf("register scheduled harvest (%q): %w", cfg.HarvestScheduleCron, err)
+		}
+	}
+	if cfg.AdaptationSyncScheduleEnabled {
+		if _, err := s.Register(cfg.AdaptationSyncScheduleCron,
+			screenworksservice.NewCatalogSyncTickTask(),
+			screenworksservice.CatalogSyncTickOptions()...); err != nil {
+			return fmt.Errorf("register scheduled adaptation sync (%q): %w", cfg.AdaptationSyncScheduleCron, err)
 		}
 	}
 	if cfg.AutoCollectionsScheduleEnabled {

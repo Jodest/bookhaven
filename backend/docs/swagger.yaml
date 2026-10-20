@@ -354,6 +354,36 @@ definitions:
       updated:
         type: integer
     type: object
+  github_com_bookhaven_backend_internal_modules_screenworks_service.CatalogSyncError:
+    properties:
+      book_id:
+        type: string
+      reason:
+        type: string
+      title:
+        type: string
+    type: object
+  github_com_bookhaven_backend_internal_modules_screenworks_service.CatalogSyncResult:
+    properties:
+      added:
+        type: integer
+      errors:
+        items:
+          $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_service.CatalogSyncError'
+        type: array
+      failed:
+        type: integer
+      processed:
+        type: integer
+      skipped:
+        type: integer
+      total:
+        type: integer
+      unchanged:
+        type: integer
+      updated:
+        type: integer
+    type: object
   github_com_bookhaven_backend_internal_modules_screenworks_service.SyncItem:
     properties:
       added:
@@ -2865,12 +2895,25 @@ definitions:
     type: object
   internal_modules_harvest_transport_http.harvestJobResponse:
     properties:
+      adaptation_sync:
+        allOf:
+        - $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_service.CatalogSyncResult'
+        description: |-
+          AdaptationSync is the report of a catalog adaptation sync job; null for
+          a harvest job.
       author_qids:
         description: AuthorQIDs are the harvested author QIDs; [] when unknown.
         items:
           type: string
         type: array
       id:
+        type: string
+      kind:
+        description: Kind is "harvest" or "adaptation_sync" (the catalog-wide adaptation
+          sync).
+        enum:
+        - harvest
+        - adaptation_sync
         type: string
       last_error:
         type: string
@@ -6414,6 +6457,49 @@ paths:
       summary: Найти экранизации книг в Wikidata (админ)
       tags:
       - admin
+  /admin/books/sync-adaptations/catalog:
+    post:
+      description: Требуется роль admin и Bearer-токен. Ставит в очередь одну фоновую
+        задачу, которая синхронизирует экранизации всех опубликованных книг с Wikidata
+        QID. Пока такая задача ожидает, выполняется или повторяется, возвращает 409.
+        Задача делит единственный слот воркера с харвестом и видна в GET /admin/harvest/jobs
+        (kind = adaptation_sync).
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_harvest_transport_http.triggerHarvestResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Найти экранизации для всего каталога (Wikidata)
+      tags:
+      - admin
   /admin/collections:
     get:
       produces:
@@ -9251,6 +9337,10 @@ paths:
         in: query
         name: year_to
         type: integer
+      - description: Только книги с видимой экранизацией (true)
+        in: query
+        name: has_adaptation
+        type: boolean
       - description: Сортировка
         in: query
         name: sort

@@ -605,3 +605,16 @@ func TestListSimilarBooks_RepoError500(t *testing.T) {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
 	}
 }
+
+func TestListBooks_HasAdaptationOnlyForTrue(t *testing.T) {
+	for query, want := range map[string]bool{"?has_adaptation=true": true, "?has_adaptation=yes": false, "?has_adaptation=1": false, "": false} {
+		h, repo := setupHandler()
+		c, _ := newContext(http.MethodGet, "/api/v1/books"+query)
+		if err := h.ListBooks(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if repo.lastFilter.HasAdaptation != want {
+			t.Errorf("%q: HasAdaptation = %v, want %v", query, repo.lastFilter.HasAdaptation, want)
+		}
+	}
+}

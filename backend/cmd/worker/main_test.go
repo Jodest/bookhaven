@@ -13,6 +13,7 @@ import (
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
+	screenworksservice "github.com/bookhaven/backend/internal/modules/screenworks/service"
 	"github.com/hibiken/asynq"
 )
 
@@ -110,6 +111,49 @@ func TestRegisterSchedules_InvalidHarvestCronFails(t *testing.T) {
 	cfg := &config.Config{HarvestScheduleEnabled: true, HarvestScheduleCron: "not a cron", HarvestScheduleBatch: 10}
 	if err := registerSchedules(f, cfg); err == nil {
 		t.Fatal("expected an error for an invalid harvest cron spec")
+	}
+}
+
+func TestRegisterSchedules_AdaptationSyncTick(t *testing.T) {
+	f := &fakeRegistrar{}
+	cfg := &config.Config{AdaptationSyncScheduleEnabled: true, AdaptationSyncScheduleCron: "0 5 * * 0"}
+	if err := registerSchedules(f, cfg); err != nil {
+		t.Fatalf("registerSchedules: %v", err)
+	}
+	if len(f.regs) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	}
+	r := f.regs[1]
+	if r.cronspec != "0 5 * * 0" || r.task.Type() != screenworksservice.TaskTypeCatalogSyncTick {
+		t.Errorf("tick registration = %q %q", r.cronspec, r.task.Type())
+	}
+	var queue string
+	for _, o := range r.opts {
+		if o.Type() == asynq.QueueOpt {
+			queue = o.Value().(string)
+		}
+	}
+	if queue != "harvest_schedule" {
+		t.Errorf("tick queue = %q, want harvest_schedule", queue)
+	}
+}
+
+func TestRegisterSchedules_AdaptationSyncTickDisabled(t *testing.T) {
+	f := &fakeRegistrar{}
+	cfg := &config.Config{AdaptationSyncScheduleEnabled: false, AdaptationSyncScheduleCron: "0 5 * * 0"}
+	if err := registerSchedules(f, cfg); err != nil {
+		t.Fatalf("registerSchedules: %v", err)
+	}
+	if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+		t.Fatalf("expected only the similarity schedule, got %+v", f.regs)
+	}
+}
+
+func TestRegisterSchedules_InvalidAdaptationSyncCronFails(t *testing.T) {
+	f := &fakeRegistrar{errFor: "not a cron"}
+	cfg := &config.Config{AdaptationSyncScheduleEnabled: true, AdaptationSyncScheduleCron: "not a cron"}
+	if err := registerSchedules(f, cfg); err == nil {
+		t.Fatal("expected an error for an invalid adaptation sync cron spec")
 	}
 }
 

@@ -303,6 +303,7 @@ func toAuthorDetailResponse(a domain.Author) authorDetailResponse {
 // @Param language query string false "Фильтр по языку"
 // @Param year_from query int false "Год издания от"
 // @Param year_to query int false "Год издания до"
+// @Param has_adaptation query bool false "Только книги с видимой экранизацией (true)"
 // @Param sort query string false "Сортировка"
 // @Param page query int false "Номер страницы (по умолчанию 1)"
 // @Param limit query int false "Размер страницы, максимум 100 (по умолчанию 20)"
@@ -349,6 +350,10 @@ func (h *Handler) ListBooks(c echo.Context) error {
 		if err == nil {
 			filter.YearFrom = &val
 		}
+	}
+
+	if c.QueryParam("has_adaptation") == "true" {
+		filter.HasAdaptation = true
 	}
 
 	if yearTo := c.QueryParam("year_to"); yearTo != "" {
