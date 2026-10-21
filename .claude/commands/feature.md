@@ -246,7 +246,7 @@ Triggered by a request like "PR #N in main merged" / "approved and merged".
    gh issue close <epic-number> --comment "All sub-issues complete."
    ```
 4. Set the project item(s) to **Done** (best-effort).
-5. Production deploys automatically via `.github/workflows/deploy.yml` on push to `main` — no manual deploy step needed. Note this in the report; do not attempt to trigger or verify the real deploy yourself (that crosses into `devops` agent territory, and even it never touches the real server — see `.claude/agents/devops.md`).
+5. Production does **not** deploy on push to `main` for now: `.github/workflows/deploy.yml` is manual-only (`workflow_dispatch`) until a production server exists (see `docs/DEPLOYMENT.md` → "Ongoing deploys"). Note this in the report; do not attempt to trigger or verify the real deploy yourself (that crosses into `devops` agent territory, and even it never touches the real server — see `.claude/agents/devops.md`).
 6. Report `STATUS: DONE`.
 
 ## Final output

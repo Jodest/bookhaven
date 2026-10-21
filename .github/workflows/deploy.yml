@@ -1,8 +1,9 @@
 name: Deploy
 
+# Manual-only until a production server exists (issue #523): every push to main
+# used to re-run CI, build/push 3 images and then fail at `deploy` (no host).
+# To re-enable deploy-on-push, see docs/DEPLOYMENT.md -> "Ongoing deploys".
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -15,6 +16,11 @@ env:
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
+    # ci.yml's precheck job requests these; a called workflow can't exceed the caller's grant.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
 
   build-and-push:
     needs: ci
