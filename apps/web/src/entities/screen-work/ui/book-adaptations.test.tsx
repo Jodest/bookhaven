@@ -57,6 +57,18 @@ describe('BookAdaptations', () => {
     expect(screen.getByRole('link', { name: 'IMDb' })).toBeInTheDocument();
   });
 
+  it('renders the extra slot at the bottom of each card', () => {
+    render(
+      <BookAdaptations
+        items={[item(), item({ id: 'w2', title: 'Мастер (фильм)' })]}
+        renderExtra={(a) => <p>{`extra ${a.id}`}</p>}
+      />,
+    );
+    const [first, second] = screen.getAllByRole('listitem');
+    expect(within(first).getByText('extra w1')).toBeInTheDocument();
+    expect(within(second).getByText('extra w2')).toBeInTheDocument();
+  });
+
   it('renders nothing for an empty list', () => {
     const { container } = render(<BookAdaptations items={[]} />);
     expect(container).toBeEmptyDOMElement();

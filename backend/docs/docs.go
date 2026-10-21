@@ -8068,6 +8068,220 @@ const docTemplate = `{
                 }
             }
         },
+        "/books/{id}/adaptations/verdicts": {
+            "get": {
+                "description": "Доступно без авторизации (токен необязателен). Для каждой видимой экранизации опубликованной книги - число голосов; счётчики по значениям (book_better, adaptation_better, same) null, пока голосов меньше min_votes (5). my_vote - голос текущего пользователя, can_vote - true, если книга у него на полке «Прочитано». Порядок как у списка экранизаций. Неизвестная или неопубликованная книга - 404",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "screen-works"
+                ],
+                "summary": "Вердикт читателей «книга или экранизация»",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.verdictsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/books/{id}/adaptations/{screen_work_id}/vote": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется авторизация. Создаёт или меняет голос текущего пользователя (value: book | adaptation | same). Голосовать могут только читатели, у которых книга на полке «Прочитано» (иначе 403). Возвращает вердикт этой экранизации. Скрытая или не связанная с книгой экранизация - 404",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "screen-works"
+                ],
+                "summary": "Проголосовать «книга или экранизация»",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID экранизации",
+                        "name": "screen_work_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Голос",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.voteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.verdictResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется авторизация. Удаляет голос текущего пользователя; без голоса тоже 204. Полку, связь и статус книги не проверяет",
+                "tags": [
+                    "screen-works"
+                ],
+                "summary": "Убрать свой голос «книга или экранизация»",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID экранизации",
+                        "name": "screen_work_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/books/{id}/collections": {
             "get": {
                 "description": "Доступно без авторизации. Места совпадают с /collections/{slug}; резерв не учитывается. Неизвестная или неопубликованная книга - 404",
@@ -15497,6 +15711,54 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "relation": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.verdictResponse": {
+            "type": "object",
+            "properties": {
+                "adaptation_better": {
+                    "type": "integer"
+                },
+                "book_better": {
+                    "type": "integer"
+                },
+                "my_vote": {
+                    "type": "string"
+                },
+                "same": {
+                    "type": "integer"
+                },
+                "screen_work_id": {
+                    "type": "string"
+                },
+                "votes_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.verdictsResponse": {
+            "type": "object",
+            "properties": {
+                "can_vote": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_screenworks_transport_http.verdictResponse"
+                    }
+                },
+                "min_votes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.voteRequest": {
+            "type": "object",
+            "properties": {
+                "value": {
                     "type": "string"
                 }
             }

@@ -3,6 +3,7 @@ import { CollectionPlaceBadges, collectionsApi } from '@/entities/curated-collec
 import { BookAdaptations, screenWorksApi } from '@/entities/screen-work';
 import { BookRating } from '@/features/rate-book';
 import { BookShelfActions } from '@/features/shelve-book';
+import { AdaptationVerdict } from '@/features/vote-adaptation';
 import { languageNameRu } from '@/shared/lib/language-name';
 import { ReviewsSection } from '@/widgets/reviews-section';
 import { SimilarBooks } from '@/widgets/similar-books';
@@ -144,7 +145,16 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
           )}
 
           <div className="space-y-10 pt-4">
-            <BookAdaptations items={adaptations?.items ?? []} />
+            <BookAdaptations
+              items={adaptations?.items ?? []}
+              renderExtra={(adaptation) => (
+                <AdaptationVerdict
+                  bookId={book.id}
+                  slug={book.slug}
+                  screenWorkId={adaptation.id}
+                />
+              )}
+            />
             <SimilarBooks bookId={book.id} />
             <ReviewsSection bookId={book.id} slug={book.slug} />
           </div>

@@ -13,6 +13,8 @@ import (
 
 // Repository is the persistence port of the screenworks service.
 type Repository interface {
+	VoteRepository
+
 	// GetBooksForSync reads id, title, status and external ids of the books
 	// that exist (read-only).
 	GetBooksForSync(ctx context.Context, ids []uuid.UUID) ([]domain.BookRef, error)

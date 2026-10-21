@@ -30,6 +30,11 @@ vi.mock('next/image', () => ({
 vi.mock('next/navigation', () => ({ notFound: vi.fn() }));
 vi.mock('@/features/rate-book', () => ({ BookRating: () => null }));
 vi.mock('@/features/shelve-book', () => ({ BookShelfActions: () => null }));
+vi.mock('@/features/vote-adaptation', () => ({
+  AdaptationVerdict: ({ bookId, slug, screenWorkId }: { bookId: string; slug: string; screenWorkId: string }) => (
+    <p>{`verdict:${bookId}:${slug}:${screenWorkId}`}</p>
+  ),
+}));
 vi.mock('@/widgets/reviews-section', () => ({ ReviewsSection: () => <section><h2>Рецензии</h2></section> }));
 vi.mock('@/widgets/similar-books', () => ({ SimilarBooks: () => <section><h2>Похожие книги</h2></section> }));
 
@@ -173,6 +178,8 @@ describe('BookDetailView adaptations', () => {
     expect(screen.getByRole('heading', { name: 'Экранизации' })).toBeInTheDocument();
     expect(screen.getByText('Режиссёр: Адольф Бергункер')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Кинопоиск' })).toHaveAttribute('target', '_blank');
+    // The verdict and voting controls are mounted under each adaptation.
+    expect(screen.getByText('verdict:b1:fathers-and-sons:w1')).toBeInTheDocument();
   });
 
   it('has no block for an empty list', async () => {
