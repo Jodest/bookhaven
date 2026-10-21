@@ -13,8 +13,8 @@ A social book catalog: Go/Echo/GORM/PostgreSQL backend (Clean Architecture modul
 
 ## Branches
 
-- `main` — production, always deployable, triggers the real prod deploy on push (`.github/workflows/deploy.yml`).
-- `dev` — integration/review gate only. No separate deployment exists for it (single-VPS, minimal-budget architecture — see `docs/DEPLOYMENT.md`); its only job is to require CI (`ci.yml` runs on PRs into both `dev` and `main`) and a look before something reaches `main`.
+- `main` — production, always deployable. Deploy (`.github/workflows/deploy.yml`) is manual-only (`workflow_dispatch`) until a production server exists — pushing to `main` does not deploy (see `docs/DEPLOYMENT.md` → "Ongoing deploys").
+- `dev` — integration/review gate only. No separate deployment exists for it (single-VPS, minimal-budget architecture — see `docs/DEPLOYMENT.md`); its only job is to require CI (`ci.yml` runs on PRs into both `dev` and `main`, path-filtered; the `main` PR skips CI when the same head SHA already passed on the `dev` PR) and a look before something reaches `main`.
 - `feat/<slug>`, `fix/<slug>`, `hotfix/<slug>` — short-lived branches per unit of work.
 
 **No PR is ever merged by an agent.** Every PR is opened, reported with its URL, and left for the human to review and merge on GitHub.

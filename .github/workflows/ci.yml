@@ -3,10 +3,86 @@ name: CI
 on:
   pull_request:
     branches: [main, dev]
+    # PRs touching only these paths don't start the workflow at all (0 billed minutes).
+    # Mixed PRs still run; the precheck job below then decides per job.
+    paths-ignore:
+      - "docs/**"
+      - "openspec/**"
+      - ".claude/**"
+      - ".opencode/**"
+      - "opencode.json"
+      - "*.md"
   workflow_call:
 
+# A new push to the same PR cancels the stale run. Only pull_request runs are
+# cancellable: when called from Deploy (workflow_call) the group is unique per run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
+  # Single cheap gate job (PRs only). Computes:
+  #   - skip:     true when this exact head SHA already has a successful CI run
+  #               (typical for the main PR after the dev PR of the same branch passed)
+  #   - backend:  backend/** or CI config changed
+  #   - frontend: apps/**, packages/**, root pnpm/turbo/tsconfig files or CI config changed
+  # Not run on workflow_call (manual Deploy) — there everything runs unconditionally.
+  precheck:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.decide.outputs.backend }}
+      frontend: ${{ steps.decide.outputs.frontend }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          prior=$(gh api "repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=pull_request&status=success&per_page=100" \
+            --jq "[.workflow_runs[] | select(.id != ${RUN_ID})] | length")
+          if [ "${prior}" -gt 0 ]; then
+            echo "Head SHA ${HEAD_SHA} already has ${prior} successful CI run(s); skipping jobs."
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          backend=false
+          frontend=false
+          while IFS= read -r f; do
+            case "$f" in
+              .github/workflows/*)
+                backend=true; frontend=true ;;
+              backend/*)
+                backend=true ;;
+              apps/*|packages/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|tsconfig*.json)
+                frontend=true ;;
+            esac
+          done < <(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename')
+
+          echo "backend=${backend} frontend=${frontend}"
+          echo "backend=${backend}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${frontend}" >> "$GITHUB_OUTPUT"
+
   backend:
+    needs: precheck
+    # precheck is skipped outside pull_request (workflow_call) -> run unconditionally there.
+    if: >-
+      !cancelled() && (github.event_name != 'pull_request' ||
+      (needs.precheck.result == 'success' && needs.precheck.outputs.backend == 'true'))
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,6 +98,10 @@ jobs:
       - run: go test ./...
 
   frontend:
+    needs: precheck
+    if: >-
+      !cancelled() && (github.event_name != 'pull_request' ||
+      (needs.precheck.result == 'success' && needs.precheck.outputs.frontend == 'true'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

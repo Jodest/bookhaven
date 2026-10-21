@@ -68,16 +68,36 @@ All three production images (`backend`, `web`, `admin`) were built and smoke-tes
 
 ## First deploy
 
-1. Push to `main`. `.github/workflows/deploy.yml` runs CI, builds and pushes the three images tagged with the short commit SHA and `latest`, then SSHes in and runs the compose stack.
+1. Actions tab → Deploy → Run workflow on `main` (or push to `main` once deploy-on-push is re-enabled — see [Ongoing deploys](#ongoing-deploys)). `.github/workflows/deploy.yml` runs CI, builds and pushes the three images tagged with the short commit SHA and `latest`, then SSHes in and runs the compose stack.
 2. The very first run also needs the database migrated: the deploy workflow already runs `docker compose run --rm --entrypoint /app/migrate backend up` before `up -d`, so this happens automatically — including on the first deploy.
 3. Seed data (optional, for a demo account) is not run automatically. `cmd/seed` is dev/demo-only tooling and refuses to run when `APP_ENV=production` unless you pass `-force` — evaluate first whether seed data belongs in a real production database, and only pass `-force` if you genuinely want the same fixed demo seed as dev. If wanted: `docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/migrate backend version` to confirm migrations landed, then adapt `backend/cmd/seed` into a one-off run the same way (with `-force`) if you go ahead.
 4. Verify: `https://<API_DOMAIN>/health` returns `{"status":"ok"}`, `https://<WEB_DOMAIN>` loads the catalog, `https://<ADMIN_DOMAIN>` redirects to login.
 
 ## Ongoing deploys
 
-Every push to `main` (after CI passes) automatically builds, pushes, and deploys. Treat `main` as production — land features via the existing `/feature` workflow and PRs, don't push directly unless that's a deliberate choice for a one-person project.
+**Current state: manual only.** Until a production server exists, `deploy.yml` has only the `workflow_dispatch` trigger (issue #523): deploy-on-push burned ~13 billed Actions minutes per merge to `main` (full CI re-run + three image builds) and then always failed at the SSH step because there is no host, which exhausted the Free-plan 2000 min/month. Deploy with Actions tab → Deploy → Run workflow on `main` — it still runs the full CI first (path filters and the same-SHA skip in `ci.yml` never apply to `workflow_call`), then builds, pushes and deploys. The same button redeploys without a new commit (e.g. after only changing `.env` on the server, or to retry a flaky deploy).
 
-Manual re-run: Actions tab → Deploy → Run workflow (`workflow_dispatch` is enabled) — useful to redeploy without a new commit (e.g. after only changing `.env` on the server, or to retry a flaky deploy).
+**Re-enabling deploy-on-push** (once the server, DNS and the `DEPLOY_*` secrets above are in place and a manual run has succeeded): add the `push` trigger back in `.github/workflows/deploy.yml`:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+```
+
+From then on every push to `main` (after CI passes) automatically builds, pushes, and deploys. Optionally add `paths-ignore: ["docs/**", "openspec/**", ".claude/**", "*.md"]` under `push` so docs-only merges don't rebuild images. Update the "Ongoing deploys" wording here and the branch descriptions in `docs/PIPELINE.md`, `.claude/commands/f.md` and `.claude/commands/feature.md` (Step "main merged") back to "deploys automatically".
+
+Treat `main` as production — land features via the existing `/feature` workflow and PRs, don't push directly unless that's a deliberate choice for a one-person project.
+
+### CI minutes budget
+
+`ci.yml` is tuned for the Free plan (2000 min/month, private repo):
+- PRs touching only `docs/**`, `openspec/**`, `.claude/**`, `.opencode/**`, `opencode.json` or root `*.md` don't start CI at all.
+- Otherwise a small `precheck` job (~1 billed minute) lists the PR's files via the API and runs `backend` only for `backend/**`, `frontend` only for `apps/**`, `packages/**`, root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json` / `tsconfig*.json`; any `.github/workflows/**` change runs both.
+- If the PR head SHA already has a successful CI run (the PR into `dev` validated it), the PR into `main` from the same branch skips both jobs. If the dev run is still in progress when the main PR opens, the main PR runs CI normally.
+- `concurrency` cancels a stale run when a new commit is pushed to the same PR.
+- Skipped jobs block nothing: there are no required checks (branch protection isn't available on Free for private repos).
 
 ## Rollback
 
@@ -344,6 +364,6 @@ Revisit this section once there's a real incident or real user volume — don't 
 
 A new `devops` subagent (`.claude/agents/devops.md`) was added alongside the existing `feature-planner` / `developer` / `review-qa` trio, scoped to infrastructure-as-code: Dockerfiles, `docker-compose.prod.yml`, `Caddyfile`, `.github/workflows/*.yml`, and the `infrastructure/deploy/` scripts.
 
-It is deliberately **not** wired into a `/deploy` slash command that executes real deploys. Deployment already has a safe, auditable trigger — a push to `main` through GitHub Actions — so an agent doesn't need Bash access to `ssh`/`docker push`/real credentials to get infra changes live; it only needs to edit the files that CI/CD then acts on. Its rules explicitly forbid running anything against the real server or a real registry (see the agent file) and require it to validate changes locally instead (`docker build`, `docker compose config`, `bash -n`). Use it like the other subagents: give it a scoped infra request (e.g. "add a staging environment variable for feature-flag X", "add a healthcheck to the redis service"), review its diff, and commit yourself — same pattern as `/feature`, minus the auto-commit, since infra changes to what's live in production deserve a manual look before merging to `main`.
+It is deliberately **not** wired into a `/deploy` slash command that executes real deploys. Deployment already has a safe, auditable trigger — the Deploy workflow in GitHub Actions (manual `workflow_dispatch` for now; push to `main` once re-enabled) — so an agent doesn't need Bash access to `ssh`/`docker push`/real credentials to get infra changes live; it only needs to edit the files that CI/CD then acts on. Its rules explicitly forbid running anything against the real server or a real registry (see the agent file) and require it to validate changes locally instead (`docker build`, `docker compose config`, `bash -n`). Use it like the other subagents: give it a scoped infra request (e.g. "add a staging environment variable for feature-flag X", "add a healthcheck to the redis service"), review its diff, and commit yourself — same pattern as `/feature`, minus the auto-commit, since infra changes to what's live in production deserve a manual look before merging to `main`.
 
 For application feature work, nothing changes — keep using `/feature` with `feature-planner` → `developer` → `review-qa`.

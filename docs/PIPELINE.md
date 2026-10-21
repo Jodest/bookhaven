@@ -22,11 +22,11 @@ How feature work moves from request to production in this repo, and what to set 
 
 ## Branches
 
-- `main` — production. Push triggers the real deploy (`.github/workflows/deploy.yml`).
-- `dev` — review gate only. **There is no separate dev deployment** — this project runs on a single minimal-budget VPS by design (`docs/DEPLOYMENT.md`), and a second environment isn't worth the cost for a solo-maintained app. `dev`'s only job is: `ci.yml` runs on PRs into it, and it's a place to look at a diff before it reaches `main`.
+- `main` — production. Deploy (`.github/workflows/deploy.yml`) is currently **manual only** (`workflow_dispatch`) until a production server exists; push-to-deploy is disabled to save Actions minutes (#523) — re-enable steps in `docs/DEPLOYMENT.md` → "Ongoing deploys".
+- `dev` — review gate only. **There is no separate dev deployment** — this project runs on a single minimal-budget VPS by design (`docs/DEPLOYMENT.md`), and a second environment isn't worth the cost for a solo-maintained app. `dev`'s only job is: `ci.yml` runs on PRs into it (path-filtered; the PR into `main` skips CI when the same head SHA already passed here — see `docs/DEPLOYMENT.md` → "CI minutes budget"), and it's a place to look at a diff before it reaches `main`.
 - `feat/<slug>` / `fix/<slug>` / `hotfix/<slug>` — short-lived work branches.
 
-Flow: `feat/<slug>` → PR into `dev` (CI + your own look) → merge → PR from the same branch into `main` (`Closes #N`) → merge → prod deploys automatically.
+Flow: `feat/<slug>` → PR into `dev` (CI + your own look) → merge → PR from the same branch into `main` (`Closes #N`) → merge (no automatic deploy until a prod server exists; then a manual Deploy run, later deploy-on-push again).
 
 No agent ever merges a PR or pushes directly to `main`/`dev`. You review and merge on GitHub; then tell `/f` to continue (e.g. *"PR #12 in dev merged, continue"*).
 
