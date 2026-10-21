@@ -787,6 +787,29 @@ export interface BookAdaptation {
   kinopoisk_url: string | null;
 }
 
+/** Reader vote «Книга или экранизация?»: book better, adaptation better, same. */
+export type AdaptationVoteValue = 'book' | 'adaptation' | 'same';
+
+/**
+ * Community verdict of one adaptation. The per-value counts are null while
+ * votes_count is below min_votes of the response.
+ */
+export interface AdaptationVerdict {
+  screen_work_id: string;
+  votes_count: number;
+  book_better: number | null;
+  adaptation_better: number | null;
+  same: number | null;
+  my_vote: AdaptationVoteValue | null;
+}
+
+/** GET /books/{id}/adaptations/verdicts. */
+export interface AdaptationVerdicts {
+  can_vote: boolean;
+  min_votes: number;
+  items: AdaptationVerdict[];
+}
+
 /** Adaptation link in the admin (GET /admin/books/{id}/adaptations). */
 export interface AdminBookAdaptation extends BookAdaptation {
   hidden: boolean;
@@ -2293,6 +2316,22 @@ export const api = {
     // unknown or not published book.
     adaptations: (bookId: string) =>
       fetcher<{ items: BookAdaptation[]; total: number }>(`/api/v1/books/${bookId}/adaptations`),
+    // Verdicts of the visible adaptations (optional token fills my_vote and
+    // can_vote). Errors: 400 invalid id, 404 unknown or not published book.
+    adaptationVerdicts: (bookId: string) =>
+      fetcher<AdaptationVerdicts>(`/api/v1/books/${bookId}/adaptations/verdicts`),
+    // Sets or changes the caller's vote. Errors: 400 invalid value, 401, 403
+    // (book not on «Прочитано»), 404 unknown book or adaptation.
+    voteAdaptation: (bookId: string, screenWorkId: string, value: AdaptationVoteValue) =>
+      fetcher<AdaptationVerdict>(`/api/v1/books/${bookId}/adaptations/${screenWorkId}/vote`, {
+        method: 'PUT',
+        body: JSON.stringify({ value }),
+      }),
+    // Removes the caller's vote (204, also without a vote).
+    unvoteAdaptation: (bookId: string, screenWorkId: string) =>
+      fetcher<void>(`/api/v1/books/${bookId}/adaptations/${screenWorkId}/vote`, {
+        method: 'DELETE',
+      }),
     list: async (params?: {
       page?: number;
       limit?: number;

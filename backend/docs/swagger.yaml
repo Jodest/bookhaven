@@ -3557,6 +3557,37 @@ definitions:
       relation:
         type: string
     type: object
+  internal_modules_screenworks_transport_http.verdictResponse:
+    properties:
+      adaptation_better:
+        type: integer
+      book_better:
+        type: integer
+      my_vote:
+        type: string
+      same:
+        type: integer
+      screen_work_id:
+        type: string
+      votes_count:
+        type: integer
+    type: object
+  internal_modules_screenworks_transport_http.verdictsResponse:
+    properties:
+      can_vote:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_screenworks_transport_http.verdictResponse'
+        type: array
+      min_votes:
+        type: integer
+    type: object
+  internal_modules_screenworks_transport_http.voteRequest:
+    properties:
+      value:
+        type: string
+    type: object
   internal_modules_screenworks_transport_http.workAuthorLinkResponse:
     properties:
       hidden:
@@ -9407,6 +9438,155 @@ paths:
               type: string
             type: object
       summary: Экранизации книги
+      tags:
+      - screen-works
+  /books/{id}/adaptations/{screen_work_id}/vote:
+    delete:
+      description: Требуется авторизация. Удаляет голос текущего пользователя; без
+        голоса тоже 204. Полку, связь и статус книги не проверяет
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID экранизации
+        in: path
+        name: screen_work_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Убрать свой голос «книга или экранизация»
+      tags:
+      - screen-works
+    put:
+      consumes:
+      - application/json
+      description: 'Требуется авторизация. Создаёт или меняет голос текущего пользователя
+        (value: book | adaptation | same). Голосовать могут только читатели, у которых
+        книга на полке «Прочитано» (иначе 403). Возвращает вердикт этой экранизации.
+        Скрытая или не связанная с книгой экранизация - 404'
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID экранизации
+        in: path
+        name: screen_work_id
+        required: true
+        type: string
+      - description: Голос
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_screenworks_transport_http.voteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_screenworks_transport_http.verdictResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Проголосовать «книга или экранизация»
+      tags:
+      - screen-works
+  /books/{id}/adaptations/verdicts:
+    get:
+      description: Доступно без авторизации (токен необязателен). Для каждой видимой
+        экранизации опубликованной книги - число голосов; счётчики по значениям (book_better,
+        adaptation_better, same) null, пока голосов меньше min_votes (5). my_vote
+        - голос текущего пользователя, can_vote - true, если книга у него на полке
+        «Прочитано». Порядок как у списка экранизаций. Неизвестная или неопубликованная
+        книга - 404
+      parameters:
+      - description: ID книги
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_screenworks_transport_http.verdictsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Вердикт читателей «книга или экранизация»
       tags:
       - screen-works
   /books/{id}/collections:
