@@ -9,6 +9,7 @@ import (
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/bookhaven/backend/internal/modules/curated/domain"
+	"github.com/bookhaven/backend/internal/modules/curated/repository"
 	"github.com/bookhaven/backend/internal/modules/curated/service"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -87,10 +88,28 @@ type collectionIndexResponse struct {
 	Total int                         `json:"total"`
 }
 
+// sourceAdaptationResponse is the adaptation a verdict-metric place was scored by.
+type sourceAdaptationResponse struct {
+	ID         string  `json:"id"`
+	Title      string  `json:"title"`
+	Year       *int    `json:"year"`
+	Kind       string  `json:"kind"`
+	VotesCount int     `json:"votes_count"`
+	Share      float64 `json:"share"`
+}
+
+func toSourceAdaptationResponse(a *repository.SourceAdaptation) *sourceAdaptationResponse {
+	if a == nil {
+		return nil
+	}
+	return &sourceAdaptationResponse{ID: a.ID.String(), Title: a.Title, Year: a.Year, Kind: a.Kind, VotesCount: a.VotesCount, Share: a.Share}
+}
+
 type placedBookResponse struct {
-	Place    int                  `json:"place"`
-	Movement *movementResponse    `json:"movement"`
-	Book     bookListItemResponse `json:"book"`
+	Place      int                       `json:"place"`
+	Movement   *movementResponse         `json:"movement"`
+	Adaptation *sourceAdaptationResponse `json:"adaptation"`
+	Book       bookListItemResponse      `json:"book"`
 }
 
 type collectionDetailResponse struct {
@@ -165,7 +184,9 @@ type adminItemResponse struct {
 	State    string            `json:"state"`
 	Score    *float64          `json:"score"`
 	Movement *movementResponse `json:"movement"`
-	Book     adminBookResponse `json:"book"`
+	// Adaptation is the verdict-metric source adaptation, null otherwise.
+	Adaptation *sourceAdaptationResponse `json:"adaptation"`
+	Book       adminBookResponse         `json:"book"`
 }
 
 type adminDetailResponse struct {
@@ -472,7 +493,7 @@ func (h *Handler) GetPublic(c echo.Context) error {
 	}
 	items := make([]placedBookResponse, 0, len(res.Items))
 	for _, it := range res.Items {
-		items = append(items, placedBookResponse{Place: it.Place, Movement: toMovementResponse(it.Movement), Book: toBookListItemResponse(it.Book)})
+		items = append(items, placedBookResponse{Place: it.Place, Movement: toMovementResponse(it.Movement), Adaptation: toSourceAdaptationResponse(it.Adaptation), Book: toBookListItemResponse(it.Book)})
 	}
 	return c.JSON(http.StatusOK, collectionDetailResponse{
 		Collection: toSummaryResponse(res.Summary), Items: items, Total: res.Total, Page: res.Page, Limit: res.Limit,
@@ -605,7 +626,7 @@ func toAdminDetailResponse(d *service.AdminDetail) adminDetailResponse {
 		}
 		items = append(items, adminItemResponse{
 			Position: it.Position, Place: place, State: it.State, Score: it.Score,
-			Movement: toMovementResponse(it.Movement),
+			Movement: toMovementResponse(it.Movement), Adaptation: toSourceAdaptationResponse(it.Adaptation),
 			Book: adminBookResponse{
 				ID: it.Book.ID.String(), Title: it.Book.Title, Slug: it.Book.Slug, Status: it.Book.Status,
 				CoverURL: it.Book.CoverURL, Authors: authors,

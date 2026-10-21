@@ -2,6 +2,7 @@ import type {
   AdminCuratedItemState,
   AutoMetric,
   CollectionMovement,
+  CollectionSourceAdaptation,
   CuratedCollectionKind,
 } from '@bookhaven/api-client';
 
@@ -31,7 +32,28 @@ export const METRIC_LABELS: Record<AutoMetric, string> = {
   most_read: 'Чаще всего прочитаны',
   most_wanted: 'Чаще всего хотят прочитать',
   trending: 'В тренде (активность за период)',
+  book_beats_adaptation: 'Книга лучше экранизации (голоса читателей)',
+  adaptation_beats_book: 'Экранизация лучше книги (голоса читателей)',
 };
+
+/** Metrics scored by «Книга или экранизация?» votes (score is a 0-1 share). */
+export function isVerdictMetric(metric: AutoMetric): boolean {
+  return metric === 'book_beats_adaptation' || metric === 'adaptation_beats_book';
+}
+
+function votesWord(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'голос';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'голоса';
+  return 'голосов';
+}
+
+/** «Экранизация: «Война и мир» (1967) · 40 голосов»; the year is left out when unknown. */
+export function adaptationSourceLabel(adaptation: CollectionSourceAdaptation): string {
+  const year = adaptation.year ? ` (${adaptation.year})` : '';
+  return `Экранизация: «${adaptation.title}»${year} · ${adaptation.votes_count} ${votesWord(adaptation.votes_count)}`;
+}
 
 /**
  * Warning of an automatic collection whose rule matches fewer books than it
@@ -56,8 +78,12 @@ export function formatAdminMovement(movement: CollectionMovement | null | undefi
   return null;
 }
 
-/** Snapshot score: 2 decimals for the weighted rating, a whole number otherwise; '' when absent. */
+/**
+ * Snapshot score: 2 decimals for the weighted rating, a whole percent for the verdict
+ * metrics, a whole number otherwise; '' when absent.
+ */
 export function formatScore(metric: AutoMetric, score: number | null | undefined): string {
   if (score === null || score === undefined) return '';
+  if (isVerdictMetric(metric)) return `${Math.round(score * 100)}%`;
   return metric === 'weighted_rating' ? score.toFixed(2) : String(Math.round(score));
 }

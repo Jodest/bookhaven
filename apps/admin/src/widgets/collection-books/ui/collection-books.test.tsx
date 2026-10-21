@@ -43,6 +43,7 @@ function item(
     state,
     score: null,
     movement: null,
+    adaptation: null,
     book: { id, title: `Книга ${position}`, slug: `k${position}`, status, cover_url: null, authors: [{ id: 'a', name: 'Автор' }] },
   };
 }

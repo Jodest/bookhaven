@@ -6,6 +6,7 @@ export {
   useCuratedCollections,
 } from './model/use-curated-collections';
 export { autoCaption } from './lib/auto-caption';
+export { adaptationLine } from './lib/adaptation-line';
 export { formatBooksCount, formatSource } from './lib/format-source';
 export { collectionPlaceHref } from './lib/place-href';
 export { formatMovement } from './lib/movement';

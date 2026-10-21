@@ -342,3 +342,95 @@ func TestRecomputeCollections(t *testing.T) {
 		t.Fatalf("manual collection must stay untouched: %+v", gotManual)
 	}
 }
+
+func voteFor(t *testing.T, db *gorm.DB, bookID uuid.UUID, work uuid.UUID, value string, n int) {
+	t.Helper()
+	now := time.Now()
+	for i := 0; i < n; i++ {
+		if err := db.Exec("INSERT INTO adaptation_votes (user_id, book_id, screen_work_id, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+			uuid.New(), bookID, work, value, now, now).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func linkWork(t *testing.T, db *gorm.DB, bookID uuid.UUID, title string) uuid.UUID {
+	t.Helper()
+	w := uuid.New()
+	if err := db.Exec("INSERT INTO screen_works (id, title, kind, year) VALUES (?, ?, 'film', 1967)", w, title).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO book_screen_works (book_id, screen_work_id, hidden) VALUES (?, ?, 0)", bookID, w).Error; err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+func TestCreateAuto_VerdictDefaultsAndSnapshot(t *testing.T) {
+	s, db := setup(t)
+	ctx := context.Background()
+	a := book(t, db, catalogDomain.BookStatusPublished)
+	w := linkWork(t, db, a, "Война и мир")
+	voteFor(t, db, a, w, "book", 8)
+	voteFor(t, db, a, w, "adaptation", 2)
+
+	c, err := s.Create(ctx, autoIn(domain.MetricBookBeatsAdaptation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := domain.RuleOf(c)
+	if r == nil || *r.MinRatings != 5 || *r.Confidence != 10 || r.PeriodDays != nil || c.ComputedAt == nil {
+		t.Fatalf("rule: %+v", r)
+	}
+	d, err := s.GetAdmin(ctx, c.ID)
+	if err != nil || len(d.Items) != 1 || d.Items[0].Book.ID != a || d.Items[0].Adaptation == nil ||
+		d.Items[0].Adaptation.ID != w || d.Items[0].Adaptation.VotesCount != 10 || d.Items[0].Adaptation.Share != 0.8 {
+		t.Fatalf("detail: %+v %v", d, err)
+	}
+
+	// The mirror metric does not rank the book.
+	in := autoIn(domain.MetricAdaptationBeatsBook)
+	in.Title = "Наоборот"
+	c2, err := s.Create(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d2, _ := s.GetAdmin(ctx, c2.ID); len(d2.Items) != 0 {
+		t.Fatalf("mirror: %+v", d2.Items)
+	}
+
+	// An invalid minimum is a validation error and nothing is created.
+	bad := autoIn(domain.MetricBookBeatsAdaptation)
+	bad.Title = "Плохая"
+	three := 3
+	bad.Rule = &domain.Rule{Metric: domain.MetricBookBeatsAdaptation, MinRatings: &three}
+	_, err = s.Create(ctx, bad)
+	var v *ValidationError
+	if !errors.As(err, &v) || v.Msg != "rule.min_ratings: must be between 5 and 10000" {
+		t.Fatalf("min 3: %v", err)
+	}
+	if list, _ := s.ListAdmin(ctx); len(list) != 2 {
+		t.Fatalf("created %d", len(list))
+	}
+}
+
+func TestRecomputeAll_CoversVerdictCollection(t *testing.T) {
+	s, db := setup(t)
+	ctx := context.Background()
+	a := book(t, db, catalogDomain.BookStatusPublished)
+	w := linkWork(t, db, a, "Фильм")
+	c, err := s.Create(ctx, autoIn(domain.MetricBookBeatsAdaptation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := s.GetAdmin(ctx, c.ID); len(d.Items) != 0 {
+		t.Fatal("no votes yet")
+	}
+	voteFor(t, db, a, w, "book", 6)
+	if err := s.RecomputeAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := s.GetAdmin(ctx, c.ID); len(d.Items) != 1 || d.Items[0].Adaptation == nil || d.Items[0].Adaptation.VotesCount != 6 {
+		t.Fatalf("after nightly run: %+v", d.Items)
+	}
+}

@@ -66,8 +66,8 @@ function detail(overrides: Partial<CuratedCollectionDetail> = {}): CuratedCollec
       computed_at: null,
     },
     items: [
-      { place: 51, movement: null, book: book('1') },
-      { place: 52, movement: null, book: book('2', { rating: 3, ratingsCount: 0 }) },
+      { place: 51, movement: null, adaptation: null, book: book('1') },
+      { place: 52, movement: null, adaptation: null, book: book('2', { rating: 3, ratingsCount: 0 }) },
     ],
     total: 100,
     page: 2,
@@ -125,6 +125,7 @@ describe('CollectionDetailView (/top/{slug})', () => {
           {
             place: 1,
             movement: null,
+            adaptation: null,
             book: book('1', { authors: [{ id: 'a', name: 'Аноним', slug: null } as never] }),
           },
         ],
@@ -166,10 +167,10 @@ describe('CollectionDetailView (/top/{slug})', () => {
           computed_at: '2026-10-14T01:00:00Z',
         },
         items: [
-          { place: 1, movement: { direction: 'up', by: 3 }, book: book('1') },
-          { place: 2, movement: { direction: 'down', by: 2 }, book: book('2') },
-          { place: 3, movement: { direction: 'new', by: 0 }, book: book('3') },
-          { place: 4, movement: { direction: 'same', by: 0 }, book: book('4') },
+          { place: 1, movement: { direction: 'up', by: 3 }, adaptation: null, book: book('1') },
+          { place: 2, movement: { direction: 'down', by: 2 }, adaptation: null, book: book('2') },
+          { place: 3, movement: { direction: 'new', by: 0 }, adaptation: null, book: book('3') },
+          { place: 4, movement: { direction: 'same', by: 0 }, adaptation: null, book: book('4') },
         ],
         total: 4,
         page: 1,
@@ -198,6 +199,42 @@ describe('CollectionDetailView (/top/{slug})', () => {
           )
         ).toBeInTheDocument()
       );
+    });
+
+    it('shows the source adaptation line only on verdict places that have one', async () => {
+      const base = autoDetail();
+      const adaptation = { id: 'w1', title: 'Война и мир', year: 1967, kind: 'film', votes_count: 40, share: 0.9 };
+      getMock.mockResolvedValue({
+        ...base,
+        collection: {
+          ...base.collection,
+          rule: { metric: 'book_beats_adaptation', period_days: null, min_ratings: 5, confidence: 10 },
+        },
+        items: [
+          { place: 1, movement: null, adaptation, book: book('1') },
+          { place: 2, movement: null, adaptation: null, book: book('2') },
+        ],
+        total: 2,
+      });
+      renderView();
+      await waitFor(() =>
+        expect(screen.getByText('Книга лучше экранизации «Война и мир» (1967): 90% · 40 голосов')).toBeInTheDocument()
+      );
+      expect(screen.getAllByText(/Книга лучше экранизации/)).toHaveLength(1);
+    });
+
+    it('a weighted_rating place has no adaptation line', async () => {
+      const base = autoDetail();
+      getMock.mockResolvedValue({
+        ...base,
+        collection: {
+          ...base.collection,
+          rule: { metric: 'weighted_rating', period_days: null, min_ratings: 3, confidence: 10 },
+        },
+      });
+      renderView();
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Топ-100' })).toBeInTheDocument());
+      expect(screen.queryByText(/экранизации/)).not.toBeInTheDocument();
     });
 
     it('a manual collection has no caption and no badges', async () => {

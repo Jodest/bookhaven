@@ -5,6 +5,7 @@ import {
   COLLECTION_PAGE_SIZE,
   MovementBadge,
   SourceLine,
+  adaptationLine,
   autoCaption,
   useCuratedCollection,
 } from '@/entities/curated-collection';
@@ -93,42 +94,46 @@ export function CollectionDetailView({ slug }: CollectionDetailViewProps) {
       ) : (
         <>
           <ol className="mt-8 divide-y">
-            {items.map(({ place, movement, book }) => (
-              <li key={book.id} className="flex items-center gap-4 py-4">
-                <div className="flex w-14 shrink-0 flex-col items-end">
-                  <span
-                    className="font-display text-3xl font-semibold text-muted-foreground"
-                    aria-label={`Место ${place}`}
-                  >
-                    {place}
-                  </span>
-                  <MovementBadge movement={movement} />
-                </div>
-                <Link href={`/books/${book.slug}`} className="shrink-0">
-                  <div className="relative h-24 w-16 overflow-hidden rounded-md bg-muted">
-                    {book.coverUrl && (
-                      <Image src={book.coverUrl} alt={book.title} fill className="object-cover" sizes="64px" />
-                    )}
+            {items.map(({ place, movement, adaptation, book }) => {
+              const verdictLine = collection.rule ? adaptationLine(collection.rule.metric, adaptation) : null;
+              return (
+                <li key={book.id} className="flex items-center gap-4 py-4">
+                  <div className="flex w-14 shrink-0 flex-col items-end">
+                    <span
+                      className="font-display text-3xl font-semibold text-muted-foreground"
+                      aria-label={`Место ${place}`}
+                    >
+                      {place}
+                    </span>
+                    <MovementBadge movement={movement} />
                   </div>
-                </Link>
-                <div className="min-w-0">
-                  <Link href={`/books/${book.slug}`} className="font-semibold leading-tight hover:underline">
-                    {book.title}
+                  <Link href={`/books/${book.slug}`} className="shrink-0">
+                    <div className="relative h-24 w-16 overflow-hidden rounded-md bg-muted">
+                      {book.coverUrl && (
+                        <Image src={book.coverUrl} alt={book.title} fill className="object-cover" sizes="64px" />
+                      )}
+                    </div>
                   </Link>
-                  <p className="text-sm text-muted-foreground">
-                    {book.authors.map((a, i) => (
-                      <span key={a.id}>
-                        {i > 0 && ', '}
-                        <AuthorNameLink author={a} linkClassName="hover:underline" />
-                      </span>
-                    ))}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {book.ratingsCount > 0 ? `★ ${book.rating.toFixed(1)} (${book.ratingsCount})` : 'Нет оценок'}
-                  </p>
-                </div>
-              </li>
-            ))}
+                  <div className="min-w-0">
+                    <Link href={`/books/${book.slug}`} className="font-semibold leading-tight hover:underline">
+                      {book.title}
+                    </Link>
+                    <p className="text-sm text-muted-foreground">
+                      {book.authors.map((a, i) => (
+                        <span key={a.id}>
+                          {i > 0 && ', '}
+                          <AuthorNameLink author={a} linkClassName="hover:underline" />
+                        </span>
+                      ))}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {book.ratingsCount > 0 ? `★ ${book.rating.toFixed(1)} (${book.ratingsCount})` : 'Нет оценок'}
+                    </p>
+                    {verdictLine && <p className="text-sm text-muted-foreground">{verdictLine}</p>}
+                  </div>
+                </li>
+              );
+            })}
           </ol>
 
           {totalPages > 1 && (
