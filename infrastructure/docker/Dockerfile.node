@@ -24,6 +24,13 @@ COPY packages/config/package.json ./packages/config/
 COPY packages/api-client/package.json ./packages/api-client/
 RUN pnpm install --frozen-lockfile
 COPY . .
+# Next resolves rewrites() (/api/*, /covers/*) at build time into the
+# routes manifest, so the backend address must be known here, not only at
+# runtime. Default = the compose service on the internal network; override
+# with --build-arg API_URL=... . Not inlined into client bundles (no
+# NEXT_PUBLIC_ prefix); server-side fetches still read API_URL at runtime.
+ARG API_URL=http://backend:8080
+ENV API_URL=${API_URL}
 RUN pnpm run build
 
 FROM base AS web-production

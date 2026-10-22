@@ -64,6 +64,9 @@ jobs:
           context: .
           file: ./infrastructure/docker/Dockerfile.node
           target: web-production
+          # Baked into the Next rewrites (/api, /covers); see Dockerfile.node.
+          build-args: |
+            API_URL=http://backend:8080
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ steps.owner.outputs.owner }}/bookhaven-web:${{ steps.tag.outputs.tag }}
@@ -77,6 +80,9 @@ jobs:
           context: .
           file: ./infrastructure/docker/Dockerfile.node
           target: admin-production
+          # Baked into the Next rewrites (/api, /covers); see Dockerfile.node.
+          build-args: |
+            API_URL=http://backend:8080
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ steps.owner.outputs.owner }}/bookhaven-admin:${{ steps.tag.outputs.tag }}
