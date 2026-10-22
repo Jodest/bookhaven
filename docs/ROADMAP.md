@@ -77,6 +77,7 @@ The `/backlog-next` queue is not kept in this file: queued items are open `propo
 
 Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [x] HTTP security headers — epic #574 (complete; supersedes proposal #197): #575 API `SecurityHeaders()` Echo middleware (strict CSP except `/swagger/*`, X-Frame-Options, nosniff, Referrer-Policy; no HSTS), #576 web/admin `headers()` via `security-headers.js` (enforced CSP, frame/nosniff/referrer/permissions/COOP, admin `X-Robots-Tag: noindex`; `/api` and `/covers` excluded to avoid duplicates), #577 Caddy HSTS (`max-age=31536000`, no preload/includeSubDomains). See [docs/features/security-headers.md](features/security-headers.md) and `docs/DEPLOYMENT.md`.
+- [x] Auth token purge — epic #580 (#581 backend; supersedes #244): a daily `auth:purge_tokens` task (queue `auth_maintenance`, own always-on worker server with Concurrency 1, `45 3 * * *` UTC; `MaxRetry(2)`, `Timeout(10m)`, `Unique(6h)`) deletes in batches of 1000 by primary key: refresh tokens revoked or expired more than 7 days ago, and email verification / password reset tokens expired more than 30 days ago (used or not); each table is isolated (a failure is logged, the others still run, the error is returned so asynq retries) and one `auth tokens purged` info line logs the three counts without PII. Retention is now part of the auth contract: during the 30 days a used/expired link keeps answering `already_verified` / `token_used` / `token_expired`, afterwards it answers `invalid_token` (minor behaviour change). Migration `000038_auth_token_purge_indexes` adds indexes only. No frontend change. See [docs/DEPLOYMENT.md](DEPLOYMENT.md) "Auth token purge".
 
 ## Proposed (awaiting prioritization)
 
@@ -124,7 +125,6 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [ ] Sort, filter and search within your own shelves — readers with long shelves can find a book and reorder by title/author/rating/date; shelf books are always listed by date added with no controls [code] (proposed 2026-10-03, #215)
 - [ ] "Up Next" queue for the want-to-read shelf — readers can pick and order the few books they will read next from a long want-to-read shelf (The StoryGraph Up Next) [competitive] (proposed 2026-10-03, #216)
 - [ ] Authors directory page in the web app — readers cannot browse authors: GET /authors exists (search + limit, no offset paging) but the web app has only /authors/[slug] detail pages [code] (proposed 2026-10-06, #243)
-- [ ] Purge expired and used auth tokens — `refresh_tokens`, `email_verification_tokens` and `password_reset_tokens` rows are never deleted after expiry, use, logout or reset revocation [code] (proposed 2026-10-06, #244; absorbed the two token-purge Technical Debt items 2026-10-22)
 - [x] Track publish time for harvested books so "Новое в каталоге" is accurate — queue-published books keep their harvest-time `created_at`; home-page-content Risks names a `published_at` follow-up [code] (proposed 2026-10-06, #245) — done: `books.published_at` (first publication time), «Новое в каталоге» orders by it (OpenSpec change `track-book-publish-time`, epic #352)
 - [ ] Embeddable reading widget for external sites and blogs — LiveLib lets readers embed a configurable widget of their favorite/recent books; BookHaven can only share links [competitive] (proposed 2026-10-06, #246)
 - [ ] Block and unblock user accounts in the admin — a blocked user cannot log in or keep existing sessions [code] (proposed 2026-10-06, #247; list users + change role done in #289, see [docs/features/admin-users.md](features/admin-users.md); narrowed to blocking 2026-10-22)
@@ -147,7 +147,6 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 
 ## Technical Debt
 
-- Auth-token table purges (`email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`) moved to Proposed as #244 (2026-10-22)
 
 - [ ] TypeScript project references
 - [ ] WSL2 backend hot reload
