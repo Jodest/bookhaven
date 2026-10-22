@@ -15,7 +15,7 @@ import (
 // (docs/features/book-status-model.md rule 4). Runs the real SQL against
 // SQLite with SQLite-native types.
 const shelvesBookStatusDDL = `
-CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', slug TEXT NOT NULL DEFAULT '', description TEXT, cover_url TEXT, isbn TEXT, published_year INTEGER, page_count INTEGER, language TEXT DEFAULT 'ru', rating REAL DEFAULT 0, ratings_count INTEGER DEFAULT 0, reviews_count INTEGER DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', external_source TEXT, external_id TEXT, created_at DATETIME, updated_at DATETIME, published_at DATETIME);
+CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', slug TEXT NOT NULL DEFAULT '', description TEXT, cover_url TEXT, isbn TEXT, published_year INTEGER, page_count INTEGER, language TEXT DEFAULT 'ru', rating REAL DEFAULT 0, ratings_count INTEGER DEFAULT 0, reviews_count INTEGER DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', external_source TEXT, external_id TEXT, created_at DATETIME, updated_at DATETIME, cover_source_url TEXT, cover_path TEXT, cover_status TEXT, cover_error TEXT, cover_attempts INTEGER NOT NULL DEFAULT 0, cover_next_attempt_at DATETIME, cover_stored_at DATETIME, cover_checked_at DATETIME, published_at DATETIME);
 CREATE TABLE authors (id TEXT PRIMARY KEY, name TEXT, slug TEXT, status TEXT);
 CREATE TABLE genres (id TEXT PRIMARY KEY, name TEXT, slug TEXT, status TEXT);
 CREATE TABLE book_authors (book_id TEXT NOT NULL, author_id TEXT NOT NULL);

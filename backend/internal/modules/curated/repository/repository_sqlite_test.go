@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 )
 
 const curatedDDL = `
-CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', slug TEXT NOT NULL DEFAULT '', description TEXT, cover_url TEXT, isbn TEXT, published_year INTEGER, page_count INTEGER, language TEXT DEFAULT 'ru', rating REAL DEFAULT 0, ratings_count INTEGER DEFAULT 0, reviews_count INTEGER DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', external_source TEXT, external_id TEXT, created_at DATETIME, updated_at DATETIME, published_at DATETIME);
+CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', slug TEXT NOT NULL DEFAULT '', description TEXT, cover_url TEXT, isbn TEXT, published_year INTEGER, page_count INTEGER, language TEXT DEFAULT 'ru', rating REAL DEFAULT 0, ratings_count INTEGER DEFAULT 0, reviews_count INTEGER DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', external_source TEXT, external_id TEXT, created_at DATETIME, updated_at DATETIME, cover_source_url TEXT, cover_path TEXT, cover_status TEXT, cover_error TEXT, cover_attempts INTEGER NOT NULL DEFAULT 0, cover_next_attempt_at DATETIME, cover_stored_at DATETIME, cover_checked_at DATETIME, published_at DATETIME);
 CREATE TABLE authors (id TEXT PRIMARY KEY, name TEXT, slug TEXT, status TEXT);
 CREATE TABLE genres (id TEXT PRIMARY KEY, name TEXT, slug TEXT, status TEXT);
 CREATE TABLE book_authors (book_id TEXT NOT NULL, author_id TEXT NOT NULL);
@@ -243,5 +244,31 @@ func TestSlugUniqueAndDeleteRemovesItems(t *testing.T) {
 	db.Table("books").Count(&books)
 	if books != 1 {
 		t.Fatal("books must stay")
+	}
+}
+
+// Collection cover thumbnails use the displayed link: our copy when stored,
+// nothing when the source has no cover, the source link otherwise (#489).
+func TestCovers_DisplayedLinks(t *testing.T) {
+	r, db := newRepo(t)
+	ctx := context.Background()
+	c := mkCollection(t, r, "covers", 4, true)
+	stored := mkBook(t, db, catalogDomain.BookStatusPublished, "http://stored")
+	absent := mkBook(t, db, catalogDomain.BookStatusPublished, "http://absent")
+	plain := mkBook(t, db, catalogDomain.BookStatusPublished, "http://plain")
+	for _, id := range []uuid.UUID{stored, absent, plain} {
+		if err := r.AddBook(ctx, c.ID, id, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := "ab/" + strings.Repeat("ab", 32) + ".jpg"
+	db.Exec("UPDATE books SET cover_source_url = cover_url, cover_status = 'stored', cover_path = ? WHERE id = ?", path, stored)
+	db.Exec("UPDATE books SET cover_source_url = cover_url, cover_status = 'absent' WHERE id = ?", absent)
+	covers, err := r.Covers(ctx, c.ID, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(covers) != 2 || covers[0] != "/covers/"+path || covers[1] != "http://plain" {
+		t.Fatalf("covers %v", covers)
 	}
 }

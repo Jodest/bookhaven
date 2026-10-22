@@ -165,7 +165,9 @@ const poolGenreFilter = "EXISTS (SELECT 1 FROM book_genres bg JOIN genres g ON g
 func (r *GormRepository) poolQuery(ctx context.Context, f PoolFilter) *gorm.DB {
 	q := r.db.WithContext(ctx).Table("books").Select("books.id").Where("books.status = 'published'")
 	if f.RequireCover {
-		q = q.Where("books.cover_url IS NOT NULL AND books.cover_url <> ''")
+		// A book whose cover copy is "absent" (the source has no image) counts as
+		// a book without a cover (#489).
+		q = q.Where("books.cover_url IS NOT NULL AND books.cover_url <> '' AND NOT (COALESCE(books.cover_status, '') = 'absent' AND COALESCE(books.cover_source_url, '') = books.cover_url)")
 	}
 	if f.MinRating > 0 {
 		q = q.Where("books.rating >= ?", f.MinRating)

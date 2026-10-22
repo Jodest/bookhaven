@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bookhaven/backend/internal/pkg/coverfetch"
 	"github.com/joho/godotenv"
 )
 
@@ -103,6 +104,17 @@ type Config struct {
 	AIGenresModel   string
 	AIGenresCron    string
 	AIGenresBatch   int
+
+	// Self-hosted covers (#489). CoversDir is the storage root (the worker
+	// writes, the api serves read-only). CoversMirrorEnabled off means no
+	// enqueue and no sweep, but existing files are still served.
+	// CoversSweepCron is a UTC cron spec (empty = no sweep). CoversAllowedHosts
+	// is the download allowlist; a leading "*." allows subdomains.
+	CoversDir           string
+	CoversMirrorEnabled bool
+	CoversSweepCron     string
+	CoversSweepBatch    int
+	CoversAllowedHosts  []string
 }
 
 // AIGenresActive reports whether AI genre suggestions are switched on and
@@ -175,6 +187,15 @@ const (
 	DefaultAIGenresCron  = "0 3 * * 1"
 	DefaultAIGenresBatch = 300
 	MaxAIGenresBatch     = 500
+)
+
+// Self-hosted covers defaults: files under ./storage/covers for native runs,
+// a sweep every 15 minutes, 50 books per sweep.
+const (
+	DefaultCoversDir        = "./storage/covers"
+	DefaultCoversSweepCron  = "*/15 * * * *"
+	DefaultCoversSweepBatch = 50
+	MaxCoversSweepBatch     = 500
 )
 
 // defaultMailFrom is used when MAIL_FROM is unset (dev / Mailpit).
@@ -253,6 +274,24 @@ func Load() (*Config, error) {
 		cfg.AIGenresCron = DefaultAIGenresCron
 	}
 	cfg.AIGenresBatch = parseClampedInt(getEnv("AI_GENRES_BATCH", ""), DefaultAIGenresBatch, MaxAIGenresBatch)
+
+	cfg.CoversDir = strings.TrimSpace(getEnv("COVERS_DIR", DefaultCoversDir))
+	if cfg.CoversDir == "" {
+		cfg.CoversDir = DefaultCoversDir
+	}
+	cfg.CoversMirrorEnabled = parseBoolEnvDefaultTrue("COVERS_MIRROR_ENABLED")
+	// An explicitly empty COVERS_SWEEP_CRON disables the sweep.
+	if raw, ok := os.LookupEnv("COVERS_SWEEP_CRON"); ok {
+		cfg.CoversSweepCron = strings.TrimSpace(raw)
+	} else {
+		cfg.CoversSweepCron = DefaultCoversSweepCron
+	}
+	cfg.CoversSweepBatch = parseClampedInt(getEnv("COVERS_SWEEP_BATCH", ""), DefaultCoversSweepBatch, MaxCoversSweepBatch)
+	hosts := coverfetch.ParseHosts(getEnv("COVERS_ALLOWED_HOSTS", ""))
+	if len(hosts) == 0 {
+		hosts = coverfetch.ParseHosts(coverfetch.DefaultAllowedHosts)
+	}
+	cfg.CoversAllowedHosts = hosts
 
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
 	if err != nil || smtpPort <= 0 || smtpPort > 65535 {

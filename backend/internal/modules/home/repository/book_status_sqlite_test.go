@@ -23,6 +23,14 @@ CREATE TABLE books (
 	ratings_count INTEGER DEFAULT 0,
 	status TEXT NOT NULL DEFAULT 'pending',
 	created_at DATETIME,
+	cover_source_url TEXT,
+	cover_path TEXT,
+	cover_status TEXT,
+	cover_error TEXT,
+	cover_attempts INTEGER NOT NULL DEFAULT 0,
+	cover_next_attempt_at DATETIME,
+	cover_stored_at DATETIME,
+	cover_checked_at DATETIME,
 	published_at DATETIME
 );
 CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT, avatar_url TEXT);
@@ -227,5 +235,31 @@ func TestHomeBookStatus_PostgresOnlyQueries(t *testing.T) {
 		if !strings.Contains(q, "r.is_hidden = FALSE") {
 			t.Fatalf("review hiding predicate must stay:\n%s", q)
 		}
+	}
+}
+
+// A book whose cover copy is "absent" for its current link (the source has
+// no image) is not in the cover-required pools; a stale absent state for an
+// older link does not exclude it (#489).
+func TestHomePool_AbsentCoverExcludedFromCoverPool(t *testing.T) {
+	f := newHomeStatusFixture(t)
+	ctx := context.Background()
+	if err := f.db.Exec("UPDATE books SET cover_source_url = cover_url, cover_status = 'absent' WHERE id = ?", f.published).Error; err != nil {
+		t.Fatal(err)
+	}
+	pool, err := f.repo.ListPoolIDs(ctx, PoolFilter{RequireCover: true, MinRating: 1})
+	if err != nil || len(pool) != 0 {
+		t.Fatalf("absent cover must leave the cover pool: %v err=%v", pool, err)
+	}
+	withoutCover, err := f.repo.ListPoolIDs(ctx, PoolFilter{MinRating: 1})
+	if err != nil || len(withoutCover) != 1 {
+		t.Fatalf("pool without the cover requirement keeps the book: %v err=%v", withoutCover, err)
+	}
+	if err := f.db.Exec("UPDATE books SET cover_source_url = 'https://old.example/x.jpg' WHERE id = ?", f.published).Error; err != nil {
+		t.Fatal(err)
+	}
+	pool, err = f.repo.ListPoolIDs(ctx, PoolFilter{RequireCover: true, MinRating: 1})
+	if err != nil || len(pool) != 1 {
+		t.Fatalf("stale absent state must not exclude: %v err=%v", pool, err)
 	}
 }

@@ -290,7 +290,7 @@ func toBookListItemResponse(b catalogDomain.Book) bookListItemResponse {
 		genres = append(genres, toGenreResponse(g))
 	}
 	return bookListItemResponse{
-		ID: b.ID.String(), Title: b.Title, Slug: b.Slug, CoverURL: b.CoverURL,
+		ID: b.ID.String(), Title: b.Title, Slug: b.Slug, CoverURL: b.DisplayCoverURL(),
 		PublishedYear: b.PublishedYear, Rating: b.Rating, RatingsCount: b.RatingsCount,
 		Authors: authors, Genres: genres,
 	}
@@ -629,7 +629,7 @@ func toAdminDetailResponse(d *service.AdminDetail) adminDetailResponse {
 			Movement: toMovementResponse(it.Movement), Adaptation: toSourceAdaptationResponse(it.Adaptation),
 			Book: adminBookResponse{
 				ID: it.Book.ID.String(), Title: it.Book.Title, Slug: it.Book.Slug, Status: it.Book.Status,
-				CoverURL: it.Book.CoverURL, Authors: authors,
+				CoverURL: it.Book.DisplayCoverURL(), Authors: authors,
 			},
 		})
 	}
@@ -875,7 +875,7 @@ func toPasteBookResponse(b service.PasteBook) pasteBookResponse {
 	}
 	return pasteBookResponse{
 		ID: b.Book.ID.String(), Title: b.Book.Title, Slug: b.Book.Slug, Status: b.Book.Status,
-		CoverURL: b.Book.CoverURL, PublishedYear: b.Book.PublishedYear, Authors: authors, InCollection: b.InCollection,
+		CoverURL: b.Book.DisplayCoverURL(), PublishedYear: b.Book.PublishedYear, Authors: authors, InCollection: b.InCollection,
 	}
 }
 

@@ -133,26 +133,51 @@ type genreResponse struct {
 // book became published (null if never); it is read-only and ignored in
 // request bodies (#245).
 type bookResponse struct {
-	ID             string           `json:"id"`
-	Title          string           `json:"title"`
-	Slug           string           `json:"slug"`
-	Description    *string          `json:"description,omitempty"`
-	CoverURL       *string          `json:"cover_url,omitempty"`
-	ISBN           *string          `json:"isbn,omitempty"`
-	PublishedYear  *int             `json:"published_year,omitempty"`
-	PageCount      *int             `json:"page_count,omitempty"`
-	Language       string           `json:"language"`
-	Rating         float64          `json:"rating"`
-	RatingsCount   int              `json:"ratings_count"`
-	ReviewsCount   int              `json:"reviews_count"`
-	Status         string           `json:"status"`
-	PublishedAt    *time.Time       `json:"published_at"`
-	ExternalSource *string          `json:"external_source,omitempty"`
-	ExternalID     *string          `json:"external_id,omitempty"`
-	Authors        []authorResponse `json:"authors"`
-	Genres         []genreResponse  `json:"genres"`
-	CreatedAt      time.Time        `json:"created_at"`
-	UpdatedAt      time.Time        `json:"updated_at"`
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	Slug        string  `json:"slug"`
+	Description *string `json:"description,omitempty"`
+	CoverURL    *string `json:"cover_url,omitempty"`
+	// CoverCopy describes the self-hosted copy of cover_url (the source link is
+	// always returned in cover_url, never our /covers path); null without a link.
+	CoverCopy      *coverCopyResponse `json:"cover_copy"`
+	ISBN           *string            `json:"isbn,omitempty"`
+	PublishedYear  *int               `json:"published_year,omitempty"`
+	PageCount      *int               `json:"page_count,omitempty"`
+	Language       string             `json:"language"`
+	Rating         float64            `json:"rating"`
+	RatingsCount   int                `json:"ratings_count"`
+	ReviewsCount   int                `json:"reviews_count"`
+	Status         string             `json:"status"`
+	PublishedAt    *time.Time         `json:"published_at"`
+	ExternalSource *string            `json:"external_source,omitempty"`
+	ExternalID     *string            `json:"external_id,omitempty"`
+	Authors        []authorResponse   `json:"authors"`
+	Genres         []genreResponse    `json:"genres"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+}
+
+// coverCopyResponse is the state of a book's self-hosted cover copy.
+// Status is pending, stored, failed or absent; Error is a cover_error code
+// (host_not_allowed, blocked_address, too_many_redirects, too_large,
+// not_image, http_error, timeout, network) or null.
+type coverCopyResponse struct {
+	Status   string     `json:"status" enums:"pending,stored,failed,absent"`
+	Error    *string    `json:"error"`
+	StoredAt *time.Time `json:"stored_at"`
+}
+
+// toCoverCopy maps the copy columns. A copy made from another link than the
+// current one does not count: the status is pending.
+func toCoverCopy(b catalogDomain.Book) *coverCopyResponse {
+	if b.CoverURL == nil || *b.CoverURL == "" {
+		return nil
+	}
+	if b.CoverSourceURL == nil || *b.CoverSourceURL != *b.CoverURL || b.CoverStatus == nil {
+		return &coverCopyResponse{Status: catalogDomain.CoverStatusPending}
+	}
+	return &coverCopyResponse{Status: *b.CoverStatus, Error: b.CoverError, StoredAt: b.CoverStoredAt}
 }
 
 type listBooksResponse struct {
@@ -597,6 +622,7 @@ func toBookResponse(b catalogDomain.Book) bookResponse {
 		Slug:           b.Slug,
 		Description:    b.Description,
 		CoverURL:       b.CoverURL,
+		CoverCopy:      toCoverCopy(b),
 		ISBN:           b.ISBN,
 		PublishedYear:  b.PublishedYear,
 		PageCount:      b.PageCount,

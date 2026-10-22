@@ -605,6 +605,12 @@ definitions:
         items:
           $ref: '#/definitions/internal_modules_admin_transport_http.authorResponse'
         type: array
+      cover_copy:
+        allOf:
+        - $ref: '#/definitions/internal_modules_admin_transport_http.coverCopyResponse'
+        description: |-
+          CoverCopy describes the self-hosted copy of cover_url (the source link is
+          always returned in cover_url, never our /covers path); null without a link.
       cover_url:
         type: string
       created_at:
@@ -677,6 +683,20 @@ definitions:
     properties:
       role:
         description: Role is one of user | contributor | moderator | admin.
+        type: string
+    type: object
+  internal_modules_admin_transport_http.coverCopyResponse:
+    properties:
+      error:
+        type: string
+      status:
+        enum:
+        - pending
+        - stored
+        - failed
+        - absent
+        type: string
+      stored_at:
         type: string
     type: object
   internal_modules_admin_transport_http.createUpdateAuthorRequest:

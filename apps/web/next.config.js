@@ -3,6 +3,10 @@ const nextConfig = {
   output: 'standalone',
   transpilePackages: ['@bookhaven/ui', '@bookhaven/api-client'],
   images: {
+    // Cover copies are content-hashed (/covers/<hash>.<ext>) and the fallback
+    // Open Library links are stable per id, so optimized images can be kept
+    // for 30 days (the default is 60 s, per width, and lost on deploy).
+    minimumCacheTTL: 2592000,
     remotePatterns: [
       {
         protocol: 'https',
@@ -31,6 +35,11 @@ const nextConfig = {
       {
         source: '/api/:path*',
         destination: `${process.env.API_URL || 'http://localhost:8080'}/api/:path*`,
+      },
+      // Self-hosted book covers are served by the backend (public files).
+      {
+        source: '/covers/:path*',
+        destination: `${process.env.API_URL || 'http://localhost:8080'}/covers/:path*`,
       },
     ];
   },

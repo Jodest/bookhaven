@@ -80,6 +80,12 @@ type Service struct {
 	// similar_invalidate.go). Nil unless configured via
 	// WithSimilarInvalidator.
 	similarInvalidator SimilarInvalidator
+	// coverEnqueuer queues a cover copy after a save that writes a cover
+	// link (see cover_enqueue.go). Nil unless configured via
+	// WithCoverEnqueuer; suppressCoverEnqueue is set on the transaction-scoped
+	// copy, whose callers enqueue after the commit.
+	coverEnqueuer        CoverEnqueuer
+	suppressCoverEnqueue bool
 	// genreClassifyTimeout bounds each genre classification call; zero
 	// means defaultGenreClassifyTimeout (tests shorten it).
 	genreClassifyTimeout time.Duration
@@ -159,6 +165,9 @@ func (s *Service) withRepo(repo repository.Repository) *Service {
 	// from pre-commit data under the new generation. Callers invalidate
 	// after the transaction commits.
 	c.similarInvalidator = nil
+	// Same reasoning for cover copies: a task queued before the commit could
+	// run before the book exists. Callers enqueue after the commit.
+	c.suppressCoverEnqueue = true
 	return &c
 }
 
@@ -352,6 +361,9 @@ func (s *Service) CreateBook(ctx context.Context, input BookInput) (*catalogDoma
 	if status == catalogDomain.BookStatusPublished {
 		s.invalidateSimilar(ctx)
 	}
+	if book.CoverURL != nil {
+		s.enqueueCover(ctx, book.ID)
+	}
 
 	return s.repo.GetBookByID(ctx, book.ID)
 }
@@ -449,6 +461,9 @@ func (s *Service) UpdateBook(ctx context.Context, id uuid.UUID, input BookInput)
 		return nil, fmt.Errorf("update book: %w", err)
 	}
 	s.invalidateSimilar(ctx)
+	if book.CoverURL != nil && !book.HasStoredCover() {
+		s.enqueueCover(ctx, id)
+	}
 
 	return s.repo.GetBookByID(ctx, id)
 }

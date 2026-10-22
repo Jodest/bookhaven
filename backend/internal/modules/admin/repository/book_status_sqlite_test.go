@@ -33,6 +33,14 @@ CREATE TABLE books (
 	external_id TEXT,
 	created_at DATETIME,
 	updated_at DATETIME,
+	cover_source_url TEXT,
+	cover_path TEXT,
+	cover_status TEXT,
+	cover_error TEXT,
+	cover_attempts INTEGER NOT NULL DEFAULT 0,
+	cover_next_attempt_at DATETIME,
+	cover_stored_at DATETIME,
+	cover_checked_at DATETIME,
 	published_at DATETIME
 );
 CREATE TABLE authors (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', slug TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'published');

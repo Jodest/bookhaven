@@ -11305,6 +11305,14 @@ const docTemplate = `{
                         "$ref": "#/definitions/internal_modules_admin_transport_http.authorResponse"
                     }
                 },
+                "cover_copy": {
+                    "description": "CoverCopy describes the self-hosted copy of cover_url (the source link is\nalways returned in cover_url, never our /covers path); null without a link.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_admin_transport_http.coverCopyResponse"
+                        }
+                    ]
+                },
                 "cover_url": {
                     "type": "string"
                 },
@@ -11414,6 +11422,26 @@ const docTemplate = `{
             "properties": {
                 "role": {
                     "description": "Role is one of user | contributor | moderator | admin.",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_modules_admin_transport_http.coverCopyResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "stored",
+                        "failed",
+                        "absent"
+                    ]
+                },
+                "stored_at": {
                     "type": "string"
                 }
             }

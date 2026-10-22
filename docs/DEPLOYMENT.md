@@ -288,6 +288,32 @@ A run goes on its own queue `ai_genres` (Concurrency 1, one model call per secon
 
 Cost: the system prompt is cached; a full run is at most 10 requests of about 100 anchor genres (≈ 12 tokens each) plus a batch of up to 500 genres with samples (≈ 45 tokens each), so ≈ 240k input and up to ≈ 80k output tokens in the worst case — about $1.3 per run on Sonnet ($2 / $10 per 1M), about $0.07 on Haiku. A small catalog is one request (a few cents). With the weekly default and the change check, a quiet catalog costs nothing. Token counts are stored per run: `SELECT created_at, model, batches_done, suggestions_created, input_tokens, output_tokens FROM genre_ai_runs ORDER BY created_at DESC;` (migration 000032).
 
+## Self-hosted covers
+
+Book covers are copied from their source link (mostly Open Library) to our own storage and served by the backend as `GET /covers/{shard}/{hash}.{jpg|png|webp}` with `Cache-Control: public, max-age=31536000, immutable`. A cold cover then costs tens of milliseconds instead of 2.5 s through Open Library and archive.org. `books.cover_url` stays the **source** link; the copy state lives in the `books.cover_*` columns (migration `000037_book_cover_mirror`). While a copy is not stored the API returns the source link, so nothing breaks if the worker is down. OpenSpec: `catalog/book-covers`.
+
+- **Volume `covers-data`**: mounted at `/data/covers`, **read-write in `worker`** (the only writer) and **read-only in `backend`** (it only serves files). Both compose files declare it. The production image pre-creates `/data/covers` owned by `nonroot` (65532), so a fresh volume is writable by the worker without a manual `chown`.
+- **Web and admin** proxy `/covers/*` to the backend (a Next `rewrite`, like `/api`, resolved from `API_URL` when the image is built). Set `SITE_URL` (prod compose: `https://${WEB_DOMAIN}`) on `web` so the Open Graph and structured-data images are absolute URLs.
+- **Queue `covers`** (own asynq server, `Concurrency: 1`, downloads at least 1 s apart). `covers:mirror` is queued after any save that writes a cover link (admin create/update, CSV/JSON import, Wikidata harvest). A `covers:sweep` cron (default every 15 minutes) backfills books without a copy, retries transient failures (10 min, doubling, up to 24 h; after 6 failures the copy is `failed` and tried once more after 7 days), re-copies files that vanished from the volume and deletes unreferenced files older than 1 hour.
+- **No backup needed.** The files are a cache of the cover links: if the volume is lost or new, the first sweep sees the new storage (marker file `.bookhaven-covers`), sets every stored copy back to `pending` and re-downloads them (about 1 per second). Books show the source link meanwhile. The same happens after restoring the database onto a fresh volume.
+- **Mixed runs.** A native backend (`./storage/covers`, gitignored under `backend/storage/`) and the docker worker use different storages: a native backend does not see files the docker worker stored and shows the source links. Run both natively or both in docker.
+
+| Variable | Meaning |
+|---|---|
+| `COVERS_DIR` | Storage root. Default `./storage/covers` for native runs; `/data/covers` in compose. |
+| `COVERS_MIRROR_ENABLED` | Default `true`. `false` on api and worker: nothing is queued and no sweep runs, files already stored are still served. |
+| `COVERS_SWEEP_CRON` | UTC cron spec of the sweep (worker). Default `*/15 * * * *`; set it empty to disable the sweep (in compose the empty value is passed through). |
+| `COVERS_SWEEP_BATCH` | Books copied per sweep. Default `50`, at most `500`. |
+| `COVERS_ALLOWED_HOSTS` | Comma-separated download allowlist; `*.example.org` allows subdomains of `example.org` but not the bare domain. Default `covers.openlibrary.org,archive.org,*.archive.org,upload.wikimedia.org`. |
+
+Downloads are limited to `http`/`https` on ports 80/443, hosts on the allowlist, public addresses only (private, loopback and link-local addresses are refused when connecting, also after redirects; at most 5 redirects), 30 s and 5 MB, and the bytes must be a JPEG, PNG or WebP. A link that breaks a rule is `failed` and the book keeps showing the source link.
+
+**Adding a host.** Add it to `COVERS_ALLOWED_HOSTS` of the **worker** (`covers.example.org`, or `*.example.org` for subdomains; keep the default hosts in the list) and restart the worker. Books that were `failed` with «сайт не входит в список разрешённых» are retried when an admin saves them again; the sweep does not retry permanent failures on its own. Any `next/image` remote host used for fallback links still needs a `remotePatterns` entry in `apps/web/next.config.js`.
+
+**Known gap before the first production deploy (rewrite target).** Next resolves `rewrites()` when the image is built, and `infrastructure/docker/Dockerfile.node` does not set `API_URL` at build time, so the `/covers/:path*` rewrite (and the older `/api/:path*` one) in the production `web`/`admin` images points at `http://localhost:8080`, not at `backend:8080`. Server-side API calls are not affected (they read `API_URL` at runtime), but `/covers/*` through `web` and the image optimizer's fetch of `/covers/...` would fail. Fix at deploy time by building the web and admin images with `API_URL=http://backend:8080` (a build arg/`ENV` in the builder stage of `Dockerfile.node` or in the CI build step). It was not changed in the self-hosted covers change. Verify on the first deploy: `curl -I https://$WEB_DOMAIN/covers/<path of a stored cover>` returns `200` with `immutable`, and `https://$WEB_DOMAIN/_next/image?url=%2Fcovers%2F<path>&w=384&q=75` returns `200`.
+
+Check the state: `SELECT cover_status, cover_error, count(*) FROM books WHERE cover_url <> '' GROUP BY 1, 2;` and `docker compose logs worker | grep -i cover`.
+
 ## Email (SMTP)
 
 Transactional email (verification, password reset, later notifications) is sent asynchronously: the api enqueues an `email:send` task on the `email` asynq queue and the **worker** delivers it over SMTP (see `backend/internal/pkg/mailer` and [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md)). Only the `worker` container receives the SMTP variables; the `backend` (api) container never talks to SMTP.

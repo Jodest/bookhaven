@@ -272,12 +272,25 @@ export interface AdminDashboard {
 /** Book moderation status (docs/features/book-status-model.md). */
 export type AdminBookStatus = 'pending' | 'published' | 'rejected';
 
+/** State of a book's self-hosted cover copy (openspec catalog/book-covers). */
+export type AdminCoverCopyStatus = 'pending' | 'stored' | 'failed' | 'absent';
+
+export interface AdminCoverCopy {
+  status: AdminCoverCopyStatus;
+  /** host_not_allowed, blocked_address, too_many_redirects, too_large, not_image, http_error, timeout, network. */
+  error: string | null;
+  stored_at: string | null;
+}
+
 export interface AdminBook {
   id: string;
   title: string;
   slug: string;
   description: string | null;
+  /** Source link; never our /covers path. */
   cover_url: string | null;
+  /** Copy of cover_url on our server; null when the book has no cover link. */
+  cover_copy?: AdminCoverCopy | null;
   isbn: string | null;
   published_year: number | null;
   page_count: number | null;

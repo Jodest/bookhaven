@@ -1,0 +1,141 @@
+# catalog/book-covers Specification
+
+## Purpose
+Defines how BookHaven keeps its own copies of book covers. It covers how the copies are downloaded safely, stored, served and kept in step with each book's cover link, and which cover link the API returns.
+
+## Requirements
+
+### Requirement: Cover link and cover copy
+The cover link stored on a book SHALL remain the source of its cover. The system keeps at most one current copy per book, and the copy belongs to the exact link it was made from. A copy is in one of these states:
+- `pending`: not made yet for the current link, or a retry is due;
+- `stored`: a file is kept;
+- `failed`: the download was refused or gave up;
+- `absent`: the source says there is no cover.
+
+When the book's link changes, a copy made from the old link MUST NOT be shown again.
+
+#### Scenario: Link changed after copying
+- **WHEN** a book has a stored copy and an admin changes its cover link to another image
+- **THEN** until the new image is copied, the book shows the new link, never the old copy
+
+#### Scenario: Link removed
+- **WHEN** an admin clears the cover link of a book that had a stored copy
+- **THEN** the book has no cover and shows «Нет обложки» on the site
+
+### Requirement: Displayed cover link
+Every API response that shows a book's cover SHALL return the displayed link and not the raw source. This covers the public book, catalog, shelf, home, review and collection responses, the `cover_urls` of collections, and the admin collection screens. The displayed link is:
+- the relative path `/covers/{file}` when a copy of the current link is stored;
+- `null` when the copy is `absent`;
+- the source link in every other case: no copy yet, pending or failed.
+
+A book with no cover link has `null`. The admin book record is the only exception (see `catalog-admin/book-editing`). A book whose copy is `absent` MUST count as a book without a cover everywhere a cover matters, for example the book-of-the-day pools.
+
+#### Scenario: Copied cover
+- **WHEN** a visitor opens a book whose current cover link has a stored copy
+- **THEN** the book's `cover_url` is a `/covers/…` path on the site's own origin, and no request goes to Open Library
+
+#### Scenario: Not copied yet
+- **WHEN** a book was just saved with an Open Library cover link and no copy exists yet
+- **THEN** the book's `cover_url` is the Open Library link
+
+#### Scenario: Source has no cover
+- **WHEN** Open Library answers that the book's cover link has no image
+- **THEN** the book's `cover_url` is `null` and the book is not in the «books with a cover» pools of the book of the day
+
+### Requirement: Queuing a copy
+Every save that writes a non-empty cover link SHALL queue a copy of that book once the save is committed. This covers:
+- an admin creating or updating a book;
+- each row of a CSV/JSON book import;
+- a book created by a Wikidata harvest, including a cover filled in from Open Library.
+
+An admin update that keeps the same link queues a copy only when no copy of it is stored. A copy queued by a save is attempted even after an earlier failure of that link. Queuing MUST NOT delay or fail the save: if it fails, the save still succeeds and the periodic sweep makes the copy later.
+
+#### Scenario: File import
+- **WHEN** an admin imports a CSV file whose three created rows have cover links
+- **THEN** a copy is queued for each of the three books after its row is saved
+
+#### Scenario: Queue unavailable
+- **WHEN** an admin saves a book with a cover link while the task queue is down
+- **THEN** the save succeeds, the book shows the source link, and a later sweep stores the copy
+
+#### Scenario: Re-saving a failed cover
+- **WHEN** an admin saves a book again, unchanged, after its cover copy failed
+- **THEN** the copy is attempted again
+
+### Requirement: Download rules
+The download of a cover link SHALL follow all of these rules:
+- **Hosts.** The link MUST use `http` or `https` on port 80 or 443, and its host MUST be on the allowlist. The default allowlist is `covers.openlibrary.org`, `archive.org` with its subdomains, and `upload.wikimedia.org`; it is configurable.
+- **Addresses.** Every address the host resolves to MUST be checked when connecting. Loopback, private, link-local, unique-local, multicast, unspecified and other non-public addresses are refused.
+- **Redirects.** At most 5 redirects. Each target MUST pass the host and address rules again.
+- **Limits.** The whole download is limited to 30 seconds and 5 MB.
+- **Type.** The bytes MUST be a JPEG, PNG or WebP image. The type the server declares is ignored.
+- **Open Library.** An Open Library cover link is requested with `default=false`. A 404 answer marks the copy `absent`.
+
+A link that breaks a rule is not stored, and its copy becomes `failed`.
+
+#### Scenario: Redirect to a private address
+- **WHEN** an allowlisted cover link redirects to a host that resolves to `10.0.0.5`
+- **THEN** no connection is made to that address and the copy is `failed`
+
+#### Scenario: Host not allowed
+- **WHEN** an admin saves a cover link on a host outside the allowlist
+- **THEN** nothing is downloaded, the copy is `failed`, and the book shows the source link
+
+#### Scenario: File too large
+- **WHEN** the image behind a cover link is larger than 5 MB
+- **THEN** the download stops at the limit and the copy is `failed`
+
+#### Scenario: Not an image
+- **WHEN** a cover link returns an HTML page or a GIF with an image content type
+- **THEN** the copy is `failed` and nothing is stored
+
+### Requirement: Retries and pacing
+A transient failure (a timeout, a network error, HTTP 408, 429 or 5xx) SHALL be retried with backoff. The first retry comes after 10 minutes, and each next pause doubles, up to 24 hours. After 6 failed attempts the copy is `failed`, and it is tried once more after 7 days. Other failures are permanent and MUST NOT be retried until the link changes or an admin saves the book again: a host off the allowlist, a refused address, too many redirects, a file over the limit, a non-image, or any other 4xx. Downloads run one at a time, at least 1 second apart.
+
+#### Scenario: Temporary outage
+- **WHEN** Open Library answers 503 for a cover
+- **THEN** the copy stays `pending` and is attempted again about 10 minutes later, and the book shows the source link meanwhile
+
+### Requirement: Periodic sweep
+A periodic sweep SHALL run every 15 minutes by default. The schedule is configurable and the sweep can be turned off. Each run:
+- copies up to 50 books (configurable) that have a cover link but no copy for it, or whose retry is due;
+- checks a rolling batch of stored copies, and marks any copy whose file is missing as `pending` so it is copied again;
+- when the storage is new or empty while copies are recorded as stored, marks all of them `pending` at once.
+
+While a copy is not stored, the book shows its source link.
+
+#### Scenario: Fresh database or empty storage
+- **WHEN** the storage is empty and 24 books have Open Library cover links
+- **THEN** the books show their source links until the sweeps have copied them, after which they show `/covers/…` paths
+
+#### Scenario: Lost file
+- **WHEN** the file of a stored copy has disappeared from the storage
+- **THEN** a later sweep copies the cover again, and the book shows the source link in between
+
+### Requirement: Storage and cleanup
+Stored files SHALL be named by a hash of their content, so books with an identical image share one file. A file MUST be deleted once no book refers to it: either after a replacement copy is stored, or by the sweep, which removes files that no book refers to and that are older than one hour. Copies are not backed up: they can always be made again from the cover links.
+
+#### Scenario: Cover replaced
+- **WHEN** a book's new cover is stored and no other book uses its old file
+- **THEN** the old file is deleted
+
+#### Scenario: Shared file kept
+- **WHEN** two books use the same image and one of them gets a new cover
+- **THEN** the shared file stays for the other book
+
+### Requirement: Serving copies
+`GET /covers/{file}` and `HEAD /covers/{file}` SHALL be public: no sign-in, no bearer and no role. They are served by the API and, through a proxy, on the origins of the public site and the admin app. The response carries:
+- the file with its image content type;
+- `Cache-Control: public, max-age=31536000, immutable`;
+- `X-Content-Type-Options: nosniff`;
+- an `ETag`. A matching `If-None-Match` returns 304.
+
+A name that is malformed or unknown returns 404. There is no directory listing, and any path that tries to leave the storage returns 404.
+
+#### Scenario: Copy served
+- **WHEN** a browser requests the `/covers/…` path of a stored cover
+- **THEN** the response is 200 with the image type and `Cache-Control: public, max-age=31536000, immutable`
+
+#### Scenario: Path traversal
+- **WHEN** a client requests `/covers/../../etc/passwd` or `/covers/`
+- **THEN** the response is 404 and nothing outside the stored covers is read

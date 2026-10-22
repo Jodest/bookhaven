@@ -559,3 +559,36 @@ describe('BookForm returnHref', () => {
     expect(pushMock).toHaveBeenCalledWith('/catalog/books');
   });
 });
+
+describe('BookForm cover copy hint', () => {
+  const withCover: AdminBook = {
+    ...latinBook,
+    cover_url: 'https://covers.openlibrary.org/b/id/1-L.jpg',
+    cover_copy: { status: 'failed', error: 'too_large', stored_at: null },
+  };
+
+  it('shows the copy status of the loaded book under the cover field on edit', () => {
+    renderForm(withCover);
+    expect(screen.getByTestId('cover-copy-hint')).toHaveTextContent(
+      'Не удалось скопировать обложку: файл больше 5 МБ. На сайте показывается исходная ссылка.'
+    );
+  });
+
+  it('does not change while the admin edits the field', () => {
+    renderForm(withCover);
+    fireEvent.change(screen.getByLabelText('URL обложки'), {
+      target: { value: 'https://example.com/other.jpg' },
+    });
+    expect(screen.getByTestId('cover-copy-hint')).toHaveTextContent('файл больше 5 МБ');
+  });
+
+  it('shows nothing on the create form', () => {
+    renderForm();
+    expect(screen.queryByTestId('cover-copy-hint')).not.toBeInTheDocument();
+  });
+
+  it('shows nothing when the book has no cover link', () => {
+    renderForm({ ...latinBook, cover_copy: null });
+    expect(screen.queryByTestId('cover-copy-hint')).not.toBeInTheDocument();
+  });
+});

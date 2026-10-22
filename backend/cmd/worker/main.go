@@ -111,10 +111,10 @@ import (
 	"github.com/bookhaven/backend/internal/config"
 	adminrepository "github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminservice "github.com/bookhaven/backend/internal/modules/admin/service"
-	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
-	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
 	aicollrepository "github.com/bookhaven/backend/internal/modules/aicollections/repository"
 	aicollservice "github.com/bookhaven/backend/internal/modules/aicollections/service"
+	curatorrepository "github.com/bookhaven/backend/internal/modules/aicurator/repository"
+	curatorservice "github.com/bookhaven/backend/internal/modules/aicurator/service"
 	aidescrepository "github.com/bookhaven/backend/internal/modules/aidescriptions/repository"
 	aidescservice "github.com/bookhaven/backend/internal/modules/aidescriptions/service"
 	aigenresrepository "github.com/bookhaven/backend/internal/modules/aigenres/repository"
@@ -122,12 +122,16 @@ import (
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
+	coversrepository "github.com/bookhaven/backend/internal/modules/covers/repository"
+	coversservice "github.com/bookhaven/backend/internal/modules/covers/service"
 	curatedrepository "github.com/bookhaven/backend/internal/modules/curated/repository"
 	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
 	screenworksrepository "github.com/bookhaven/backend/internal/modules/screenworks/repository"
 	screenworksservice "github.com/bookhaven/backend/internal/modules/screenworks/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
+	"github.com/bookhaven/backend/internal/pkg/coverfetch"
+	"github.com/bookhaven/backend/internal/pkg/coverstore"
 	"github.com/bookhaven/backend/internal/pkg/llm"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/hibiken/asynq"
@@ -160,10 +164,19 @@ func main() {
 	// similar-books lists, so the worker invalidates them like the api does.
 	similarRedis := redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
 	defer similarRedis.Close()
-	adminService := adminservice.NewService(adminRepo,
+	adminOpts := []adminservice.Option{
 		adminservice.WithSimilarInvalidator(catalogrepository.NewRedisSimilarCache(similarRedis)),
 		adminservice.WithAuthorEnrichmentSource(wikidataClient),
-		adminservice.WithLogger(logger))
+		adminservice.WithLogger(logger),
+	}
+	// Self-hosted covers (#489): a book created by a harvest (with a cover
+	// link, also one filled in from Open Library) queues covers:mirror.
+	var coversClient *asynq.Client
+	if cfg.CoversMirrorEnabled {
+		coversClient = asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
+		adminOpts = append(adminOpts, adminservice.WithCoverEnqueuer(coversservice.NewEnqueuer(coversClient)))
+	}
+	adminService := adminservice.NewService(adminRepo, adminOpts...)
 	// WithWorkDescriptionLookup is opted in here (harvest enrichment) only -
 	// backend/cmd/api/main.go's admin lookup-assistant client deliberately
 	// does not, to preserve its "exactly one outbound Open Library call per
@@ -244,8 +257,15 @@ func main() {
 		descSrv          *asynq.Server
 		collSrv          *asynq.Server
 		genresSrv        *asynq.Server
+		coversSrv        *asynq.Server
 	)
 	shutdownServers := func() {
+		if coversSrv != nil {
+			coversSrv.Shutdown()
+		}
+		if coversClient != nil {
+			_ = coversClient.Close()
+		}
 		if genresSrv != nil {
 			genresSrv.Shutdown()
 		}
@@ -456,6 +476,31 @@ func main() {
 		logger.Info("AI genre suggestions disabled")
 	}
 
+	// Self-hosted covers (#489): the worker is the only writer of the storage.
+	// Own server with Concurrency 1 so downloads are serialized and paced.
+	if cfg.CoversMirrorEnabled {
+		coversSvc := coversservice.New(coversrepository.NewGormRepository(db), coverstore.NewFS(cfg.CoversDir),
+			coverfetch.New(cfg.CoversAllowedHosts), logger)
+		coversHandlers := coversservice.NewHandlers(coversSvc, cfg.CoversSweepBatch, logger)
+
+		coversMux := asynq.NewServeMux()
+		coversMux.HandleFunc(coversservice.TaskTypeMirror, coversHandlers.HandleMirror)
+		coversMux.HandleFunc(coversservice.TaskTypeSweep, coversHandlers.HandleSweep)
+
+		coversSrv = asynq.NewServer(redisOpt, coversServerConfig(zapAsynqLogger{logger}))
+		if err := coversSrv.Start(coversMux); err != nil {
+			coversSrv = nil
+			shutdownServers()
+			logger.Fatal("failed to start covers asynq server", zap.Error(err))
+		}
+		logger.Info("self-hosted covers enabled",
+			zap.String("queue", coversservice.QueueName),
+			zap.String("dir", cfg.CoversDir),
+			zap.Strings("allowed_hosts", cfg.CoversAllowedHosts))
+	} else {
+		logger.Info("self-hosted covers mirroring disabled")
+	}
+
 	scheduler := asynq.NewScheduler(
 		redisOpt,
 		&asynq.SchedulerOpts{
@@ -501,6 +546,14 @@ func main() {
 			zap.String("cron", cfg.AIModerationCron),
 			zap.Int("batch", cfg.AIModerationBatch),
 			zap.String("model", cfg.AIModerationModel),
+			zap.String("location", "UTC"))
+	}
+
+	if cfg.CoversMirrorEnabled && cfg.CoversSweepCron != "" {
+		logger.Info("covers sweep schedule enabled",
+			zap.String("task", coversservice.TaskTypeSweep),
+			zap.String("cron", cfg.CoversSweepCron),
+			zap.Int("batch", cfg.CoversSweepBatch),
 			zap.String("location", "UTC"))
 	}
 
@@ -575,6 +628,18 @@ func aiCuratorServerConfig(logger asynq.Logger) asynq.Config {
 	return asynq.Config{
 		Queues: map[string]int{
 			curatorservice.QueueName: 1,
+		},
+		Concurrency: 1,
+		Logger:      logger,
+	}
+}
+
+// coversServerConfig is the config of the covers server (its own queue,
+// Concurrency 1: one download at a time).
+func coversServerConfig(logger asynq.Logger) asynq.Config {
+	return asynq.Config{
+		Queues: map[string]int{
+			coversservice.QueueName: 1,
 		},
 		Concurrency: 1,
 		Logger:      logger,
@@ -672,6 +737,11 @@ func registerSchedules(s scheduleRegistrar, cfg *config.Config) error {
 		}
 		if _, err := s.Register(cfg.AIModerationCron, task, aimodservice.ScheduledSweepOptions()...); err != nil {
 			return fmt.Errorf("register AI moderation sweep (%q): %w", cfg.AIModerationCron, err)
+		}
+	}
+	if cfg.CoversMirrorEnabled && cfg.CoversSweepCron != "" {
+		if _, err := s.Register(cfg.CoversSweepCron, coversservice.NewSweepTask(), coversservice.SweepOptions()...); err != nil {
+			return fmt.Errorf("register covers sweep (%q): %w", cfg.CoversSweepCron, err)
 		}
 	}
 	if cfg.AIGenresActive() && cfg.AIGenresCron != "" {

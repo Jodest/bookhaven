@@ -87,11 +87,16 @@ services:
       AI_GENRES_MODEL: ${AI_GENRES_MODEL:-claude-sonnet-5-5}
       AI_GENRES_CRON: ${AI_GENRES_CRON-0 3 * * 1}
       AI_GENRES_BATCH: ${AI_GENRES_BATCH:-300}
+      # Self-hosted covers: the api only serves files from the volume the
+      # worker writes (mounted read-only); it queues copies after saves.
+      COVERS_DIR: /data/covers
+      COVERS_MIRROR_ENABLED: ${COVERS_MIRROR_ENABLED:-true}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     volumes:
       - ./backend:/app
       - go-cache:/go/pkg/mod
+      - covers-data:/data/covers:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -140,9 +145,17 @@ services:
       AI_GENRES_MODEL: ${AI_GENRES_MODEL:-claude-sonnet-5-5}
       AI_GENRES_CRON: ${AI_GENRES_CRON-0 3 * * 1}
       AI_GENRES_BATCH: ${AI_GENRES_BATCH:-300}
+      # Self-hosted covers: the worker downloads and stores the copies
+      # (volume mounted read-write) and runs the periodic sweep.
+      COVERS_DIR: /data/covers
+      COVERS_MIRROR_ENABLED: ${COVERS_MIRROR_ENABLED:-true}
+      COVERS_SWEEP_CRON: ${COVERS_SWEEP_CRON-*/15 * * * *}
+      COVERS_SWEEP_BATCH: ${COVERS_SWEEP_BATCH:-50}
+      COVERS_ALLOWED_HOSTS: ${COVERS_ALLOWED_HOSTS:-covers.openlibrary.org,archive.org,*.archive.org,upload.wikimedia.org}
     volumes:
       - ./backend:/app
       - go-cache:/go/pkg/mod
+      - covers-data:/data/covers
     depends_on:
       postgres:
         condition: service_healthy
@@ -194,3 +207,4 @@ volumes:
   postgres-data:
   redis-data:
   go-cache:
+  covers-data:

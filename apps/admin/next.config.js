@@ -29,6 +29,11 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/:path*`,
       },
+      // Keeps /covers/... links working on the admin origin too.
+      {
+        source: '/covers/:path*',
+        destination: `${process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/covers/:path*`,
+      },
     ];
   },
 };

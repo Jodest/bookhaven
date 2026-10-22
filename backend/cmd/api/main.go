@@ -24,6 +24,8 @@ import (
 	authhttp "github.com/bookhaven/backend/internal/modules/auth/transport/http"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
+	coversservice "github.com/bookhaven/backend/internal/modules/covers/service"
+	coverhttp "github.com/bookhaven/backend/internal/modules/covers/transport/http"
 	curatedrepository "github.com/bookhaven/backend/internal/modules/curated/repository"
 	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
 	homerepository "github.com/bookhaven/backend/internal/modules/home/repository"
@@ -43,6 +45,7 @@ import (
 	"github.com/bookhaven/backend/internal/modules/users/repository"
 	usersservice "github.com/bookhaven/backend/internal/modules/users/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
+	"github.com/bookhaven/backend/internal/pkg/coverstore"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/bookhaven/backend/internal/pkg/ratelimit"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
@@ -129,7 +132,11 @@ func main() {
 	// Built before the admin service: a genre merge recomputes the automatic
 	// collections it switches.
 	curatedService := curatedservice.NewService(curatedrepository.NewGormRepository(db)).WithLogger(logger)
-	adminService := adminservice.NewService(adminRepo,
+	// Shared asynq.Client for every task the api enqueues (see below); built
+	// before the admin service because saves queue cover copies through it.
+	taskClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
+	defer taskClient.Close()
+	adminOpts := []adminservice.Option{
 		adminservice.WithSimilarInvalidator(similarCache),
 		adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()),
 		adminservice.WithAuthorFetcher(wikidataClient),
@@ -137,7 +144,14 @@ func main() {
 		adminservice.WithGenreWikidataSource(wikidataClient),
 		adminservice.WithAuthorFilmSyncer(screenWorksService),
 		adminservice.WithCollectionRecomputer(curatedService),
-		adminservice.WithLogger(logger))
+		adminservice.WithLogger(logger),
+	}
+	// Self-hosted covers (#489): a save that writes a cover link queues
+	// covers:mirror for the worker. Off with COVERS_MIRROR_ENABLED=false.
+	if cfg.CoversMirrorEnabled {
+		adminOpts = append(adminOpts, adminservice.WithCoverEnqueuer(coversservice.NewEnqueuer(taskClient)))
+	}
+	adminService := adminservice.NewService(adminRepo, adminOpts...)
 	shelvesService := shelvesservice.NewService(shelvesRepo)
 	ratingsService := ratingsservice.NewService(ratingsRepo)
 	reviewsService := reviewsservice.NewService(reviewsRepo)
@@ -158,8 +172,6 @@ func main() {
 	// (modules/aicurator) and transactional emails
 	// (internal/pkg/mailer). The Inspector serves the
 	// admin harvest status endpoints.
-	taskClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
-	defer taskClient.Close()
 	harvestInspector := asynq.NewInspector(asynq.RedisClientOpt{Addr: cfg.RedisURL})
 	defer harvestInspector.Close()
 
@@ -289,6 +301,10 @@ func main() {
 			"status": "ok",
 		})
 	})
+
+	// Self-hosted cover files (#489): public, read-only use of the storage the
+	// worker writes. Registered at the root, outside /api/v1.
+	coverhttp.NewHandler(coverstore.NewFS(cfg.CoversDir)).Register(e)
 
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
