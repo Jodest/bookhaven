@@ -159,7 +159,7 @@ After a PASS, verify yourself (do not invoke another agent):
   $OPENSPEC validate --specs --strict
   ```
   `archive` merges the deltas into `openspec/specs/` and moves the change to `openspec/changes/archive/<date>-<slug>/`. If it refuses (for example, a MODIFIED block would drop scenarios), go back to Step 6 with its output — never pass `--no-validate`. Archiving on the feature branch is deliberate: an agent never commits to `main`, so this is the only point where the spec update can travel with its code through the PR gate;
-- `docs/ROADMAP.md` reflects the feature's current status.
+- `docs/ROADMAP.md` reflects the feature's current status: a completed `[x]` entry in `## Up Next`, and — when the feature came from a `proposal` issue (superseded via `/backlog-next`, or reused as the epic/issue) — that proposal's line deleted from `## Proposed (awaiting prioritization)` in the same commit. Nothing else removes it: `/backlog-next` keeps its queue on issue labels and never edits the file.
 
 ## Step 10 — Commit
 
