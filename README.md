@@ -45,7 +45,7 @@ docker compose exec backend go run ./cmd/similarity
 |---|---|
 | Web | http://localhost:3000 |
 | Admin | http://localhost:3001 |
-| API | http://localhost:8080 (health: `/health`, API: `/api/v1/...`) |
+| API | http://localhost:8080 (liveness: `/health`, readiness: `/health/ready`, API: `/api/v1/...`) |
 | API Docs (Swagger) | http://localhost:8080/swagger/index.html |
 | Mailpit (почтовый ящик) | http://localhost:8025 |
 
