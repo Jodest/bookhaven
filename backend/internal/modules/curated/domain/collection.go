@@ -91,6 +91,10 @@ type CollectionItem struct {
 	// PreviousPosition and Score are set on snapshot items of auto collections.
 	PreviousPosition *int
 	Score            *float64
+	// Source* name the adaptation a verdict-metric snapshot item was scored by.
+	SourceScreenWorkID *uuid.UUID `gorm:"type:uuid"`
+	SourceVotes        *int
+	SourceShare        *float64
 }
 
 func (CollectionItem) TableName() string { return "curated_collection_items" }

@@ -169,3 +169,52 @@ func TestPublic_MovementNullForManualAndSetForAuto(t *testing.T) {
 		t.Fatalf("admin detail: %v", out)
 	}
 }
+
+func TestVerdictCollection_AdaptationShape(t *testing.T) {
+	v := newEnv(t)
+	b := v.book(t, "published")
+	w := uuid.NewString()
+	if err := v.db.Exec("INSERT INTO screen_works (id, title, kind, year) VALUES (?, 'Война и мир', 'film', 1967)", w).Error; err != nil {
+		t.Fatal(err)
+	}
+	v.db.Exec("INSERT INTO book_screen_works (book_id, screen_work_id, hidden) VALUES (?, ?, 0)", b, w)
+	for i := 0; i < 10; i++ {
+		val := "book"
+		if i >= 9 {
+			val = "adaptation"
+		}
+		v.db.Exec("INSERT INTO adaptation_votes (user_id, book_id, screen_work_id, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+			uuid.NewString(), b, w, val, time.Now(), time.Now())
+	}
+	id := v.collection(t, `{"title":"Лучше фильма","size":5,"slug":"vd","is_published":true,"kind":"auto","rule":{"metric":"book_beats_adaptation"}}`)
+
+	_, out := v.do(http.MethodGet, "/collections/vd", "")
+	ad, ok := out["items"].([]any)[0].(map[string]any)["adaptation"].(map[string]any)
+	if !ok || ad["id"] != w || ad["title"] != "Война и мир" || ad["year"].(float64) != 1967 || ad["kind"] != "film" ||
+		ad["votes_count"].(float64) != 10 || ad["share"].(float64) != 0.9 {
+		t.Fatalf("public adaptation: %v", out["items"])
+	}
+	code, det := v.do(http.MethodGet, "/admin/collections/"+id, "")
+	adm := det["items"].([]any)[0].(map[string]any)
+	if code != 200 || adm["adaptation"] == nil || adm["score"] == nil {
+		t.Fatalf("admin adaptation: %d %v", code, adm)
+	}
+	rule := det["rule"].(map[string]any)
+	if rule["min_ratings"].(float64) != 5 || rule["confidence"].(float64) != 10 {
+		t.Fatalf("rule defaults: %v", rule)
+	}
+
+	// Other metrics and manual collections always carry adaptation: null.
+	v.shelved(t, b, "read")
+	v.collection(t, `{"title":"Читаемые","size":5,"slug":"mr","is_published":true,"kind":"auto","rule":{"metric":"most_read"}}`)
+	_, out = v.do(http.MethodGet, "/collections/mr", "")
+	item := out["items"].([]any)[0].(map[string]any)
+	if val, present := item["adaptation"]; !present || val != nil {
+		t.Fatalf("most_read adaptation must be null: %v", item)
+	}
+
+	if code, out := v.do(http.MethodPost, "/admin/collections", `{"title":"Мало","size":5,"kind":"auto","rule":{"metric":"adaptation_beats_book","min_ratings":3}}`); code != 400 ||
+		out["error"] != "rule.min_ratings: must be between 5 and 10000" {
+		t.Fatalf("min 3: %d %v", code, out)
+	}
+}

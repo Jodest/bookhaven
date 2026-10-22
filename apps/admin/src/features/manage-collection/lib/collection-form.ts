@@ -1,4 +1,5 @@
 import { ApiError } from '@bookhaven/api-client';
+import { isVerdictMetric } from '@/entities/curated-collection';
 import type {
   AdminCuratedCollection,
   AdminCuratedCollectionInput,
@@ -29,6 +30,7 @@ export interface CollectionFormValues {
 }
 
 export const DEFAULT_MIN_RATINGS = '3';
+export const DEFAULT_MIN_VERDICT_VOTES = '5';
 export const DEFAULT_CONFIDENCE = '10';
 export const DEFAULT_TRENDING_DAYS = '30';
 
@@ -69,6 +71,11 @@ export function collectionToForm(c: AdminCuratedCollection): CollectionFormValue
 /** Patch for a metric change: «В тренде» prefills the 30-day period when none is set. */
 export function metricPatch(values: CollectionFormValues, metric: AutoMetric): Partial<CollectionFormValues> {
   const patch: Partial<CollectionFormValues> = { metric };
+  // The minimum means ratings for the weighted rating and votes for the verdict metrics:
+  // switching between the two families resets it to the new default.
+  if (isVerdictMetric(metric) !== isVerdictMetric(values.metric)) {
+    patch.min_ratings = isVerdictMetric(metric) ? DEFAULT_MIN_VERDICT_VOTES : DEFAULT_MIN_RATINGS;
+  }
   if (metric === 'trending' && values.period_days.trim() === '') patch.period_days = DEFAULT_TRENDING_DAYS;
   return patch;
 }
@@ -92,16 +99,21 @@ export function validateRule(v: CollectionFormValues): string | null {
     if (!inRange(parseInteger(v.min_ratings), 10000)) return 'Минимум оценок: от 1 до 10000';
     if (!inRange(parseInteger(v.confidence), 10000)) return 'Порог доверия: от 1 до 10000';
   }
+  if (isVerdictMetric(v.metric)) {
+    const votes = parseInteger(v.min_ratings);
+    if (!inRange(votes, 10000) || votes < 5) return 'Минимум голосов: от 5 до 10000';
+    if (!inRange(parseInteger(v.confidence), 10000)) return 'Порог доверия: от 1 до 10000';
+  }
   return null;
 }
 
-/** The rule body of an automatic collection; min ratings and confidence only for the weighted rating. */
+/** The rule body of an automatic collection; min and confidence for the weighted rating and the verdict metrics. */
 export function formToRule(v: CollectionFormValues): AutoRuleInput {
   const rule: AutoRuleInput = {
     metric: v.metric,
     period_days: v.period_days.trim() === '' ? null : parseInteger(v.period_days),
   };
-  if (v.metric === 'weighted_rating') {
+  if (v.metric === 'weighted_rating' || isVerdictMetric(v.metric)) {
     rule.min_ratings = parseInteger(v.min_ratings);
     rule.confidence = parseInteger(v.confidence);
   }

@@ -57,6 +57,7 @@ CREATE TABLE books (id TEXT PRIMARY KEY, status TEXT);`).Error; err != nil {
 	routes := []struct{ method, path, body string }{
 		{http.MethodGet, base, ""},
 		{http.MethodPost, base, `{"title":"Ok title","size":2}`},
+		{http.MethodPost, base, `{"title":"Verdict","size":2,"kind":"auto","rule":{"metric":"book_beats_adaptation"}}`},
 		{http.MethodGet, base + "/" + id, ""},
 		{http.MethodPatch, base + "/" + id, `{}`},
 		{http.MethodDelete, base + "/" + id, ""},

@@ -14087,6 +14087,14 @@ const docTemplate = `{
         "internal_modules_curated_transport_http.adminItemResponse": {
             "type": "object",
             "properties": {
+                "adaptation": {
+                    "description": "Adaptation is the verdict-metric source adaptation, null otherwise.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_curated_transport_http.sourceAdaptationResponse"
+                        }
+                    ]
+                },
                 "book": {
                     "$ref": "#/definitions/internal_modules_curated_transport_http.adminBookResponse"
                 },
@@ -14588,6 +14596,9 @@ const docTemplate = `{
         "internal_modules_curated_transport_http.placedBookResponse": {
             "type": "object",
             "properties": {
+                "adaptation": {
+                    "$ref": "#/definitions/internal_modules_curated_transport_http.sourceAdaptationResponse"
+                },
                 "book": {
                     "$ref": "#/definitions/internal_modules_curated_transport_http.bookListItemResponse"
                 },
@@ -14629,6 +14640,29 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "period_days": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_modules_curated_transport_http.sourceAdaptationResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "share": {
+                    "type": "number"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "votes_count": {
+                    "type": "integer"
+                },
+                "year": {
                     "type": "integer"
                 }
             }

@@ -3,6 +3,7 @@ import {
   ITEM_STATE_LABELS,
   KIND_LABELS,
   METRIC_LABELS,
+  adaptationSourceLabel,
   formatAdminMovement,
   formatScore,
   reserveWarning,
@@ -52,6 +53,8 @@ describe('labels', () => {
     expect(METRIC_LABELS.most_read).toBe('Чаще всего прочитаны');
     expect(METRIC_LABELS.most_wanted).toBe('Чаще всего хотят прочитать');
     expect(METRIC_LABELS.trending).toBe('В тренде (активность за период)');
+    expect(METRIC_LABELS.book_beats_adaptation).toBe('Книга лучше экранизации (голоса читателей)');
+    expect(METRIC_LABELS.adaptation_beats_book).toBe('Экранизация лучше книги (голоса читателей)');
   });
 });
 
@@ -75,7 +78,28 @@ describe('formatScore', () => {
     expect(formatScore('trending', 5)).toBe('5');
   });
 
+  it('shows a whole percent for the verdict metrics', () => {
+    expect(formatScore('book_beats_adaptation', 0.884)).toBe('88%');
+    expect(formatScore('adaptation_beats_book', 1)).toBe('100%');
+  });
+
   it('is empty without a score', () => {
     expect(formatScore('weighted_rating', null)).toBe('');
+  });
+});
+
+describe('adaptationSourceLabel', () => {
+  const adaptation = { id: 'w', title: 'Война и мир', year: 1967, kind: 'film', votes_count: 40, share: 0.9 };
+
+  it('names the adaptation with its year and votes', () => {
+    expect(adaptationSourceLabel(adaptation)).toBe('Экранизация: «Война и мир» (1967) · 40 голосов');
+  });
+
+  it('leaves the year out when unknown and declines the votes', () => {
+    expect(adaptationSourceLabel({ ...adaptation, year: null, votes_count: 21 })).toBe(
+      'Экранизация: «Война и мир» · 21 голос'
+    );
+    expect(adaptationSourceLabel({ ...adaptation, votes_count: 7 })).toContain('7 голосов');
+    expect(adaptationSourceLabel({ ...adaptation, votes_count: 23 })).toContain('23 голоса');
   });
 });

@@ -23,12 +23,25 @@ type Counts struct {
 	Published int
 }
 
+// SourceAdaptation is the adaptation a verdict-metric item was scored by, with
+// the vote figures frozen by the snapshot. It is read only while the book's
+// link to the work is visible.
+type SourceAdaptation struct {
+	ID         uuid.UUID
+	Title      string
+	Year       *int
+	Kind       string
+	VotesCount int
+	Share      float64
+}
+
 // AdminItem is a stored item with its book (authors preloaded).
 type AdminItem struct {
 	Position         int
 	PreviousPosition *int
 	Score            *float64
 	Book             catalogDomain.Book
+	Adaptation       *SourceAdaptation
 }
 
 // PublishedBook is a published book of a collection with its stored position
@@ -37,6 +50,7 @@ type PublishedBook struct {
 	Book             catalogDomain.Book
 	Position         int
 	PreviousPosition *int
+	Adaptation       *SourceAdaptation
 }
 
 // BookPlace is the public place of a book in one published collection.
@@ -49,6 +63,9 @@ type BookPlace struct {
 // collection's scope (published books, its genre, signals since the cut-off).
 type AutoSource interface {
 	AutoRows(ctx context.Context, c domain.Collection, since *time.Time) ([]domain.AutoRow, error)
+	// VerdictRows returns one vote aggregate per visible adaptation of the
+	// in-scope books (verdict metrics).
+	VerdictRows(ctx context.Context, c domain.Collection, since *time.Time) ([]domain.VerdictRow, error)
 }
 
 // RankFunc computes the ordered snapshot of an auto collection from the
@@ -292,6 +309,10 @@ func (r *GormRepository) PublishedPage(ctx context.Context, id uuid.UUID, limit,
 		Where("collection_id = ? AND book_id IN ?", id, ids).Find(&items).Error; err != nil {
 		return nil, err
 	}
+	sources, err := r.sourceAdaptations(ctx, id, ids)
+	if err != nil {
+		return nil, err
+	}
 	byBook := make(map[uuid.UUID]domain.CollectionItem, len(items))
 	for _, it := range items {
 		byBook[it.BookID] = it
@@ -299,7 +320,7 @@ func (r *GormRepository) PublishedPage(ctx context.Context, id uuid.UUID, limit,
 	out := make([]PublishedBook, len(books))
 	for i, b := range books {
 		it := byBook[b.ID]
-		out[i] = PublishedBook{Book: b, Position: it.Position, PreviousPosition: it.PreviousPosition}
+		out[i] = PublishedBook{Book: b, Position: it.Position, PreviousPosition: it.PreviousPosition, Adaptation: sources[b.ID]}
 	}
 	return out, nil
 }
@@ -321,6 +342,10 @@ func (r *GormRepository) AdminItems(ctx context.Context, id uuid.UUID) ([]AdminI
 	if err := r.db.WithContext(ctx).Preload("Authors").Where("id IN ?", ids).Find(&books).Error; err != nil {
 		return nil, err
 	}
+	sources, err := r.sourceAdaptations(ctx, id, ids)
+	if err != nil {
+		return nil, err
+	}
 	byID := make(map[uuid.UUID]catalogDomain.Book, len(books))
 	for _, b := range books {
 		byID[b.ID] = b
@@ -328,8 +353,38 @@ func (r *GormRepository) AdminItems(ctx context.Context, id uuid.UUID) ([]AdminI
 	out := make([]AdminItem, 0, len(items))
 	for _, it := range items {
 		if b, ok := byID[it.BookID]; ok {
-			out = append(out, AdminItem{Position: it.Position, PreviousPosition: it.PreviousPosition, Score: it.Score, Book: b})
+			out = append(out, AdminItem{Position: it.Position, PreviousPosition: it.PreviousPosition, Score: it.Score, Book: b, Adaptation: sources[it.BookID]})
 		}
+	}
+	return out, nil
+}
+
+// sourceAdaptations reads the stored source adaptation of the given books of a
+// collection. A hidden or deleted link gives no entry.
+func (r *GormRepository) sourceAdaptations(ctx context.Context, id uuid.UUID, bookIDs []uuid.UUID) (map[uuid.UUID]*SourceAdaptation, error) {
+	type row struct {
+		BookID     uuid.UUID
+		WorkID     uuid.UUID
+		Title      string
+		Year       *int
+		Kind       string
+		VotesCount int
+		Share      float64
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).Table("curated_collection_items AS i").
+		Select("i.book_id AS book_id, w.id AS work_id, w.title AS title, w.year AS year, w.kind AS kind, "+
+			"i.source_votes AS votes_count, i.source_share AS share").
+		Joins("JOIN book_screen_works l ON l.book_id = i.book_id AND l.screen_work_id = i.source_screen_work_id AND NOT l.hidden").
+		Joins("JOIN screen_works w ON w.id = l.screen_work_id").
+		Where("i.collection_id = ? AND i.book_id IN ? AND i.source_votes IS NOT NULL AND i.source_share IS NOT NULL", id, bookIDs).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]*SourceAdaptation, len(rows))
+	for _, x := range rows {
+		out[x.BookID] = &SourceAdaptation{ID: x.WorkID, Title: x.Title, Year: x.Year, Kind: x.Kind, VotesCount: x.VotesCount, Share: x.Share}
 	}
 	return out, nil
 }

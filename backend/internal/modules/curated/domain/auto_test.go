@@ -136,3 +136,122 @@ func TestRuleNormalize(t *testing.T) {
 		}
 	}
 }
+
+func vrow(book uuid.UUID, title string, work uuid.UUID, workTitle string, year *int, votes, bk, ad int64) VerdictRow {
+	return VerdictRow{BookID: book, Title: title, RatingsCount: 1, ScreenWorkID: work, WorkTitle: workTitle, WorkYear: year,
+		Votes: votes, BookVotes: bk, AdaptationVotes: ad}
+}
+
+func vrule(metric string) Rule {
+	r, _ := Rule{Metric: metric}.Normalize()
+	return r
+}
+
+func TestRankVerdicts_WarAndPeaceExample(t *testing.T) {
+	b, w67, w16 := uuid.New(), uuid.New(), uuid.New()
+	rows := []VerdictRow{
+		vrow(b, "Война и мир", w67, "Война и мир", ip(1967), 40, 36, 3),
+		vrow(b, "Война и мир", w16, "Война и мир", ip(2016), 10, 5, 4),
+	}
+	got := RankVerdicts(rows, vrule(MetricBookBeatsAdaptation), 10)
+	if len(got) != 1 {
+		t.Fatalf("got %+v", got)
+	}
+	if math.Abs(got[0].Score-0.884) > 1e-9 {
+		t.Fatalf("score %v", got[0].Score)
+	}
+	src := got[0].Source
+	if src == nil || src.ScreenWorkID != w67 || src.Votes != 40 || math.Abs(src.Share-0.9) > 1e-9 {
+		t.Fatalf("source %+v", src)
+	}
+}
+
+func TestRankVerdicts_SourceTieBreak(t *testing.T) {
+	b, old, young, none := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	rows := []VerdictRow{
+		vrow(b, "К", young, "Б", ip(2016), 12, 8, 2),
+		vrow(b, "К", none, "А", nil, 12, 8, 2),
+		vrow(b, "К", old, "В", ip(1967), 12, 8, 2),
+	}
+	got := RankVerdicts(rows, vrule(MetricBookBeatsAdaptation), 10)
+	if len(got) != 1 || got[0].Source.ScreenWorkID != old {
+		t.Fatalf("equal votes must pick the oldest year: %+v", got)
+	}
+	got = RankVerdicts(rows[:2], vrule(MetricBookBeatsAdaptation), 10)
+	if got[0].Source.ScreenWorkID != young {
+		t.Fatalf("a work without a year goes last: %+v", got)
+	}
+}
+
+func TestRankVerdicts_MinimumAndNoFallback(t *testing.T) {
+	b, w1, w2 := uuid.New(), uuid.New(), uuid.New()
+	// The most-voted adaptation has 4 votes; the other has fewer, so nothing passes.
+	rows := []VerdictRow{vrow(b, "К", w1, "А", ip(2000), 4, 4, 0), vrow(b, "К", w2, "Б", ip(2001), 3, 3, 0)}
+	if got := RankVerdicts(rows, vrule(MetricBookBeatsAdaptation), 10); len(got) != 0 {
+		t.Fatalf("below the minimum must not rank: %+v", got)
+	}
+	rule := Rule{Metric: MetricBookBeatsAdaptation, MinRatings: ip(10), Confidence: ip(10)}
+	rows = []VerdictRow{vrow(b, "К", w1, "А", ip(2000), 9, 9, 0)}
+	if got := RankVerdicts(rows, rule, 10); len(got) != 0 {
+		t.Fatalf("custom minimum 10: %+v", got)
+	}
+}
+
+func TestRankVerdicts_LeaderGateAndMirror(t *testing.T) {
+	tie, sameMajor, adWins := uuid.New(), uuid.New(), uuid.New()
+	rows := []VerdictRow{
+		vrow(tie, "Т", uuid.New(), "а", nil, 10, 4, 4),       // 4/4/2: tie
+		vrow(sameMajor, "С", uuid.New(), "б", nil, 10, 4, 1), // 4/1/5: same leads
+		vrow(adWins, "А", uuid.New(), "в", nil, 10, 1, 8),    // adaptation leads
+	}
+	book := RankVerdicts(rows, vrule(MetricBookBeatsAdaptation), 10)
+	if len(book) != 0 {
+		t.Fatalf("book_beats_adaptation: %+v", book)
+	}
+	ad := RankVerdicts(rows, vrule(MetricAdaptationBeatsBook), 10)
+	if len(ad) != 1 || ad[0].BookID != adWins {
+		t.Fatalf("adaptation_beats_book: %+v", ad)
+	}
+	if math.Abs(ad[0].Source.Share-0.8) > 1e-9 {
+		t.Fatalf("share %v", ad[0].Source.Share)
+	}
+}
+
+func TestRankVerdicts_TieOrder(t *testing.T) {
+	a, b, c := uuid.New(), uuid.New(), uuid.New()
+	// Same score (same k/v), differing votes and ratings counts.
+	ra := vrow(a, "А", uuid.New(), "x", nil, 10, 8, 0)
+	rb := vrow(b, "Б", uuid.New(), "x", nil, 20, 16, 0)
+	rc := vrow(c, "В", uuid.New(), "x", nil, 10, 8, 0)
+	ra.RatingsCount, rc.RatingsCount = 1, 5
+	// Different v gives different scores with C = 0.8, k/v = 0.8: all equal to 0.8.
+	got := RankVerdicts([]VerdictRow{ra, rb, rc}, vrule(MetricBookBeatsAdaptation), 10)
+	if len(got) != 3 || got[0].BookID != b || got[1].BookID != c || got[2].BookID != a {
+		t.Fatalf("order: %+v", got)
+	}
+	if lim := RankVerdicts([]VerdictRow{ra, rb, rc}, vrule(MetricBookBeatsAdaptation), 2); len(lim) != 2 {
+		t.Fatalf("limit: %d", len(lim))
+	}
+}
+
+func TestRuleNormalize_Verdict(t *testing.T) {
+	for _, m := range []string{MetricBookBeatsAdaptation, MetricAdaptationBeatsBook} {
+		r, err := Rule{Metric: m}.Normalize()
+		if err != nil || *r.MinRatings != 5 || *r.Confidence != 10 || r.PeriodDays != nil {
+			t.Fatalf("%s defaults: %+v %v", m, r, err)
+		}
+		r, err = Rule{Metric: m, MinRatings: ip(20), Confidence: ip(3), PeriodDays: ip(30)}.Normalize()
+		if err != nil || *r.MinRatings != 20 || *r.Confidence != 3 || *r.PeriodDays != 30 {
+			t.Fatalf("%s custom: %+v %v", m, r, err)
+		}
+		if _, err := (Rule{Metric: m, MinRatings: ip(4)}).Normalize(); err == nil || err.Error() != "rule.min_ratings: must be between 5 and 10000" {
+			t.Fatalf("%s min 4: %v", m, err)
+		}
+		if _, err := (Rule{Metric: m, MinRatings: ip(10001)}).Normalize(); err == nil {
+			t.Fatalf("%s min 10001: no error", m)
+		}
+	}
+	if r, _ := (Rule{Metric: MetricWeightedRating, MinRatings: ip(2)}).Normalize(); *r.MinRatings != 2 {
+		t.Fatalf("weighted keeps the 1 floor: %+v", r)
+	}
+}

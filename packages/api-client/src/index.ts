@@ -1379,16 +1379,34 @@ let accessToken: string | null = null;
 
 export type CuratedCollectionKind = 'manual' | 'auto';
 
-export type AutoMetric = 'weighted_rating' | 'most_read' | 'most_wanted' | 'trending';
+export type AutoMetric =
+  | 'weighted_rating'
+  | 'most_read'
+  | 'most_wanted'
+  | 'trending'
+  | 'book_beats_adaptation'
+  | 'adaptation_beats_book';
+
+/** The adaptation a verdict-metric place was scored by (figures frozen by the snapshot). */
+export interface CollectionSourceAdaptation {
+  id: string;
+  title: string;
+  /** Null when unknown. */
+  year: number | null;
+  kind: string;
+  votes_count: number;
+  /** Raw share (0-1) of the metric's value among votes_count. */
+  share: number;
+}
 
 /** Normalized rule of an automatic collection (defaults filled in). */
 export interface AutoRule {
   metric: AutoMetric;
   /** null means all time. */
   period_days: number | null;
-  /** Weighted rating only, null for other metrics. */
+  /** Minimum ratings (weighted rating) or minimum source-adaptation votes (verdict metrics); null for other metrics. */
   min_ratings: number | null;
-  /** The m of the weighted rating, null for other metrics. */
+  /** The m of the weighted rating and of the verdict metrics, null for other metrics. */
   confidence: number | null;
 }
 
@@ -1441,6 +1459,8 @@ export interface CuratedCollectionPlace {
   place: number;
   /** Null for manual collections and without a baseline. */
   movement: CollectionMovement | null;
+  /** Source adaptation of a verdict-metric place; null for other metrics. */
+  adaptation: CollectionSourceAdaptation | null;
   book: Book;
 }
 
@@ -1495,6 +1515,8 @@ export interface AdminCuratedCollectionItem {
   /** Snapshot score of an automatic collection, null for manual. */
   score: number | null;
   movement: CollectionMovement | null;
+  /** Source adaptation of a verdict-metric item; null for other metrics. */
+  adaptation: CollectionSourceAdaptation | null;
   book: {
     id: string;
     title: string;
@@ -2704,13 +2726,19 @@ export const api = {
       if (params?.limit !== undefined) queryParams.limit = String(params.limit);
       const query = new URLSearchParams(queryParams).toString();
       const raw = await fetcher<Omit<CuratedCollectionDetail, 'items'> & {
-        items: { place: number; movement?: CollectionMovement | null; book: RawBookListItem }[];
+        items: {
+          place: number;
+          movement?: CollectionMovement | null;
+          adaptation?: CollectionSourceAdaptation | null;
+          book: RawBookListItem;
+        }[];
       }>(`/api/v1/collections/${encodeURIComponent(slug)}${query ? `?${query}` : ''}`);
       return {
         ...raw,
         items: raw.items.map((it) => ({
           place: it.place,
           movement: it.movement ?? null,
+          adaptation: it.adaptation ?? null,
           book: normalizeBookListItem(it.book),
         })),
       } as CuratedCollectionDetail;

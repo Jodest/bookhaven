@@ -23,6 +23,14 @@ describe('autoCaption', () => {
     ).toBe('Составлена автоматически по активности читателей за последние 30 дн. Обновлено 14 октября 2026.');
   });
 
+  it('names the verdict votes for both verdict metrics', () => {
+    for (const metric of ['book_beats_adaptation', 'adaptation_beats_book'] as const) {
+      expect(autoCaption(rule({ metric, min_ratings: 5 }), '2026-10-21T01:00:00Z')).toBe(
+        'Составлена автоматически по голосам читателей «Книга или экранизация?». Обновлено 21 октября 2026.'
+      );
+    }
+  });
+
   it('omits the date before the first computation', () => {
     expect(autoCaption(rule({ metric: 'most_read' }), null)).toBe(
       'Составлена автоматически по отметкам «Прочитано».'

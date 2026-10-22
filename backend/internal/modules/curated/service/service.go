@@ -46,7 +46,9 @@ type PublicItem struct {
 	Place int
 	// Movement is nil for manual collections and without a baseline.
 	Movement *domain.MovementInfo
-	Book     catalogDomain.Book
+	// Adaptation is the source adaptation of a verdict-metric place, nil otherwise.
+	Adaptation *repository.SourceAdaptation
+	Book       catalogDomain.Book
 }
 
 // PublicPage is a page of a published collection.
@@ -72,9 +74,10 @@ type AdminDetailItem struct {
 	Place int
 	State string
 	// Score and Movement are set for automatic collections.
-	Score    *float64
-	Movement *domain.MovementInfo
-	Book     catalogDomain.Book
+	Score      *float64
+	Movement   *domain.MovementInfo
+	Adaptation *repository.SourceAdaptation
+	Book       catalogDomain.Book
 }
 
 // AdminDetail is the admin view of a collection with every book.
@@ -439,11 +442,19 @@ func (s *Service) recompute(ctx context.Context, id uuid.UUID, reset bool) error
 			t := now.AddDate(0, 0, -*rule.PeriodDays)
 			since = &t
 		}
+		limit := domain.SnapshotLimit(c.Size)
+		if domain.IsVerdictMetric(rule.Metric) {
+			vrows, err := src.VerdictRows(ctx, c, since)
+			if err != nil {
+				return nil, fmt.Errorf("aggregate: %w", err)
+			}
+			return domain.RankVerdicts(vrows, *rule, limit), nil
+		}
 		rows, err := src.AutoRows(ctx, c, since)
 		if err != nil {
 			return nil, fmt.Errorf("aggregate: %w", err)
 		}
-		return domain.RankAuto(rows, *rule, domain.SnapshotLimit(c.Size)), nil
+		return domain.RankAuto(rows, *rule, limit), nil
 	})
 }
 
@@ -531,6 +542,7 @@ func (s *Service) GetAdmin(ctx context.Context, id uuid.UUID) (*AdminDetail, err
 		d.Items = append(d.Items, AdminDetailItem{
 			Position: ranked[i].Position, Place: ranked[i].Place, State: ranked[i].State, Book: it.Book,
 			Score: it.Score, Movement: movementOf(c, it.PreviousPosition, it.Position),
+			Adaptation: it.Adaptation,
 		})
 	}
 	return d, nil
@@ -724,7 +736,7 @@ func (s *Service) GetPublic(ctx context.Context, slugValue string, page, limit i
 	for i, b := range books {
 		res.Items = append(res.Items, PublicItem{
 			Place: offset + i + 1, Book: b.Book,
-			Movement: movementOf(c, b.PreviousPosition, b.Position),
+			Movement: movementOf(c, b.PreviousPosition, b.Position), Adaptation: b.Adaptation,
 		})
 	}
 	return res, nil
