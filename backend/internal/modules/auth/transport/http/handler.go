@@ -182,7 +182,7 @@ func (h *Handler) Register(c echo.Context) error {
 
 // Login godoc
 // @Summary Вход пользователя
-// @Description Сначала проверяется пароль, затем подтверждение email. Если пароль верный, но email не подтверждён, возвращается 403 с кодом email_not_verified, токены не создаются и cookies не устанавливаются.
+// @Description Сначала проверяется пароль, затем подтверждение email. Если пароль верный, но email не подтверждён, возвращается 403 с кодом email_not_verified, токены не создаются и cookies не устанавливаются. Попытки ограничиваются: 60 попыток за 15 минут с одного IP (считаются все попытки, включая успешные) и 10 неудачных за 15 минут для одного адреса (верный пароль или сброс пароля обнуляет счётчик адреса); при превышении - 429 с кодом rate_limited, одинаковый для существующих и неизвестных адресов.
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -191,6 +191,8 @@ func (h *Handler) Register(c echo.Context) error {
 // @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} errorResponse "code: email_not_verified"
+// @Failure 429 {object} rateLimitedResponse "code: rate_limited"
+// @Header 429 {integer} Retry-After "Секунд до следующей попытки"
 // @Failure 500 {object} map[string]string
 // @Router /auth/login [post]
 func (h *Handler) Login(c echo.Context) error {
@@ -202,8 +204,12 @@ func (h *Handler) Login(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	user, tokens, err := h.service.Login(c.Request().Context(), req.Email, req.Password)
+	user, tokens, err := h.service.Login(c.Request().Context(), req.Email, req.Password, c.RealIP())
 	if err != nil {
+		var rateErr *service.RateLimitError
+		if errors.As(err, &rateErr) {
+			return writeRateLimited(c, rateErr)
+		}
 		if errors.Is(err, service.ErrInvalidCredentials) {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		}

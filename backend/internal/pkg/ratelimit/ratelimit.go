@@ -98,6 +98,38 @@ func (l *RedisLimiter) Allow(ctx context.Context, key string) (bool, time.Durati
 	return true, 0, nil
 }
 
+// releaseScript decrements a counter only when it exists and is positive, so a
+// missing key is never created (a TTL-less key would block forever).
+var releaseScript = redis.NewScript(`
+local v = redis.call('GET', KEYS[1])
+if v and tonumber(v) and tonumber(v) > 0 then
+  return redis.call('DECR', KEYS[1])
+end
+return 0
+`)
+
+// Release gives back one slot of the window quota for key (e.g. a reserved
+// attempt that turned out to be a success). It is a no-op when the counter is
+// missing or already zero and never creates a key.
+func (l *RedisLimiter) Release(ctx context.Context, key string) error {
+	windowKey := l.opts.Prefix + ":day:" + key
+	if err := releaseScript.Run(ctx, l.client, []string{windowKey}).Err(); err != nil && !errors.Is(err, redis.Nil) {
+		return fmt.Errorf("ratelimit: release %s: %w", windowKey, err)
+	}
+	return nil
+}
+
+// Reset clears all limiter state for key (both the minimum-interval and the
+// window keys).
+func (l *RedisLimiter) Reset(ctx context.Context, key string) error {
+	minKey := l.opts.Prefix + ":min:" + key
+	windowKey := l.opts.Prefix + ":day:" + key
+	if err := l.client.Del(ctx, minKey, windowKey).Err(); err != nil {
+		return fmt.Errorf("ratelimit: reset %s: %w", key, err)
+	}
+	return nil
+}
+
 // ttl returns the remaining TTL of key, repairing a key that somehow lost
 // its expiry (e.g. a crash between INCR and EXPIRE) so it cannot block
 // forever.

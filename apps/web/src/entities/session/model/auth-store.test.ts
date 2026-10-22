@@ -20,6 +20,7 @@ vi.mock('@bookhaven/api-client', async () => {
   );
   return {
     ApiError: actual.ApiError,
+    isApiError: actual.isApiError,
     isEmailNotVerifiedError: actual.isEmailNotVerifiedError,
     api: {
       auth: {
@@ -118,6 +119,32 @@ describe('auth-store proactive refresh', () => {
     await expect(useAuthStore.getState().login('user@example.com', 'bad')).rejects.toBeTruthy();
 
     expect(useAuthStore.getState().error).toBe('invalid credentials');
+  });
+
+  it('maps 429 rate_limited to a message with the formatted wait', async () => {
+    useAuthStore.setState({ error: null });
+    loginMock.mockRejectedValue(
+      new ApiError(429, 'Too Many Requests', 'too many requests', '/api/v1/auth/login', 'rate_limited', 600)
+    );
+
+    await expect(useAuthStore.getState().login('user@example.com', 'bad')).rejects.toBeTruthy();
+
+    expect(useAuthStore.getState().error).toBe(
+      'Слишком много попыток входа. Попробуйте снова через 10 мин.'
+    );
+  });
+
+  it('falls back to 15 мин when a 429 carries no retry_after_seconds', async () => {
+    useAuthStore.setState({ error: null });
+    loginMock.mockRejectedValue(
+      new ApiError(429, 'Too Many Requests', 'too many requests', '/api/v1/auth/login')
+    );
+
+    await expect(useAuthStore.getState().login('user@example.com', 'bad')).rejects.toBeTruthy();
+
+    expect(useAuthStore.getState().error).toBe(
+      'Слишком много попыток входа. Попробуйте снова через 15 мин.'
+    );
   });
 
   it('schedules a fallback refresh timer when fetchUser finds an existing session', async () => {

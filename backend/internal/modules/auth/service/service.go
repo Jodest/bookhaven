@@ -86,6 +86,22 @@ type ResendLimiters struct {
 	Email ResendLimiter
 }
 
+// LoginLimiter throttles failed login attempts per key. Allow reserves a slot,
+// Release gives one back, Reset clears the key.
+type LoginLimiter interface {
+	Allow(ctx context.Context, key string) (allowed bool, retryAfter time.Duration, err error)
+	Release(ctx context.Context, key string) error
+	Reset(ctx context.Context, key string) error
+}
+
+// LoginLimiters are the two login limiters: IP is keyed by the client IP,
+// Email by the sha256 of the normalised address. A nil limiter means "no
+// limit".
+type LoginLimiters struct {
+	IP    LoginLimiter
+	Email LoginLimiter
+}
+
 // defaultVerificationTokenTTL is used when Config.VerificationTokenTTL is 0.
 const defaultVerificationTokenTTL = 24 * time.Hour
 
@@ -124,12 +140,15 @@ type Service struct {
 	limiters ResendLimiters
 	// resetLimiters limit the public forgot-password endpoint.
 	resetLimiters ResendLimiters
+	// loginLimiters throttle failed logins (fail-open on limiter errors).
+	loginLimiters LoginLimiters
 	logger        *zap.Logger
 }
 
 // NewService creates a new auth Service. limiters limit resend-verification,
-// resetLimiters limit forgot-password. logger may be nil (no logging).
-func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mailer, limiters ResendLimiters, resetLimiters ResendLimiters, logger *zap.Logger) *Service {
+// resetLimiters limit forgot-password, loginLimiters throttle failed logins
+// (empty = no limits). logger may be nil (no logging).
+func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mailer, limiters ResendLimiters, resetLimiters ResendLimiters, loginLimiters LoginLimiters, logger *zap.Logger) *Service {
 	if cfg.VerificationTokenTTL <= 0 {
 		cfg.VerificationTokenTTL = defaultVerificationTokenTTL
 	}
@@ -143,6 +162,7 @@ func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mai
 		mailer:        mailer,
 		limiters:      limiters,
 		resetLimiters: resetLimiters,
+		loginLimiters: loginLimiters,
 		logger:        logger,
 	}
 }
@@ -199,12 +219,72 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 // checked before the verification status, so only someone who knows the
 // password learns that the account is unverified (ErrEmailNotVerified, no
 // tokens created).
-func (s *Service) Login(ctx context.Context, email, password string) (*usersDomain.User, *domain.TokenPair, error) {
+//
+// Attempts are throttled per client ip (every attempt counts) and per
+// address (failures): each attempt
+// reserves a slot in both limiters before the user lookup (so the answer is
+// identical for existing and unknown accounts), a failure keeps the
+// reservations, a correct password keeps the ip slot (so own-account
+// logins cannot keep the ip counter flat) and resets the address counter, an internal error releases both. Limiter errors fail open
+// (logged). Errors: *RateLimitError (ErrRateLimited), ErrInvalidCredentials,
+// ErrEmailNotVerified.
+func (s *Service) Login(ctx context.Context, email, password, ip string) (*usersDomain.User, *domain.TokenPair, error) {
+	emailKey := emailRateLimitKey(email)
+	ipReserved, emailReserved := false, false
+
+	if lim := s.loginLimiters.IP; lim != nil {
+		allowed, retryAfter, err := lim.Allow(ctx, ip)
+		switch {
+		case err != nil:
+			s.logger.Warn("login: ip rate limiter unavailable, failing open", zap.Error(err))
+		case !allowed:
+			return nil, nil, &RateLimitError{RetryAfter: retryAfter}
+		default:
+			ipReserved = true
+		}
+	}
+	if lim := s.loginLimiters.Email; lim != nil {
+		allowed, retryAfter, err := lim.Allow(ctx, emailKey)
+		switch {
+		case err != nil:
+			s.logger.Warn("login: email rate limiter unavailable, failing open", zap.Error(err))
+		case !allowed:
+			// The ip slot stays spent: hammering a blocked address costs quota.
+			return nil, nil, &RateLimitError{RetryAfter: retryAfter}
+		default:
+			emailReserved = true
+		}
+	}
+
+	// settleSuccess: the password was correct. The ip slot is deliberately
+	// kept: the per-ip counter counts every attempt.
+	settleSuccess := func() {
+		if s.loginLimiters.Email != nil {
+			if err := s.loginLimiters.Email.Reset(ctx, emailKey); err != nil {
+				s.logger.Warn("login: failed to reset email counter", zap.Error(err))
+			}
+		}
+	}
+	// settleInternal: an internal error is not a guess; give both slots back.
+	settleInternal := func() {
+		if ipReserved {
+			if err := s.loginLimiters.IP.Release(ctx, ip); err != nil {
+				s.logger.Warn("login: failed to release ip slot", zap.Error(err))
+			}
+		}
+		if emailReserved {
+			if err := s.loginLimiters.Email.Release(ctx, emailKey); err != nil {
+				s.logger.Warn("login: failed to release email slot", zap.Error(err))
+			}
+		}
+	}
+
 	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil, ErrInvalidCredentials
 		}
+		settleInternal()
 		return nil, nil, fmt.Errorf("get user by email: %w", err)
 	}
 
@@ -217,14 +297,17 @@ func (s *Service) Login(ctx context.Context, email, password string) (*usersDoma
 	}
 
 	if user.EmailVerifiedAt == nil {
+		settleSuccess()
 		return user, nil, ErrEmailNotVerified
 	}
 
 	tokens, err := s.createTokenPair(ctx, user.ID)
 	if err != nil {
+		settleInternal()
 		return nil, nil, fmt.Errorf("create token pair: %w", err)
 	}
 
+	settleSuccess()
 	return user, tokens, nil
 }
 
@@ -664,7 +747,7 @@ func (s *Service) ResetPassword(ctx context.Context, plain, newPassword string) 
 	}
 
 	now := time.Now()
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&domain.PasswordResetToken{}).
 			Where("id = ? AND used_at IS NULL", token.ID).
 			Update("used_at", now)
@@ -690,6 +773,18 @@ func (s *Service) ResetPassword(ctx context.Context, plain, newPassword string) 
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// The reset link proves mailbox ownership, so it clears the login
+	// throttle of the address. Failure is logged, not returned.
+	if lim := s.loginLimiters.Email; lim != nil {
+		if rerr := lim.Reset(ctx, emailRateLimitKey(user.Email)); rerr != nil {
+			s.logger.Warn("reset password: failed to reset login throttle", zap.Error(rerr))
+		}
+	}
+	return nil
 }
 
 // issueVerification creates a verification token for user and enqueues the
