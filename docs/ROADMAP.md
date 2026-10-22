@@ -141,7 +141,6 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [ ] Reading challenge counts unpublished books; next year's goal cannot be set on the site — also counts by shelf `added_at`, so re-shelving an old book counts it again [code] (proposed 2026-10-13, #386)
 - [ ] Admin catalog forms: English error messages, silently dropped links, genre name case — raw server messages, non-http(s) cover/photo URLs dropped, genre create lowercases the first letter [code] (proposed 2026-10-13, #387)
 - [ ] The contributor role grants no permissions — the role exists and can be assigned but unlocks nothing [code] (proposed 2026-10-13, #388)
-- [ ] Store book covers locally instead of hotlinking Open Library — Open Library covers take 2–3 s per request through redirects to archive.org [code] (proposed 2026-10-17, #489)
 
 ## Technical Debt
 
