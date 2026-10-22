@@ -75,7 +75,7 @@ Only run checks relevant to the changed areas.
 ## Documentation
 
 - Update `docs/features/<feature>.md` when implementation details or behavior changed.
-- Update `docs/ROADMAP.md` when feature status changes.
+- Update `docs/ROADMAP.md` when feature status changes; if the work implements a `proposal` issue, delete that issue's line from `## Proposed (awaiting prioritization)` (the `[x]` entry in `## Up Next` replaces it).
 - Do not create duplicate documentation.
 
 ## Before reporting done

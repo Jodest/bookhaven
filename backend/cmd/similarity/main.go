@@ -14,12 +14,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 
 	"github.com/bookhaven/backend/internal/config"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
+	"github.com/bookhaven/backend/internal/pkg/database"
 )
 
 func main() {
@@ -32,7 +31,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+	db, err := database.Open(cfg.DatabaseURL, database.PoolConfigFrom(cfg))
 	if err != nil {
 		fmt.Printf("failed to connect to database: %v\n", err)
 		os.Exit(1)

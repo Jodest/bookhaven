@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 // setSMTPEnv clears every SMTP-related variable so the host environment
@@ -671,3 +672,47 @@ func TestLoad_AuthCookieSecure(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+func setDBPoolEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	for _, k := range []string{"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS", "DB_CONN_MAX_LIFETIME", "DB_CONN_MAX_IDLE_TIME"} {
+		t.Setenv(k, "")
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestLoad_DBPool(t *testing.T) {
+	type want struct {
+		open, idle     int
+		life, idleTime time.Duration
+	}
+	cases := []struct {
+		name string
+		env  map[string]string
+		want want
+	}{
+		{"defaults", nil, want{20, 5, 30 * time.Minute, 5 * time.Minute}},
+		{"overrides", map[string]string{"DB_MAX_OPEN_CONNS": "40", "DB_MAX_IDLE_CONNS": "10", "DB_CONN_MAX_LIFETIME": "1h", "DB_CONN_MAX_IDLE_TIME": "30s"}, want{40, 10, time.Hour, 30 * time.Second}},
+		{"invalid", map[string]string{"DB_MAX_OPEN_CONNS": "abc", "DB_MAX_IDLE_CONNS": "x", "DB_CONN_MAX_LIFETIME": "soon", "DB_CONN_MAX_IDLE_TIME": "5"}, want{20, 5, 30 * time.Minute, 5 * time.Minute}},
+		{"negative", map[string]string{"DB_MAX_OPEN_CONNS": "-1", "DB_MAX_IDLE_CONNS": "-2", "DB_CONN_MAX_LIFETIME": "-1m", "DB_CONN_MAX_IDLE_TIME": "-1s"}, want{20, 5, 30 * time.Minute, 5 * time.Minute}},
+		{"zero open falls back", map[string]string{"DB_MAX_OPEN_CONNS": "0"}, want{20, 5, 30 * time.Minute, 5 * time.Minute}},
+		{"idle capped at open", map[string]string{"DB_MAX_OPEN_CONNS": "3", "DB_MAX_IDLE_CONNS": "8"}, want{3, 3, 30 * time.Minute, 5 * time.Minute}},
+		{"zero idle and zero durations", map[string]string{"DB_MAX_IDLE_CONNS": "0", "DB_CONN_MAX_LIFETIME": "0", "DB_CONN_MAX_IDLE_TIME": "0"}, want{20, 0, 0, 0}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setSMTPEnv(t, nil)
+			setDBPoolEnv(t, tc.env)
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			got := want{cfg.DBMaxOpenConns, cfg.DBMaxIdleConns, cfg.DBConnMaxLifetime, cfg.DBConnMaxIdleTime}
+			if got != tc.want {
+				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}

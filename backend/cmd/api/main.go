@@ -46,6 +46,7 @@ import (
 	usersservice "github.com/bookhaven/backend/internal/modules/users/service"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/bookhaven/backend/internal/pkg/coverstore"
+	"github.com/bookhaven/backend/internal/pkg/database"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/bookhaven/backend/internal/pkg/ratelimit"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
@@ -55,8 +56,6 @@ import (
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 
 	_ "github.com/bookhaven/backend/docs"
 	echoSwagger "github.com/swaggo/echo-swagger"
@@ -84,10 +83,15 @@ func main() {
 	}
 
 	// Database connection
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+	db, err := database.Open(cfg.DatabaseURL, database.PoolConfigFrom(cfg))
 	if err != nil {
 		logger.Fatal("failed to connect to database", zap.Error(err))
 	}
+	logger.Info("database pool configured",
+		zap.Int("max_open_conns", cfg.DBMaxOpenConns),
+		zap.Int("max_idle_conns", cfg.DBMaxIdleConns),
+		zap.Duration("conn_max_lifetime", cfg.DBConnMaxLifetime),
+		zap.Duration("conn_max_idle_time", cfg.DBConnMaxIdleTime))
 
 	// Repositories
 	usersRepo := repository.NewGormRepository(db)
