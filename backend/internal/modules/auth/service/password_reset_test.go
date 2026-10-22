@@ -315,10 +315,10 @@ func TestResetPassword_Success(t *testing.T) {
 	if _, err := env.svc.RefreshTokens(context.Background(), oldSession.RefreshToken); !errors.Is(err, ErrTokenInvalid) {
 		t.Fatalf("old refresh token: expected ErrTokenInvalid, got %v", err)
 	}
-	if _, _, err := env.svc.Login(context.Background(), "anna@example.com", "password123"); !errors.Is(err, ErrInvalidCredentials) {
+	if _, _, err := env.svc.Login(context.Background(), "anna@example.com", "password123", "203.0.113.9"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("old password login: expected ErrInvalidCredentials, got %v", err)
 	}
-	if _, tokens, err := env.svc.Login(context.Background(), "anna@example.com", newTestPassword); err != nil || tokens == nil {
+	if _, tokens, err := env.svc.Login(context.Background(), "anna@example.com", newTestPassword, "203.0.113.9"); err != nil || tokens == nil {
 		t.Fatalf("new password login: tokens=%v err=%v", tokens, err)
 	}
 
@@ -342,7 +342,7 @@ func TestResetPassword_VerifiesUnverifiedUser(t *testing.T) {
 	if !env.isVerified(t, user.ID) {
 		t.Fatal("reset must verify the email")
 	}
-	if _, tokens, err := env.svc.Login(context.Background(), "anna@example.com", newTestPassword); err != nil || tokens == nil {
+	if _, tokens, err := env.svc.Login(context.Background(), "anna@example.com", newTestPassword, "203.0.113.9"); err != nil || tokens == nil {
 		t.Fatalf("login after reset: tokens=%v err=%v", tokens, err)
 	}
 }
