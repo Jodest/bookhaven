@@ -85,6 +85,16 @@ describe('ResetPasswordView', () => {
     expect(resetPasswordMock).not.toHaveBeenCalled();
   });
 
+  it('password over 72 bytes -> field error, no API call', async () => {
+    render(<ResetPasswordView />);
+    fillAndSubmit('я'.repeat(40));
+
+    expect(
+      await screen.findByText('Пароль слишком длинный: до 72 латинских или 36 русских букв')
+    ).toBeInTheDocument();
+    expect(resetPasswordMock).not.toHaveBeenCalled();
+  });
+
   it('mismatched passwords -> field error, no API call', async () => {
     render(<ResetPasswordView />);
     fillAndSubmit('new-password-456', 'other-password-456');

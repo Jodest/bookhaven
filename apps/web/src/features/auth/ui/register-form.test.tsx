@@ -48,6 +48,19 @@ describe('RegisterForm', () => {
     vi.clearAllMocks();
   });
 
+  it('shows the byte-limit message and skips the API for a 40-Cyrillic-letter password', async () => {
+    render(<RegisterForm />);
+    fireEvent.change(screen.getByLabelText('Имя'), { target: { value: 'Test User' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'я'.repeat(40) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }));
+
+    expect(
+      await screen.findByText('Пароль слишком длинный: до 72 латинских или 36 русских букв')
+    ).toBeInTheDocument();
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
   it('navigates to /login keeping the safe `redirect` param on success', async () => {
     searchParamsValue = new URLSearchParams({ redirect: '/books/abc' });
     render(<RegisterForm />);

@@ -258,3 +258,36 @@ func TestResetPasswordHandler_Success(t *testing.T) {
 		t.Fatalf("login status = %d, want 200 (body %s)", lrec.Code, lrec.Body.String())
 	}
 }
+
+func TestPasswordTooLongHandlers(t *testing.T) {
+	long := strings.Repeat("я", 40)
+
+	env := setupVerificationHandler(t)
+	c, rec := postJSON("/api/v1/auth/register", `{"email":"long@example.com","password":"`+long+`","name":"Пётр"}`)
+	if err := env.h.Register(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("register status = %d, want 400 (body %s)", rec.Code, rec.Body.String())
+	}
+	if body := decodeBody(t, rec); body["error"] != "password must be at most 72 bytes" {
+		t.Fatalf("unexpected register body %s", rec.Body.String())
+	}
+
+	valid := strings.Repeat("a", 64)
+	user := env.registerUser(t, "petr@example.com")
+	env.insertResetToken(t, user.ID, user.Email, valid, time.Now().Add(time.Hour), nil)
+	c, rec = postJSON("/api/v1/auth/reset-password", `{"token":"`+valid+`","password":"`+long+`"}`)
+	if err := env.h.ResetPassword(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("reset status = %d, want 400 (body %s)", rec.Code, rec.Body.String())
+	}
+	if body := decodeBody(t, rec); body["code"] != "invalid_password" {
+		t.Fatalf("unexpected reset body %s", rec.Body.String())
+	}
+	if env.resetTokenUsed(t, valid) {
+		t.Fatal("token must stay unused")
+	}
+}
