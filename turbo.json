@@ -4,10 +4,12 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
+      "env": ["API_URL"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
     "@bookhaven/admin#build": {
       "dependsOn": ["^build"],
+      "env": ["API_URL"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/docs/admin-guide/**"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
