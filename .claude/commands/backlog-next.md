@@ -19,9 +19,15 @@ Install and authenticate the GitHub CLI (see docs/PIPELINE.md) before this pipel
 
 ## Step 1 — Check for an existing queue first
 
-Read `docs/ROADMAP.md`. If a `## Up Next (queued order)` section exists and is non-empty, **skip ranking and asking entirely** — a human already chose this order in a previous run. Take the first item listed, remove it from the section (committing that removal the same way Step 4 below commits queue changes), and go straight to **Step 5 — Hand off**.
+The queue lives on the GitHub issues themselves, not in any file: a queued item is an open `proposal` issue carrying the `queued` label plus a comment `Queue position: <N>` (posted by Step 4). Read it:
 
-If the section doesn't exist or is empty, continue to Step 2.
+```bash
+gh issue list --label queued --state open --json number,title,comments
+```
+
+If that returns any issues, **skip ranking and asking entirely** — a human already chose this order in a previous run. For each issue take the number from its most recent comment matching `^Queue position: (\d+)`; pick the issue with the lowest number (an issue with no such comment sorts last, ties go to the lower issue number). Dequeue it — `gh issue edit <n> --remove-label queued` — and go straight to **Step 5 — Hand off**. No file edit, no commit, no PR.
+
+If there are no `queued` issues, continue to Step 2.
 
 ## Step 2 — Rank
 
@@ -41,28 +47,28 @@ Otherwise, use `AskUserQuestion` (`multiSelect: true`) with the ranked candidate
 
 ## Step 4 — Persist the queue (only if more than one item was selected)
 
-Update `docs/ROADMAP.md`: add (or extend) a `## Up Next (queued order)` section directly above `## Proposed (awaiting prioritization)`, listing the chosen items in the stated order:
+The first item in the stated order is handed off right now (Step 5) and is **not** queued. Queue the rest on the issues themselves — no `docs/ROADMAP.md` edit, no branch, no commit, no PR:
 
-```
-1. #<n> <title>
-2. #<n> <title>
-...
+```bash
+gh label create queued --color FBCA04 --description "Picked by /backlog-next, waiting its turn" 2>/dev/null || true
+gh issue edit <n> --add-label queued
+gh issue comment <n> --body "Queue position: <N> — queued via /backlog-next on <YYYY-MM-DD>."
 ```
 
-Remove these same items from the `## Proposed` section — they're no longer "awaiting prioritization," they're queued. Commit and open a doc-only PR the same way `/backlog-groom` does (short branch off `main`, PR into `dev`, never merged) — this keeps the queue visible and durable across sessions even if implementation of item 1 takes a while.
+`<N>` continues after the highest `Queue position` already held by an open `queued` issue (start at 1 when the queue is empty), in the order the human stated. Positions only need to sort correctly; gaps are fine, never renumber.
 
 If only one item was selected, skip this step — there's no queue to persist for a single pick, go straight to Step 5.
 
 ## Step 5 — Hand off exactly one item to the feature pipeline
 
-Take the single item now in hand (from Step 1's dequeue, Step 3's single pick, or Step 4's first queued item):
+Take the single item now in hand (from Step 1's dequeue, Step 3's single pick, or the first item of Step 3's stated order):
 
 1. `gh issue view <n> --json title,body` — this becomes the feature request text passed onward. Do not re-summarize or reinterpret it; pass the actual title/body through.
 2. Run the exact procedure in `.claude/commands/feature.md`, treating the proposal issue's title + body as `$ARGUMENTS` (no `--small` unless the item is obviously trivial — most backlog proposals warrant full planning through `feature-planner`).
 3. `feature.md`'s own Step 5 creates the epic (or single issue for a small/hotfix classification). Once that issue/epic number is known, close the original proposal issue and link forward: `gh issue close <proposal-n> --comment "Superseded by #<epic-or-issue-number> — picked up via /backlog-next."`
 4. Continue following `feature.md` through to its own stopping point (PR opened into `dev`, never merged).
 
-**Stop there.** Do not automatically continue to the next queued item, even if one is waiting — that would violate the strictly-sequential, one-thing-in-flight rule this command exists to enforce. The next queued item starts only when the human runs `/backlog-next` again (Step 1 will find it waiting).
+**Stop there.** Do not automatically continue to the next queued item, even if one is waiting — that would violate the strictly-sequential, one-thing-in-flight rule this command exists to enforce. The next queued item starts only when the human runs `/backlog-next` again (Step 1 will find it by its `queued` label).
 
 ## If the user picks "none of these"
 
@@ -80,7 +86,7 @@ Do not proceed to planning, issue creation, or implementation.
 For a hand-off that reached the pipeline, report using `.claude/commands/feature.md`'s own final-output format (`STATUS: PR_OPEN`, `STATUS: FAIL`, etc.) — this command does not invent a separate report format, it inherits whatever the pipeline it handed off to produced. Additionally note:
 
 - which proposal issue was closed/superseded;
-- if a queue was persisted in Step 4, the remaining items and their order, plus: *"Run `/backlog-next` again when ready for the next one — it'll pick up #<next> directly, no re-ranking needed."*
+- if a queue was persisted in Step 4, the queued items and their positions (they carry the `queued` label), plus: *"Run `/backlog-next` again when ready for the next one — it'll pick up #<next> directly, no re-ranking needed."*
 
 For a reject-only run (Step 3's "reject #N" path), report:
 

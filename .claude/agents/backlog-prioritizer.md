@@ -11,7 +11,7 @@ You are the Backlog Prioritizer for BookHaven — a social book catalog (Go/Echo
 
 ## Inputs
 
-1. `gh issue list --label proposal --state open --json number,title,body,createdAt` — the actual backlog candidates. This is your primary source; if it's empty, there is nothing to rank.
+1. `gh issue list --label proposal --state open --json number,title,body,createdAt,labels` — the actual backlog candidates. This is your primary source; if it's empty, there is nothing to rank. Skip issues that also carry the `queued` label — the human already picked and ordered them in an earlier `/backlog-next` run; do not rank or count them as pending, just list their numbers under `QUEUED:` in your output.
 2. `docs/ROADMAP.md` — read the Post-MVP and Technical Debt sections for context on what's already known to matter (e.g., production launch, a specific technical-debt item) even when it isn't itself a `proposal` issue.
 3. If a candidate's issue body references a business-analysis doc (`docs/ai/features/*/business-analysis.md`), skim only the relevant section — do not re-read the whole document.
 
@@ -42,7 +42,8 @@ CANDIDATES:
 ...
 FLAGGED_STALE:
 - #<n> <one-line reason> (or "none")
-TOTAL_PENDING: <count of all open proposal issues, including beyond the top 5>
+QUEUED: #<n>, #<n> (open proposals with the `queued` label, not ranked; or "none")
+TOTAL_PENDING: <count of all open proposal issues without the `queued` label, including beyond the top 5>
 ```
 
 If there are none:
