@@ -325,7 +325,13 @@ Transactional email (verification, password reset, later notifications) is sent 
 | Variable | Meaning |
 |---|---|
 | `AUTH_COOKIE_SECURE` | `Secure` attribute on the auth cookies (`access_token`, `refresh_token`, `has_session`). Default: on when `APP_ENV=production` (prod compose sets `true`), off in development; an explicit `true`/`false` always wins (an unparsable value falls back to the default). **TLS must terminate in front of the api/web**, otherwise browsers drop Secure cookies and login appears to succeed but the session is lost; set `false` only for an HTTP-only test box (the api logs a warning at startup). |
+| `DB_MAX_OPEN_CONNS` | Max open PostgreSQL connections per process (api, worker, similarity). Integer >= 1. Default `20`. Invalid values fall back to the default. |
+| `DB_MAX_IDLE_CONNS` | Max idle connections kept per process. Integer >= 0, capped at `DB_MAX_OPEN_CONNS`. Default `5`. |
+| `DB_CONN_MAX_LIFETIME` | Recycle a connection after this age (Go duration, e.g. `30m`; `0` = no limit). Default `30m`. |
+| `DB_CONN_MAX_IDLE_TIME` | Close a connection idle this long (Go duration; `0` = no limit). Default `5m`. |
 | `WEB_BASE_URL` | Public origin of the web app, used to build absolute links in emails (e.g. `https://<WEB_DOMAIN>/verify-email?token=...`). Set in `docker-compose.prod.yml` as `https://${WEB_DOMAIN}` — no separate `.env` key. Must be an absolute `http(s)` URL; `config.Load` refuses to start in production when it is not set explicitly (the worker gets the same value for that reason). Dev default: `http://localhost:3000`. |
+
+The `DB_*` pool limits apply per process. Connection budget: (number of api replicas + worker + one similarity run) x `DB_MAX_OPEN_CONNS` must stay below PostgreSQL `max_connections` (100 by default); with the defaults that is 60 for one api, one worker and one similarity run.
 
 The api also uses Redis directly (not only via asynq): rate limiting of the public "resend verification email" endpoint — `rl:verify-resend-ip:*` (20/hour per client IP) and `rl:verify-resend-email:*` (1/minute and 5/day per address; the key is the sha256 of the lowercased email, no plain addresses in Redis). The public "forgot password" endpoint (#161, [password-reset.md](features/password-reset.md)) has its own, separately counted limits with the same shape: `rl:pwreset-ip:*` (20/hour per client IP) and `rl:pwreset-email:*` (1/minute and 5/day per address, same sha256 key). It reuses the existing `REDIS_URL`; no extra configuration.
 

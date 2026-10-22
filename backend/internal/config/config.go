@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bookhaven/backend/internal/pkg/coverfetch"
 	"github.com/joho/godotenv"
@@ -119,6 +120,12 @@ type Config struct {
 	// AuthCookieSecure sets the Secure attribute on auth cookies. From
 	// AUTH_COOKIE_SECURE; unset/unparsable means on iff APP_ENV=production.
 	AuthCookieSecure bool
+
+	// Database pool limits per process (docs/features/db-pool-limits.md).
+	DBMaxOpenConns    int
+	DBMaxIdleConns    int
+	DBConnMaxLifetime time.Duration
+	DBConnMaxIdleTime time.Duration
 }
 
 // AIGenresActive reports whether AI genre suggestions are switched on and
@@ -150,6 +157,14 @@ func (c *Config) AICuratorActive() bool {
 func (c *Config) AIModerationActive() bool {
 	return c.AIModerationEnabled && strings.TrimSpace(c.AnthropicAPIKey) != ""
 }
+
+// Database pool defaults (per process).
+const (
+	DefaultDBMaxOpenConns    = 20
+	DefaultDBMaxIdleConns    = 5
+	DefaultDBConnMaxLifetime = 30 * time.Minute
+	DefaultDBConnMaxIdleTime = 5 * time.Minute
+)
 
 // Scheduled harvest defaults and bounds.
 const (
@@ -299,6 +314,14 @@ func Load() (*Config, error) {
 
 	cfg.AuthCookieSecure = parseAuthCookieSecure(cfg.Env)
 
+	cfg.DBMaxOpenConns = parseMinInt(os.Getenv("DB_MAX_OPEN_CONNS"), DefaultDBMaxOpenConns, 1)
+	cfg.DBMaxIdleConns = parseMinInt(os.Getenv("DB_MAX_IDLE_CONNS"), DefaultDBMaxIdleConns, 0)
+	if cfg.DBMaxIdleConns > cfg.DBMaxOpenConns {
+		cfg.DBMaxIdleConns = cfg.DBMaxOpenConns
+	}
+	cfg.DBConnMaxLifetime = parseNonNegDuration(os.Getenv("DB_CONN_MAX_LIFETIME"), DefaultDBConnMaxLifetime)
+	cfg.DBConnMaxIdleTime = parseNonNegDuration(os.Getenv("DB_CONN_MAX_IDLE_TIME"), DefaultDBConnMaxIdleTime)
+
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
 	if err != nil || smtpPort <= 0 || smtpPort > 65535 {
 		return nil, fmt.Errorf("SMTP_PORT must be a valid port number")
@@ -384,6 +407,25 @@ func parseClampedInt(raw string, def, max int) int {
 		return max
 	}
 	return n
+}
+
+// parseMinInt parses an integer env value; empty, invalid or below min is def.
+func parseMinInt(raw string, def, min int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n < min {
+		return def
+	}
+	return n
+}
+
+// parseNonNegDuration parses a Go duration; empty, invalid or negative is def.
+// Zero is valid and means no limit.
+func parseNonNegDuration(raw string, def time.Duration) time.Duration {
+	d, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || d < 0 {
+		return def
+	}
+	return d
 }
 
 func splitEnv(value string) []string {
