@@ -1,3 +1,5 @@
+const { securityHeaders } = require('./security-headers');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -29,6 +31,19 @@ const nextConfig = {
   },
   experimental: {
     typedRoutes: true,
+  },
+  // Excludes the proxied /api and /covers so backend headers are not duplicated.
+  async headers() {
+    return [
+      {
+        source: '/((?!api/|covers/).*)',
+        headers: securityHeaders({
+          isDev: process.env.NODE_ENV === 'development',
+          apiUrl: process.env.NEXT_PUBLIC_API_URL,
+          noindex: false,
+        }),
+      },
+    ];
   },
   async rewrites() {
     return [
