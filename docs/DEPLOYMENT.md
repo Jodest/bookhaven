@@ -463,6 +463,13 @@ Kept intentionally minimal for an MVP with no ops budget:
 
 Revisit this section once there's a real incident or real user volume — don't build observability infrastructure speculatively on a minimal-budget MVP.
 
+## Security headers
+
+- **Who sets what**: the apps own their headers (web/admin via `headers()` in `next.config.js` from `security-headers.js`; the API via the `SecurityHeaders()` Echo middleware), so they are identical in local dev and prod. Caddy adds **only** `Strict-Transport-Security: max-age=31536000` (the `(hsts)` snippet in the Caddyfile), because only Caddy knows the connection is TLS. Caddy must not set any header the apps set.
+- **CSP is enforced** and pragmatic: `script-src 'unsafe-inline'` is required by the App Router inline bootstrap scripts and the JSON-LD block, so the policy guards framing, objects, base-uri, forms and third-party scripts but is not an XSS stopper. A nonce-based CSP is a possible follow-up. `img-src https:` is intentional (Wikimedia photos, arbitrary avatar URLs).
+- **HSTS has no `preload` and no `includeSubDomains`** until prod has run on TLS for a while; it is easy to back out by lowering `max-age`.
+- **`connect-src` API origin** comes from `NEXT_PUBLIC_API_URL` at image build time. The prod images are built with only `API_URL` as a build arg (see `deploy.yml` / `Dockerfile.node`), so `NEXT_PUBLIC_API_URL` is empty at build, the browser client uses the same-origin `/api` rewrite and `connect-src 'self'` is sufficient. If you ever pass `NEXT_PUBLIC_API_URL` as a build arg, the API origin is added automatically.
+
 ## Security checklist
 
 - [x] SSH: key-only, no root login, no password auth (server-setup.sh)
@@ -477,6 +484,7 @@ Revisit this section once there's a real incident or real user volume — don't 
 - [ ] Backups (pre-launch, see [Backups](#backups)): off-site rclone remote configured and `BACKUP_RCLONE_REMOTE`/`BACKUP_AGE_RECIPIENT` set; healthchecks.io check created (period 1 day, grace ~2 h) and `BACKUP_HEARTBEAT_URL` set; cron line installed and one manual run green; first [restore drill](#quarterly-restore-drill) passed from an off-site copy
 - [ ] `.env`, the `age` identity and the rclone bucket credentials are stored in the password manager (and the identity is **not** on the server)
 - [ ] Credential-stuffing against `/api/v1/auth/login`: the app-layer throttle is in place (60 attempts / 15 min per IP, 10 failed per address); an additional Caddy `rate_limit` (plugin) is optional before opening registration to the public
+- [x] Security headers on web/admin/api; [ ] after the first TLS deploy, `curl -I` each domain and confirm HSTS + CSP; consider `includeSubDomains`/`preload` later
 
 ## Cost estimate (minimal budget)
 
