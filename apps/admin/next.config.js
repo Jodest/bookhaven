@@ -1,3 +1,5 @@
+const { securityHeaders } = require('./security-headers');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -21,6 +23,19 @@ const nextConfig = {
       { source: '/import/file', destination: '/import/books/file', permanent: false },
       { source: '/import/author', destination: '/import/authors/wikidata', permanent: false },
       { source: '/catalog/books/new', destination: '/import/books/manual', permanent: false },
+    ];
+  },
+  // Excludes the proxied /api and /covers so backend headers are not duplicated.
+  async headers() {
+    return [
+      {
+        source: '/((?!api/|covers/).*)',
+        headers: securityHeaders({
+          isDev: process.env.NODE_ENV === 'development',
+          apiUrl: process.env.NEXT_PUBLIC_API_URL,
+          noindex: true,
+        }),
+      },
     ];
   },
   async rewrites() {
