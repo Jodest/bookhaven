@@ -69,6 +69,10 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 Email notifications (#121, in Proposed) can build on the mailer from #157.
 
+Queued 2026-10-22 via /backlog-next (#389 picked up first, in progress):
+
+1. #248 Health endpoint does not check database or Redis
+
 ## Proposed (awaiting prioritization)
 
 - [x] Custom user-created shelves — user-book-shelves business analysis (OQ-001) deferred custom shelves to a future increment needing a schema migration and an exclusivity decision, still unresolved [business-analysis] (proposed 2026-09-30, #94) — done: readers create, rename and delete their own shelves; the three default shelves are one reading status, custom shelves are independent tags (user lists merged into them, epic #497)
@@ -122,7 +126,6 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [x] Track publish time for harvested books so "Новое в каталоге" is accurate — queue-published books keep their harvest-time `created_at`; home-page-content Risks names a `published_at` follow-up [code] (proposed 2026-10-06, #245) — done: `books.published_at` (first publication time), «Новое в каталоге» orders by it (OpenSpec change `track-book-publish-time`, epic #352)
 - [ ] Embeddable reading widget for external sites and blogs — LiveLib lets readers embed a configurable widget of their favorite/recent books; BookHaven can only share links [competitive] (proposed 2026-10-06, #246)
 - [ ] Block and unblock user accounts in the admin — a blocked user cannot log in or keep existing sessions [code] (proposed 2026-10-06, #247; list users + change role done in #289, see [docs/features/admin-users.md](features/admin-users.md); narrowed to blocking 2026-10-22)
-- [ ] Health endpoint does not check database or Redis — `/health` returns a static ok, so healthchecks and uptime monitoring stay green when PostgreSQL or Redis is down [code] (proposed 2026-10-06, #248)
 - [ ] Configure database connection pool limits — api, worker and similarity call `gorm.Open` with no max open/idle conns or conn lifetime, so connections are unbounded under load [code] (proposed 2026-10-06, #249)
 - [ ] Dark theme for the web app — The StoryGraph and Goodreads offer dark mode; tailwind has class-based dark mode enabled but no dark palette or toggle exists [competitive] (proposed 2026-10-06, #250)
 - [ ] Installable web app (PWA manifest and icons) for mobile readers — Goodreads/The StoryGraph ship mobile apps; the web app has no manifest, icons or installability [competitive] (proposed 2026-10-06, #251)
@@ -140,7 +143,6 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [ ] Reading challenge counts unpublished books; next year's goal cannot be set on the site — also counts by shelf `added_at`, so re-shelving an old book counts it again [code] (proposed 2026-10-13, #386)
 - [ ] Admin catalog forms: English error messages, silently dropped links, genre name case — raw server messages, non-http(s) cover/photo URLs dropped, genre create lowercases the first letter [code] (proposed 2026-10-13, #387)
 - [ ] The contributor role grants no permissions — the role exists and can be assigned but unlocks nothing [code] (proposed 2026-10-13, #388)
-- [ ] Auth cookies are set with Secure: false — refresh/auth cookies are not marked Secure, needed before launch over HTTPS [code] (proposed 2026-10-13, #389)
 - [ ] Store book covers locally instead of hotlinking Open Library — Open Library covers take 2–3 s per request through redirects to archive.org [code] (proposed 2026-10-17, #489)
 
 ## Technical Debt
