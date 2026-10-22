@@ -196,6 +196,7 @@ func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStat
 	// ErrDuplicateSlug from author/genre creation (e.g. a concurrent import
 	// creating the same author) stays a row error instead of a skip.
 	var bookErr error
+	var createdBook *catalogDomain.Book
 	err := s.repo.WithinTransaction(ctx, func(txRepo repository.Repository) error {
 		tx := s.withRepo(txRepo)
 
@@ -213,10 +214,12 @@ func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStat
 
 		input.AuthorIDs = authorIDs
 		input.GenreIDs = genreIDs
-		if _, err := tx.CreateBook(ctx, input); err != nil {
+		b, err := tx.CreateBook(ctx, input)
+		if err != nil {
 			bookErr = err
 			return err
 		}
+		createdBook = b
 		created = importRowCreated{authors: createdAuthors, genres: createdGenres}
 		return nil
 	})
@@ -230,6 +233,10 @@ func (s *Service) importRow(ctx context.Context, row ImportRowInput, defaultStat
 	// a published row changes the visible similar-books lists.
 	if input.Status == nil || *input.Status == catalogDomain.BookStatusPublished {
 		s.invalidateSimilar(ctx)
+	}
+	// Queue the cover copy only now that the row is committed.
+	if createdBook != nil && createdBook.CoverURL != nil {
+		s.enqueueCover(ctx, createdBook.ID)
 	}
 	return importOutcomeCreated, created, nil
 }

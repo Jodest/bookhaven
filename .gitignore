@@ -12,6 +12,7 @@ dist/
 *.tsbuildinfo
 .turbo/
 backend/tmp/
+backend/storage/
 
 # Go
 bin/

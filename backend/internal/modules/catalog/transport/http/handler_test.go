@@ -618,3 +618,46 @@ func TestListBooks_HasAdaptationOnlyForTrue(t *testing.T) {
 		}
 	}
 }
+
+// The public book shows our own copy when a copy of the current link is
+// stored, null when the source has no cover, and the source link otherwise (#489).
+func TestGetBook_DisplayCoverURL(t *testing.T) {
+	src := "https://covers.openlibrary.org/b/id/1-L.jpg"
+	path := strings.Repeat("ab", 1) + "/" + strings.Repeat("ab", 32) + ".jpg"
+	stored, absent, pending := domain.CoverStatusStored, domain.CoverStatusAbsent, domain.CoverStatusPending
+	cases := []struct {
+		name string
+		book domain.Book
+		want string // "" = JSON null/omitted
+	}{
+		{"stored copy", domain.Book{CoverURL: &src, CoverSourceURL: &src, CoverPath: &path, CoverStatus: &stored}, "/covers/" + path},
+		{"absent", domain.Book{CoverURL: &src, CoverSourceURL: &src, CoverStatus: &absent}, ""},
+		{"pending", domain.Book{CoverURL: &src, CoverSourceURL: &src, CoverStatus: &pending}, src},
+		{"no copy", domain.Book{CoverURL: &src}, src},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, repo := setupHandler()
+			tc.book.ID, tc.book.Title, tc.book.Slug, tc.book.Status = uuid.New(), "Book A", "book-a", domain.BookStatusPublished
+			repo.books = []domain.Book{tc.book}
+			c, rec := newContext(http.MethodGet, "/api/v1/books/book-a")
+			c.SetPath("/api/v1/books/:slug")
+			c.SetParamNames("slug")
+			c.SetParamValues("book-a")
+			if err := h.GetBook(c); err != nil {
+				t.Fatal(err)
+			}
+			var body bookResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			got := ""
+			if body.CoverURL != nil {
+				got = *body.CoverURL
+			}
+			if got != tc.want {
+				t.Fatalf("cover_url=%q want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -45,6 +45,75 @@ type Book struct {
 	ExternalID     *string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+
+	// Cover copy state (#489). CoverURL stays the source link; these columns
+	// describe the local copy made from CoverSourceURL. They are read-only for
+	// GORM ("->"): a full-row Save of a Book never writes them, so an admin
+	// save cannot overwrite a copy the worker stored meanwhile. Only the
+	// covers repository writes them with raw guarded UPDATEs.
+	CoverSourceURL     *string    `gorm:"->"`
+	CoverPath          *string    `gorm:"->"`
+	CoverStatus        *string    `gorm:"->"`
+	CoverError         *string    `gorm:"->"`
+	CoverAttempts      int        `gorm:"->"`
+	CoverNextAttemptAt *time.Time `gorm:"->"`
+	CoverStoredAt      *time.Time `gorm:"->"`
+	CoverCheckedAt     *time.Time `gorm:"->"`
+}
+
+// Cover copy statuses stored in books.cover_status.
+const (
+	CoverStatusPending = "pending"
+	CoverStatusStored  = "stored"
+	CoverStatusFailed  = "failed"
+	CoverStatusAbsent  = "absent"
+)
+
+// CoverPublicPrefix is the public path prefix of self-hosted covers.
+const CoverPublicPrefix = "/covers/"
+
+func strVal(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// DisplayCoverURL resolves the cover link to show publicly from the source
+// link and the copy state. A copy is valid only for the exact link it was
+// made from: an empty link gives nil, a stored copy of the same link gives
+// its /covers path, an absent copy of the same link gives nil, and every
+// other case falls back to the source link.
+func DisplayCoverURL(coverURL, sourceURL, path *string, status *string) *string {
+	cu := strVal(coverURL)
+	if cu == "" {
+		return nil
+	}
+	if strVal(sourceURL) == cu {
+		switch strVal(status) {
+		case CoverStatusStored:
+			if p := strVal(path); p != "" {
+				v := CoverPublicPrefix + p
+				return &v
+			}
+		case CoverStatusAbsent:
+			return nil
+		}
+	}
+	v := cu
+	return &v
+}
+
+// DisplayCoverURL is the link the public API shows for this book.
+func (b Book) DisplayCoverURL() *string {
+	return DisplayCoverURL(b.CoverURL, b.CoverSourceURL, b.CoverPath, b.CoverStatus)
+}
+
+// HasStoredCover reports whether a copy of the current cover link is stored.
+func (b Book) HasStoredCover() bool {
+	cu := strVal(b.CoverURL)
+	return cu != "" && strVal(b.CoverSourceURL) == cu &&
+		strVal(b.CoverStatus) == CoverStatusStored && strVal(b.CoverPath) != ""
 }
 
 // IsPublished reports whether the book is publicly visible.
