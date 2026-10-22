@@ -296,3 +296,139 @@ func TestBookWritesRejectedOnAutoCollection(t *testing.T) {
 		t.Fatalf("RemoveBook: %v", err)
 	}
 }
+
+func mkWork(t *testing.T, db *gorm.DB, book uuid.UUID, title string, year *int, hidden bool) uuid.UUID {
+	t.Helper()
+	w := uuid.New()
+	if err := db.Exec("INSERT INTO screen_works (id, title, kind, year) VALUES (?, ?, 'film', ?)", w, title, year).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO book_screen_works (book_id, screen_work_id, hidden) VALUES (?, ?, ?)", book, w, hidden).Error; err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+func vote(t *testing.T, db *gorm.DB, book, work uuid.UUID, value string, n int, at time.Time) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		if err := db.Exec("INSERT INTO adaptation_votes (user_id, book_id, screen_work_id, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+			uuid.New(), book, work, value, at, at).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func rankVerdictsBy(since *time.Time) RankFunc {
+	return func(ctx context.Context, c domain.Collection, src AutoSource) ([]domain.ScoredBook, error) {
+		rule := *domain.RuleOf(&c)
+		rows, err := src.VerdictRows(ctx, c, since)
+		if err != nil {
+			return nil, err
+		}
+		return domain.RankVerdicts(rows, rule, domain.SnapshotLimit(c.Size)), nil
+	}
+}
+
+func year(y int) *int { return &y }
+
+func TestRecompute_VerdictHiddenLinkPeriodAndSource(t *testing.T) {
+	r, db := newRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	old := now.Add(-100 * 24 * time.Hour)
+
+	a := mkBook(t, db, catalogDomain.BookStatusPublished, "")
+	wa := mkWork(t, db, a, "Война и мир", year(1967), false)
+	vote(t, db, a, wa, "book", 8, now)
+	vote(t, db, a, wa, "adaptation", 2, now)
+	hidden := mkWork(t, db, a, "Скрытая", year(1900), true) // more votes, but hidden
+	vote(t, db, a, hidden, "adaptation", 30, now)
+
+	pending := mkBook(t, db, catalogDomain.BookStatusPending, "")
+	wp := mkWork(t, db, pending, "Черновик", nil, false)
+	vote(t, db, pending, wp, "book", 9, now)
+
+	stale := mkBook(t, db, catalogDomain.BookStatusPublished, "") // votes only outside the period
+	ws := mkWork(t, db, stale, "Старое", nil, false)
+	vote(t, db, stale, ws, "book", 9, old)
+
+	col := mkAuto(t, r, domain.MetricBookBeatsAdaptation, 10, nil)
+	since := now.Add(-30 * 24 * time.Hour)
+	if err := r.Recompute(ctx, col.ID, true, now, rankVerdictsBy(&since)); err != nil {
+		t.Fatal(err)
+	}
+	items := snapshot(t, r, col.ID)
+	if len(items) != 1 || items[0].Book.ID != a {
+		t.Fatalf("snapshot: %+v", items)
+	}
+	ad := items[0].Adaptation
+	if ad == nil || ad.ID != wa || ad.Title != "Война и мир" || ad.Year == nil || *ad.Year != 1967 || ad.Kind != "film" ||
+		ad.VotesCount != 10 || ad.Share < 0.799 || ad.Share > 0.801 {
+		t.Fatalf("adaptation: %+v", ad)
+	}
+	// C = 8/10 (hidden and pending votes are out): (8+10*0.8)/(10+10) = 0.8.
+	if s := *items[0].Score; s < 0.799 || s > 0.801 {
+		t.Fatalf("score %v", s)
+	}
+
+	// Without a period the old votes count as well.
+	if err := r.Recompute(ctx, col.ID, true, now, rankVerdictsBy(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshot(t, r, col.ID); len(got) != 2 {
+		t.Fatalf("all-time snapshot: %+v", got)
+	}
+}
+
+func TestRecompute_VerdictGenreFilter(t *testing.T) {
+	r, db := newRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	g := uuid.New()
+	in := mkBook(t, db, catalogDomain.BookStatusPublished, "")
+	out := mkBook(t, db, catalogDomain.BookStatusPublished, "")
+	db.Exec("INSERT INTO book_genres (book_id, genre_id) VALUES (?, ?)", in, g)
+	vote(t, db, in, mkWork(t, db, in, "А", nil, false), "adaptation", 6, now)
+	vote(t, db, out, mkWork(t, db, out, "Б", nil, false), "adaptation", 6, now)
+	col := mkAuto(t, r, domain.MetricAdaptationBeatsBook, 10, &g)
+	if err := r.Recompute(ctx, col.ID, true, now, rankVerdictsBy(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if items := snapshot(t, r, col.ID); len(items) != 1 || items[0].Book.ID != in {
+		t.Fatalf("genre filter: %+v", items)
+	}
+}
+
+func TestVerdictSource_HiddenAfterSnapshotKeepsPlace(t *testing.T) {
+	r, db := newRepo(t)
+	ctx := context.Background()
+	now := time.Now()
+	a := mkBook(t, db, catalogDomain.BookStatusPublished, "")
+	w := mkWork(t, db, a, "Фильм", year(2000), false)
+	vote(t, db, a, w, "book", 7, now)
+	col := mkAuto(t, r, domain.MetricBookBeatsAdaptation, 10, nil)
+	if err := r.Recompute(ctx, col.ID, true, now, rankVerdictsBy(nil)); err != nil {
+		t.Fatal(err)
+	}
+	var stored domain.CollectionItem
+	if err := db.Where("collection_id = ?", col.ID).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.SourceScreenWorkID == nil || *stored.SourceScreenWorkID != w || *stored.SourceVotes != 7 || *stored.SourceShare != 1 {
+		t.Fatalf("stored source: %+v", stored)
+	}
+	db.Exec("UPDATE book_screen_works SET hidden = 1 WHERE book_id = ?", a)
+	items := snapshot(t, r, col.ID)
+	if len(items) != 1 || items[0].Adaptation != nil {
+		t.Fatalf("hidden source: %+v", items)
+	}
+	page, err := r.PublishedPage(ctx, col.ID, 10, 0)
+	if err != nil || len(page) != 1 || page[0].Adaptation != nil {
+		t.Fatalf("public page: %+v %v", page, err)
+	}
+	db.Exec("UPDATE book_screen_works SET hidden = 0 WHERE book_id = ?", a)
+	if page, _ := r.PublishedPage(ctx, col.ID, 10, 0); len(page) != 1 || page[0].Adaptation == nil || page[0].Adaptation.VotesCount != 7 {
+		t.Fatalf("visible source: %+v", page)
+	}
+}

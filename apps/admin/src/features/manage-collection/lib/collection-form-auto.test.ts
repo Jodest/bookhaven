@@ -58,6 +58,38 @@ describe('automatic collection form', () => {
     expect(validateRule({ ...EMPTY_COLLECTION_FORM, period_days: '0' })).toBeNull();
   });
 
+  it('verdict metrics send the minimum votes and confidence', () => {
+    const verdict = { ...auto, metric: 'book_beats_adaptation' as const, min_ratings: '5' };
+    expect(formToCreateInput(verdict).rule).toEqual({
+      metric: 'book_beats_adaptation',
+      period_days: null,
+      min_ratings: 5,
+      confidence: 10,
+    });
+    expect(formToUpdateInput({ ...verdict, slug: 'top', metric: 'adaptation_beats_book', min_ratings: '20' }).rule).toEqual({
+      metric: 'adaptation_beats_book',
+      period_days: null,
+      min_ratings: 20,
+      confidence: 10,
+    });
+  });
+
+  it('resets the minimum when switching between the weighted rating and verdict metrics', () => {
+    expect(metricPatch(auto, 'book_beats_adaptation')).toEqual({ metric: 'book_beats_adaptation', min_ratings: '5' });
+    const verdict = { ...auto, metric: 'book_beats_adaptation' as const, min_ratings: '12' };
+    expect(metricPatch(verdict, 'adaptation_beats_book')).toEqual({ metric: 'adaptation_beats_book' });
+    expect(metricPatch(verdict, 'weighted_rating')).toEqual({ metric: 'weighted_rating', min_ratings: '3' });
+    expect(metricPatch(verdict, 'most_read')).toEqual({ metric: 'most_read', min_ratings: '3' });
+  });
+
+  it('validates the verdict minimum (5 to 10000)', () => {
+    const verdict = { ...auto, metric: 'adaptation_beats_book' as const, min_ratings: '5' };
+    expect(validateRule(verdict)).toBeNull();
+    expect(validateRule({ ...verdict, min_ratings: '4' })).toBe('Минимум голосов: от 5 до 10000');
+    expect(validateRule({ ...verdict, min_ratings: '10001' })).toBe('Минимум голосов: от 5 до 10000');
+    expect(validateRule({ ...verdict, confidence: '' })).toBe('Порог доверия: от 1 до 10000');
+  });
+
   it('maps a stored rule back to the form', () => {
     const values = collectionToForm({
       id: 'c',

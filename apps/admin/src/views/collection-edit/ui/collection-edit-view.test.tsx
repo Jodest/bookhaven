@@ -197,6 +197,16 @@ describe('CollectionEditView', () => {
     });
   });
 
+  it('a verdict metric shows the minimum votes (5) and no minimum ratings', () => {
+    renderView('new');
+    fireEvent.click(screen.getByLabelText(/Автоматическая — по правилу/));
+    fireEvent.change(screen.getByLabelText('Показатель'), { target: { value: 'book_beats_adaptation' } });
+    expect(screen.getByLabelText('Минимум голосов')).toHaveValue(5);
+    expect(screen.getByLabelText('Порог доверия (m)')).toHaveValue(10);
+    expect(screen.queryByLabelText('Минимум оценок')).not.toBeInTheDocument();
+    expect(screen.getByText(/Книга оценивается по экранизации с наибольшим числом голосов/)).toBeInTheDocument();
+  });
+
   it('trending prefills the 30-day period and hides the weighted fields', () => {
     renderView('new');
     fireEvent.click(screen.getByLabelText(/Автоматическая — по правилу/));

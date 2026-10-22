@@ -3,7 +3,12 @@
 import type { AdminCuratedCollectionDetail } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import { BookStatusBadge } from '@/entities/book';
-import { ITEM_STATE_LABELS, formatAdminMovement, formatScore } from '@/entities/curated-collection';
+import {
+  ITEM_STATE_LABELS,
+  adaptationSourceLabel,
+  formatAdminMovement,
+  formatScore,
+} from '@/entities/curated-collection';
 import { recomputeErrorText, useRecomputeCollection } from '@/features/recompute-collection';
 
 interface CollectionSnapshotProps {
@@ -70,6 +75,9 @@ export function CollectionSnapshot({ collection }: CollectionSnapshotProps) {
                 <td className="p-2 align-top">
                   <div className="font-medium">{item.book.title}</div>
                   <div className="text-muted-foreground">{item.book.authors.map((a) => a.name).join(', ')}</div>
+                  {item.adaptation && (
+                    <div className="text-muted-foreground">{adaptationSourceLabel(item.adaptation)}</div>
+                  )}
                   <div className="mt-1">
                     <BookStatusBadge status={item.book.status} />
                   </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Input, Label, Select, Textarea } from '@bookhaven/ui';
-import { KIND_LABELS, METRIC_LABELS } from '@/entities/curated-collection';
+import { KIND_LABELS, METRIC_LABELS, isVerdictMetric } from '@/entities/curated-collection';
 import { metricPatch, validateRule } from '../lib/collection-form';
 import type { CollectionFormValues } from '../lib/collection-form';
 
@@ -34,6 +34,7 @@ export function CollectionForm({
   const genreOptions = [{ value: '', label: 'Без жанра' }, ...genres.map((g) => ({ value: g.id, label: g.name }))];
 
   const isAuto = values.kind === 'auto';
+  const verdict = isVerdictMetric(values.metric);
   const ruleError = validateRule(values);
 
   return (
@@ -163,14 +164,14 @@ export function CollectionForm({
                 placeholder="за всё время"
               />
             </div>
-            {values.metric === 'weighted_rating' && (
+            {(values.metric === 'weighted_rating' || isVerdictMetric(values.metric)) && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="min_ratings">Минимум оценок</Label>
+                  <Label htmlFor="min_ratings">{verdict ? 'Минимум голосов' : 'Минимум оценок'}</Label>
                   <Input
                     id="min_ratings"
                     type="number"
-                    min={1}
+                    min={verdict ? 5 : 1}
                     max={10000}
                     value={values.min_ratings}
                     onChange={(e) => onChange({ min_ratings: e.target.value })}
@@ -187,7 +188,9 @@ export function CollectionForm({
                     onChange={(e) => onChange({ confidence: e.target.value })}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Чем больше m, тем сильнее рейтинг книг с малым числом оценок тянется к среднему по сайту
+                    {verdict
+                      ? 'Книга оценивается по экранизации с наибольшим числом голосов. Чем больше m, тем сильнее доля голосов у книг с малым числом голосов тянется к средней по сайту'
+                      : 'Чем больше m, тем сильнее рейтинг книг с малым числом оценок тянется к среднему по сайту'}
                   </p>
                 </div>
               </>

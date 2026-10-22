@@ -131,6 +131,47 @@ func (s txSource) trending(ctx context.Context, c domain.Collection, since *time
 	return merged, nil
 }
 
+// verdictAgg is one visible adaptation of a published book with its votes.
+type verdictAgg struct {
+	BookID          uuid.UUID
+	ScreenWorkID    uuid.UUID
+	Title           string
+	RatingsCount    int
+	WorkTitle       string
+	WorkYear        *int
+	Votes           int64
+	BookVotes       int64
+	AdaptationVotes int64
+}
+
+// VerdictRows aggregates the counted adaptation votes per (book, adaptation):
+// visible links, published books, the genre scope and votes since the cut-off.
+func (s txSource) VerdictRows(ctx context.Context, c domain.Collection, since *time.Time) ([]domain.VerdictRow, error) {
+	q := s.scope(s.db.WithContext(ctx).Table("adaptation_votes AS v").
+		Select("v.book_id AS book_id, v.screen_work_id AS screen_work_id, b.title AS title, "+
+			"b.ratings_count AS ratings_count, w.title AS work_title, w.year AS work_year, "+
+			"COUNT(*) AS votes, "+
+			"SUM(CASE WHEN v.value = 'book' THEN 1 ELSE 0 END) AS book_votes, "+
+			"SUM(CASE WHEN v.value = 'adaptation' THEN 1 ELSE 0 END) AS adaptation_votes").
+		Joins("JOIN book_screen_works l ON l.book_id = v.book_id AND l.screen_work_id = v.screen_work_id AND NOT l.hidden").
+		Joins("JOIN screen_works w ON w.id = v.screen_work_id"), "v.book_id", c)
+	if since != nil {
+		q = q.Where("v.updated_at >= ?", *since)
+	}
+	var rows []verdictAgg
+	if err := q.Group("v.book_id, v.screen_work_id, b.title, b.ratings_count, w.title, w.year").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]domain.VerdictRow, len(rows))
+	for i, r := range rows {
+		out[i] = domain.VerdictRow{
+			BookID: r.BookID, Title: r.Title, RatingsCount: r.RatingsCount, ScreenWorkID: r.ScreenWorkID,
+			WorkTitle: r.WorkTitle, WorkYear: r.WorkYear, Votes: r.Votes, BookVotes: r.BookVotes, AdaptationVotes: r.AdaptationVotes,
+		}
+	}
+	return out, nil
+}
+
 func (r *GormRepository) AutoCollectionIDs(ctx context.Context) ([]uuid.UUID, error) {
 	var ids []uuid.UUID
 	err := r.db.WithContext(ctx).Model(&domain.Collection{}).
@@ -178,6 +219,10 @@ func (r *GormRepository) Recompute(ctx context.Context, id uuid.UUID, reset bool
 			for i, sb := range ranked {
 				score := sb.Score
 				it := domain.CollectionItem{CollectionID: id, BookID: sb.BookID, Position: i + 1, AddedAt: now, Score: &score}
+				if sb.Source != nil {
+					wid, votes, share := sb.Source.ScreenWorkID, sb.Source.Votes, sb.Source.Share
+					it.SourceScreenWorkID, it.SourceVotes, it.SourceShare = &wid, &votes, &share
+				}
 				if p, ok := prev[sb.BookID]; ok {
 					p := p
 					it.PreviousPosition = &p

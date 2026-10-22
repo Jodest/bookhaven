@@ -25,6 +25,7 @@ function item(
     state,
     score,
     movement,
+    adaptation: null,
     book: {
       id: `b${position}`,
       title: `Книга ${position}`,
@@ -100,6 +101,24 @@ describe('CollectionSnapshot', () => {
       })
     );
     expect(screen.getByText('7')).toBeInTheDocument();
+  });
+
+  it('shows a whole percent and the source adaptation for verdict metrics', () => {
+    const verdict = {
+      ...item(1, 'ranked', 1, 0.884),
+      adaptation: { id: 'w1', title: 'Война и мир', year: 1967, kind: 'film', votes_count: 40, share: 0.9 },
+    };
+    renderWidget(
+      detail({
+        rule: { metric: 'book_beats_adaptation', period_days: null, min_ratings: 5, confidence: 10 },
+        items: [verdict, item(2, 'ranked', 2, 0.7)],
+      })
+    );
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(within(rows[0]).getByText('88%')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('Экранизация: «Война и мир» (1967) · 40 голосов')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('70%')).toBeInTheDocument();
+    expect(within(rows[1]).queryByText(/Экранизация:/)).not.toBeInTheDocument();
   });
 
   it('shows the computed time, or that it was never computed', () => {
