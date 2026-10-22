@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuthStore } from '@/entities/session';
+import { isPasswordWithinByteLimit, PASSWORD_MAX_MESSAGE } from '@/shared/lib/password-rules';
 import { loginHrefWithRedirect } from '@/shared/lib/safe-redirect';
 import { Button } from '@bookhaven/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -12,7 +13,10 @@ import { z } from 'zod';
 const registerSchema = z.object({
   name: z.string().min(2, 'Имя должно быть не короче 2 символов'),
   email: z.string().email('Введите корректный email'),
-  password: z.string().min(8, 'Пароль должен быть не короче 8 символов'),
+  password: z
+    .string()
+    .min(8, 'Пароль должен быть не короче 8 символов')
+    .refine(isPasswordWithinByteLimit, PASSWORD_MAX_MESSAGE),
 });
 
 type RegisterFormData = z.infer<typeof registerSchema>;

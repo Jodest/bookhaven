@@ -218,7 +218,7 @@ Frontend (Vitest):
 ## Risks
 
 - **Constructor change** of `authservice.NewService` (extra limiter pair) touches `cmd/api` and three test helpers.
-- **bcrypt 72-byte limit:** `golang.org/x/crypto/bcrypt` rejects passwords > 72 bytes; with the register rule (no `max`) such a password yields 500 on both register and reset. Kept identical on purpose; follow-up candidate: add `max=72` to both.
+- **bcrypt 72-byte limit:** `golang.org/x/crypto/bcrypt` rejects passwords > 72 bytes; with the register rule (no `max`) such a password yields 500 on both register and reset. Kept identical on purpose; follow-up candidate: add `max=72` to both. **Resolved** by OpenSpec change `cap-password-length-at-72-bytes`: the auth service rejects passwords over 72 bytes (UTF-8) first, handlers answer 400 (`invalid_password` on reset) and the web forms check the same byte limit.
 - **Reset-verifies-email** is a deliberate policy change: whoever controls the mailbox gets a verified account. Same trust model as verify-email, so no new exposure.
 - **Access tokens survive up to 15 min** after reset (JWTs not revocable) - pre-existing, same as Logout.
 - **Timing side channel / register 409** still allow partial enumeration (documented, accepted as in #160).

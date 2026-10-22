@@ -1,5 +1,6 @@
 'use client';
 
+import { isPasswordWithinByteLimit, PASSWORD_MAX_MESSAGE } from '@/shared/lib/password-rules';
 import { Button } from '@bookhaven/ui';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -9,7 +10,10 @@ import { PASSWORD_MIN_MESSAGE, type ResetState } from '../model/reset-state';
 // Same password rule as registration.
 const resetSchema = z
   .object({
-    password: z.string().min(8, PASSWORD_MIN_MESSAGE),
+    password: z
+      .string()
+      .min(8, PASSWORD_MIN_MESSAGE)
+      .refine(isPasswordWithinByteLimit, PASSWORD_MAX_MESSAGE),
     confirm: z.string(),
   })
   .refine((data) => data.password === data.confirm, {
