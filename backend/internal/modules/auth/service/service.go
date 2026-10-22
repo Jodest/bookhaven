@@ -23,7 +23,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// MaxPasswordBytes is bcrypt's input limit; longer passwords cannot be hashed.
+// It counts UTF-8 bytes (len), not runes.
+const MaxPasswordBytes = 72
+
 var (
+	// ErrPasswordTooLong is returned by Register and ResetPassword for a
+	// password longer than MaxPasswordBytes.
+	ErrPasswordTooLong = errors.New("password is too long")
+
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserExists         = errors.New("user with this email already exists")
 	ErrTokenInvalid       = errors.New("invalid or expired token")
@@ -141,6 +149,10 @@ func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mai
 
 // Register creates a new user account.
 func (s *Service) Register(ctx context.Context, email, password, name string) (*usersDomain.User, error) {
+	if len(password) > MaxPasswordBytes {
+		return nil, ErrPasswordTooLong
+	}
+
 	// Check if user exists
 	existing, err := s.users.GetByEmail(ctx, email)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -610,8 +622,12 @@ func (s *Service) resetURL(plain string) string {
 // verifies the email if not yet verified (the link proves mailbox
 // ownership), deletes the user's other unused reset tokens and revokes all
 // of the user's refresh tokens. No tokens are issued. Errors:
-// ErrResetTokenInvalid, ErrResetTokenExpired, ErrResetTokenUsed.
+// ErrPasswordTooLong (checked first, token untouched), ErrResetTokenInvalid,
+// ErrResetTokenExpired, ErrResetTokenUsed.
 func (s *Service) ResetPassword(ctx context.Context, plain, newPassword string) error {
+	if len(newPassword) > MaxPasswordBytes {
+		return ErrPasswordTooLong
+	}
 	if !isTokenFormat(plain) {
 		return ErrResetTokenInvalid
 	}

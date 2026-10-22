@@ -143,7 +143,7 @@ const (
 
 // Register godoc
 // @Summary Регистрация пользователя
-// @Description Создаёт пользователя и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.
+// @Description Создаёт пользователя (пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -164,6 +164,9 @@ func (h *Handler) Register(c echo.Context) error {
 
 	user, err := h.service.Register(c.Request().Context(), req.Email, req.Password, req.Name)
 	if err != nil {
+		if errors.Is(err, service.ErrPasswordTooLong) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "password must be at most 72 bytes"})
+		}
 		if errors.Is(err, service.ErrUserExists) {
 			return c.JSON(http.StatusConflict, map[string]string{"error": "user already exists"})
 		}
@@ -416,7 +419,7 @@ func (h *Handler) ForgotPassword(c echo.Context) error {
 
 // ResetPassword godoc
 // @Summary Сбросить пароль
-// @Description Публичный эндпоинт. Устанавливает новый пароль по одноразовому токену из письма. Пароль проверяется до токена (минимум 8 символов), поэтому отклонённый пароль не расходует ссылку. При успехе: токен помечается использованным, email считается подтверждённым, все refresh-токены пользователя отзываются, auth-cookies очищаются. Вход не выполняется. Коды ошибок: invalid_password, invalid_token, token_used, token_expired.
+// @Description Публичный эндпоинт. Устанавливает новый пароль по одноразовому токену из письма. Пароль проверяется до токена (8 символов - 72 байта в UTF-8), поэтому отклонённый пароль не расходует ссылку. При успехе: токен помечается использованным, email считается подтверждённым, все refresh-токены пользователя отзываются, auth-cookies очищаются. Вход не выполняется. Коды ошибок: invalid_password, invalid_token, token_used, token_expired.
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -439,6 +442,8 @@ func (h *Handler) ResetPassword(c echo.Context) error {
 	case err == nil:
 		h.clearAuthCookies(c)
 		return c.JSON(http.StatusOK, statusResponse{Status: "password_reset"})
+	case errors.Is(err, service.ErrPasswordTooLong):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "password must be at most 72 bytes", Code: codeInvalidPassword})
 	case errors.Is(err, service.ErrResetTokenInvalid):
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid token", Code: codeInvalidToken})
 	case errors.Is(err, service.ErrResetTokenExpired):
