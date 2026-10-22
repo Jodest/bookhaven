@@ -70,10 +70,6 @@ Every capability planned for the MVP is implemented, merged to `main`, and cover
 
 Email notifications (#121, in Proposed) can build on the mailer from #157.
 
-Queued 2026-10-22 via /backlog-next (#389 picked up first, in progress):
-
-1. #248 Health endpoint does not check database or Redis
-
 ## Proposed (awaiting prioritization)
 
 - [x] Custom user-created shelves — user-book-shelves business analysis (OQ-001) deferred custom shelves to a future increment needing a schema migration and an exclusivity decision, still unresolved [business-analysis] (proposed 2026-09-30, #94) — done: readers create, rename and delete their own shelves; the three default shelves are one reading status, custom shelves are independent tags (user lists merged into them, epic #497)
