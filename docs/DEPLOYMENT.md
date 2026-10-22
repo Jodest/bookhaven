@@ -46,15 +46,16 @@ All three production images (`backend`, `web`, `admin`) were built and smoke-tes
 ## One-time server setup
 
 1. Provision the VPS, note its public IP, point the three DNS A-records at it.
-2. As root on the fresh server, run `infrastructure/deploy/server-setup.sh` (copy it up first: `scp infrastructure/deploy/server-setup.sh root@<ip>:/root/`). It installs Docker Engine + Compose plugin, creates a non-root `deploy` user in the `docker` group, disables SSH password auth and root login, configures `ufw` (22/80/443 only) and `fail2ban`, and creates `/opt/bookhaven`.
+2. As root on the fresh server, run `infrastructure/deploy/server-setup.sh` (copy it up first: `scp infrastructure/deploy/server-setup.sh root@<ip>:/root/`). It installs Docker Engine + Compose plugin, creates a non-root `deploy` user in the `docker` group, disables SSH password auth and root login, configures `ufw` (22/80/443 only) and `fail2ban`, installs `age` + `rclone` for backups, and creates `/opt/bookhaven` and `/opt/bookhaven/backups`.
 3. Append `deploy_key.pub` to `/home/deploy/.ssh/authorized_keys` on the server (the script copies root's existing `authorized_keys`, but add the dedicated deploy key explicitly if it's not already there).
 4. From your machine, copy the compose files up:
    ```
    scp docker-compose.prod.yml Caddyfile deploy@<ip>:/opt/bookhaven/
    scp .env.production.example deploy@<ip>:/opt/bookhaven/.env
    ```
-5. SSH in as `deploy` and edit `/opt/bookhaven/.env`: fill in the real domains, `ACME_EMAIL`, a generated `POSTGRES_PASSWORD` (`openssl rand -base64 24`), a generated `JWT_SECRET` (`openssl rand -base64 48`), and `CORS_ALLOWED_ORIGINS` matching the web/admin domains exactly (scheme + host, no trailing slash). Fill in the SMTP block (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`) from your email provider — see [Email (SMTP)](#email-smtp); leaving `SMTP_HOST` blank disables sending. Then `chmod 600 .env`.
+5. SSH in as `deploy` and edit `/opt/bookhaven/.env`: fill in the real domains, `ACME_EMAIL`, a generated `POSTGRES_PASSWORD` (`openssl rand -base64 24`), a generated `JWT_SECRET` (`openssl rand -base64 48`), and `CORS_ALLOWED_ORIGINS` matching the web/admin domains exactly (scheme + host, no trailing slash). Fill in the SMTP block (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`) from your email provider — see [Email (SMTP)](#email-smtp); leaving `SMTP_HOST` blank disables sending. Then `chmod 600 .env`, and put an encrypted copy of it in your password manager (see [Backups](#env-and-keys-off-server)).
 6. If the GHCR packages end up private (private repo, default), log in once on the server with a PAT scoped to `read:packages`: `docker login ghcr.io -u <github-user> -p <PAT>`. If the repo is public, make the three GHCR packages public instead (Package settings on GitHub) and skip this — one less credential to manage on the server.
+7. Set up backups before real data arrives: [Backup setup](#backup-setup-once-as-deploy) (scripts, rclone remote, age key, heartbeat, cron).
 
 ## GitHub setup
 
@@ -113,18 +114,106 @@ docker compose -f docker-compose.prod.yml up -d
 
 If the rollback also needs a schema rollback, run the down migration explicitly first — `docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/migrate backend down` rolls back **one** migration step (`down N` rolls back N steps, N must be a positive integer); check `backend/migrations` before running it, and prefer forward-fixing over rolling back a schema in a database with real user data whenever possible. The command prints the resulting schema version.
 
-A full rollback (every migration, i.e. dropping the whole schema) is only available as `down-all --yes-drop-everything`; without that exact flag it refuses, and with `APP_ENV=production` it additionally requires `--force`. Never use it on a database with real data — restore from a backup instead (see below). (Before #186, plain `down` rolled back everything; it is now one step.)
+A full rollback (every migration, i.e. dropping the whole schema) is only available as `down-all --yes-drop-everything`; without that exact flag it refuses, and with `APP_ENV=production` it additionally requires `--force`. Never use it on a database with real data — restore from a backup instead (see [Restore](#restore)). (Before #186, plain `down` rolled back everything; it is now one step.)
 
 ## Backups
 
-`infrastructure/deploy/backup.sh` runs `pg_dump` inside the `postgres` container, gzips it, and keeps 7 days locally. Install it via cron on the `deploy` user:
+**What is backed up:** PostgreSQL only — one `pg_dump -Fc` per night. Not backed up by design: the covers volume (a cache, re-mirrored from `books.cover_url`, see [Self-hosted covers](#self-hosted-covers)), Redis (caches, rate-limit counters, queued jobs) and Caddy's certificates (re-issued by Let's Encrypt). **RPO 24 h** (one run at 03:00 server time); WAL archiving / point-in-time recovery is out of scope. RTO is not enforced; a rehearsed [Restore](#restore) takes minutes for a database of this size.
 
-```
-crontab -e
-0 3 * * * /opt/bookhaven/infrastructure/deploy/backup.sh >> /var/log/bookhaven-backup.log 2>&1
-```
+`infrastructure/deploy/backup.sh` (run by cron as `deploy`):
 
-For real durability, uncomment the `rclone` line in the script and configure an S3-compatible off-site remote (Timeweb S3 or Selectel S3 both work) — a backup that lives only on the same disk as the database it's backing up doesn't survive a disk failure.
+1. Dumps through `docker compose exec -T postgres` (user/database come from the container's own `POSTGRES_USER`/`POSTGRES_DB`) into a temp file `backups/.inprogress-<ts>.dump`.
+2. Verifies it: non-empty, `pg_restore --list` succeeds, and a full `pg_restore -f /dev/null` read succeeds (`--list` alone only reads the archive's table of contents and accepts a truncated file). Only then is it renamed to `backups/bookhaven-<UTC timestamp>.dump` (`chmod 600`, directory `chmod 700` — the dump holds password hashes and refresh tokens). A failed or truncated dump never gets the final name and is deleted on exit.
+3. Off-site: encrypts the verified dump with [`age`](https://age-encryption.org) to a **public** recipient and uploads only the `.dump.age` with `rclone` to `<remote>/daily/`, plus `weekly/` on Sundays and `monthly/` on the 1st (UTC). After a successful upload it prunes **only** `bookhaven-*.dump.age` under those three prefixes (never the remote root): daily 14 d, weekly 63 d, monthly 400 d. The plaintext dump is never uploaded.
+4. Local retention: `bookhaven-*.dump` (and legacy `*.sql.gz`) older than `BACKUP_LOCAL_RETENTION_DAYS` are deleted.
+5. Heartbeat: pings `BACKUP_HEARTBEAT_URL` on success and `BACKUP_HEARTBEAT_URL/fail` on any failure. A failed ping is logged as a warning and never turns a good backup into a failure.
+
+**Fail loud.** With off-site on (the default), an empty `BACKUP_RCLONE_REMOTE` or `BACKUP_AGE_RECIPIENT`, or a missing `age`/`rclone` binary, fails the run before dumping (non-zero exit, `/fail` ping). The only way to skip the off-site copy is `BACKUP_OFFSITE=off`, which is logged as a warning on every run and is meant for local testing only.
+
+**Encryption is asymmetric.** The server holds only the `age1...` public recipient; the private identity lives off-server in the password manager, so a compromised server cannot decrypt old off-site copies. **Losing the identity means losing every off-site backup** — there is no recovery. The [quarterly drill](#quarterly-restore-drill) is what proves the identity still works.
+
+### Configuration
+
+The script reads these keys from `/opt/bookhaven/.env` with a parser that does not execute the file (`KEY=value` lines, last one wins, one layer of quotes stripped); a variable already set in the environment takes precedence. Nothing else in the stack uses them.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `BACKUP_RCLONE_REMOTE` | empty → **error** | rclone destination base, e.g. `backup:bookhaven-backups`. `daily/`, `weekly/`, `monthly/` are appended. |
+| `BACKUP_AGE_RECIPIENT` | empty → **error** | `age1...` public key. |
+| `BACKUP_OFFSITE` | `on` | `off` skips encryption + upload with a warning (local testing only). |
+| `BACKUP_HEARTBEAT_URL` | empty → warning | healthchecks.io-compatible ping URL; `/fail` is appended on failure. |
+| `BACKUP_LOCAL_RETENTION_DAYS` | `7` | Local `*.dump` retention in days. |
+
+rclone credentials live in the deploy user's `~/.config/rclone/rclone.conf` (`chmod 600`), not in `.env`. For local runs the paths are overridable: `APP_DIR` (default `/opt/bookhaven`), `COMPOSE_FILE` (`docker-compose.prod.yml`), `ENV_FILE` (`$APP_DIR/.env`), `BACKUP_DIR` (`$APP_DIR/backups`).
+
+### Backup setup (once, as `deploy`)
+
+`server-setup.sh` already installs `age` and `rclone` and creates `/opt/bookhaven/backups` (`700`, owned by `deploy`).
+
+1. Copy the scripts next to the compose file, keeping the path, and make them executable (the repo's `.gitattributes` keeps `*.sh` LF even on a Windows checkout):
+   ```
+   ssh deploy@<ip> mkdir -p /opt/bookhaven/infrastructure
+   scp -r infrastructure/deploy deploy@<ip>:/opt/bookhaven/infrastructure/
+   ssh deploy@<ip> 'chmod +x /opt/bookhaven/infrastructure/deploy/*.sh'
+   ```
+2. Create an S3-compatible bucket (Timeweb S3 / Selectel S3) with an access key limited to that bucket, then on the server run `rclone config` to create a remote named e.g. `backup`; `chmod 600 ~/.config/rclone/rclone.conf`. Check with `rclone lsd backup:`.
+3. On **your own machine** (not the server): `age-keygen -o bookhaven-backup.key`. Store the whole file (it contains the `AGE-SECRET-KEY-...` identity) in the password manager, note the printed `age1...` public key, then delete the local file.
+4. Create a check on healthchecks.io (free tier; period 1 day, grace ~2 h) and copy its ping URL.
+5. Fill `BACKUP_RCLONE_REMOTE`, `BACKUP_AGE_RECIPIENT`, `BACKUP_HEARTBEAT_URL` in `/opt/bookhaven/.env`.
+6. Run once by hand and read the log: `/opt/bookhaven/infrastructure/deploy/backup.sh; echo $?; tail /opt/bookhaven/backups/backup.log`. Confirm `rclone ls backup:bookhaven-backups/daily/` lists the new `.dump.age` and the healthchecks check turned green.
+7. Install the cron line (`crontab -e`). No output redirect — the script writes its own timestamped log to `/opt/bookhaven/backups/backup.log`:
+   ```
+   0 3 * * * /opt/bookhaven/infrastructure/deploy/backup.sh
+   ```
+
+### `.env` and keys off-server
+
+`.env` is **not** in the dump. Keep an encrypted copy of `/opt/bookhaven/.env`, the `age` identity and the rclone credentials (bucket access key) in the password manager, and update it after every `.env` change. Losing `JWT_SECRET` logs everyone out; losing `POSTGRES_PASSWORD` is recoverable (reset it inside the container) but annoying; losing the age identity loses every off-site backup.
+
+## Restore
+
+1. **Pick the file.**
+   - Local (disk survived): `ls -l /opt/bookhaven/backups/bookhaven-*.dump`.
+   - Off-site: list and download it, then decrypt it with the identity copied temporarily from the password manager:
+     ```
+     rclone lsl backup:bookhaven-backups/daily/
+     rclone copyto backup:bookhaven-backups/daily/bookhaven-<ts>.dump.age ./x.dump.age
+     install -m 600 /dev/null ~/bh-age.key && nano ~/bh-age.key   # paste the identity
+     age -d -i ~/bh-age.key -o x.dump x.dump.age
+     shred -u ~/bh-age.key
+     ```
+2. **Dry run first:** `/opt/bookhaven/infrastructure/deploy/restore-drill.sh x.dump` (or `x.dump.age <identity-file>`). It restores into a throwaway `postgres:16-alpine` container (no published port, no named volume, removed afterwards), never touches the compose stack, and prints the `schema_migrations` version/dirty flag and row counts of `users`, `books`, `authors`. Continue only on `DRILL PASSED`.
+3. **Production restore — into a fresh database, then swap; never restore over the live database in place.** The commands assume `POSTGRES_DB=bookhaven`. Run them in `/opt/bookhaven`:
+   ```
+   docker compose -f docker-compose.prod.yml stop backend worker
+   docker compose -f docker-compose.prod.yml exec -T postgres sh -c 'createdb -U "$POSTGRES_USER" bookhaven_restore'
+   docker compose -f docker-compose.prod.yml exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" --no-owner --exit-on-error -d bookhaven_restore' < x.dump
+   docker compose -f docker-compose.prod.yml exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d bookhaven_restore -c "SELECT version, dirty FROM schema_migrations" -c "SELECT count(*) FROM users" -c "SELECT count(*) FROM books"'
+   docker compose -f docker-compose.prod.yml exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -c "ALTER DATABASE bookhaven RENAME TO bookhaven_old" -c "ALTER DATABASE bookhaven_restore RENAME TO bookhaven"'
+   docker compose -f docker-compose.prod.yml up -d backend worker
+   ```
+   If the first rename fails with "database is being accessed by other users" (backend and worker are stopped, so usually a backup cron run or a stray `psql` session), end those sessions and repeat the rename: `... psql -U "$POSTGRES_USER" -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='bookhaven' AND pid<>pg_backend_pid()"`.
+
+   Smoke-check `https://<API_DOMAIN>/health/ready` and the catalog. Drop `bookhaven_old` only after a few days (`... psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE bookhaven_old"`). If any step before the rename fails, nothing has changed: drop `bookhaven_restore` and start the services again.
+
+   **Rollback after the swap** (the smoke-check fails): put the old database back.
+   ```
+   docker compose -f docker-compose.prod.yml stop backend worker
+   docker compose -f docker-compose.prod.yml exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -c "ALTER DATABASE bookhaven RENAME TO bookhaven_failed" -c "ALTER DATABASE bookhaven_old RENAME TO bookhaven"'
+   docker compose -f docker-compose.prod.yml up -d backend worker
+   ```
+   Keep `bookhaven_failed` for investigation and drop it once the cause is known.
+   - **Image vs dump version:** if the running image is older than the dump's migration `version` (its `backend/migrations` has no file with that number), first set `IMAGE_TAG` in `.env` to a build that has it and `pull`. An older binary against a newer schema is not supported.
+4. **Full VPS loss:** provision a new VPS → `server-setup.sh` → restore `/opt/bookhaven/.env` from the password manager → copy the compose file, `Caddyfile` and `infrastructure/deploy/` (see [Backup setup](#backup-setup-once-as-deploy)) and re-create `rclone.conf` → `docker compose -f docker-compose.prod.yml up -d postgres` → fetch and decrypt the newest off-site copy (step 1) and dry-run it (step 2). Then restore straight into the empty database the container created. No rename is needed, and the migrate step is skipped because the dump carries the schema and `schema_migrations`:
+   ```
+   docker compose -f docker-compose.prod.yml exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" --no-owner --exit-on-error -d "$POSTGRES_DB"' < x.dump
+   docker compose -f docker-compose.prod.yml up -d
+   ```
+   Point DNS at the new IP; covers re-mirror automatically. Re-install the backup cron line and run one backup by hand.
+
+### Quarterly restore drill
+
+Once a quarter, and after any change to the backup setup: download the latest `monthly/` copy and run `restore-drill.sh x.dump.age <identity-file>`. Do it on your own machine with Docker + `age` + `rclone`, or on the server with the identity copied in temporarily and `shred`-ed afterwards. Record the date and result as one line in the operator log or a GitHub issue comment. This is the only proof that the age identity in the password manager and the off-site copy still work.
 
 ## Background jobs (worker)
 
@@ -385,6 +474,8 @@ Revisit this section once there's a real incident or real user volume — don't 
 - [ ] Rotate `JWT_SECRET`/`POSTGRES_PASSWORD`/`SMTP_PASSWORD` if they were ever pasted anywhere outside the server's `.env` (chat, ticket, etc.)
 - [ ] `SMTP_PASSWORD` is set only in the server's `.env` and only passed to the `worker` container; SPF/DKIM/DMARC records are in place for the `MAIL_FROM` domain before real users receive mail
 - [ ] Confirm GHCR package visibility matches intent (public if repo is public, private + PAT otherwise) so images aren't unintentionally exposed or, conversely, undeployable
+- [ ] Backups (pre-launch, see [Backups](#backups)): off-site rclone remote configured and `BACKUP_RCLONE_REMOTE`/`BACKUP_AGE_RECIPIENT` set; healthchecks.io check created (period 1 day, grace ~2 h) and `BACKUP_HEARTBEAT_URL` set; cron line installed and one manual run green; first [restore drill](#quarterly-restore-drill) passed from an off-site copy
+- [ ] `.env`, the `age` identity and the rclone bucket credentials are stored in the password manager (and the identity is **not** on the server)
 - [ ] Credential-stuffing against `/api/v1/auth/login`: the app-layer throttle is in place (60 attempts / 15 min per IP, 10 failed per address); an additional Caddy `rate_limit` (plugin) is optional before opening registration to the public
 
 ## Cost estimate (minimal budget)
