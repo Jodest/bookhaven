@@ -112,4 +112,4 @@ jobs:
             docker image prune -f
             sleep 5
             set -a; source .env; set +a
-            curl -fsS "https://${API_DOMAIN}/health" || (docker compose -f docker-compose.prod.yml logs --tail=100 backend caddy && exit 1)
+            curl -fsS --retry 6 --retry-delay 5 --retry-all-errors "https://${API_DOMAIN}/health/ready" || (docker compose -f docker-compose.prod.yml logs --tail=100 backend caddy && exit 1)

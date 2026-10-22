@@ -300,11 +300,10 @@ func main() {
 	api.POST("/auth/forgot-password", authHandler.ForgotPassword)
 	api.POST("/auth/reset-password", authHandler.ResetPassword)
 
-	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{
-			"status": "ok",
-		})
-	})
+	httptransport.RegisterHealthRoutes(e, logger, 2*time.Second,
+		httptransport.NewGormHealthChecker(db),
+		httptransport.NewRedisHealthChecker(redisClient),
+	)
 
 	// Self-hosted cover files (#489): public, read-only use of the storage the
 	// worker writes. Registered at the root, outside /api/v1.

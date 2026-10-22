@@ -71,7 +71,7 @@ All three production images (`backend`, `web`, `admin`) were built and smoke-tes
 1. Actions tab → Deploy → Run workflow on `main` (or push to `main` once deploy-on-push is re-enabled — see [Ongoing deploys](#ongoing-deploys)). `.github/workflows/deploy.yml` runs CI, builds and pushes the three images tagged with the short commit SHA and `latest`, then SSHes in and runs the compose stack.
 2. The very first run also needs the database migrated: the deploy workflow already runs `docker compose run --rm --entrypoint /app/migrate backend up` before `up -d`, so this happens automatically — including on the first deploy.
 3. Seed data (optional, for a demo account) is not run automatically. `cmd/seed` is dev/demo-only tooling and refuses to run when `APP_ENV=production` unless you pass `-force` — evaluate first whether seed data belongs in a real production database, and only pass `-force` if you genuinely want the same fixed demo seed as dev. If wanted: `docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/migrate backend version` to confirm migrations landed, then adapt `backend/cmd/seed` into a one-off run the same way (with `-force`) if you go ahead.
-4. Verify: `https://<API_DOMAIN>/health` returns `{"status":"ok"}`, `https://<WEB_DOMAIN>` loads the catalog, `https://<ADMIN_DOMAIN>` redirects to login.
+4. Verify: `https://<API_DOMAIN>/health/ready` returns `{"status":"ok","checks":{"database":"ok","redis":"ok"}}`, `https://<WEB_DOMAIN>` loads the catalog, `https://<ADMIN_DOMAIN>` redirects to login.
 
 ## Ongoing deploys
 
@@ -362,7 +362,7 @@ Send a real email to a Gmail and a Yandex inbox — either through the first rea
 
 Kept intentionally minimal for an MVP with no ops budget:
 
-- **Uptime**: point a free external checker (UptimeRobot, or Yandex/VK equivalents) at `https://<API_DOMAIN>/health` and `https://<WEB_DOMAIN>/`. Free tier is enough for one project.
+- **Uptime**: point a free external checker (UptimeRobot, or Yandex/VK equivalents) at `https://<API_DOMAIN>/health/ready` and `https://<WEB_DOMAIN>/`. Free tier is enough for one project. Liveness vs readiness: `/health` is liveness (static `200 {"status":"ok"}`, the process serves HTTP; Caddy's active health check uses it and must keep doing so, otherwise a PostgreSQL/Redis blip would turn into 502/503 for the whole API), while `/health/ready` is readiness (pings PostgreSQL and Redis, 2 s timeout each; `503` with `"unavailable"` for the failing dependency, details only in the backend logs). The deploy workflow and uptime monitoring use `/health/ready`.
 - **Logs**: `docker compose -f docker-compose.prod.yml logs -f backend|web|admin|caddy` over SSH. The backend already logs structured JSON (zap) with method/URI/status per request.
 - **Errors** (optional, recommended once there's real traffic): Sentry has a free tier and SDKs for both Go/Echo and Next.js — add it as a follow-up, not a blocker for launch.
 
