@@ -24,6 +24,7 @@ import {
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { MultiSelect } from '@/shared/ui';
+import { coverCopyHint } from '../lib/cover-copy-hint';
 
 // Must match the backend's ErrTitleNotRussian message exactly
 // (backend/internal/modules/admin/service/service.go).
@@ -309,6 +310,12 @@ export function BookForm({
       <div className="space-y-2">
         <Label htmlFor="cover_url">URL обложки</Label>
         <Input id="cover_url" {...register('cover_url')} />
+        {/* Describes the loaded book's copy; does not follow the field. */}
+        {initial && initial.cover_url && coverCopyHint(initial.cover_copy) && (
+          <p className="text-xs text-muted-foreground" data-testid="cover-copy-hint">
+            {coverCopyHint(initial.cover_copy)}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

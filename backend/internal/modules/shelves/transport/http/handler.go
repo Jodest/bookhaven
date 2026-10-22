@@ -158,7 +158,7 @@ func toBookListItemResponse(b catalogDomain.Book) bookListItemResponse {
 		ID:            b.ID.String(),
 		Title:         b.Title,
 		Slug:          b.Slug,
-		CoverURL:      b.CoverURL,
+		CoverURL:      b.DisplayCoverURL(),
 		PublishedYear: b.PublishedYear,
 		Rating:        b.Rating,
 		RatingsCount:  b.RatingsCount,

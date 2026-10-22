@@ -1,5 +1,5 @@
 import type { Book } from '@bookhaven/api-client';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildBookJsonLd, buildBookMetadata } from './book-seo';
 
 const author = {
@@ -63,8 +63,29 @@ describe('buildBookMetadata', () => {
       images: [{ url: 'https://x.test/c.jpg' }],
     });
     expect(
-      (buildBookMetadata({ ...book, coverUrl: '/covers/c.jpg' }).openGraph as { images?: unknown }).images
+      (buildBookMetadata({ ...book, coverUrl: '/other/c.jpg' }).openGraph as { images?: unknown }).images
     ).toBeUndefined();
+    expect((buildBookMetadata(book).openGraph as { images?: unknown }).images).toBeUndefined();
+  });
+
+  describe('self-hosted cover', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('makes the og image absolute with SITE_URL', () => {
+      vi.stubEnv('SITE_URL', 'https://bookhaven.example');
+      const meta = buildBookMetadata({ ...book, coverUrl: '/covers/ab/abc.jpg' });
+      expect(meta.openGraph).toMatchObject({
+        images: [{ url: 'https://bookhaven.example/covers/ab/abc.jpg' }],
+      });
+    });
+
+    it('uses the same absolute url in the structured data', () => {
+      vi.stubEnv('SITE_URL', 'https://bookhaven.example');
+      const ld = buildBookJsonLd({ ...book, coverUrl: '/covers/ab/abc.jpg' });
+      expect(ld.image).toBe('https://bookhaven.example/covers/ab/abc.jpg');
+    });
   });
 });
 
@@ -80,6 +101,11 @@ describe('buildBookJsonLd', () => {
   it('adds aggregateRating when there are ratings', () => {
     const ld = buildBookJsonLd({ ...book, ratingsCount: 3 });
     expect(ld.aggregateRating).toMatchObject({ ratingValue: 4.25, ratingCount: 3, bestRating: 5 });
+  });
+
+  it('keeps an absolute cover and omits the image without a cover', () => {
+    expect(buildBookJsonLd({ ...book, coverUrl: 'https://x.test/c.jpg' }).image).toBe('https://x.test/c.jpg');
+    expect(buildBookJsonLd(book)).not.toHaveProperty('image');
   });
 
   it('never takes the description from aiDescription', () => {

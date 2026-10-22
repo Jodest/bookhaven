@@ -394,3 +394,51 @@ func TestCuratedServerConfig(t *testing.T) {
 		t.Errorf("Queues = %v, want map[curated:1]", c.Queues)
 	}
 }
+
+func TestCoversServerConfig(t *testing.T) {
+	c := coversServerConfig(nil)
+	if c.Concurrency != 1 {
+		t.Errorf("Concurrency = %d, want 1", c.Concurrency)
+	}
+	if !reflect.DeepEqual(c.Queues, map[string]int{"covers": 1}) {
+		t.Errorf("Queues = %v, want map[covers:1]", c.Queues)
+	}
+}
+
+func TestRegisterSchedules_CoversSweep(t *testing.T) {
+	f := &fakeRegistrar{}
+	cfg := &config.Config{CoversMirrorEnabled: true, CoversSweepCron: "*/15 * * * *"}
+	if err := registerSchedules(f, cfg); err != nil {
+		t.Fatalf("registerSchedules: %v", err)
+	}
+	if len(f.regs) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	}
+	r := f.regs[1]
+	if r.cronspec != "*/15 * * * *" || r.task.Type() != "covers:sweep" {
+		t.Errorf("registration = %q %q", r.cronspec, r.task.Type())
+	}
+}
+
+func TestRegisterSchedules_CoversSweepNotScheduled(t *testing.T) {
+	for name, cfg := range map[string]*config.Config{
+		"mirror off": {CoversSweepCron: "*/15 * * * *"},
+		"empty cron": {CoversMirrorEnabled: true, CoversSweepCron: ""},
+	} {
+		f := &fakeRegistrar{}
+		if err := registerSchedules(f, cfg); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(f.regs) != 1 {
+			t.Errorf("%s: expected only the similarity schedule, got %d", name, len(f.regs))
+		}
+	}
+}
+
+func TestRegisterSchedules_InvalidCoversSweepCronFails(t *testing.T) {
+	f := &fakeRegistrar{errFor: "bad"}
+	cfg := &config.Config{CoversMirrorEnabled: true, CoversSweepCron: "bad"}
+	if err := registerSchedules(f, cfg); err == nil || !strings.Contains(err.Error(), "covers sweep") {
+		t.Fatalf("expected a registration error, got %v", err)
+	}
+}

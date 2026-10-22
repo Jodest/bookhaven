@@ -1,5 +1,6 @@
 import type { Book } from '@bookhaven/api-client';
 import type { Metadata } from 'next';
+import { absoluteCoverUrl } from '@/shared/lib/absolute-cover-url';
 
 const DESCRIPTION_LIMIT = 160;
 
@@ -28,7 +29,7 @@ export function buildBookMetadata(book: Book): Metadata {
       ? `${book.title} — ${authors.join(', ')} — BookHaven`
       : `${book.title} — BookHaven`;
   const description = metaDescription(book);
-  const hasImage = !!book.coverUrl && /^https?:\/\//.test(book.coverUrl);
+  const image = absoluteCoverUrl(book.coverUrl);
 
   return {
     title,
@@ -39,13 +40,14 @@ export function buildBookMetadata(book: Book): Metadata {
       description,
       ...(book.isbn ? { isbn: book.isbn } : {}),
       ...(authors.length > 0 ? { authors } : {}),
-      ...(hasImage ? { images: [{ url: book.coverUrl as string }] } : {}),
+      ...(image ? { images: [{ url: image }] } : {}),
     },
   };
 }
 
 export function buildBookJsonLd(book: Book): Record<string, unknown> {
   const own = ownDescription(book);
+  const image = absoluteCoverUrl(book.coverUrl);
   return {
     '@context': 'https://schema.org',
     '@type': 'Book',
@@ -55,7 +57,7 @@ export function buildBookJsonLd(book: Book): Record<string, unknown> {
     ...(book.pageCount ? { numberOfPages: book.pageCount } : {}),
     ...(book.publishedYear ? { datePublished: String(book.publishedYear) } : {}),
     ...(book.language ? { inLanguage: book.language } : {}),
-    ...(book.coverUrl ? { image: book.coverUrl } : {}),
+    ...(image ? { image } : {}),
     ...(own ? { description: own } : {}),
     ...(book.ratingsCount > 0
       ? {

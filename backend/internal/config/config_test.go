@@ -575,3 +575,59 @@ func TestLoad_AutoCollectionsScheduleParsing(t *testing.T) {
 		}
 	}
 }
+
+func setCoversEnv(t *testing.T, env map[string]string) {
+	t.Helper()
+	setSMTPEnv(t, nil)
+	for _, k := range []string{"COVERS_DIR", "COVERS_MIRROR_ENABLED", "COVERS_SWEEP_BATCH", "COVERS_ALLOWED_HOSTS"} {
+		t.Setenv(k, "")
+	}
+	// An unset cron means the default; an empty one disables the sweep.
+	t.Setenv("COVERS_SWEEP_CRON", "")
+	if err := os.Unsetenv("COVERS_SWEEP_CRON"); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+}
+
+func TestLoad_Covers(t *testing.T) {
+	setCoversEnv(t, nil)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.CoversDir != "./storage/covers" || !cfg.CoversMirrorEnabled || cfg.CoversSweepCron != "*/15 * * * *" || cfg.CoversSweepBatch != 50 {
+		t.Errorf("unexpected defaults: %q %v %q %d", cfg.CoversDir, cfg.CoversMirrorEnabled, cfg.CoversSweepCron, cfg.CoversSweepBatch)
+	}
+	want := []string{"covers.openlibrary.org", "archive.org", "*.archive.org", "upload.wikimedia.org"}
+	if len(cfg.CoversAllowedHosts) != len(want) {
+		t.Fatalf("hosts = %v", cfg.CoversAllowedHosts)
+	}
+	for i, h := range want {
+		if cfg.CoversAllowedHosts[i] != h {
+			t.Errorf("host %d = %q, want %q", i, cfg.CoversAllowedHosts[i], h)
+		}
+	}
+
+	setCoversEnv(t, map[string]string{
+		"COVERS_DIR": " /data/covers ", "COVERS_MIRROR_ENABLED": "false", "COVERS_SWEEP_CRON": "",
+		"COVERS_ALLOWED_HOSTS": " a.example , *.b.example ,", "COVERS_SWEEP_BATCH": "9999",
+	})
+	cfg, _ = Load()
+	if cfg.CoversDir != "/data/covers" || cfg.CoversMirrorEnabled || cfg.CoversSweepCron != "" || cfg.CoversSweepBatch != 500 {
+		t.Errorf("overrides: %q %v %q %d", cfg.CoversDir, cfg.CoversMirrorEnabled, cfg.CoversSweepCron, cfg.CoversSweepBatch)
+	}
+	if len(cfg.CoversAllowedHosts) != 2 || cfg.CoversAllowedHosts[0] != "a.example" || cfg.CoversAllowedHosts[1] != "*.b.example" {
+		t.Errorf("hosts = %v", cfg.CoversAllowedHosts)
+	}
+
+	for raw, wantN := range map[string]int{"10": 10, "0": 1, "abc": 50} {
+		setCoversEnv(t, map[string]string{"COVERS_SWEEP_BATCH": raw})
+		cfg, _ = Load()
+		if cfg.CoversSweepBatch != wantN {
+			t.Errorf("batch %q = %d, want %d", raw, cfg.CoversSweepBatch, wantN)
+		}
+	}
+}

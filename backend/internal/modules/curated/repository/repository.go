@@ -265,19 +265,27 @@ func (r *GormRepository) Covers(ctx context.Context, id uuid.UUID, size int) ([]
 	if n <= 0 {
 		return []string{}, nil
 	}
-	var rows []struct{ CoverURL *string }
+	var rows []struct {
+		CoverURL       *string
+		CoverSourceURL *string
+		CoverPath      *string
+		CoverStatus    *string
+	}
 	err := r.db.WithContext(ctx).Table("books").
 		Joins("JOIN curated_collection_items i ON i.book_id = books.id").
 		Where("i.collection_id = ? AND books.status = ?", id, catalogDomain.BookStatusPublished).
 		Order("i.position ASC, i.book_id ASC").Limit(n).
-		Select("books.cover_url AS cover_url").Scan(&rows).Error
+		Select("books.cover_url AS cover_url, books.cover_source_url AS cover_source_url, books.cover_path AS cover_path, books.cover_status AS cover_status").
+		Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 	out := make([]string, 0, len(rows))
 	for _, c := range rows {
-		if c.CoverURL != nil && *c.CoverURL != "" {
-			out = append(out, *c.CoverURL)
+		// Displayed link: own copy when stored, nil (skipped) when the
+		// source has no cover, the source link otherwise (#489).
+		if d := catalogDomain.DisplayCoverURL(c.CoverURL, c.CoverSourceURL, c.CoverPath, c.CoverStatus); d != nil {
+			out = append(out, *d)
 		}
 	}
 	return out, nil

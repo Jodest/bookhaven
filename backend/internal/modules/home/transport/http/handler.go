@@ -208,7 +208,7 @@ func toHomeResponse(h *service.Home) homeResponse {
 				ID:       r.Book.ID.String(),
 				Slug:     r.Book.Slug,
 				Title:    r.Book.Title,
-				CoverURL: r.Book.CoverURL,
+				CoverURL: r.Book.DisplayCoverURL(),
 				Authors:  authors,
 			},
 		})

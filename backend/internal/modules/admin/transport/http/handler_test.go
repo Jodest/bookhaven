@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bookhaven/backend/internal/modules/admin/repository"
 	adminService "github.com/bookhaven/backend/internal/modules/admin/service"
@@ -1185,5 +1186,47 @@ func TestGetBook_EmbeddedAuthorsIncludeStatus(t *testing.T) {
 	resp := toBookResponse(catalogDomain.Book{ID: uuid.New(), Title: "T", Authors: []catalogDomain.Author{a}})
 	if len(resp.Authors) != 1 || resp.Authors[0].Status != "pending" {
 		t.Fatalf("expected embedded author status pending, got %+v", resp.Authors)
+	}
+}
+
+// The admin record keeps the source link (never /covers/...) and describes the
+// copy in cover_copy (#489).
+func TestListBooks_CoverCopy(t *testing.T) {
+	src := "https://covers.openlibrary.org/b/id/1-L.jpg"
+	other := "https://example.org/x.jpg"
+	path := "ab/" + strings.Repeat("ab", 32) + ".jpg"
+	stored, failed, errCode := catalogDomain.CoverStatusStored, catalogDomain.CoverStatusFailed, "host_not_allowed"
+	storedAt := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	h, svc := setupHandler()
+	svc.books = []catalogDomain.Book{
+		{ID: uuid.New(), Title: "Stored", Language: "ru", CoverURL: &src, CoverSourceURL: &src, CoverPath: &path, CoverStatus: &stored, CoverStoredAt: &storedAt},
+		{ID: uuid.New(), Title: "Failed", Language: "ru", CoverURL: &other, CoverSourceURL: &other, CoverStatus: &failed, CoverError: &errCode},
+		{ID: uuid.New(), Title: "Changed", Language: "ru", CoverURL: &other, CoverSourceURL: &src, CoverPath: &path, CoverStatus: &stored},
+		{ID: uuid.New(), Title: "NoCover", Language: "ru"},
+	}
+	c, rec := newContext(http.MethodGet, "/api/v1/admin/books", nil)
+	setAdminUser(c)
+	if err := h.ListBooks(c); err != nil {
+		t.Fatal(err)
+	}
+	var body listBooksResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rec.Body.String(), "/covers/") {
+		t.Fatalf("admin record must never expose our copy path: %s", rec.Body.String())
+	}
+	it := body.Items
+	if it[0].CoverURL == nil || *it[0].CoverURL != src || it[0].CoverCopy == nil || it[0].CoverCopy.Status != "stored" || it[0].CoverCopy.StoredAt == nil {
+		t.Fatalf("stored: %+v", it[0])
+	}
+	if it[1].CoverCopy == nil || it[1].CoverCopy.Status != "failed" || it[1].CoverCopy.Error == nil || *it[1].CoverCopy.Error != "host_not_allowed" || it[1].CoverCopy.StoredAt != nil {
+		t.Fatalf("failed: %+v", it[1].CoverCopy)
+	}
+	if it[2].CoverCopy == nil || it[2].CoverCopy.Status != "pending" {
+		t.Fatalf("a copy of another link is pending: %+v", it[2].CoverCopy)
+	}
+	if it[3].CoverCopy != nil || !strings.Contains(rec.Body.String(), `"cover_copy":null`) {
+		t.Fatalf("no cover: %+v", it[3].CoverCopy)
 	}
 }
