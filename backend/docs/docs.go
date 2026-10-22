@@ -7361,7 +7361,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Сначала проверяется пароль, затем подтверждение email. Если пароль верный, но email не подтверждён, возвращается 403 с кодом email_not_verified, токены не создаются и cookies не устанавливаются.",
+                "description": "Сначала проверяется пароль, затем подтверждение email. Если пароль верный, но email не подтверждён, возвращается 403 с кодом email_not_verified, токены не создаются и cookies не устанавливаются. Попытки ограничиваются: 60 попыток за 15 минут с одного IP (считаются все попытки, включая успешные) и 10 неудачных за 15 минут для одного адреса (верный пароль или сброс пароля обнуляет счётчик адреса); при превышении - 429 с кодом rate_limited, одинаковый для существующих и неизвестных адресов.",
                 "consumes": [
                     "application/json"
                 ],
@@ -7412,6 +7412,18 @@ const docTemplate = `{
                         "description": "code: email_not_verified",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "code: rate_limited",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.rateLimitedResponse"
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "type": "integer",
+                                "description": "Секунд до следующей попытки"
+                            }
                         }
                     },
                     "500": {

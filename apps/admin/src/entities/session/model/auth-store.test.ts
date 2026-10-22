@@ -25,6 +25,8 @@ vi.mock('@bookhaven/api-client', () => ({
     },
   },
   setAccessToken: (...args: unknown[]) => setAccessTokenMock(...args),
+  isApiError: (error: unknown) =>
+    error instanceof Error && typeof (error as { status?: unknown }).status === 'number',
   isEmailNotVerifiedError: (error: unknown) =>
     (error as { code?: string } | null)?.code === 'email_not_verified',
   onTokenRefresh: (listener: (tokens: RefreshTokens) => void) => {
@@ -190,5 +192,31 @@ describe('auth-store login errors', () => {
     await expect(useAuthStore.getState().login('a@example.com', 'bad')).rejects.toBeTruthy();
 
     expect(useAuthStore.getState().error).toBe('invalid credentials');
+  });
+
+  it('maps 429 rate_limited to a message with the formatted wait', async () => {
+    const err = Object.assign(new Error('too many requests'), {
+      status: 429,
+      code: 'rate_limited',
+      retryAfterSeconds: 600,
+    });
+    loginMock.mockRejectedValue(err);
+
+    await expect(useAuthStore.getState().login('a@example.com', 'bad')).rejects.toBe(err);
+
+    expect(useAuthStore.getState().error).toBe(
+      'Слишком много попыток входа. Попробуйте снова через 10 мин.'
+    );
+  });
+
+  it('falls back to 15 мин when a 429 carries no retry_after_seconds', async () => {
+    const err = Object.assign(new Error('too many requests'), { status: 429 });
+    loginMock.mockRejectedValue(err);
+
+    await expect(useAuthStore.getState().login('a@example.com', 'bad')).rejects.toBe(err);
+
+    expect(useAuthStore.getState().error).toBe(
+      'Слишком много попыток входа. Попробуйте снова через 15 мин.'
+    );
   });
 });

@@ -127,7 +127,7 @@ func setupVerificationEnv(t *testing.T) *verificationEnv {
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		Issuer:          "bookhaven-test",
 		WebBaseURL:      "http://localhost:3000",
-	}, db, users, m, ResendLimiters{IP: ipL, Email: emailL}, ResendLimiters{IP: resetIPL, Email: resetEmailL}, nil)
+	}, db, users, m, ResendLimiters{IP: ipL, Email: emailL}, ResendLimiters{IP: resetIPL, Email: resetEmailL}, LoginLimiters{}, nil)
 	return &verificationEnv{
 		svc: svc, db: db, users: users, mailer: m,
 		ipLimiter: ipL, emailLimiter: emailL,

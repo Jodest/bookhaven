@@ -1,12 +1,14 @@
 import {
   api,
   FALLBACK_ACCESS_TOKEN_TTL_SECONDS,
+  isApiError,
   isEmailNotVerifiedError,
   onTokenRefresh,
   scheduleTokenRefresh,
   User,
 } from '@bookhaven/api-client';
 import { create } from 'zustand';
+import { formatRetryAfter } from '@/shared/lib/format-retry-after';
 
 interface AuthState {
   user: User | null;
@@ -21,6 +23,20 @@ interface AuthState {
   logout: () => Promise<void>;
   setUser: (user: User) => void;
   clearError: () => void;
+}
+
+const LOGIN_RATE_LIMIT_FALLBACK_SECONDS = 900;
+
+function loginRateLimitMessage(error: unknown): string | null {
+  if (!isApiError(error) || !(error.status === 429 || error.code === 'rate_limited')) {
+    return null;
+  }
+  const retry = error.retryAfterSeconds;
+  const seconds =
+    typeof retry === 'number' && Number.isFinite(retry) && retry > 0
+      ? retry
+      : LOGIN_RATE_LIMIT_FALLBACK_SECONDS;
+  return `Слишком много попыток входа. Попробуйте снова через ${formatRetryAfter(seconds)}.`;
 }
 
 let cancelRefreshTimer: (() => void) | null = null;
@@ -67,7 +83,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (error) {
       // email_not_verified is shown by the login view's own panel.
       if (!isEmailNotVerifiedError(error)) {
-        const message = error instanceof Error ? error.message : 'Ошибка входа';
+        const message =
+          loginRateLimitMessage(error) ??
+          (error instanceof Error ? error.message : 'Ошибка входа');
         set({ error: message });
       }
       throw error;

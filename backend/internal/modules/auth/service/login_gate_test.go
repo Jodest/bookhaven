@@ -34,7 +34,7 @@ func TestLogin_UnverifiedCorrectPassword(t *testing.T) {
 	env := setupVerificationEnv(t)
 	user, _ := env.register(t, "anna@example.com")
 
-	_, tokens, err := env.svc.Login(context.Background(), "anna@example.com", "password123")
+	_, tokens, err := env.svc.Login(context.Background(), "anna@example.com", "password123", "203.0.113.9")
 	if !errors.Is(err, ErrEmailNotVerified) {
 		t.Fatalf("expected ErrEmailNotVerified, got %v", err)
 	}
@@ -50,7 +50,7 @@ func TestLogin_UnverifiedWrongPassword(t *testing.T) {
 	env := setupVerificationEnv(t)
 	env.register(t, "anna@example.com")
 
-	if _, _, err := env.svc.Login(context.Background(), "anna@example.com", "wrong-password"); !errors.Is(err, ErrInvalidCredentials) {
+	if _, _, err := env.svc.Login(context.Background(), "anna@example.com", "wrong-password", "203.0.113.9"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
@@ -60,7 +60,7 @@ func TestLogin_Verified(t *testing.T) {
 	user, _ := env.register(t, "anna@example.com")
 	env.markVerified(t, user.ID)
 
-	_, tokens, err := env.svc.Login(context.Background(), "anna@example.com", "password123")
+	_, tokens, err := env.svc.Login(context.Background(), "anna@example.com", "password123", "203.0.113.9")
 	if err != nil || tokens == nil || tokens.AccessToken == "" || tokens.RefreshToken == "" {
 		t.Fatalf("expected tokens, got tokens=%v err=%v", tokens, err)
 	}

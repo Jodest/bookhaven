@@ -40,7 +40,7 @@ The system SHALL accept `POST /api/v1/auth/reset-password` with `{token, passwor
 - **THEN** the response is 200 `password_reset` and the user can log in with the new password
 
 ### Requirement: Effects of a reset
-A successful reset SHALL, in one transaction: mark the token used, replace the password, confirm the email if it was not confirmed (the link proves mailbox ownership), invalidate the user's other unused reset links and revoke all of the user's refresh tokens, ending every session. Two concurrent uses of one link MUST change the password once; the other gets `token_used`.
+A successful reset SHALL, in one transaction: mark the token used, replace the password, confirm the email if it was not confirmed (the link proves mailbox ownership), invalidate the user's other unused reset links and revoke all of the user's refresh tokens, ending every session. Two concurrent uses of one link MUST change the password once; the other gets `token_used`. After the transaction commits, the failed-login counter of the account's address MUST be cleared, so a login with the new password is not blocked by attempts made before the reset; a failure to clear it MUST NOT fail the reset.
 
 #### Scenario: Reset ends all sessions
 - **WHEN** a user resets the password while logged in on another device
@@ -49,6 +49,10 @@ A successful reset SHALL, in one transaction: mark the token used, replace the p
 #### Scenario: Reset confirms the email
 - **WHEN** a user with an unconfirmed email resets the password
 - **THEN** the email is confirmed and the user can log in with the new password
+
+#### Scenario: Reset lifts a login throttle
+- **WHEN** the user's address has reached the failed-login limit and the user then resets the password
+- **THEN** a login with the new password succeeds immediately
 
 ### Requirement: Password reset pages
 The web app SHALL provide public `/forgot-password` («Отправить ссылку», then «Если аккаунт с таким email существует, мы отправили на него письмо со ссылкой для сброса пароля. Ссылка действительна 1 час.», with «Отправить ещё раз») and `/reset-password` (new password and its repetition, «Пароли не совпадают», «Сохранить пароль»). The new password MUST be checked like the endpoint before sending: «Пароль должен быть не короче 8 символов», and for a password over 72 bytes in UTF-8 «Пароль слишком длинный: до 72 латинских или 36 русских букв». On success it shows «Пароль изменён» / «Теперь войдите с новым паролем. Все прежние сеансы завершены.» with a link to log in. Token errors show «Ссылка неполная», «Ссылка недействительна», «Срок действия ссылки истёк» («Ссылка действительна 1 час. Запросите новую.») or «Ссылка уже использована», each with «Запросить новую ссылку». Neither page redirects a signed-in user.

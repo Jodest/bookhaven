@@ -1,6 +1,7 @@
 import {
   api,
   FALLBACK_ACCESS_TOKEN_TTL_SECONDS,
+  isApiError,
   isEmailNotVerifiedError,
   onTokenRefresh,
   scheduleTokenRefresh,
@@ -8,7 +9,7 @@ import {
   User,
 } from '@bookhaven/api-client';
 import { create } from 'zustand';
-import { sanitizeRedirect } from '@/shared/lib';
+import { formatRetryAfter, sanitizeRedirect } from '@/shared/lib';
 
 const ACCESS_TOKEN_KEY = 'admin_access_token';
 
@@ -48,6 +49,20 @@ function setStoredToken(token: string | null): void {
 const initialToken = getStoredToken();
 if (initialToken) {
   setAccessToken(initialToken);
+}
+
+const LOGIN_RATE_LIMIT_FALLBACK_SECONDS = 900;
+
+function loginRateLimitMessage(error: unknown): string | null {
+  if (!isApiError(error) || !(error.status === 429 || error.code === 'rate_limited')) {
+    return null;
+  }
+  const retry = error.retryAfterSeconds;
+  const seconds =
+    typeof retry === 'number' && Number.isFinite(retry) && retry > 0
+      ? retry
+      : LOGIN_RATE_LIMIT_FALLBACK_SECONDS;
+  return `Слишком много попыток входа. Попробуйте снова через ${formatRetryAfter(seconds)}.`;
 }
 
 let cancelRefreshTimer: (() => void) | null = null;
@@ -123,11 +138,13 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
       scheduleRefresh(response.expiresIn);
     } catch (error) {
-      const message = isEmailNotVerifiedError(error)
-        ? 'Email не подтверждён. Подтвердите его по ссылке из письма.'
-        : error instanceof Error
-          ? error.message
-          : 'Ошибка входа';
+      const message =
+        loginRateLimitMessage(error) ??
+        (isEmailNotVerifiedError(error)
+          ? 'Email не подтверждён. Подтвердите его по ссылке из письма.'
+          : error instanceof Error
+            ? error.message
+            : 'Ошибка входа');
       set({ error: message });
       throw error;
     }

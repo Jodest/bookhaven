@@ -105,3 +105,49 @@ func TestRedisLimiter_RedisErrorReturned(t *testing.T) {
 		t.Fatal("expected an error when redis is unavailable")
 	}
 }
+
+func TestRedisLimiter_ReleaseDecrements(t *testing.T) {
+	l, mr := newTestLimiter(t)
+	ctx := context.Background()
+	if _, _, err := l.Allow(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Release(ctx, "u1"); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	got, err := mr.Get("rl:test:day:u1")
+	if err != nil || got != "0" {
+		t.Fatalf("expected counter 0, got %q err=%v", got, err)
+	}
+	// Already zero: stays zero, never negative.
+	if err := l.Release(ctx, "u1"); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if got, _ := mr.Get("rl:test:day:u1"); got != "0" {
+		t.Fatalf("expected counter to stay 0, got %q", got)
+	}
+}
+
+func TestRedisLimiter_ReleaseMissingKeyIsNoop(t *testing.T) {
+	l, mr := newTestLimiter(t)
+	if err := l.Release(context.Background(), "ghost"); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if mr.Exists("rl:test:day:ghost") {
+		t.Fatal("release must not create a key")
+	}
+}
+
+func TestRedisLimiter_ResetDeletesKeys(t *testing.T) {
+	l, mr := newTestLimiter(t)
+	ctx := context.Background()
+	if _, _, err := l.Allow(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Reset(ctx, "u1"); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if mr.Exists("rl:test:min:u1") || mr.Exists("rl:test:day:u1") {
+		t.Fatal("expected both keys deleted")
+	}
+}
