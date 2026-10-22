@@ -31,7 +31,7 @@ func findSetCookie(rec *httptest.ResponseRecorder, name string) *http.Cookie {
 func TestSetAuthCookies_SetsHasSessionAlongsideRefreshToken(t *testing.T) {
 	c, rec := newAuthTestContext()
 
-	setAuthCookies(c, &authDomain.TokenPair{
+	NewHandler(nil).setAuthCookies(c, &authDomain.TokenPair{
 		AccessToken:  "access",
 		RefreshToken: "refresh",
 		ExpiresIn:    900,
@@ -66,7 +66,7 @@ func TestSetAuthCookies_SetsHasSessionAlongsideRefreshToken(t *testing.T) {
 func TestSetAuthCookies_NilTokens(t *testing.T) {
 	c, rec := newAuthTestContext()
 
-	setAuthCookies(c, nil)
+	NewHandler(nil).setAuthCookies(c, nil)
 
 	if len(rec.Result().Cookies()) != 0 {
 		t.Errorf("expected no cookies to be set for nil tokens, got %d", len(rec.Result().Cookies()))
@@ -77,7 +77,7 @@ func TestSetAuthCookies_NilTokens(t *testing.T) {
 func TestClearAuthCookies_ClearsHasSession(t *testing.T) {
 	c, rec := newAuthTestContext()
 
-	clearAuthCookies(c)
+	NewHandler(nil).clearAuthCookies(c)
 
 	for _, name := range []string{"access_token", "refresh_token", "has_session"} {
 		cookie := findSetCookie(rec, name)
@@ -89,6 +89,46 @@ func TestClearAuthCookies_ClearsHasSession(t *testing.T) {
 		}
 		if cookie.MaxAge != -1 {
 			t.Errorf("expected %s cleared MaxAge to be -1, got %d", name, cookie.MaxAge)
+		}
+	}
+}
+
+func TestAuthCookies_SecureAttributes(t *testing.T) {
+	paths := map[string]string{
+		"access_token":  "/",
+		"refresh_token": "/api/v1/auth/refresh",
+		"has_session":   "/",
+	}
+	for _, secure := range []bool{true, false} {
+		h := NewHandler(nil, WithSecureCookies(secure))
+		for _, mode := range []string{"set", "clear"} {
+			c, rec := newAuthTestContext()
+			if mode == "set" {
+				h.setAuthCookies(c, &authDomain.TokenPair{AccessToken: "a", RefreshToken: "r", ExpiresIn: 900})
+			} else {
+				h.clearAuthCookies(c)
+			}
+			for name, path := range paths {
+				cookie := findSetCookie(rec, name)
+				if cookie == nil {
+					t.Fatalf("secure=%v %s: %s cookie missing", secure, mode, name)
+				}
+				if cookie.Secure != secure {
+					t.Errorf("secure=%v %s: %s Secure = %v", secure, mode, name, cookie.Secure)
+				}
+				if !cookie.HttpOnly {
+					t.Errorf("secure=%v %s: %s not HttpOnly", secure, mode, name)
+				}
+				if cookie.SameSite != http.SameSiteStrictMode {
+					t.Errorf("secure=%v %s: %s SameSite = %v", secure, mode, name, cookie.SameSite)
+				}
+				if cookie.Path != path {
+					t.Errorf("secure=%v %s: %s Path = %q", secure, mode, name, cookie.Path)
+				}
+				if mode == "clear" && cookie.MaxAge >= 0 {
+					t.Errorf("secure=%v clear: %s MaxAge = %d, want < 0", secure, name, cookie.MaxAge)
+				}
+			}
 		}
 	}
 }
