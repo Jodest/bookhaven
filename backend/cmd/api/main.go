@@ -79,6 +79,10 @@ func main() {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
 
+	if cfg.Env == "production" && !cfg.AuthCookieSecure {
+		logger.Warn("AUTH_COOKIE_SECURE is off in production: auth cookies are sent without the Secure attribute")
+	}
+
 	// Database connection
 	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
 	if err != nil {
@@ -284,7 +288,7 @@ func main() {
 		curatedService, screenWorksService)
 
 	// Auth routes
-	authHandler := authhttp.NewHandler(authService)
+	authHandler := authhttp.NewHandler(authService, authhttp.WithSecureCookies(cfg.AuthCookieSecure))
 	api := e.Group("/api/v1")
 	api.POST("/auth/register", authHandler.Register)
 	api.POST("/auth/login", authHandler.Login)

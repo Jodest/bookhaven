@@ -115,6 +115,10 @@ type Config struct {
 	CoversSweepCron     string
 	CoversSweepBatch    int
 	CoversAllowedHosts  []string
+
+	// AuthCookieSecure sets the Secure attribute on auth cookies. From
+	// AUTH_COOKIE_SECURE; unset/unparsable means on iff APP_ENV=production.
+	AuthCookieSecure bool
 }
 
 // AIGenresActive reports whether AI genre suggestions are switched on and
@@ -293,6 +297,8 @@ func Load() (*Config, error) {
 	}
 	cfg.CoversAllowedHosts = hosts
 
+	cfg.AuthCookieSecure = parseAuthCookieSecure(cfg.Env)
+
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
 	if err != nil || smtpPort <= 0 || smtpPort > 65535 {
 		return nil, fmt.Errorf("SMTP_PORT must be a valid port number")
@@ -344,6 +350,17 @@ func parseBoolEnv(key string) bool {
 func parseBoolEnvDefaultTrue(key string) bool {
 	v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(key)))
 	return err != nil || v
+}
+
+// parseAuthCookieSecure reads AUTH_COOKIE_SECURE. An explicit valid boolean
+// wins; unset or unparsable falls back to true iff env is production.
+func parseAuthCookieSecure(env string) bool {
+	if raw, ok := os.LookupEnv("AUTH_COOKIE_SECURE"); ok {
+		if v, err := strconv.ParseBool(strings.TrimSpace(raw)); err == nil {
+			return v
+		}
+	}
+	return env == "production"
 }
 
 // parseHarvestScheduleBatch parses HARVEST_SCHEDULE_BATCH: a non-integer

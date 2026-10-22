@@ -16,12 +16,25 @@ import (
 
 // Handler handles authentication HTTP requests.
 type Handler struct {
-	service *service.Service
+	service       *service.Service
+	secureCookies bool
+}
+
+// Option configures a Handler.
+type Option func(*Handler)
+
+// WithSecureCookies sets the Secure attribute on auth cookies.
+func WithSecureCookies(secure bool) Option {
+	return func(h *Handler) { h.secureCookies = secure }
 }
 
 // NewHandler creates a new auth Handler.
-func NewHandler(service *service.Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *service.Service, opts ...Option) *Handler {
+	h := &Handler{service: service}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 type registerRequest struct {
@@ -197,7 +210,7 @@ func (h *Handler) Login(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to login"})
 	}
 
-	setAuthCookies(c, tokens)
+	h.setAuthCookies(c, tokens)
 
 	return c.JSON(http.StatusOK, authResponse{
 		User:         toUserResponse(user),
@@ -239,14 +252,14 @@ func (h *Handler) Refresh(c echo.Context) error {
 
 	tokens, err := h.service.RefreshTokens(c.Request().Context(), refreshToken)
 	if errors.Is(err, service.ErrEmailNotVerified) {
-		clearAuthCookies(c)
+		h.clearAuthCookies(c)
 		return c.JSON(http.StatusUnauthorized, errorResponse{Error: "email not verified", Code: codeEmailNotVerified})
 	}
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid or expired refresh token"})
 	}
 
-	setAuthCookies(c, tokens)
+	h.setAuthCookies(c, tokens)
 
 	return c.JSON(http.StatusOK, tokens)
 }
@@ -276,7 +289,7 @@ func (h *Handler) Logout(c echo.Context) error {
 	}
 
 	// Clear cookies
-	clearAuthCookies(c)
+	h.clearAuthCookies(c)
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -424,7 +437,7 @@ func (h *Handler) ResetPassword(c echo.Context) error {
 	err := h.service.ResetPassword(c.Request().Context(), req.Token, req.Password)
 	switch {
 	case err == nil:
-		clearAuthCookies(c)
+		h.clearAuthCookies(c)
 		return c.JSON(http.StatusOK, statusResponse{Status: "password_reset"})
 	case errors.Is(err, service.ErrResetTokenInvalid):
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid token", Code: codeInvalidToken})
@@ -453,66 +466,48 @@ func writeRateLimited(c echo.Context, rateErr *service.RateLimitError) error {
 	})
 }
 
-func setAuthCookies(c echo.Context, tokens *authDomain.TokenPair) {
+// authCookie builds an auth cookie with the single source of attributes
+// (HttpOnly, SameSite=Strict, Secure from config). Set and clear both go
+// through it so their attributes always match.
+func (h *Handler) authCookie(name, value, path string, maxAge int) *http.Cookie {
+	return &http.Cookie{
+		Name:     name,
+		Value:    value,
+		HttpOnly: true,
+		Secure:   h.secureCookies,
+		SameSite: http.SameSiteStrictMode,
+		Path:     path,
+		MaxAge:   maxAge,
+	}
+}
+
+const (
+	accessTokenPath  = "/"
+	refreshTokenPath = "/api/v1/auth/refresh"
+	hasSessionPath   = "/"
+	// sessionMaxAge is shared by refresh_token and has_session so they can
+	// never diverge in the browser.
+	sessionMaxAge = 60 * 60 * 24 * 30 // 30 days
+)
+
+func (h *Handler) setAuthCookies(c echo.Context, tokens *authDomain.TokenPair) {
 	if tokens == nil {
 		return
 	}
-	c.SetCookie(&http.Cookie{
-		Name:     "access_token",
-		Value:    tokens.AccessToken,
-		HttpOnly: true,
-		Secure:   false, // Set to true in production with HTTPS
-		SameSite: http.SameSiteStrictMode,
-		Path:     "/",
-		MaxAge:   int(tokens.ExpiresIn),
-	})
-	c.SetCookie(&http.Cookie{
-		Name:     "refresh_token",
-		Value:    tokens.RefreshToken,
-		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteStrictMode,
-		Path:     "/api/v1/auth/refresh",
-		MaxAge:   60 * 60 * 24 * 30, // 30 days -- keep in sync with has_session's MaxAge below
-	})
+	c.SetCookie(h.authCookie("access_token", tokens.AccessToken, accessTokenPath, int(tokens.ExpiresIn)))
+	c.SetCookie(h.authCookie("refresh_token", tokens.RefreshToken, refreshTokenPath, sessionMaxAge))
 	// has_session is a non-sensitive marker cookie: it carries no authorization
 	// value and is never validated server-side. It exists purely so that
 	// Edge middleware can tell "maybe still logged in, let the client resolve
 	// it" apart from "definitely logged out" without being able to read the
 	// HttpOnly refresh_token (whose Path is restricted to the refresh endpoint).
 	// It must always be set/cleared alongside refresh_token with the exact same
-	// MaxAge, so the two can never diverge in the browser.
-	c.SetCookie(&http.Cookie{
-		Name:     "has_session",
-		Value:    "1",
-		HttpOnly: true,  // no legitimate reason for client JS to read/write it
-		Secure:   false, // matches existing cookies; set true in production with HTTPS
-		SameSite: http.SameSiteStrictMode,
-		Path:     "/",
-		MaxAge:   60 * 60 * 24 * 30, // 30 days -- must always match refresh_token's MaxAge above
-	})
+	// MaxAge.
+	c.SetCookie(h.authCookie("has_session", "1", hasSessionPath, sessionMaxAge))
 }
 
-func clearAuthCookies(c echo.Context) {
-	c.SetCookie(&http.Cookie{
-		Name:     "access_token",
-		Value:    "",
-		HttpOnly: true,
-		Path:     "/",
-		MaxAge:   -1,
-	})
-	c.SetCookie(&http.Cookie{
-		Name:     "refresh_token",
-		Value:    "",
-		HttpOnly: true,
-		Path:     "/api/v1/auth/refresh",
-		MaxAge:   -1,
-	})
-	c.SetCookie(&http.Cookie{
-		Name:     "has_session",
-		Value:    "",
-		HttpOnly: true,
-		Path:     "/",
-		MaxAge:   -1,
-	})
+func (h *Handler) clearAuthCookies(c echo.Context) {
+	c.SetCookie(h.authCookie("access_token", "", accessTokenPath, -1))
+	c.SetCookie(h.authCookie("refresh_token", "", refreshTokenPath, -1))
+	c.SetCookie(h.authCookie("has_session", "", hasSessionPath, -1))
 }

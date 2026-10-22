@@ -631,3 +631,43 @@ func TestLoad_Covers(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_AuthCookieSecure(t *testing.T) {
+	tests := []struct {
+		name   string
+		env    string
+		secure *string
+		want   bool
+	}{
+		{"dev unset", "development", nil, false},
+		{"production unset", "production", nil, true},
+		{"production explicit false", "production", ptr("false"), false},
+		{"dev explicit true", "development", ptr("true"), true},
+		{"production garbage", "production", ptr("garbage"), true},
+		{"dev garbage", "development", ptr("garbage"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setSMTPEnv(t, map[string]string{
+				"APP_ENV":      tt.env,
+				"JWT_SECRET":   "a-real-secret",
+				"WEB_BASE_URL": "https://bookhaven.example.com",
+			})
+			if tt.secure != nil {
+				t.Setenv("AUTH_COOKIE_SECURE", *tt.secure)
+			} else {
+				t.Setenv("AUTH_COOKIE_SECURE", "") // restore on cleanup
+				os.Unsetenv("AUTH_COOKIE_SECURE")
+			}
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load returned error: %v", err)
+			}
+			if cfg.AuthCookieSecure != tt.want {
+				t.Errorf("AuthCookieSecure = %v, want %v", cfg.AuthCookieSecure, tt.want)
+			}
+		})
+	}
+}
+
+func ptr(s string) *string { return &s }
