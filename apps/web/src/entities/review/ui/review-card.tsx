@@ -65,6 +65,7 @@ export function ReviewCard({
   onEdit,
   onDelete,
 }: ReviewCardProps) {
+  const hidden = review.is_hidden === true;
   return (
     <article className="rounded-md border p-4">
       <div className="flex items-start justify-between gap-4">
@@ -75,37 +76,55 @@ export function ReviewCard({
             <p className="text-xs text-muted-foreground">{formatDate(review.created_at)}</p>
           </div>
         </div>
-        <StarRating value={review.rating} />
+        <div className="flex flex-col items-end gap-1">
+          <StarRating value={review.rating} />
+          {hidden && (
+            <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+              Скрыт модератором
+            </span>
+          )}
+        </div>
       </div>
 
       <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed">{review.content}</p>
 
+      {hidden && (
+        <p className="mt-3 rounded-md bg-muted p-3 text-sm text-muted-foreground">
+          Модератор скрыл эту рецензию — другие читатели её не видят. Вы можете удалить её и
+          написать новую.
+        </p>
+      )}
+
       <div className="mt-4 flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => onToggleLike(review)}
-          className={`flex items-center gap-1 text-sm ${
-            review.liked_by_me ? 'text-primary' : 'text-muted-foreground'
-          }`}
-          disabled={!isAuthenticated}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="h-4 w-4"
-            fill={review.liked_by_me ? 'currentColor' : 'none'}
-            stroke="currentColor"
-            strokeWidth="2"
+        {!hidden && (
+          <button
+            type="button"
+            onClick={() => onToggleLike(review)}
+            className={`flex items-center gap-1 text-sm ${
+              review.liked_by_me ? 'text-primary' : 'text-muted-foreground'
+            }`}
+            disabled={!isAuthenticated}
           >
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-          </svg>
-          {review.likes_count}
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill={review.liked_by_me ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+            {review.likes_count}
+          </button>
+        )}
 
         {isOwner && (
           <div className="ml-auto flex gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(review)}>
-              Редактировать
-            </Button>
+            {!hidden && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(review)}>
+                Редактировать
+              </Button>
+            )}
             <Button type="button" variant="ghost" size="sm" onClick={() => onDelete(review)}>
               Удалить
             </Button>

@@ -613,3 +613,100 @@ func TestToggleLike_RepeatedCycleReusesNotificationRow(t *testing.T) {
 		t.Fatal("expected the reused notification to be refreshed back to unread")
 	}
 }
+
+func seedHiddenReview(repo *fakeRepository, userID, bookID uuid.UUID) *reviewsDomain.Review {
+	review := &reviewsDomain.Review{
+		ID:        uuid.New(),
+		BookID:    bookID,
+		UserID:    userID,
+		Rating:    4,
+		Content:   "Hidden text",
+		IsHidden:  true,
+		CreatedAt: time.Now(),
+	}
+	repo.reviews[review.ID] = review
+	repo.ratings[bookUserKey{bookID: bookID, userID: userID}] = &ratingsDomain.Rating{BookID: bookID, UserID: userID, Value: 4}
+	repo.recalc(bookID)
+	return review
+}
+
+func TestDeleteReview_HiddenByAuthor(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+	review := seedHiddenReview(repo, userID, bookID)
+
+	if err := svc.DeleteReview(ctx, userID, review.ID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := repo.reviews[review.ID]; ok {
+		t.Fatal("expected hidden review to be deleted")
+	}
+	if repo.books[bookID].ReviewsCount != 0 {
+		t.Fatalf("expected reviews count 0, got %d", repo.books[bookID].ReviewsCount)
+	}
+	if repo.books[bookID].RatingsCount != 1 {
+		t.Fatalf("expected rating to remain, got %d", repo.books[bookID].RatingsCount)
+	}
+}
+
+func TestDeleteReview_HiddenByOtherUser(t *testing.T) {
+	ctx := context.Background()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+	review := seedHiddenReview(repo, uuid.New(), bookID)
+
+	err := svc.DeleteReview(ctx, uuid.New(), review.ID)
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if _, ok := repo.reviews[review.ID]; !ok {
+		t.Fatal("review must not be deleted")
+	}
+}
+
+func TestUpdateReview_HiddenByAuthor(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+	review := seedHiddenReview(repo, userID, bookID)
+
+	newContent := "Edited"
+	_, err := svc.UpdateReview(ctx, userID, review.ID, nil, &newContent)
+	if !errors.Is(err, ErrReviewHidden) {
+		t.Fatalf("expected ErrReviewHidden, got %v", err)
+	}
+	if repo.reviews[review.ID].Content != "Hidden text" {
+		t.Fatalf("review must stay unchanged, got %q", repo.reviews[review.ID].Content)
+	}
+
+	_, err = svc.UpdateReview(ctx, uuid.New(), review.ID, nil, &newContent)
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected ErrForbidden for another user, got %v", err)
+	}
+}
+
+func TestListReviews_HiddenOwnReviewIsMyReviewOnly(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+	review := seedHiddenReview(repo, userID, bookID)
+
+	result, err := svc.ListReviews(ctx, bookID, &userID, 1, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.MyReview == nil || result.MyReview.ID != review.ID || !result.MyReview.IsHidden {
+		t.Fatalf("expected hidden my_review, got %+v", result.MyReview)
+	}
+	if len(result.Items) != 0 {
+		t.Fatalf("hidden review must not be in items, got %d", len(result.Items))
+	}
+}

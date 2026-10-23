@@ -3332,6 +3332,8 @@ definitions:
         type: string
       id:
         type: string
+      is_hidden:
+        type: boolean
       liked_by_me:
         type: boolean
       likes_count:
@@ -10487,6 +10489,12 @@ paths:
             type: object
         "404":
           description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
           schema:
             additionalProperties:
               type: string
