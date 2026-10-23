@@ -217,7 +217,7 @@ Once a quarter, and after any change to the backup setup: download the latest `m
 
 ## Background jobs (worker)
 
-The `worker` container runs three asynq servers (harvest, `email`, `similarity`; plus `harvest_schedule` only when the scheduled harvest is on, `ai_moderation` only when AI pre-moderation is on and `ai_curator` only when AI author curation is on) plus an in-process `asynq.Scheduler`. The harvest server processes exactly one harvest job at a time (`Concurrency: 1`, #191), manual and scheduled jobs alike. The scheduler enqueues the daily similar-books recompute (`similarity:recompute` on the `similarity` queue, 03:30 UTC; see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md)). The recompute reads shelves/ratings, builds the "readers also read" ranking and fully replaces the `book_similarities` table in one transaction. Books without rows keep the stage-1 content-based list, so an empty table is always safe.
+The `worker` container runs four asynq servers (harvest, `email`, `similarity`, `auth_maintenance`; plus `harvest_schedule` only when the scheduled harvest is on, `ai_moderation` only when AI pre-moderation is on and `ai_curator` only when AI author curation is on) plus an in-process `asynq.Scheduler`. The harvest server processes exactly one harvest job at a time (`Concurrency: 1`, #191), manual and scheduled jobs alike. The scheduler enqueues the daily similar-books recompute (`similarity:recompute` on the `similarity` queue, 03:30 UTC; see [docs/features/similar-books-stage2.md](features/similar-books-stage2.md)). The recompute reads shelves/ratings, builds the "readers also read" ranking and fully replaces the `book_similarities` table in one transaction. Books without rows keep the stage-1 content-based list, so an empty table is always safe.
 
 > **Do not run more than one worker replica** without moving the scheduler out of the worker. Prod runs exactly one (`container_name: bookhaven-worker`). The task's `asynq.Unique(6h)` rejects a duplicate enqueue if two schedulers ever run, but that is a safety net, not a design.
 
@@ -228,6 +228,17 @@ docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/similarity 
 ```
 
 It prints the run stats and exits non-zero on error. If the worker is unhealthy (see the known config issue with the worker's environment), the nightly run never fires and every book silently stays on the stage-1 list: check `docker compose -f docker-compose.prod.yml logs worker` for `asynq scheduler started` and `similar books recomputed`.
+
+### Auth token purge
+
+Always on (no flag). The scheduler enqueues `auth:purge_tokens` (queue `auth_maintenance`, its own server with Concurrency 1; `MaxRetry(2)`, `Timeout(10m)`, `Unique(6h)`) daily at 03:45 UTC. It deletes, in batches of 1000 by primary key, so each statement stays short:
+
+- `refresh_tokens` revoked or expired more than 7 days ago;
+- `email_verification_tokens` and `password_reset_tokens` expired more than 30 days ago (used or not).
+
+Live tokens are never touched. During the 30 days a used or expired verification/reset link keeps its specific answer; after that it is unknown and the page shows «Ссылка недействительна». The retention windows are constants (`RefreshTokenRetention`, `OneTimeTokenRetention` in `internal/modules/auth/domain/tokens.go`), not env vars. A failure on one table is logged (`auth token purge failed`) and the other tables still run; the task then fails and asynq retries it (the purge is idempotent). Migration `000038` only adds indexes for the purge filters.
+
+Check `docker compose -f docker-compose.prod.yml logs worker` for `auth token purge scheduled` at startup and a daily `auth tokens purged` line with `refresh_deleted`, `verification_deleted` and `reset_deleted` (logged even when zero; no tokens, emails or user ids are logged). The single-replica rule applies here too: `Unique(6h)` is only a safety net.
 
 ### Scheduled harvest
 

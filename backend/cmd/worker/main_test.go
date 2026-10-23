@@ -10,6 +10,7 @@ import (
 	"github.com/bookhaven/backend/internal/config"
 	aigenresservice "github.com/bookhaven/backend/internal/modules/aigenres/service"
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
+	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	curatedservice "github.com/bookhaven/backend/internal/modules/curated/service"
 	harvestservice "github.com/bookhaven/backend/internal/modules/harvest/service"
@@ -38,15 +39,65 @@ func (f *fakeRegistrar) Register(cronspec string, task *asynq.Task, opts ...asyn
 	return "entry-1", nil
 }
 
+// scheduled returns the registrations other than the always-on auth token
+// purge, so the tests of the optional schedules keep asserting exactly what
+// they enable.
+func (f *fakeRegistrar) scheduled() []registration {
+	var out []registration
+	for _, r := range f.regs {
+		if r.task.Type() != authservice.TaskTypePurgeTokens {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func TestRegisterSchedules_AuthTokenPurgeAlwaysOn(t *testing.T) {
+	for name, cfg := range map[string]*config.Config{"nil cfg": nil, "default cfg": {}} {
+		f := &fakeRegistrar{}
+		if err := registerSchedules(f, cfg); err != nil {
+			t.Fatalf("%s: registerSchedules: %v", name, err)
+		}
+		var found *registration
+		for i := range f.regs {
+			if f.regs[i].task.Type() == "auth:purge_tokens" {
+				found = &f.regs[i]
+			}
+		}
+		if found == nil {
+			t.Fatalf("%s: auth:purge_tokens not registered", name)
+		}
+		if found.cronspec != authTokenPurgeCronSpec || authTokenPurgeCronSpec != "45 3 * * *" {
+			t.Errorf("%s: cronspec = %q", name, found.cronspec)
+		}
+		var queue string
+		for _, o := range found.opts {
+			if o.Type() == asynq.QueueOpt {
+				queue = o.Value().(string)
+			}
+		}
+		if queue != "auth_maintenance" {
+			t.Errorf("%s: queue = %q, want auth_maintenance", name, queue)
+		}
+	}
+}
+
+func TestAuthPurgeServerConfig(t *testing.T) {
+	cfg := authPurgeServerConfig(nil)
+	if cfg.Concurrency != 1 || !reflect.DeepEqual(cfg.Queues, map[string]int{"auth_maintenance": 1}) {
+		t.Errorf("config = %+v", cfg)
+	}
+}
+
 func TestRegisterSchedules_SimilarityDaily(t *testing.T) {
 	f := &fakeRegistrar{}
 	if err := registerSchedules(f, &config.Config{}); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 1 {
-		t.Fatalf("expected 1 registration, got %d", len(f.regs))
+	if len(f.scheduled()) != 1 {
+		t.Fatalf("expected 1 registration, got %d", len(f.scheduled()))
 	}
-	r := f.regs[0]
+	r := f.scheduled()[0]
 	if r.cronspec != "30 3 * * *" {
 		t.Errorf("cronspec = %q, want 30 3 * * *", r.cronspec)
 	}
@@ -74,13 +125,13 @@ func TestRegisterSchedules_HarvestTickWhenEnabled(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 2 {
-		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	if len(f.scheduled()) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.scheduled()))
 	}
-	if f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
-		t.Errorf("first registration = %q, want the similarity recompute", f.regs[0].task.Type())
+	if f.scheduled()[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+		t.Errorf("first registration = %q, want the similarity recompute", f.scheduled()[0].task.Type())
 	}
-	r := f.regs[1]
+	r := f.scheduled()[1]
 	if r.cronspec != "0 4 * * *" || r.task.Type() != harvestservice.TaskTypeHarvestScheduleTick {
 		t.Errorf("tick registration = %q %q", r.cronspec, r.task.Type())
 	}
@@ -101,8 +152,8 @@ func TestRegisterSchedules_HarvestTickDisabled(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
-		t.Fatalf("expected only the similarity schedule, got %+v", f.regs)
+	if len(f.scheduled()) != 1 || f.scheduled()[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+		t.Fatalf("expected only the similarity schedule, got %+v", f.scheduled())
 	}
 }
 
@@ -120,10 +171,10 @@ func TestRegisterSchedules_AdaptationSyncTick(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 2 {
-		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	if len(f.scheduled()) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.scheduled()))
 	}
-	r := f.regs[1]
+	r := f.scheduled()[1]
 	if r.cronspec != "0 5 * * 0" || r.task.Type() != screenworksservice.TaskTypeCatalogSyncTick {
 		t.Errorf("tick registration = %q %q", r.cronspec, r.task.Type())
 	}
@@ -144,8 +195,8 @@ func TestRegisterSchedules_AdaptationSyncTickDisabled(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
-		t.Fatalf("expected only the similarity schedule, got %+v", f.regs)
+	if len(f.scheduled()) != 1 || f.scheduled()[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+		t.Fatalf("expected only the similarity schedule, got %+v", f.scheduled())
 	}
 }
 
@@ -183,10 +234,10 @@ func TestRegisterSchedules_AIModerationSweepWhenActive(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 2 {
-		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	if len(f.scheduled()) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.scheduled()))
 	}
-	r := f.regs[1]
+	r := f.scheduled()[1]
 	if r.cronspec != "*/30 * * * *" || r.task.Type() != aimodservice.TaskTypeSweep {
 		t.Errorf("sweep registration = %q %q", r.cronspec, r.task.Type())
 	}
@@ -213,8 +264,8 @@ func TestRegisterSchedules_AIModerationInactive(t *testing.T) {
 		if err := registerSchedules(f, cfg); err != nil {
 			t.Fatalf("%s: registerSchedules: %v", name, err)
 		}
-		if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
-			t.Fatalf("%s: expected only the similarity schedule, got %+v", name, f.regs)
+		if len(f.scheduled()) != 1 || f.scheduled()[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+			t.Fatalf("%s: expected only the similarity schedule, got %+v", name, f.scheduled())
 		}
 	}
 }
@@ -283,10 +334,10 @@ func TestRegisterSchedules_AIGenresWhenActive(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 2 {
-		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	if len(f.scheduled()) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.scheduled()))
 	}
-	r := f.regs[1]
+	r := f.scheduled()[1]
 	if r.cronspec != "0 3 * * 1" || r.task.Type() != aigenresservice.TaskTypeScheduled {
 		t.Errorf("registration = %q %q", r.cronspec, r.task.Type())
 	}
@@ -311,8 +362,8 @@ func TestRegisterSchedules_AIGenresNotScheduled(t *testing.T) {
 		if err := registerSchedules(f, cfg); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if len(f.regs) != 1 {
-			t.Errorf("%s: expected only the similarity schedule, got %d", name, len(f.regs))
+		if len(f.scheduled()) != 1 {
+			t.Errorf("%s: expected only the similarity schedule, got %d", name, len(f.scheduled()))
 		}
 	}
 }
@@ -332,8 +383,8 @@ func TestRegisterSchedules_NoAIDescriptionsSchedule(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
-		t.Fatalf("expected only the similarity schedule, got %d registrations", len(f.regs))
+	if len(f.scheduled()) != 1 || f.scheduled()[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+		t.Fatalf("expected only the similarity schedule, got %d registrations", len(f.scheduled()))
 	}
 }
 
@@ -343,10 +394,10 @@ func TestRegisterSchedules_AutoCollectionsWhenEnabled(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 2 {
-		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	if len(f.scheduled()) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.scheduled()))
 	}
-	r := f.regs[1]
+	r := f.scheduled()[1]
 	if r.cronspec != "0 1 * * *" || r.task.Type() != curatedservice.TaskTypeRecomputeAuto {
 		t.Errorf("registration = %q %q", r.cronspec, r.task.Type())
 	}
@@ -371,8 +422,8 @@ func TestRegisterSchedules_AutoCollectionsDisabled(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 1 || f.regs[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
-		t.Fatalf("expected only the similarity schedule, got %+v", f.regs)
+	if len(f.scheduled()) != 1 || f.scheduled()[0].task.Type() != catalogservice.TaskTypeRecomputeSimilarities {
+		t.Fatalf("expected only the similarity schedule, got %+v", f.scheduled())
 	}
 }
 
@@ -411,10 +462,10 @@ func TestRegisterSchedules_CoversSweep(t *testing.T) {
 	if err := registerSchedules(f, cfg); err != nil {
 		t.Fatalf("registerSchedules: %v", err)
 	}
-	if len(f.regs) != 2 {
-		t.Fatalf("expected 2 registrations, got %d", len(f.regs))
+	if len(f.scheduled()) != 2 {
+		t.Fatalf("expected 2 registrations, got %d", len(f.scheduled()))
 	}
-	r := f.regs[1]
+	r := f.scheduled()[1]
 	if r.cronspec != "*/15 * * * *" || r.task.Type() != "covers:sweep" {
 		t.Errorf("registration = %q %q", r.cronspec, r.task.Type())
 	}
@@ -429,8 +480,8 @@ func TestRegisterSchedules_CoversSweepNotScheduled(t *testing.T) {
 		if err := registerSchedules(f, cfg); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if len(f.regs) != 1 {
-			t.Errorf("%s: expected only the similarity schedule, got %d", name, len(f.regs))
+		if len(f.scheduled()) != 1 {
+			t.Errorf("%s: expected only the similarity schedule, got %d", name, len(f.scheduled()))
 		}
 	}
 }

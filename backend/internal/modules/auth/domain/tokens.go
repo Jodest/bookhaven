@@ -63,3 +63,16 @@ type PasswordResetToken struct {
 func (PasswordResetToken) TableName() string {
 	return "password_reset_tokens"
 }
+
+// RefreshTokenRetention is how long a refresh token row is kept after it was
+// revoked or expired before the daily purge deletes it (auth/session spec,
+// "Refresh token retention"). No code path reads such rows; they are a short
+// forensic trail only.
+const RefreshTokenRetention = 7 * 24 * time.Hour
+
+// OneTimeTokenRetention is how long an email verification or password reset
+// token row is kept after its expiry (used or not) before the daily purge
+// deletes it (auth/email-verification and auth/password-reset specs). While
+// retained, a used/expired link keeps its specific answer; afterwards it is
+// unknown (invalid_token).
+const OneTimeTokenRetention = 30 * 24 * time.Hour
