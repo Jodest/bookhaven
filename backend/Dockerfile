@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS base
+FROM golang:1.27.3-alpine AS base
 RUN apk add --no-cache git ca-certificates tzdata
 WORKDIR /app
 

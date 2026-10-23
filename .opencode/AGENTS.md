@@ -19,7 +19,7 @@ Core features:
 
 Backend:
 
-- Go 1.23
+- Go 1.27
 - Echo
 - GORM
 - PostgreSQL 16
