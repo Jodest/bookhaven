@@ -243,7 +243,8 @@ describe('Shell', () => {
       renderShell('/');
 
       const link = screen.getByRole('link', { name: 'Модерация, ожидают проверки: 150' });
-      expect(link.querySelector('[aria-hidden="true"]')).toHaveTextContent('99+');
+      // The link icon is aria-hidden too (lucide-react >= 0.5xx), so find the badge by its text.
+      expect(within(link).getByText('99+')).toHaveAttribute('aria-hidden', 'true');
     });
 
     it('moderator sidebar link name is exactly Модерация', () => {
