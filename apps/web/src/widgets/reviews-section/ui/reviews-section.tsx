@@ -127,6 +127,8 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
     }
   };
 
+  const myHidden = myReview?.is_hidden === true;
+
   const isOwner = (review: Review) => Boolean(user && review.user_id === user.id);
 
   const handleEdit = (review: Review) => {
@@ -146,12 +148,22 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
 
       {isAuthenticated ? (
         <div className="mt-4">
-          {!showForm && (
+          {myHidden && myReview && (
+            <ReviewCard
+              review={myReview}
+              isOwner
+              isAuthenticated={isAuthenticated}
+              onToggleLike={handleToggleLike}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          )}
+          {!showForm && !myHidden && (
             <Button onClick={() => setShowForm(true)}>
               {myReview ? 'Редактировать рецензию' : 'Написать рецензию'}
             </Button>
           )}
-          {showForm && (
+          {showForm && !myHidden && (
             <div className="mt-4">
               <ReviewForm
                 bookId={bookId}

@@ -25,10 +25,11 @@ vi.mock('@/entities/review', () => ({
     review,
     onDelete,
   }: {
-    review: { id: string; rating: number };
+    review: { id: string; rating: number; is_hidden?: boolean };
     onDelete: (r: { id: string; rating: number }) => void;
   }) => (
     <div>
+      {review.is_hidden && <span data-testid={`hidden-${review.id}`}>hidden-card</span>}
       <span data-testid={`rating-${review.id}`}>{review.rating}</span>
       <button onClick={() => onDelete(review)}>del-{review.id}</button>
     </div>
@@ -109,6 +110,48 @@ describe('ReviewsSection', () => {
       fireEvent.click(await screen.findByText('del-r1'));
 
       await waitFor(() => expect(removeMock).toHaveBeenCalledWith('r1'));
+    });
+
+    describe('own hidden review', () => {
+      const hidden = { id: 'r1', user_id: 'u1', rating: 5, is_hidden: true };
+      beforeEach(() => {
+        listMock.mockResolvedValue({ items: [], total: 0, my_review: hidden });
+      });
+
+      it('shows the own card with delete and no write/edit buttons', async () => {
+        render(<ReviewsSection bookId="b1" slug="book-1" />);
+        expect(await screen.findByTestId('hidden-r1')).toBeInTheDocument();
+        expect(screen.getByText('del-r1')).toBeInTheDocument();
+        expect(screen.queryByText('Редактировать рецензию')).toBeNull();
+        expect(screen.queryByText('Написать рецензию')).toBeNull();
+      });
+
+      it('after a confirmed delete offers to write a new review', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        removeMock.mockResolvedValue(undefined);
+        render(<ReviewsSection bookId="b1" slug="book-1" />);
+        listMock.mockResolvedValue({ items: [], total: 0 });
+        fireEvent.click(await screen.findByText('del-r1'));
+
+        await waitFor(() => expect(removeMock).toHaveBeenCalledWith('r1'));
+        expect(await screen.findByText('Написать рецензию')).toBeInTheDocument();
+        expect(screen.queryByTestId('hidden-r1')).toBeNull();
+      });
+
+      it('keeps the card when the confirm is dismissed', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(false);
+        render(<ReviewsSection bookId="b1" slug="book-1" />);
+        fireEvent.click(await screen.findByText('del-r1'));
+
+        expect(removeMock).not.toHaveBeenCalled();
+        expect(screen.getByTestId('hidden-r1')).toBeInTheDocument();
+        expect(screen.queryByText('Написать рецензию')).toBeNull();
+      });
+    });
+
+    it('a visible own review still offers editing', async () => {
+      render(<ReviewsSection bookId="b1" slug="book-1" />);
+      expect(await screen.findByText('Редактировать рецензию')).toBeInTheDocument();
     });
   });
 });

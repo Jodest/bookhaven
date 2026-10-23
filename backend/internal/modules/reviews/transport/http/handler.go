@@ -48,6 +48,7 @@ type reviewResponse struct {
 	Content    string               `json:"content"`
 	LikesCount int                  `json:"likes_count"`
 	LikedByMe  bool                 `json:"liked_by_me"`
+	IsHidden   bool                 `json:"is_hidden"`
 	CreatedAt  time.Time            `json:"created_at"`
 	UpdatedAt  time.Time            `json:"updated_at"`
 }
@@ -100,6 +101,7 @@ func toReviewResponse(r reviewsDomain.Review) reviewResponse {
 		Content:    r.Content,
 		LikesCount: r.LikesCount,
 		LikedByMe:  r.LikedByMe,
+		IsHidden:   r.IsHidden,
 		CreatedAt:  r.CreatedAt,
 		UpdatedAt:  r.UpdatedAt,
 	}
@@ -236,6 +238,7 @@ func (h *Handler) CreateReview(c echo.Context) error {
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Router /reviews/{id} [patch]
 func (h *Handler) UpdateReview(c echo.Context) error {
@@ -268,6 +271,8 @@ func (h *Handler) UpdateReview(c echo.Context) error {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "review not found"})
 		case errors.Is(err, service.ErrForbidden):
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
+		case errors.Is(err, service.ErrReviewHidden):
+			return c.JSON(http.StatusConflict, map[string]string{"error": "review is hidden"})
 		default:
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update review"})
 		}
