@@ -165,7 +165,7 @@ test('run: bad usage exits 2', () => {
   assert.equal(run([]).code, 2);
 });
 
-test('the committed allowlist is well-formed and links an issue; next entries link #594', () => {
+test('the committed allowlist is well-formed and links an issue; no #594 (Next 15 migration) entries remain', () => {
   const al = JSON.parse(readFileSync(resolve(here, '..', 'vuln-allowlist.json'), 'utf8'));
   const r = evaluate({
     mode: 'go',
@@ -176,6 +176,6 @@ test('the committed allowlist is well-formed and links an issue; next entries li
   assert.deepEqual(r.errors, []);
   for (const e of al.entries) {
     assert.match(e.issue, /^#\d+$/);
-    if (e.package === 'next') assert.equal(e.issue, '#594');
+    assert.notEqual(e.issue, '#594');
   }
 });

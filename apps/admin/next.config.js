@@ -5,12 +5,8 @@ const { securityHeaders } = require('./security-headers');
 const nextConfig = {
   output: 'standalone',
   transpilePackages: ['@bookhaven/ui', '@bookhaven/api-client'],
-  experimental: {
-    typedRoutes: true,
-    // Next 14 needs the flag for src/instrumentation.ts (server-side error
-    // tracking, docs/features/error-tracking.md).
-    instrumentationHook: true,
-  },
+  // Stable in Next 15.5 (was experimental).
+  typedRoutes: true,
   // Old Import/Catalog URLs → their exact method sub-page, and bare Import
   // entity paths → the tab's default sub-page (must equal the tab href in
   // src/shared/config/navigation.ts; enforced by entity-redirects.test.tsx).

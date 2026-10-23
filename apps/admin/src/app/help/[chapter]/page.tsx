@@ -11,12 +11,18 @@ export function generateStaticParams() {
   return helpChapters.map((c) => ({ chapter: c.slug }));
 }
 
-export function generateMetadata({ params }: { params: { chapter: string } }): Metadata {
-  const chapter = getHelpChapter(params.chapter);
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ chapter: string }>;
+}): Promise<Metadata> {
+  const { chapter: slug } = await params;
+  const chapter = getHelpChapter(slug);
   return { title: chapter ? `${chapter.title} — Справка` : 'Справка' };
 }
 
-export default function Page({ params }: { params: { chapter: string } }) {
-  if (!getHelpChapter(params.chapter)) notFound();
-  return <HelpChapter markdown={readGuideChapter(params.chapter)} />;
+export default async function Page({ params }: { params: Promise<{ chapter: string }> }) {
+  const { chapter } = await params;
+  if (!getHelpChapter(chapter)) notFound();
+  return <HelpChapter markdown={readGuideChapter(chapter)} />;
 }

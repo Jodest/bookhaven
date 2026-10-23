@@ -97,7 +97,7 @@ None.
 
 - Dependency: `@sentry/nextjs` pinned **exactly** to the newest release that officially supports `next@14.2.x` and React 18 (check its peerDependencies; do not upgrade Next). Add to each app's `package.json`, update `pnpm-lock.yaml` with pnpm.
 - `next.config.js`:
-  - `experimental.instrumentationHook: true` (Next 14 requires the flag).
+  - ~~`experimental.instrumentationHook: true`~~ — removed on the Next 15 upgrade (#594); `src/instrumentation.ts` is stable and needs no flag.
   - Export `withSentryConfig(nextConfig, { silent: true, telemetry: false, sourcemaps: { disable: true }, autoInstrumentMiddleware: false, disableLogger: true, widenClientFileUpload: false })` — no `org`, `project`, `authToken`, **no `tunnelRoute`**. The wrapper is applied always (prod images are built in CI without a DSN, and the DSN is read at runtime); it is what auto-instruments App Router server components / route handlers on Next 14.
   - `headers()` and `rewrites()` unchanged; `security-headers.js` unchanged.
 - `src/instrumentation.ts`: `register()` imports `./sentry.server.config` only when `process.env.NEXT_RUNTIME === 'nodejs'` and `shouldInitSentry(process.env)` is true. No edge config file.

@@ -1,13 +1,15 @@
 import { BookDetailView, generateBookMetadata } from '@/views/book-detail';
 
 interface PageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: PageProps) {
-  return generateBookMetadata(params.slug);
+  const { slug } = await params;
+  return generateBookMetadata(slug);
 }
 
-export default function Page({ params }: PageProps) {
-  return <BookDetailView slug={params.slug} />;
+export default async function Page({ params }: PageProps) {
+  const { slug } = await params;
+  return <BookDetailView slug={slug} />;
 }
