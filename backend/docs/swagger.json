@@ -7550,7 +7550,7 @@
                         }
                     },
                     "401": {
-                        "description": "code: email_not_verified (без кода - недействительный токен)",
+                        "description": "code: email_not_verified | refresh_token_superseded (токен ротирован \u003c30с назад, можно повторить один раз); без кода - недействительный токен или повторное использование",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
                         }
