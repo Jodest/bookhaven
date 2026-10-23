@@ -5,6 +5,7 @@ go 1.23.0
 require (
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/anthropics/anthropic-sdk-go v1.46.0
+	github.com/getsentry/sentry-go v0.42.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/golang-jwt/jwt/v5 v5.2.1

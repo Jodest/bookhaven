@@ -47,6 +47,7 @@ import (
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
 	"github.com/bookhaven/backend/internal/pkg/coverstore"
 	"github.com/bookhaven/backend/internal/pkg/database"
+	"github.com/bookhaven/backend/internal/pkg/errtrack"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/bookhaven/backend/internal/pkg/ratelimit"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
@@ -77,6 +78,14 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
+
+	// Error tracking is off unless SENTRY_DSN is set (docs/features/error-tracking.md).
+	errReporter, flushErrors := errtrack.Init(errtrack.Options{
+		DSN:         cfg.SentryDSN,
+		Environment: cfg.SentryEnvironment,
+		Release:     cfg.SentryRelease,
+		Component:   "api",
+	}, logger)
 
 	if cfg.Env == "production" && !cfg.AuthCookieSecure {
 		logger.Warn("AUTH_COOKIE_SECURE is off in production: auth cookies are sent without the Secure attribute")
@@ -264,6 +273,11 @@ func main() {
 	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 
 	e.Use(echomiddleware.Recover())
+	// Directly after Recover: it captures 5xx and panics, then re-panics so
+	// Recover still answers the usual 500.
+	if errtrack.Enabled(errReporter) {
+		e.Use(middleware.ErrorReporting(errReporter))
+	}
 	e.Use(middleware.SecurityHeaders())
 	e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
 		AllowOrigins:     cfg.AllowedOrigins,
@@ -353,4 +367,5 @@ func main() {
 	if err := e.Shutdown(ctx); err != nil {
 		logger.Fatal("failed to shutdown server", zap.Error(err))
 	}
+	flushErrors(2 * time.Second)
 }

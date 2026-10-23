@@ -53,7 +53,7 @@ All three production images (`backend`, `web`, `admin`) were built and smoke-tes
    scp docker-compose.prod.yml Caddyfile deploy@<ip>:/opt/bookhaven/
    scp .env.production.example deploy@<ip>:/opt/bookhaven/.env
    ```
-5. SSH in as `deploy` and edit `/opt/bookhaven/.env`: fill in the real domains, `ACME_EMAIL`, a generated `POSTGRES_PASSWORD` (`openssl rand -base64 24`), a generated `JWT_SECRET` (`openssl rand -base64 48`), and `CORS_ALLOWED_ORIGINS` matching the web/admin domains exactly (scheme + host, no trailing slash). Fill in the SMTP block (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`) from your email provider — see [Email (SMTP)](#email-smtp); leaving `SMTP_HOST` blank disables sending. Then `chmod 600 .env`, and put an encrypted copy of it in your password manager (see [Backups](#env-and-keys-off-server)).
+5. SSH in as `deploy` and edit `/opt/bookhaven/.env`: fill in the real domains, `ACME_EMAIL`, a generated `POSTGRES_PASSWORD` (`openssl rand -base64 24`), a generated `JWT_SECRET` (`openssl rand -base64 48`), and `CORS_ALLOWED_ORIGINS` matching the web/admin domains exactly (scheme + host, no trailing slash). Fill in the SMTP block (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`) from your email provider — see [Email (SMTP)](#email-smtp); leaving `SMTP_HOST` blank disables sending. Optionally set `SENTRY_DSN_BACKEND` / `SENTRY_DSN_FRONTEND` (see [Error tracking](#error-tracking-sentry); empty = off). Then `chmod 600 .env`, and put an encrypted copy of it in your password manager (see [Backups](#env-and-keys-off-server)).
 6. If the GHCR packages end up private (private repo, default), log in once on the server with a PAT scoped to `read:packages`: `docker login ghcr.io -u <github-user> -p <PAT>`. If the repo is public, make the three GHCR packages public instead (Package settings on GitHub) and skip this — one less credential to manage on the server.
 7. Set up backups before real data arrives: [Backup setup](#backup-setup-once-as-deploy) (scripts, rclone remote, age key, heartbeat, cron).
 
@@ -470,9 +470,33 @@ Kept intentionally minimal for an MVP with no ops budget:
 
 - **Uptime**: point a free external checker (UptimeRobot, or Yandex/VK equivalents) at `https://<API_DOMAIN>/health/ready` and `https://<WEB_DOMAIN>/`. Free tier is enough for one project. Liveness vs readiness: `/health` is liveness (static `200 {"status":"ok"}`, the process serves HTTP; Caddy's active health check uses it and must keep doing so, otherwise a PostgreSQL/Redis blip would turn into 502/503 for the whole API), while `/health/ready` is readiness (pings PostgreSQL and Redis, 2 s timeout each; `503` with `"unavailable"` for the failing dependency, details only in the backend logs). The deploy workflow and uptime monitoring use `/health/ready`.
 - **Logs**: `docker compose -f docker-compose.prod.yml logs -f backend|web|admin|caddy` over SSH. The backend already logs structured JSON (zap) with method/URI/status per request.
-- **Errors** (optional, recommended once there's real traffic): Sentry has a free tier and SDKs for both Go/Echo and Next.js — add it as a follow-up, not a blocker for launch.
+- **Errors**: opt-in Sentry error tracking, see [Error tracking (Sentry)](#error-tracking-sentry) below.
 
 Revisit this section once there's a real incident or real user volume — don't build observability infrastructure speculatively on a minimal-budget MVP.
+
+### Error tracking (Sentry)
+
+Opt-in and off by default: with no DSN every process behaves exactly as before and makes no network calls (the backend logs one `error tracking disabled` line at startup). Use two Sentry projects (platform Go and Next.js) and put the DSNs **only in the server `.env`**:
+
+| `.env` variable | Passed to | Meaning |
+|---|---|---|
+| `SENTRY_DSN_BACKEND` | `backend`, `worker` as `SENTRY_DSN` | DSN of the Go project. Empty = off. |
+| `SENTRY_DSN_FRONTEND` | `web`, `admin` as `SENTRY_DSN` | DSN of the Next.js project. Empty = off. Read at runtime on the server; it is not a `NEXT_PUBLIC_*` variable and never reaches the browser bundle. |
+| `SENTRY_ENVIRONMENT` (optional) | all, set it in the compose `environment` if you need it | Overrides the environment tag (default `APP_ENV` for the backend, `NODE_ENV` for Next.js, i.e. `production`). |
+
+`SENTRY_RELEASE` is filled by `docker-compose.prod.yml` from `IMAGE_TAG` (the 12-character git SHA the deploy workflow writes to `.env`), so the release always matches the deployed image. Every event has `environment`, `release` and a `component` tag (`api`, `worker`, `web`, `admin`); web and admin share one project and are told apart by that tag.
+
+What is reported:
+
+- **API**: requests that end with status 5xx and panics, one issue per method + route template + status (for example `HTTP 500 GET /api/v1/shelves/:id`). Most handlers write the 500 JSON and drop the underlying error, so these events show the route and status but no stack; the request log line holds the detail. Never reported: 4xx, `/health` and `/health/ready` (including a readiness 503).
+- **Worker**: a task is reported only when it fails for good (asynq retries are used up, or the error is `SkipRetry`), with tags `task_type`, `queue`, `retried`, `max_retry`. Intermediate failures that asynq will retry are not reported. The task payload is never sent.
+- **web/admin**: Next.js server-side errors (server components, route handlers, server-side data fetching) from the Node.js runtime; `notFound()`, `redirect()` and 4xx errors from the API are dropped. The edge `middleware.ts` and browser errors are not covered.
+
+Privacy: no default PII, no request headers/cookies/body/query/IP, no user, no breadcrumbs, no task payload, no performance tracing, profiling or session replay. Emails, `Bearer` tokens, JWTs and `token=`/`password=`/`secret=` values are redacted from messages and exception text (best effort).
+
+Quota: during an outage (for example PostgreSQL down) every route answers 5xx. Grouping by route keeps the number of issues small, but the event count can still hit the free monthly quota, so enable spike protection / a rate limit in each Sentry project.
+
+Follow-up (not implemented): browser-side reporting. It adds roughly 25-30 kB gzip to every first load and needs a way to reach the ingest host. Prefer the SDK's `tunnelRoute` (same-origin POST through the app, `connect-src 'self'` keeps working, CSP unchanged) over adding the Sentry ingest host to the CSP.
 
 ## Security headers
 
@@ -490,6 +514,7 @@ Revisit this section once there's a real incident or real user volume — don't 
 - [x] CORS restricted to the real production origins, not `*`
 - [ ] `.env` on the server is `chmod 600`, root/deploy-owned only, never committed — verify after every manual edit
 - [ ] Rotate `JWT_SECRET`/`POSTGRES_PASSWORD`/`SMTP_PASSWORD` if they were ever pasted anywhere outside the server's `.env` (chat, ticket, etc.)
+- [ ] `SENTRY_DSN_BACKEND` / `SENTRY_DSN_FRONTEND` are set only in the server's `.env` (never committed, never `NEXT_PUBLIC_*`); empty is fine
 - [ ] `SMTP_PASSWORD` is set only in the server's `.env` and only passed to the `worker` container; SPF/DKIM/DMARC records are in place for the `MAIL_FROM` domain before real users receive mail
 - [ ] Confirm GHCR package visibility matches intent (public if repo is public, private + PAT otherwise) so images aren't unintentionally exposed or, conversely, undeployable
 - [ ] Backups (pre-launch, see [Backups](#backups)): off-site rclone remote configured and `BACKUP_RCLONE_REMOTE`/`BACKUP_AGE_RECIPIENT` set; healthchecks.io check created (period 1 day, grace ~2 h) and `BACKUP_HEARTBEAT_URL` set; cron line installed and one manual run green; first [restore drill](#quarterly-restore-drill) passed from an off-site copy
