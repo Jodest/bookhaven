@@ -85,6 +85,9 @@ func TestTaskErrorHandler_EndToEnd(t *testing.T) {
 		Queues:         map[string]int{"q": 1},
 		Concurrency:    1,
 		RetryDelayFunc: func(int, error, *asynq.Task) time.Duration { return 10 * time.Millisecond },
+		// The retry set is polled every 5s by default; two retries would
+		// otherwise take ~10s and race the deadline below.
+		DelayedTaskCheckInterval: 50 * time.Millisecond,
 	}, taskErrorHandler(rep))
 	srv := asynq.NewServer(asynq.RedisClientOpt{Addr: mr.Addr()}, cfg)
 
@@ -108,7 +111,7 @@ func TestTaskErrorHandler_EndToEnd(t *testing.T) {
 		t.Fatalf("enqueue: %v", err)
 	}
 
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) && len(rep.snapshot()) == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
