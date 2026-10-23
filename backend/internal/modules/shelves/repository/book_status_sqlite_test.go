@@ -72,4 +72,9 @@ func TestShelvesBookStatus(t *testing.T) {
 	if err != nil || len(shelves) != 1 || shelves[0].BooksCount != 1 {
 		t.Fatalf("visible shelf count: %+v err=%v", shelves, err)
 	}
+
+	own, err := repo.ListByUser(ctx, user)
+	if err != nil || len(own) != 1 || own[0].BooksCount != 1 {
+		t.Fatalf("owner shelf count must skip unpublished books: %+v err=%v", own, err)
+	}
 }

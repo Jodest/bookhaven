@@ -71,56 +71,10 @@ type shelfListRow struct {
 	BooksCount  int64            `gorm:"column:books_count"`
 }
 
-// ListByUser returns all shelves for a user with their book counts.
+// ListByUser returns all shelves for a user with their book counts, computed
+// over published books only so they match what the shelf pages show.
 // Default shelves are returned first in a fixed order, followed by custom shelves.
 func (r *GormRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]domain.Shelf, error) {
-	var rows []shelfListRow
-
-	sql := `
-		SELECT s.*, COUNT(si.book_id) AS books_count
-		FROM shelves s
-		LEFT JOIN shelf_items si ON si.shelf_id = s.id
-		WHERE s.user_id = ?
-		GROUP BY s.id
-		ORDER BY
-			CASE s.type
-				WHEN 'want_to_read' THEN 1
-				WHEN 'reading' THEN 2
-				WHEN 'read' THEN 3
-				ELSE 4
-			END,
-			s.created_at ASC
-	`
-
-	if err := r.db.WithContext(ctx).Raw(sql, userID).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-
-	shelves := make([]domain.Shelf, 0, len(rows))
-	for _, row := range rows {
-		shelves = append(shelves, domain.Shelf{
-			ID:          row.ID,
-			UserID:      row.UserID,
-			Name:        row.Name,
-			Type:        row.Type,
-			Description: row.Description,
-			IsPublic:    row.IsPublic,
-			CreatedAt:   row.CreatedAt,
-			UpdatedAt:   row.UpdatedAt,
-			BooksCount:  row.BooksCount,
-		})
-	}
-
-	return shelves, nil
-}
-
-// ListByUserVisible returns all shelves for a user with their book counts
-// computed over visible (status = 'published') books only. Used for the public
-// profile listing, where hidden books must not count towards a shelf's size
-// or its inclusion. Unlike ListByUser (which counts all shelf_items rows
-// regardless of visibility - a pre-existing gap for the owner-facing count,
-// out of scope to fix here), this method is visible-books-aware from the start.
-func (r *GormRepository) ListByUserVisible(ctx context.Context, userID uuid.UUID) ([]domain.Shelf, error) {
 	var rows []shelfListRow
 
 	sql := `
@@ -160,6 +114,13 @@ func (r *GormRepository) ListByUserVisible(ctx context.Context, userID uuid.UUID
 	}
 
 	return shelves, nil
+}
+
+// ListByUserVisible returns the same shelves and published-only counts as
+// ListByUser. It is kept as the public profile's entry point, which then drops
+// shelves without published books.
+func (r *GormRepository) ListByUserVisible(ctx context.Context, userID uuid.UUID) ([]domain.Shelf, error) {
+	return r.ListByUser(ctx, userID)
 }
 
 // GetByID returns a shelf by ID.
