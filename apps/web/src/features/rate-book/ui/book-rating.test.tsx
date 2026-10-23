@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useMyRatingStore } from '@/entities/rating';
 import { BookRating } from './book-rating';
 
 let isAuthenticatedValue = true;
@@ -27,6 +29,7 @@ vi.mock('@bookhaven/api-client', () => ({
 describe('BookRating', () => {
   afterEach(() => {
     isAuthenticatedValue = true;
+    useMyRatingStore.setState({ ownerId: null, byBook: {} });
     myMock.mockReset();
     setMock.mockReset();
     refreshMock.mockReset();
@@ -89,5 +92,30 @@ describe('BookRating', () => {
     expect(filled()).toBe(3);
     fireEvent.mouseLeave(screen.getByRole('button', { name: 'Оценить на 3' }).parentElement as HTMLElement);
     expect(filled()).toBe(0);
+  });
+
+  it('writes the store on a successful save but not on failure', async () => {
+    myMock.mockResolvedValue({ value: 2 });
+    setMock.mockResolvedValueOnce({ rating: 4, ratings_count: 1 });
+    render(<BookRating bookId="b1" slug="book-1" />);
+    expect(await screen.findByText('Моя оценка: 2')).toBeInTheDocument();
+    expect(useMyRatingStore.getState().byBook.b1).toBe(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Оценить на 4' }));
+    await waitFor(() => expect(useMyRatingStore.getState().byBook.b1).toBe(4));
+
+    setMock.mockRejectedValueOnce(new Error('boom'));
+    fireEvent.click(screen.getByRole('button', { name: 'Оценить на 1' }));
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+    expect(useMyRatingStore.getState().byBook.b1).toBe(4);
+    expect(screen.getByText('Моя оценка: 4')).toBeInTheDocument();
+  });
+
+  it('follows an external store change', async () => {
+    myMock.mockResolvedValue(null);
+    render(<BookRating bookId="b1" slug="book-1" />);
+    expect(screen.getByText('Оцените книгу')).toBeInTheDocument();
+    act(() => useMyRatingStore.getState().setMyRating('b1', 5));
+    expect(await screen.findByText('Моя оценка: 5')).toBeInTheDocument();
   });
 });
