@@ -64,7 +64,7 @@ jobs:
           frontend=false
           while IFS= read -r f; do
             case "$f" in
-              .github/workflows/*)
+              .github/workflows/*|.github/scripts/*|.github/vuln-allowlist.json)
                 backend=true; frontend=true ;;
               backend/*)
                 backend=true ;;
@@ -96,6 +96,14 @@ jobs:
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./...
+      # Dependency scan (docs/features/dependency-scanning.md). JSON mode exits 0
+      # even with findings; vuln-gate.mjs decides and fails on a missing report.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          "$(go env GOPATH)/bin/govulncheck" -format json ./... > govulncheck.json
+      - name: Vulnerability gate (Go)
+        run: node ../.github/scripts/vuln-gate.mjs go govulncheck.json
 
   frontend:
     needs: precheck
@@ -112,6 +120,14 @@ jobs:
         with:
           version: 9.0.0
       - run: pnpm install --frozen-lockfile
+      # Dependency scan (docs/features/dependency-scanning.md). pnpm audit exits
+      # non-zero on findings; vuln-gate.mjs decides and fails on a missing report.
+      - name: pnpm audit
+        run: pnpm audit --prod --json > pnpm-audit.json || true
+      - name: Vulnerability gate (npm)
+        run: |
+          node --test .github/scripts/*.test.mjs
+          node .github/scripts/vuln-gate.mjs npm pnpm-audit.json
       - run: pnpm run lint
       - run: pnpm run type-check
       - run: pnpm run test

@@ -28,6 +28,8 @@ How feature work moves from request to production in this repo, and what to set 
 
 Flow: `feat/<slug>` → PR into `dev` (CI + your own look) → merge → PR from the same branch into `main` (`Closes #N`) → merge (no automatic deploy until a prod server exists; then a manual Deploy run, later deploy-on-push again).
 
+A red `govulncheck` / `pnpm audit` gate (or the weekly Security scan) -> see [DEPLOYMENT.md](DEPLOYMENT.md#dependency-scanning). Dependabot version-update PRs target `dev` (monthly, grouped).
+
 No agent ever merges a PR or pushes directly to `main`/`dev`. You review and merge on GitHub; then tell `/f` to continue (e.g. *"PR #12 in dev merged, continue"*).
 
 ## GitHub issue tracking

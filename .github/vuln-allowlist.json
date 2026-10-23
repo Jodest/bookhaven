@@ -1,0 +1,109 @@
+{
+  "entries": [
+    {
+      "id": "GO-2025-3553",
+      "package": "github.com/golang-jwt/jwt",
+      "reason": "golang-jwt/jwt v3.2.2+incompatible has no upstream fix. It is only pulled in by labstack/echo/v4/middleware (package init, deprecated JWT middleware); the backend verifies tokens with golang-jwt/jwt/v5 (already patched) and never calls the v3 parser. govulncheck flags the init-time reachability only.",
+      "issue": "#590",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-2464-fhr4-w9xw",
+      "package": "next",
+      "reason": "Next.js: Unauthenticated Remote Code Execution in Image Optimization API when SVG files are used. Fixed only in next >=15.5.28 (Next 15/React 19 migration, #594). EXPOSED: apps/web uses next/image with images.remotePatterns (covers.openlibrary.org, upload/thumb.wikimedia.org), so the Image Optimization API is reachable; apps/admin sets no images config. Accepted temporarily only because there is no production deployment yet; #594 must land (or images.unoptimized be set) before the first production deploy.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-2xp9-vwfh-vxw4",
+      "package": "next",
+      "reason": "Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files are used. Fixed only in next >=15.5.24 (Next 15/React 19 migration, #594). EXPOSED: apps/web uses next/image with images.remotePatterns (covers.openlibrary.org, upload/thumb.wikimedia.org), so the Image Optimization API is reachable; apps/admin sets no images config. Accepted temporarily only because there is no production deployment yet; #594 must land (or images.unoptimized be set) before the first production deploy.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-36qx-fr4f-26g5",
+      "package": "next",
+      "reason": "Next.js has a Middleware / Proxy bypass in Pages Router applications using i18n. Fixed only in next >=15.5.16 (Next 15/React 19 migration, #594); no fix in the 14.2.x line (14.2.35 is the last). Exposure judged low: no production deployment yet; revisit at expiry.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-587h-7wmj-h5pm",
+      "package": "vite",
+      "reason": "Dev-server-only advisory (launch-editor: `fs.existsSync()` existence check can be bypassed on Windows). vite 5.4.x is vitest's dev dependency (devDependency of the apps), seen by pnpm audit only through the optional @sentry/cloudflare peer. No vite dev server is run in production and the Next.js build does not use vite. Fix needs vite >=6.4.4 (major bump of vitest); revisit with the toolchain upgrade.",
+      "issue": "#590",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-89xv-2m56-2m9x",
+      "package": "next",
+      "reason": "Next.js: Server-Side Request Forgery in Server Actions on custom servers. Fixed only in next >=15.5.21 (Next 15/React 19 migration, #594); no fix in the 14.2.x line (14.2.35 is the last). Exposure judged low: no production deployment yet; revisit at expiry.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-8h8q-6873-q5fj",
+      "package": "next",
+      "reason": "Next.js Vulnerable to Denial of Service with Server Components. Fixed only in next >=15.5.16 (Next 15/React 19 migration, #594); no fix in the 14.2.x line (14.2.35 is the last). Exposure judged low: no production deployment yet; revisit at expiry.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-c4j6-fc7j-m34r",
+      "package": "next",
+      "reason": "Next.js vulnerable to server-side request forgery in applications using WebSocket upgrades. Fixed only in next >=15.5.16 (Next 15/React 19 migration, #594); no fix in the 14.2.x line (14.2.35 is the last). Exposure judged low: no production deployment yet; revisit at expiry.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-fx2h-pf6j-xcff",
+      "package": "vite",
+      "reason": "Dev-server-only advisory (vite: `server.fs.deny` bypass on Windows alternate paths). vite 5.4.x is vitest's dev dependency (devDependency of the apps), seen by pnpm audit only through the optional @sentry/cloudflare peer. No vite dev server is run in production and the Next.js build does not use vite. Fix needs vite >=6.4.3 (major bump of vitest); revisit with the toolchain upgrade.",
+      "issue": "#590",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-h25m-26qc-wcjf",
+      "package": "next",
+      "reason": "Next.js HTTP request deserialization can lead to DoS when using insecure React Server Components. Fixed only in next >=15.0.8 (Next 15/React 19 migration, #594); no fix in the 14.2.x line (14.2.35 is the last). Exposure judged low: no production deployment yet; revisit at expiry.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-m99w-x7hq-7vfj",
+      "package": "next",
+      "reason": "Next.js: Denial of Service in App Router using Server Actions. Fixed only in next >=15.5.21 (Next 15/React 19 migration, #594); no fix in the 14.2.x line (14.2.35 is the last). Exposure judged low: no production deployment yet; revisit at expiry.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-p293-qw3h-jr36",
+      "package": "next",
+      "reason": "Next.js: Unauthenticated Remote Code Execution on windows-hosted servers. Fixed only in next >=15.5.24 (#594). Mitigation: affects Windows-hosted servers only; production runs Linux containers and there is no production deployment yet.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-p3m5-59mp-jv5r",
+      "package": "next",
+      "reason": "Next.js: Denial of Service in App Router using Server Actions. Fixed only in next >=15.5.28 (Next 15/React 19 migration, #594); no fix in the 14.2.x line (14.2.35 is the last). Exposure judged low: no production deployment yet; revisit at expiry.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-p9j2-gv94-2wf4",
+      "package": "next",
+      "reason": "Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostname. Fixed only in next >=15.5.21 (Next 15/React 19 migration, #594); no fix in the 14.2.x line (14.2.35 is the last). Exposure judged low: no production deployment yet; revisit at expiry.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    },
+    {
+      "id": "GHSA-q4gf-8mx6-v5v3",
+      "package": "next",
+      "reason": "Next.js has a Denial of Service with Server Components. Fixed only in next >=15.5.15 (Next 15/React 19 migration, #594); no fix in the 14.2.x line (14.2.35 is the last). Exposure judged low: no production deployment yet; revisit at expiry.",
+      "issue": "#594",
+      "expires": "2027-01-15"
+    }
+  ]
+}
