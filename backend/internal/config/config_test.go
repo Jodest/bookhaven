@@ -716,3 +716,31 @@ func TestLoad_DBPool(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_Sentry(t *testing.T) {
+	tests := []struct {
+		name                      string
+		dsn, env, release, appEnv string
+		wantDSN, wantEnv, wantRel string
+	}{
+		{"unset", "", "", "", "", "", "development", ""},
+		{"whitespace dsn is empty", "   ", "", "", "", "", "development", ""},
+		{"environment defaults to APP_ENV", " https://k@h/1 ", "", " abc123 ", "staging", "https://k@h/1", "staging", "abc123"},
+		{"explicit environment wins", "https://k@h/1", "prod-eu", "", "staging", "https://k@h/1", "prod-eu", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			setSMTPEnv(t, map[string]string{"APP_ENV": tc.appEnv})
+			t.Setenv("SENTRY_DSN", tc.dsn)
+			t.Setenv("SENTRY_ENVIRONMENT", tc.env)
+			t.Setenv("SENTRY_RELEASE", tc.release)
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.SentryDSN != tc.wantDSN || cfg.SentryEnvironment != tc.wantEnv || cfg.SentryRelease != tc.wantRel {
+				t.Errorf("got %q/%q/%q, want %q/%q/%q", cfg.SentryDSN, cfg.SentryEnvironment, cfg.SentryRelease, tc.wantDSN, tc.wantEnv, tc.wantRel)
+			}
+		})
+	}
+}

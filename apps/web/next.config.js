@@ -1,3 +1,4 @@
+const { withSentryConfig } = require('@sentry/nextjs/config');
 const { securityHeaders } = require('./security-headers');
 
 /** @type {import('next').NextConfig} */
@@ -31,6 +32,9 @@ const nextConfig = {
   },
   experimental: {
     typedRoutes: true,
+    // Next 14 needs the flag for src/instrumentation.ts (server-side error
+    // tracking, docs/features/error-tracking.md).
+    instrumentationHook: true,
   },
   // Excludes the proxied /api and /covers so backend headers are not duplicated.
   async headers() {
@@ -60,4 +64,14 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+// Server-side error tracking only (docs/features/error-tracking.md): no
+// tunnelRoute, no source map upload, no client SDK file. The DSN is read at
+// runtime (SENTRY_DSN); without it the SDK is never initialised.
+module.exports = withSentryConfig(nextConfig, {
+  silent: true,
+  telemetry: false,
+  sourcemaps: { disable: true },
+  autoInstrumentMiddleware: false,
+  disableLogger: true,
+  widenClientFileUpload: false,
+});

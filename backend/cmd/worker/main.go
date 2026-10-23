@@ -108,9 +108,18 @@
 // logs one "auth tokens purged" line with the counts. Like the other
 // schedules this assumes a single worker replica (Unique is a defense in
 // depth only).
+//
+// Error tracking (SENTRY_DSN, off by default; docs/features/error-tracking.md):
+// every asynq server has an ErrorHandler (taskErrorHandler) that reports a task
+// to Sentry only when it failed for good: the retry count reached the max
+// retry, or the error wraps asynq.SkipRetry. Failures asynq will retry are not
+// reported, and the task payload is never sent. Handlers that log and return
+// nil are not reported.
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -143,6 +152,7 @@ import (
 	"github.com/bookhaven/backend/internal/pkg/coverfetch"
 	"github.com/bookhaven/backend/internal/pkg/coverstore"
 	"github.com/bookhaven/backend/internal/pkg/database"
+	"github.com/bookhaven/backend/internal/pkg/errtrack"
 	"github.com/bookhaven/backend/internal/pkg/llm"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/hibiken/asynq"
@@ -158,6 +168,15 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
+
+	// Error tracking is off unless SENTRY_DSN is set (docs/features/error-tracking.md).
+	errReporter, flushErrors := errtrack.Init(errtrack.Options{
+		DSN:         cfg.SentryDSN,
+		Environment: cfg.SentryEnvironment,
+		Release:     cfg.SentryRelease,
+		Component:   "worker",
+	}, logger)
+	errHandler := taskErrorHandler(errReporter)
 
 	db, err := database.Open(cfg.DatabaseURL, database.PoolConfigFrom(cfg))
 	if err != nil {
@@ -209,7 +228,7 @@ func main() {
 	mux.HandleFunc(screenworksservice.TaskTypeCatalogSync, screenworksservice.NewCatalogSyncJob(screenWorksService, logger).HandleTask)
 
 	redisOpt := asynq.RedisClientOpt{Addr: cfg.RedisURL}
-	srv := asynq.NewServer(redisOpt, harvestServerConfig(zapAsynqLogger{logger}))
+	srv := asynq.NewServer(redisOpt, withErrorHandler(harvestServerConfig(zapAsynqLogger{logger}), errHandler))
 
 	if err := srv.Start(mux); err != nil {
 		logger.Fatal("failed to start asynq server", zap.Error(err))
@@ -222,13 +241,15 @@ func main() {
 
 	emailSrv := asynq.NewServer(
 		asynq.RedisClientOpt{Addr: cfg.RedisURL},
-		asynq.Config{
-			Queues: map[string]int{
-				mailer.QueueName: 1,
+		withErrorHandler(
+			asynq.Config{
+				Queues: map[string]int{
+					mailer.QueueName: 1,
+				},
+				Concurrency: 4,
+				Logger:      zapAsynqLogger{logger},
 			},
-			Concurrency: 4,
-			Logger:      zapAsynqLogger{logger},
-		},
+			errHandler),
 	)
 
 	if err := emailSrv.Start(emailMux); err != nil {
@@ -244,13 +265,15 @@ func main() {
 
 	similaritySrv := asynq.NewServer(
 		asynq.RedisClientOpt{Addr: cfg.RedisURL},
-		asynq.Config{
-			Queues: map[string]int{
-				catalogservice.SimilarityQueue: 1,
+		withErrorHandler(
+			asynq.Config{
+				Queues: map[string]int{
+					catalogservice.SimilarityQueue: 1,
+				},
+				Concurrency: 1,
+				Logger:      zapAsynqLogger{logger},
 			},
-			Concurrency: 1,
-			Logger:      zapAsynqLogger{logger},
-		},
+			errHandler),
 	)
 
 	if err := similaritySrv.Start(similarityMux); err != nil {
@@ -265,7 +288,7 @@ func main() {
 	purgeMux := asynq.NewServeMux()
 	purgeMux.HandleFunc(authservice.TaskTypePurgeTokens, purgeJob.HandleTask)
 
-	authPurgeSrv := asynq.NewServer(redisOpt, authPurgeServerConfig(zapAsynqLogger{logger}))
+	authPurgeSrv := asynq.NewServer(redisOpt, withErrorHandler(authPurgeServerConfig(zapAsynqLogger{logger}), errHandler))
 	if err := authPurgeSrv.Start(purgeMux); err != nil {
 		similaritySrv.Shutdown()
 		emailSrv.Shutdown()
@@ -341,7 +364,7 @@ func main() {
 			scheduleMux.HandleFunc(screenworksservice.TaskTypeCatalogSyncTick, syncTick.HandleTask)
 		}
 
-		scheduleSrv = asynq.NewServer(redisOpt, scheduleServerConfig(zapAsynqLogger{logger}))
+		scheduleSrv = asynq.NewServer(redisOpt, withErrorHandler(scheduleServerConfig(zapAsynqLogger{logger}), errHandler))
 		if err := scheduleSrv.Start(scheduleMux); err != nil {
 			scheduleSrv = nil
 			shutdownServers()
@@ -363,7 +386,7 @@ func main() {
 		curatedMux := asynq.NewServeMux()
 		curatedMux.HandleFunc(curatedservice.TaskTypeRecomputeAuto, recompute.HandleTask)
 
-		curatedSrv = asynq.NewServer(redisOpt, curatedServerConfig(zapAsynqLogger{logger}))
+		curatedSrv = asynq.NewServer(redisOpt, withErrorHandler(curatedServerConfig(zapAsynqLogger{logger}), errHandler))
 		if err := curatedSrv.Start(curatedMux); err != nil {
 			curatedSrv = nil
 			shutdownServers()
@@ -383,7 +406,7 @@ func main() {
 		aiMux.HandleFunc(aimodservice.TaskTypeSweep, aiHandlers.HandleSweep)
 		aiMux.HandleFunc(aimodservice.TaskTypeReviewBooks, aiHandlers.HandleReviewBooks)
 
-		aiSrv = asynq.NewServer(redisOpt, aiModerationServerConfig(zapAsynqLogger{logger}))
+		aiSrv = asynq.NewServer(redisOpt, withErrorHandler(aiModerationServerConfig(zapAsynqLogger{logger}), errHandler))
 		if err := aiSrv.Start(aiMux); err != nil {
 			aiSrv = nil
 			shutdownServers()
@@ -407,7 +430,7 @@ func main() {
 		curatorMux := asynq.NewServeMux()
 		curatorMux.HandleFunc(curatorservice.TaskTypeCurate, curatorHandlers.HandleCurate)
 
-		curatorSrv = asynq.NewServer(redisOpt, aiCuratorServerConfig(zapAsynqLogger{logger}))
+		curatorSrv = asynq.NewServer(redisOpt, withErrorHandler(aiCuratorServerConfig(zapAsynqLogger{logger}), errHandler))
 		if err := curatorSrv.Start(curatorMux); err != nil {
 			curatorSrv = nil
 			shutdownServers()
@@ -433,7 +456,7 @@ func main() {
 		descMux.HandleFunc(aidescservice.TaskTypeGenerate, descHandlers.HandleGenerate)
 		descMux.HandleFunc(aidescservice.TaskTypeSweep, descHandlers.HandleSweep)
 
-		descSrv = asynq.NewServer(redisOpt, aiDescriptionsServerConfig(zapAsynqLogger{logger}))
+		descSrv = asynq.NewServer(redisOpt, withErrorHandler(aiDescriptionsServerConfig(zapAsynqLogger{logger}), errHandler))
 		if err := descSrv.Start(descMux); err != nil {
 			descSrv = nil
 			shutdownServers()
@@ -459,7 +482,7 @@ func main() {
 		collMux := asynq.NewServeMux()
 		collMux.HandleFunc(aicollservice.TaskTypeDraft, collHandlers.HandleDraft)
 
-		collSrv = asynq.NewServer(redisOpt, aiCollectionsServerConfig(zapAsynqLogger{logger}))
+		collSrv = asynq.NewServer(redisOpt, withErrorHandler(aiCollectionsServerConfig(zapAsynqLogger{logger}), errHandler))
 		if err := collSrv.Start(collMux); err != nil {
 			collSrv = nil
 			shutdownServers()
@@ -487,7 +510,7 @@ func main() {
 		genresMux.HandleFunc(aigenresservice.TaskTypeAnalyze, genresHandlers.HandleAnalyze)
 		genresMux.HandleFunc(aigenresservice.TaskTypeScheduled, genresHandlers.HandleScheduled)
 
-		genresSrv = asynq.NewServer(redisOpt, aiGenresServerConfig(zapAsynqLogger{logger}))
+		genresSrv = asynq.NewServer(redisOpt, withErrorHandler(aiGenresServerConfig(zapAsynqLogger{logger}), errHandler))
 		if err := genresSrv.Start(genresMux); err != nil {
 			genresSrv = nil
 			shutdownServers()
@@ -516,7 +539,7 @@ func main() {
 		coversMux.HandleFunc(coversservice.TaskTypeMirror, coversHandlers.HandleMirror)
 		coversMux.HandleFunc(coversservice.TaskTypeSweep, coversHandlers.HandleSweep)
 
-		coversSrv = asynq.NewServer(redisOpt, coversServerConfig(zapAsynqLogger{logger}))
+		coversSrv = asynq.NewServer(redisOpt, withErrorHandler(coversServerConfig(zapAsynqLogger{logger}), errHandler))
 		if err := coversSrv.Start(coversMux); err != nil {
 			coversSrv = nil
 			shutdownServers()
@@ -604,6 +627,42 @@ func main() {
 	logger.Info("shutting down worker")
 	scheduler.Shutdown()
 	shutdownServers()
+	flushErrors(2 * time.Second)
+}
+
+// taskErrorHandler reports a task failure to the error tracker only when it is
+// final: asynq will not retry it again (retry count reached max retry, or the
+// error wraps asynq.SkipRetry). Intermediate failures are transient (harvest,
+// Wikidata, SMTP, model calls) and would flood the tracker. The task payload
+// is never attached (emails, user content).
+func taskErrorHandler(r errtrack.Reporter) asynq.ErrorHandler {
+	return asynq.ErrorHandlerFunc(func(ctx context.Context, task *asynq.Task, err error) {
+		retried, _ := asynq.GetRetryCount(ctx)
+		maxRetry, _ := asynq.GetMaxRetry(ctx)
+		if !isFinalFailure(retried, maxRetry, err) {
+			return
+		}
+		queue, _ := asynq.GetQueueName(ctx)
+		r.CaptureTaskFailure(ctx, errtrack.TaskFailure{
+			Type:     task.Type(),
+			Queue:    queue,
+			Retried:  retried,
+			MaxRetry: maxRetry,
+			Err:      err,
+		})
+	})
+}
+
+// isFinalFailure reports whether asynq will not retry the task again.
+func isFinalFailure(retried, maxRetry int, err error) bool {
+	return retried >= maxRetry || errors.Is(err, asynq.SkipRetry)
+}
+
+// withErrorHandler sets the error handler on an asynq server config; it is
+// applied at every asynq.NewServer call so no server skips error tracking.
+func withErrorHandler(cfg asynq.Config, h asynq.ErrorHandler) asynq.Config {
+	cfg.ErrorHandler = h
+	return cfg
 }
 
 // authPurgeServerConfig is the config of the auth token purge server (its own

@@ -126,6 +126,11 @@ type Config struct {
 	DBMaxIdleConns    int
 	DBConnMaxLifetime time.Duration
 	DBConnMaxIdleTime time.Duration
+
+	// Error tracking (docs/features/error-tracking.md): empty SentryDSN = off.
+	SentryDSN         string
+	SentryEnvironment string
+	SentryRelease     string
 }
 
 // AIGenresActive reports whether AI genre suggestions are switched on and
@@ -351,6 +356,13 @@ func Load() (*Config, error) {
 	if cfg.Env == "production" && cfg.JWTSecret == "change-me-in-production" {
 		return nil, fmt.Errorf("JWT_SECRET must be set in production")
 	}
+
+	cfg.SentryDSN = strings.TrimSpace(os.Getenv("SENTRY_DSN"))
+	cfg.SentryEnvironment = strings.TrimSpace(os.Getenv("SENTRY_ENVIRONMENT"))
+	if cfg.SentryEnvironment == "" {
+		cfg.SentryEnvironment = cfg.Env
+	}
+	cfg.SentryRelease = strings.TrimSpace(os.Getenv("SENTRY_RELEASE"))
 
 	return cfg, nil
 }
