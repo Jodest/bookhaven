@@ -150,6 +150,7 @@ export interface Review {
   content: string;
   likes_count: number;
   liked_by_me?: boolean;
+  is_hidden?: boolean;
   created_at: string;
   updated_at: string;
 }

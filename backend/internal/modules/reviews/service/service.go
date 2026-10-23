@@ -17,6 +17,8 @@ var (
 	ErrBookNotFound = errors.New("book not found")
 	// ErrReviewNotFound is returned when a review does not exist or is hidden.
 	ErrReviewNotFound = errors.New("review not found")
+	// ErrReviewHidden is returned when the author tries to edit a review hidden by a moderator.
+	ErrReviewHidden = errors.New("review is hidden")
 	// ErrForbidden is returned when a user tries to modify someone else's review.
 	ErrForbidden = errors.New("forbidden")
 	// ErrAlreadyReviewed is returned when a user attempts to create a second review for a book.
@@ -147,7 +149,7 @@ func (s *Service) UpdateReview(ctx context.Context, userID, reviewID uuid.UUID, 
 		return nil, ErrForbidden
 	}
 	if review.IsHidden {
-		return nil, ErrReviewNotFound
+		return nil, ErrReviewHidden
 	}
 	if rating == nil && content == nil {
 		return nil, ErrNothingToUpdate
@@ -185,9 +187,6 @@ func (s *Service) DeleteReview(ctx context.Context, userID, reviewID uuid.UUID) 
 
 	if review.UserID != userID {
 		return ErrForbidden
-	}
-	if review.IsHidden {
-		return ErrReviewNotFound
 	}
 
 	if err := s.repo.Delete(ctx, reviewID); err != nil {
