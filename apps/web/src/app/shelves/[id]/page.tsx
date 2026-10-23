@@ -1,9 +1,10 @@
 import { ShelfDetailView } from '@/views/shelf-detail';
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default function Page({ params }: PageProps) {
-  return <ShelfDetailView id={params.id} />;
+export default async function Page({ params }: PageProps) {
+  const { id } = await params;
+  return <ShelfDetailView id={id} />;
 }

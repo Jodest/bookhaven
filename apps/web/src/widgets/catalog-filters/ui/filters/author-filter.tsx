@@ -25,7 +25,7 @@ export function AuthorFilter({
   const [search, setSearch] = useState('');
   const [results, setResults] = useState<Author[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const debounceRef = useRef<NodeJS.Timeout>();
+  const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
     if (debounceRef.current) {

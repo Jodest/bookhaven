@@ -1,6 +1,6 @@
 # Dependabot version updates (docs/features/dependency-scanning.md).
 # One grouped PR per ecosystem per month, targeting dev. Majors for gomod and npm are
-# ignored (the Next 15 / React 19 migration is tracked in #594). No labels: a label
+# ignored (the Next 16 upgrade is tracked in #603). No labels: a label
 # that does not exist makes Dependabot error. Docker updates are intentionally not
 # configured (Go image bumps stay in lockstep with go.mod and ci.yml).
 version: 2
