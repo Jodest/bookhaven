@@ -35,6 +35,9 @@ services:
     restart: unless-stopped
     environment:
       APP_ENV: production
+      # Error tracking (docs/DEPLOYMENT.md): empty = off.
+      SENTRY_DSN: ${SENTRY_DSN_BACKEND:-}
+      SENTRY_RELEASE: ${IMAGE_TAG:-}
       APP_PORT: 8080
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       REDIS_URL: redis:6379
@@ -90,6 +93,9 @@ services:
     entrypoint: ["/app/worker"]
     environment:
       APP_ENV: production
+      # Error tracking (docs/DEPLOYMENT.md): empty = off.
+      SENTRY_DSN: ${SENTRY_DSN_BACKEND:-}
+      SENTRY_RELEASE: ${IMAGE_TAG:-}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       REDIS_URL: redis:6379
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -151,6 +157,9 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
       API_URL: http://backend:8080
+      # Error tracking (docs/DEPLOYMENT.md): runtime-only, never NEXT_PUBLIC_*; empty = off.
+      SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}
+      SENTRY_RELEASE: ${IMAGE_TAG:-}
       # Public origin of the site: makes self-hosted covers (/covers/...)
       # absolute in Open Graph and structured data.
       SITE_URL: https://${WEB_DOMAIN}
@@ -165,6 +174,9 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
       API_URL: http://backend:8080
+      # Error tracking (docs/DEPLOYMENT.md): runtime-only, never NEXT_PUBLIC_*; empty = off.
+      SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}
+      SENTRY_RELEASE: ${IMAGE_TAG:-}
     depends_on:
       - backend
     networks: [internal]
