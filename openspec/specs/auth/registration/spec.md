@@ -7,7 +7,7 @@ Lets a visitor create a reader account with an email and a password. The account
 ## Requirements
 
 ### Requirement: Registration endpoint
-The system SHALL accept `POST /api/v1/auth/register` with `{email, password, name}` without authentication. `email` MUST be a valid email address, `password` at least 8 characters and at most 72 bytes in UTF-8 encoding, and `name` at least 2 characters, otherwise the response is 400 and no account is created. A password over 72 bytes MUST never produce a 5xx response. On success the response MUST be 201 `{email, verification_required: true}` and MUST NOT contain tokens or set auth cookies: registration never logs the user in.
+The system SHALL accept `POST /api/v1/auth/register` with `{email, password, name}` without authentication. `email` MUST be a valid email address, `password` at least 8 characters and at most 72 bytes in UTF-8 encoding, and `name`, after trimming, 2–255 characters (the same rule as the profile name, see `users/own-profile`), otherwise the response is 400 and no account is created. The trimmed name is stored. A password over 72 bytes or a name over 255 characters MUST never produce a 5xx response. On success the response MUST be 201 `{email, verification_required: true}` and MUST NOT contain tokens or set auth cookies: registration never logs the user in.
 
 #### Scenario: Successful registration
 - **WHEN** a visitor registers with a new email, an 8-character password and a name
@@ -24,6 +24,18 @@ The system SHALL accept `POST /api/v1/auth/register` with `{email, password, nam
 #### Scenario: Password over the byte limit
 - **WHEN** a visitor registers with a password of 73 Latin characters, or of 40 Cyrillic letters (80 bytes, fewer than 72 characters)
 - **THEN** the response is 400 and no account is created
+
+#### Scenario: Whitespace-only name
+- **WHEN** a visitor registers with the name `"   "`
+- **THEN** the response is 400 and no account is created
+
+#### Scenario: Name is trimmed
+- **WHEN** a visitor registers with the name `"  Анна  "`
+- **THEN** the response is 201 and the account's name is `"Анна"`
+
+#### Scenario: Name at and over the length limit
+- **WHEN** a visitor registers with a name of 255 Cyrillic letters, and another visitor with a name of 256 characters
+- **THEN** the first registration succeeds with 201, and the second gets 400 without an account being created
 
 ### Requirement: Unique email
 An email SHALL belong to at most one account. Registering an email that already has an account MUST return 409 and MUST NOT change the existing account. Emails are compared exactly as typed.
@@ -47,7 +59,7 @@ Registration SHALL send an email with a confirmation link (see `auth/email-verif
 - **THEN** the response is still 201 and the account exists
 
 ### Requirement: Registration page
-The web app SHALL provide `/register` with name, email and password fields, validating them like the endpoint («Имя должно быть не короче 2 символов», «Введите корректный email», «Пароль должен быть не короче 8 символов», and for a password over 72 bytes in UTF-8 «Пароль слишком длинный: до 72 латинских или 36 русских букв»). A form that fails these checks MUST NOT be sent. After a successful registration it MUST show a «Проверьте почту» message naming the email instead of logging the user in. A signed-in visitor opening `/register` MUST be redirected to `/profile`.
+The web app SHALL provide `/register` with name, email and password fields, validating them like the endpoint («Имя должно содержать от 2 до 255 символов» for a name that has fewer than 2 or more than 255 characters after trimming, «Введите корректный email», «Пароль должен быть не короче 8 символов», and for a password over 72 bytes in UTF-8 «Пароль слишком длинный: до 72 латинских или 36 русских букв»). A form that fails these checks MUST NOT be sent. After a successful registration it MUST show a «Проверьте почту» message naming the email instead of logging the user in. A signed-in visitor opening `/register` MUST be redirected to `/profile`.
 
 #### Scenario: After registering
 - **WHEN** a visitor submits the registration form successfully
@@ -56,3 +68,7 @@ The web app SHALL provide `/register` with name, email and password fields, vali
 #### Scenario: Too long a password on the page
 - **WHEN** a visitor enters a password of 40 Cyrillic letters and submits the form
 - **THEN** the password field shows «Пароль слишком длинный: до 72 латинских или 36 русских букв» and no request is sent
+
+#### Scenario: Blank name on the page
+- **WHEN** a visitor enters only spaces as the name and submits the form
+- **THEN** the name field shows «Имя должно содержать от 2 до 255 символов» and no request is sent
