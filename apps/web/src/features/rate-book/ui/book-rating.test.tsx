@@ -72,7 +72,7 @@ describe('BookRating', () => {
     const ids = Array.from(document.querySelectorAll('clipPath')).map((el) => el.getAttribute('id'));
     expect(ids).toHaveLength(5);
     expect(new Set(ids).size).toBe(5);
-    for (const id of ids) expect(id).toMatch(/^[a-z0-9]+-star-clip$/);
+    for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_]+-star-clip$/);
   });
 
   it('prompts to rate when there is no rating and previews stars on hover', async () => {

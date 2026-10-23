@@ -27,8 +27,7 @@ BookHaven is a social book catalog for the Russian/CIS market, inspired by Goodr
 
 ### Frontend
 
-- Next.js 14
-- React 18
+- Next.js 15 (React 19)
 - TypeScript
 - Tailwind CSS
 - shadcn/ui

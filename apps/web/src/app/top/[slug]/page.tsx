@@ -2,13 +2,14 @@ import { CollectionDetailView } from '@/views/collection-detail';
 import { Suspense } from 'react';
 
 interface PageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
-export default function Page({ params }: PageProps) {
+export default async function Page({ params }: PageProps) {
+  const { slug } = await params;
   return (
     <Suspense>
-      <CollectionDetailView slug={params.slug} />
+      <CollectionDetailView slug={slug} />
     </Suspense>
   );
 }

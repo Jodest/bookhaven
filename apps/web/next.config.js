@@ -30,12 +30,8 @@ const nextConfig = {
       },
     ],
   },
-  experimental: {
-    typedRoutes: true,
-    // Next 14 needs the flag for src/instrumentation.ts (server-side error
-    // tracking, docs/features/error-tracking.md).
-    instrumentationHook: true,
-  },
+  // Stable in Next 15.5 (was experimental).
+  typedRoutes: true,
   // Excludes the proxied /api and /covers so backend headers are not duplicated.
   async headers() {
     return [

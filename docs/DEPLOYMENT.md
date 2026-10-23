@@ -127,7 +127,7 @@ Vulnerable dependencies fail CI; exceptions live in one reviewed file. Contract:
 
 **Go patch bump procedure.** Go patch updates are manual, prompted by the weekly scan. Change `toolchain` in `backend/go.mod`, `go-version` in `ci.yml` and `security-scan.yml` (exact patch, the runner toolcache would satisfy `"1.27"` with an older patch) and `golang:<version>-alpine` in `backend/Dockerfile` together.
 
-**Dependabot** (`.github/dependabot.yml`): monthly version updates for `gomod`, `npm` and `github-actions`, one grouped PR per ecosystem into `dev`; semver-major is ignored for gomod and npm (the Next 15 / React 19 migration is #594); the `github-actions` group includes majors. Docker updates are not configured (`node:22-alpine` and distroless float on rebuild; Go image bumps follow the procedure above). Dependabot *security update* PRs are not enabled: they would target `main` and bypass `dev`. Enable Dependabot **alerts** manually in the repository settings (Settings > Code security); fixes then flow through feature > dev > main.
+**Dependabot** (`.github/dependabot.yml`): monthly version updates for `gomod`, `npm` and `github-actions`, one grouped PR per ecosystem into `dev`; semver-major is ignored for gomod and npm (the Next 16 major is a separate follow-up, #603; Next 15.5 / React 19 landed with #594); the `github-actions` group includes majors. Docker updates are not configured (`node:22-alpine` and distroless float on rebuild; Go image bumps follow the procedure above). Dependabot *security update* PRs are not enabled: they would target `main` and bypass `dev`. Enable Dependabot **alerts** manually in the repository settings (Settings > Code security); fixes then flow through feature > dev > main.
 
 ## Rollback
 
@@ -551,7 +551,7 @@ Follow-up (not implemented): browser-side reporting. It adds roughly 25-30 kB gz
 - [ ] Credential-stuffing against `/api/v1/auth/login`: the app-layer throttle is in place (60 attempts / 15 min per IP, 10 failed per address); an additional Caddy `rate_limit` (plugin) is optional before opening registration to the public
 - [x] Dependency scanning: `govulncheck` and `pnpm audit --prod` gate CI and run weekly; every allowlist entry in `.github/vuln-allowlist.json` has an issue and an expiry
 - [ ] Dependabot alerts enabled in repo settings (manual, see [Dependency scanning](#dependency-scanning))
-- [ ] **Before the first production deploy:** the Next 15.5 upgrade (#594) has landed, or `images.unoptimized` is set in `apps/web` — the allowlisted critical Image Optimization RCEs (GHSA-2xp9-vwfh-vxw4, GHSA-2464-fhr4-w9xw) are reachable through `next/image` in web
+- [x] Next 15.5.28 (#594) landed; the critical Image Optimization RCEs (GHSA-2xp9-vwfh-vxw4, GHSA-2464-fhr4-w9xw) are closed and no longer allowlisted. `images.unoptimized` is not needed.
 - [x] Security headers on web/admin/api; [ ] after the first TLS deploy, `curl -I` each domain and confirm HSTS + CSP; consider `includeSubDomains`/`preload` later
 
 ## Cost estimate (minimal budget)
