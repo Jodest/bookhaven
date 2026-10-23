@@ -99,6 +99,15 @@
 // only stores suggestions: no genre, book or collection is ever changed by
 // the worker. When not active, its server and schedule are not set up and
 // the model is never called.
+//
+// Auth token purge (auth:purge_tokens, see internal/modules/auth/service,
+// always on): the scheduler enqueues it daily at 03:45 UTC on its own small
+// server (queue auth_maintenance, Concurrency 1). It deletes, in batches of
+// 1000, refresh tokens revoked or expired more than 7 days ago and email
+// verification / password reset tokens expired more than 30 days ago, and
+// logs one "auth tokens purged" line with the counts. Like the other
+// schedules this assumes a single worker replica (Unique is a defense in
+// depth only).
 package main
 
 import (
@@ -120,6 +129,7 @@ import (
 	aigenresrepository "github.com/bookhaven/backend/internal/modules/aigenres/repository"
 	aigenresservice "github.com/bookhaven/backend/internal/modules/aigenres/service"
 	aimodservice "github.com/bookhaven/backend/internal/modules/aimoderation/service"
+	authservice "github.com/bookhaven/backend/internal/modules/auth/service"
 	catalogrepository "github.com/bookhaven/backend/internal/modules/catalog/repository"
 	catalogservice "github.com/bookhaven/backend/internal/modules/catalog/service"
 	coversrepository "github.com/bookhaven/backend/internal/modules/covers/repository"
@@ -249,6 +259,20 @@ func main() {
 		logger.Fatal("failed to start similarity asynq server", zap.Error(err))
 	}
 
+	// Auth token purge: always on, own server so it never waits behind a
+	// harvest or a model call.
+	purgeJob := authservice.NewTokenPurgeJob(db, logger)
+	purgeMux := asynq.NewServeMux()
+	purgeMux.HandleFunc(authservice.TaskTypePurgeTokens, purgeJob.HandleTask)
+
+	authPurgeSrv := asynq.NewServer(redisOpt, authPurgeServerConfig(zapAsynqLogger{logger}))
+	if err := authPurgeSrv.Start(purgeMux); err != nil {
+		similaritySrv.Shutdown()
+		emailSrv.Shutdown()
+		srv.Shutdown()
+		logger.Fatal("failed to start auth maintenance asynq server", zap.Error(err))
+	}
+
 	// Scheduled harvest: the tick enqueues ordinary harvest jobs through
 	// an asynq Client and checks the harvest queue through an Inspector.
 	var (
@@ -291,6 +315,7 @@ func main() {
 		if scheduleSrv != nil {
 			scheduleSrv.Shutdown()
 		}
+		authPurgeSrv.Shutdown()
 		similaritySrv.Shutdown()
 		emailSrv.Shutdown()
 		srv.Shutdown()
@@ -524,6 +549,10 @@ func main() {
 		zap.String("task", catalogservice.TaskTypeRecomputeSimilarities),
 		zap.String("cron", similarityCronSpec),
 		zap.String("location", "UTC"))
+	logger.Info("auth token purge scheduled",
+		zap.String("task", authservice.TaskTypePurgeTokens),
+		zap.String("cron", authTokenPurgeCronSpec),
+		zap.String("location", "UTC"))
 	if cfg.HarvestScheduleEnabled {
 		logger.Info("scheduled harvest enabled",
 			zap.String("task", harvestservice.TaskTypeHarvestScheduleTick),
@@ -575,6 +604,18 @@ func main() {
 	logger.Info("shutting down worker")
 	scheduler.Shutdown()
 	shutdownServers()
+}
+
+// authPurgeServerConfig is the config of the auth token purge server (its own
+// queue, Concurrency 1: one purge at a time).
+func authPurgeServerConfig(logger asynq.Logger) asynq.Config {
+	return asynq.Config{
+		Queues: map[string]int{
+			authservice.PurgeQueue: 1,
+		},
+		Concurrency: 1,
+		Logger:      logger,
+	}
 }
 
 // harvestServerConfig is the harvest server's config: the harvest queue
@@ -690,14 +731,18 @@ func aiGenresServerConfig(logger asynq.Logger) asynq.Config {
 // scheduler's Location is UTC).
 const similarityCronSpec = "30 3 * * *"
 
+// authTokenPurgeCronSpec runs the auth token purge daily at 03:45 UTC, between
+// the similarity recompute and the 04:00 harvest tick.
+const authTokenPurgeCronSpec = "45 3 * * *"
+
 // scheduleRegistrar is the subset of *asynq.Scheduler used by
 // registerSchedules (a seam for tests).
 type scheduleRegistrar interface {
 	Register(cronspec string, task *asynq.Task, opts ...asynq.Option) (string, error)
 }
 
-// registerSchedules registers all periodic tasks: the similarity recompute
-// always, the scheduled-harvest tick only when cfg enables it (on
+// registerSchedules registers all periodic tasks: the similarity recompute and
+// the auth token purge always, the scheduled-harvest tick only when cfg enables it (on
 // cfg.HarvestScheduleCron), the catalog adaptation sync tick only when
 // cfg.AdaptationSyncScheduleEnabled (on cfg.AdaptationSyncScheduleCron), the automatic collections recompute only when
 // cfg.AutoCollectionsScheduleEnabled (on cfg.AutoCollectionsScheduleCron) and
@@ -708,6 +753,11 @@ func registerSchedules(s scheduleRegistrar, cfg *config.Config) error {
 	if _, err := s.Register(similarityCronSpec,
 		catalogservice.NewRecomputeSimilaritiesTask(),
 		catalogservice.RecomputeTaskOptions()...); err != nil {
+		return err
+	}
+	if _, err := s.Register(authTokenPurgeCronSpec,
+		authservice.NewPurgeTokensTask(),
+		authservice.PurgeTaskOptions()...); err != nil {
 		return err
 	}
 	if cfg == nil {
