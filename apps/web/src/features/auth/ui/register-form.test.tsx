@@ -61,6 +61,31 @@ describe('RegisterForm', () => {
     expect(registerMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['whitespace-only', '   '],
+    ['256-character', 'я'.repeat(256)],
+  ])('shows the name message and skips the API for a %s name', async (_label, value) => {
+    render(<RegisterForm />);
+    fireEvent.change(screen.getByLabelText('Имя'), { target: { value } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }));
+
+    expect(await screen.findByText('Имя должно содержать от 2 до 255 символов')).toBeInTheDocument();
+    expect(registerMock).not.toHaveBeenCalled();
+  });
+
+  it('sends the trimmed name', async () => {
+    render(<RegisterForm />);
+    fireEvent.change(screen.getByLabelText('Имя'), { target: { value: '  Анна  ' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'user@example.com' } });
+    fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Зарегистрироваться' }));
+
+    await waitFor(() => expect(registerMock).toHaveBeenCalled());
+    expect(registerMock).toHaveBeenCalledWith('user@example.com', 'password123', 'Анна');
+  });
+
   it('navigates to /login keeping the safe `redirect` param on success', async () => {
     searchParamsValue = new URLSearchParams({ redirect: '/books/abc' });
     render(<RegisterForm />);

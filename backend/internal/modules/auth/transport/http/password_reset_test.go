@@ -291,3 +291,19 @@ func TestPasswordTooLongHandlers(t *testing.T) {
 		t.Fatal("token must stay unused")
 	}
 }
+
+func TestRegisterInvalidNameHandler(t *testing.T) {
+	env := setupVerificationHandler(t)
+	for label, name := range map[string]string{
+		"whitespace": "   ",
+		"too long":   strings.Repeat("я", 256),
+	} {
+		c, rec := postJSON("/api/v1/auth/register", `{"email":"n@example.com","password":"password123","name":"`+name+`"}`)
+		if err := env.h.Register(c); err != nil {
+			t.Fatalf("%s: handler error: %v", label, err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: status = %d, want 400 (body %s)", label, rec.Code, rec.Body.String())
+		}
+	}
+}
