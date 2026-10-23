@@ -1,5 +1,6 @@
 'use client';
 
+import { useMyRating, useMyRatingStore } from '@/entities/rating';
 import { ReviewCard, reviewsApi } from '@/entities/review';
 import { useAuthStore } from '@/entities/session';
 import { ReviewForm } from '@/features/write-review';
@@ -7,6 +8,7 @@ import { Review } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import { loginHref } from '@/shared/lib/safe-redirect';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 interface ReviewsSectionProps {
@@ -16,6 +18,11 @@ interface ReviewsSectionProps {
 
 export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
   const { isAuthenticated, user } = useAuthStore();
+  const router = useRouter();
+  const ownerId = user?.id ?? null;
+  const storedRating = useMyRating(ownerId, bookId);
+  const setStoredRating = useMyRatingStore((s) => s.setMyRating);
+  const setOwner = useMyRatingStore((s) => s.setOwner);
   const [items, setItems] = useState<Review[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -37,6 +44,7 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
       }
       setTotal(response.total);
       setMyReview(response.my_review);
+      if (response.my_review) setStoredRating(bookId, response.my_review.rating);
       setPage(targetPage);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка загрузки рецензий');
@@ -44,6 +52,10 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    setOwner(ownerId);
+  }, [ownerId, setOwner]);
 
   useEffect(() => {
     setItems([]);
@@ -54,6 +66,19 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, isAuthenticated]);
 
+  // The reader re-rated the book with the stars: the own review follows it.
+  useEffect(() => {
+    if (storedRating === undefined || !user) return;
+    setMyReview((prev) =>
+      prev && prev.rating !== storedRating ? { ...prev, rating: storedRating } : prev
+    );
+    setItems((prev) =>
+      prev.some((r) => r.user_id === user.id && r.rating !== storedRating)
+        ? prev.map((r) => (r.user_id === user.id ? { ...r, rating: storedRating } : r))
+        : prev
+    );
+  }, [storedRating, user]);
+
   const handleLoadMore = () => {
     fetchReviews(page + 1, true);
   };
@@ -63,8 +88,14 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
     fetchReviews(1, false);
   };
 
+  const handleSaved = () => {
+    handleSuccess();
+    // Re-render the server-side rating summary.
+    router.refresh();
+  };
+
   const handleDelete = async (review: Review) => {
-    if (!confirm('Удалить рецензию?')) return;
+    if (!confirm('Удалить рецензию? Ваша оценка книги сохранится.')) return;
     try {
       await reviewsApi.remove(review.id);
       handleSuccess();
@@ -125,7 +156,7 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
               <ReviewForm
                 bookId={bookId}
                 initialReview={myReview}
-                onSuccess={handleSuccess}
+                onSuccess={handleSaved}
                 onCancel={() => setShowForm(false)}
               />
             </div>

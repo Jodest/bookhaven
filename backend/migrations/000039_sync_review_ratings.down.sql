@@ -1,0 +1,1 @@
+-- Data-only migration: the previous (stale) review ratings are not restorable. No-op.

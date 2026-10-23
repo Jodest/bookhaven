@@ -175,7 +175,7 @@ func seedDemoReaders(db *gorm.DB) error {
 				if err := tx.Exec(`
 					INSERT INTO reviews (id, book_id, user_id, rating, content, created_at, updated_at)
 					VALUES (gen_random_uuid(), ?, ?, ?, ?, now(), now())
-					ON CONFLICT (book_id, user_id) DO NOTHING`,
+					ON CONFLICT (book_id, user_id) DO UPDATE SET rating = EXCLUDED.rating`,
 					bookID, user.ID, value, content).Error; err != nil {
 					return fmt.Errorf("review %s for demo reader %d: %w", slug, n, err)
 				}

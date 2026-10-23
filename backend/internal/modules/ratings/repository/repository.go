@@ -16,7 +16,9 @@ var ErrRatingNotFound = errors.New("rating not found")
 // Repository defines operations for working with book ratings.
 type Repository interface {
 	// UpsertAndRecalc inserts or updates a user's rating for a book and
-	// recalculates the book's aggregate rating and ratings_count.
+	// recalculates the book's aggregate rating and ratings_count. It also
+	// sets the same value on the user's review of the book (if any) in the
+	// same transaction, so a review never disagrees with the rating.
 	// It returns whether a new row was created and the updated aggregates.
 	UpsertAndRecalc(ctx context.Context, bookID, userID uuid.UUID, value int) (created bool, rating float64, ratingsCount int, err error)
 	// GetByUserAndBook returns a user's rating for a specific book.
@@ -60,6 +62,10 @@ func (r *GormRepository) UpsertAndRecalc(ctx context.Context, bookID, userID uui
 		return false, 0, 0, err
 	}
 
+	if err := syncReviewRatingInTx(tx, bookID, userID, value); err != nil {
+		return false, 0, 0, err
+	}
+
 	err = tx.Exec(`
 		UPDATE books
 		SET rating = COALESCE(ROUND((SELECT AVG(value) FROM ratings WHERE book_id = ?)::numeric, 2), 0),
@@ -84,6 +90,12 @@ func (r *GormRepository) UpsertAndRecalc(ctx context.Context, bookID, userID uui
 	}
 
 	return result.Created, agg.Rating, agg.RatingsCount, nil
+}
+
+// syncReviewRatingInTx copies the rating onto the user's review of the book
+// (visible or hidden). It does not touch updated_at or content and creates no row.
+func syncReviewRatingInTx(tx *gorm.DB, bookID, userID uuid.UUID, value int) error {
+	return tx.Exec(`UPDATE reviews SET rating = ? WHERE book_id = ? AND user_id = ?`, value, bookID, userID).Error
 }
 
 // GetByUserAndBook returns a user's rating for a book.
