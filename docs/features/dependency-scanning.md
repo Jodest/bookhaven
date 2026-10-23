@@ -1,6 +1,6 @@
 # Dependency Vulnerability Scanning
 
-Status: planned
+Status: implemented
 
 Issue: #254. Area: devops / CI. Not covered by any `openspec/specs/` domain, so this is a Feature Contract.
 
@@ -40,7 +40,7 @@ The Next 14.2.6 → 14.2.x patch bump has lower risk and stays in PR 2. The CI `
 | Finding | Fixed in | Action |
 |---|---|---|
 | next: middleware auth bypass (critical) | 14.2.25 | Bump `next` and `eslint-config-next` to the latest 14.2.x (≥ 14.2.35) in both apps |
-| next: Image Optimization RCE via AVIF/SVG (critical) | ≥ 15.5.24 / 15.5.28 only | Allowlist, linked to follow-up (b). Mitigation in the reason: neither `next.config` sets `images` (no `remotePatterns`, `dangerouslyAllowSVG` defaults to false). The developer must verify this before writing it. |
+| next: Image Optimization RCE via AVIF/SVG (critical) | ≥ 15.5.24 / 15.5.28 only | Allowlist, linked to follow-up (b). ~~Mitigation: neither `next.config` sets `images`~~ — wrong for apps/web (see Implementation notes): recorded as exposed, accepted only until the first production deploy. |
 | next: RCE on Windows-hosted servers (critical) | ≥ 15.5.24 only | Allowlist, linked to (b). Production runs on Linux containers. |
 | next: high DoS / SSRF / cache-poisoning advisories still open after 14.2.x | 15.5.x only | Allowlist each, linked to (b) |
 | next-intl < 4.9.2 (open redirect, prototype pollution) | 4.9.2 (major) | **Remove the dependency.** `next-intl` is in `apps/web/package.json` but no file under `apps/web` imports it. |
@@ -49,24 +49,24 @@ The Next 14.2.6 → 14.2.x patch bump has lower risk and stays in PR 2. The CI `
 
 ## Acceptance Criteria
 
-- [ ] Go runs on go1.27.3 everywhere:
+- [x] Go runs on go1.27.3 everywhere:
   - `backend/go.mod` has `go 1.27.0` and `toolchain go1.27.3`.
   - CI `setup-go` uses `go-version: "1.27.3"` as an exact patch, because the runner toolcache would otherwise satisfy `"1.27"` with an older, vulnerable patch.
   - `backend/Dockerfile` uses `golang:1.27.3-alpine`.
   - `go build`, `go vet`, `go test ./...` pass.
-- [ ] The Go modules in the table are bumped to at least their fixed versions, and `go mod tidy` is clean. No other upgrades for their own sake: the existing pins on sentry-go, asynq and anthropic-sdk-go stay unless the tidy or the bumps force them.
-- [ ] `govulncheck ./...` (pinned version) reports no symbol-level (reachable) finding that isn't allowlisted.
-- [ ] `next` and `eslint-config-next` are the same latest 14.2.x in both apps. `next-intl` is removed. The postcss/source-map-js overrides are present, or allowlisted with a reason. `pnpm install --frozen-lockfile` passes on the updated lockfile.
-- [ ] `pnpm audit --prod` reports no high/critical advisory that isn't allowlisted.
-- [ ] `.github/vuln-allowlist.json` exists. Every entry has `id`, `package`, `reason`, `issue` and `expires`. The expiry is at most 90 days out (enforced by the gate). All remaining `next` entries link to the follow-up issue (b).
-- [ ] The CI `backend` job fails on an un-allowlisted reachable Go vulnerability. The CI `frontend` job fails on an un-allowlisted high/critical production npm advisory. Both fail on an expired allowlist entry or on a scanner that produced no report.
-- [ ] Both jobs write a findings summary to the job summary, including the non-blocking ones: unreachable Go findings, moderate/low npm advisories, and stale allowlist entries.
-- [ ] A weekly scheduled workflow, which can also be started manually, runs both scans on `main` without build or test.
-- [ ] `.github/dependabot.yml` covers `gomod`, `npm` and `github-actions`:
+- [x] The Go modules in the table are bumped to at least their fixed versions, and `go mod tidy` is clean. No other upgrades for their own sake: the existing pins on sentry-go, asynq and anthropic-sdk-go stay unless the tidy or the bumps force them.
+- [x] `govulncheck ./...` (pinned version) reports no symbol-level (reachable) finding that isn't allowlisted.
+- [x] `next` and `eslint-config-next` are the same latest 14.2.x in both apps. `next-intl` is removed. The postcss/source-map-js overrides are present, or allowlisted with a reason. `pnpm install --frozen-lockfile` passes on the updated lockfile.
+- [x] `pnpm audit --prod` reports no high/critical advisory that isn't allowlisted.
+- [x] `.github/vuln-allowlist.json` exists. Every entry has `id`, `package`, `reason`, `issue` and `expires`. The expiry is at most 90 days out (enforced by the gate). All remaining `next` entries link to the follow-up issue (b).
+- [x] The CI `backend` job fails on an un-allowlisted reachable Go vulnerability. The CI `frontend` job fails on an un-allowlisted high/critical production npm advisory. Both fail on an expired allowlist entry or on a scanner that produced no report.
+- [x] Both jobs write a findings summary to the job summary, including the non-blocking ones: unreachable Go findings, moderate/low npm advisories, and stale allowlist entries.
+- [x] A weekly scheduled workflow, which can also be started manually, runs both scans on `main` without build or test.
+- [x] `.github/dependabot.yml` covers `gomod`, `npm` and `github-actions`:
   - monthly schedule, target branch `dev`;
   - grouped into one PR per ecosystem;
   - semver-major ignored for gomod and npm.
-- [ ] The docs are updated (see Documentation). The ROADMAP entry for #254 is done. A follow-up ROADMAP entry and GitHub issue exist for the Next 15/React 19 migration.
+- [x] The docs are updated (see Documentation). The ROADMAP entry for #254 is done. A follow-up ROADMAP entry and GitHub issue exist for the Next 15/React 19 migration.
 
 ## Business Rules (scan policy)
 
@@ -185,6 +185,14 @@ New `.github/workflows/security-scan.yml`:
   - whether to target 15.5.x or the current 16.x.
 - The allowlist expiry should be set so the follow-up lands before it.
 
+## Implementation notes (PR 2)
+
+- govulncheck is pinned to `v1.9.0`, the newest release at implementation time (`go list -m -versions golang.org/x/vuln`).
+- The gate's tests run as `node --test .github/scripts/*.test.mjs`: a bare directory argument is not accepted by every Node version.
+- Verified for the Image Optimization advisories: `apps/admin` sets no `images` config, but `apps/web` does (`images.remotePatterns` for covers.openlibrary.org and the Wikimedia hosts) and uses `next/image`, so the "no images config" mitigation does not hold for web. No library-level mitigation is claimed: the two critical Image Optimization RCE entries are recorded as **exposed** in apps/web and accepted temporarily only because there is no production deployment yet. #594 (or setting `images.unoptimized`) must land before the first production deploy.
+- After the npm fixes two `vite` high advisories (dev-server only, via vitest through `@sentry/cloudflare`'s optional peer) remain in `pnpm audit --prod`; they are allowlisted against the epic #590.
+- The postcss / source-map-js overrides (`^8.5.23`, `^1.2.2`) work: tsc, lint and vitest pass; the CI `next build` remains the final gate.
+
 ## Risks
 
 - **Go 1.23 → 1.27 behavior changes.** With the `go` directive at 1.24 or higher, `go vet` flags non-constant printf format strings, which can redden CI. Fix those calls with `"%s"`. Do not disable vet. GODEBUG defaults change with the directive (crypto/x509, TLS defaults such as ML-KEM key exchange, RSA keys under 1024 bits rejected). This should be harmless for us, but it is the reason PR 1 is separate.
@@ -193,6 +201,6 @@ New `.github/workflows/security-scan.yml`:
 - **pnpm 9.0.0 `audit`** uses the npm registry's audit endpoint. If the request fails with pnpm 9.0.0 in CI, bump `packageManager` and the `pnpm/action-setup` version to the latest 9.x (lockfile v9 unchanged). Do not move to pnpm 10 in this feature.
 - **The postcss override against `next`'s exact pin** may break the CSS pipeline. The CI build catches this; the fallback is allowlist entries.
 - **The Next 14.2.x patch line includes the middleware hardening** (the internal subrequest header is ignored). `apps/web/src/middleware.ts` and admin middleware are session-only and should be unaffected. Verify login, protected redirects and the token-refresh flow on the compose stack.
-- **Advisories open until follow-up (b) lands**, including two critical RCEs whose exploitability we judge low for this deployment: no `images` config, Linux hosting. The expiry dates force a revisit. There is no production deployment yet, which lowers the exposure.
+- **Advisories open until follow-up (b) lands**, including two critical Image Optimization RCEs that ARE reachable through `next/image` in apps/web; they must be closed (#594 or `images.unoptimized`) before the first production deploy (DEPLOYMENT.md Security checklist). The expiry dates force a revisit. There is no production deployment yet, which lowers the exposure.
 - **A new advisory can turn unrelated PRs red.** This is accepted and documented: bump or add an allowlist entry. The weekly run usually surfaces it first.
 - **Dependabot PRs cost CI minutes.** The monthly schedule with one grouped PR per ecosystem is about three PRs a month.

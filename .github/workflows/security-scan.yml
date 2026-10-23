@@ -1,0 +1,51 @@
+name: Security scan
+
+# Weekly dependency scan of main (docs/features/dependency-scanning.md): catches new
+# advisories against unchanged code. No build, no tests. A red run emails the repo
+# watchers; the fix is a bump or an allowlist entry (docs/DEPLOYMENT.md#dependency-scanning).
+# Scheduled workflows only fire from the default branch (main).
+on:
+  schedule:
+    - cron: "0 5 * * 1" # Monday 05:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      # Exact patch (same as ci.yml): the toolcache would satisfy "1.27" with an older, vulnerable patch.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: backend/go.sum
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          "$(go env GOPATH)/bin/govulncheck" -format json ./... > govulncheck.json
+      - name: Vulnerability gate (Go)
+        run: node ../.github/scripts/vuln-gate.mjs go govulncheck.json
+
+  npm-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+      # pnpm audit reads pnpm-lock.yaml only, so no install is needed.
+      - name: pnpm audit
+        run: pnpm audit --prod --json > pnpm-audit.json || true
+      - name: Vulnerability gate (npm)
+        run: node .github/scripts/vuln-gate.mjs npm pnpm-audit.json

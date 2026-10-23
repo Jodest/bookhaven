@@ -95,10 +95,39 @@ Treat `main` as production — land features via the existing `/feature` workflo
 
 `ci.yml` is tuned for the Free plan (2000 min/month, private repo):
 - PRs touching only `docs/**`, `openspec/**`, `.claude/**`, `.opencode/**`, `opencode.json` or root `*.md` don't start CI at all.
-- Otherwise a small `precheck` job (~1 billed minute) lists the PR's files via the API and runs `backend` only for `backend/**`, `frontend` only for `apps/**`, `packages/**`, root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json` / `tsconfig*.json`; any `.github/workflows/**` change runs both.
+- Otherwise a small `precheck` job (~1 billed minute) lists the PR's files via the API and runs `backend` only for `backend/**`, `frontend` only for `apps/**`, `packages/**`, root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json` / `tsconfig*.json`; any `.github/workflows/**`, `.github/scripts/**` or `.github/vuln-allowlist.json` change runs both.
 - If the PR head SHA already has a successful CI run (the PR into `dev` validated it), the PR into `main` from the same branch skips both jobs. If the dev run is still in progress when the main PR opens, the main PR runs CI normally.
 - `concurrency` cancels a stale run when a new commit is pushed to the same PR.
 - Skipped jobs block nothing: there are no required checks (branch protection isn't available on Free for private repos).
+
+### Dependency scanning
+
+Vulnerable dependencies fail CI; exceptions live in one reviewed file. Contract: [docs/features/dependency-scanning.md](features/dependency-scanning.md).
+
+**What runs where**
+- CI `backend` job (after `go test`): `govulncheck -format json ./...` (pinned `v1.9.0`) then `.github/scripts/vuln-gate.mjs go govulncheck.json`.
+- CI `frontend` job (after install): `pnpm audit --prod --json` then `vuln-gate.mjs npm pnpm-audit.json`, plus the gate's unit tests (`node --test .github/scripts/*.test.mjs`).
+- Both also run on a manual Deploy (`workflow_call`). Changes to `.github/scripts/**` or `.github/vuln-allowlist.json` run both jobs.
+- `.github/workflows/security-scan.yml`: the same two scans every Monday 05:00 UTC and on `workflow_dispatch`, on `main`, without build or tests (scheduled runs only fire from the default branch). A red run emails the watchers.
+
+**Blocking policy**
+- Go: only reachable findings (the vulnerable function is called from our code) block. Unreachable findings are listed in the job summary.
+- npm: `high` and `critical` production advisories block; `moderate`/`low` are listed only. Dev dependencies are not gated.
+- An expired allowlist entry, an entry expiring more than 90 days ahead, or a malformed entry blocks. An entry that matches nothing is a notice ("stale, remove it").
+- A missing or unparseable scanner report (registry error, truncated output) fails the gate. Re-run the job for a flaky registry.
+
+**Triaging a red scan**
+1. Open the job summary: it lists blocking findings with the fixed version.
+2. Bump: Go `cd backend && go get module@fixed && go mod tidy`; npm `pnpm up -r <pkg>@<fixed>` (or a root `pnpm.overrides` entry for a transitive package). Re-run.
+3. No fix, not reachable, or the fix is a major migration: add an allowlist entry.
+
+**Adding an allowlist entry** (`.github/vuln-allowlist.json`)
+- Fields (all required): `id` (`GO-YYYY-NNNN` or `GHSA-...`), `package` (Go module path or npm package, must equal the finding's), `reason`, `issue` (`#N`), `expires` (`YYYY-MM-DD`, at most 90 days from today).
+- The reason must justify reachability or the mitigation; link an issue that removes the cause. When the date passes, CI fails: fix it or re-triage and renew with an updated reason.
+
+**Go patch bump procedure.** Go patch updates are manual, prompted by the weekly scan. Change `toolchain` in `backend/go.mod`, `go-version` in `ci.yml` and `security-scan.yml` (exact patch, the runner toolcache would satisfy `"1.27"` with an older patch) and `golang:<version>-alpine` in `backend/Dockerfile` together.
+
+**Dependabot** (`.github/dependabot.yml`): monthly version updates for `gomod`, `npm` and `github-actions`, one grouped PR per ecosystem into `dev`; semver-major is ignored for gomod and npm (the Next 15 / React 19 migration is #594); the `github-actions` group includes majors. Docker updates are not configured (`node:22-alpine` and distroless float on rebuild; Go image bumps follow the procedure above). Dependabot *security update* PRs are not enabled: they would target `main` and bypass `dev`. Enable Dependabot **alerts** manually in the repository settings (Settings > Code security); fixes then flow through feature > dev > main.
 
 ## Rollback
 
@@ -520,6 +549,9 @@ Follow-up (not implemented): browser-side reporting. It adds roughly 25-30 kB gz
 - [ ] Backups (pre-launch, see [Backups](#backups)): off-site rclone remote configured and `BACKUP_RCLONE_REMOTE`/`BACKUP_AGE_RECIPIENT` set; healthchecks.io check created (period 1 day, grace ~2 h) and `BACKUP_HEARTBEAT_URL` set; cron line installed and one manual run green; first [restore drill](#quarterly-restore-drill) passed from an off-site copy
 - [ ] `.env`, the `age` identity and the rclone bucket credentials are stored in the password manager (and the identity is **not** on the server)
 - [ ] Credential-stuffing against `/api/v1/auth/login`: the app-layer throttle is in place (60 attempts / 15 min per IP, 10 failed per address); an additional Caddy `rate_limit` (plugin) is optional before opening registration to the public
+- [x] Dependency scanning: `govulncheck` and `pnpm audit --prod` gate CI and run weekly; every allowlist entry in `.github/vuln-allowlist.json` has an issue and an expiry
+- [ ] Dependabot alerts enabled in repo settings (manual, see [Dependency scanning](#dependency-scanning))
+- [ ] **Before the first production deploy:** the Next 15.5 upgrade (#594) has landed, or `images.unoptimized` is set in `apps/web` — the allowlisted critical Image Optimization RCEs (GHSA-2xp9-vwfh-vxw4, GHSA-2464-fhr4-w9xw) are reachable through `next/image` in web
 - [x] Security headers on web/admin/api; [ ] after the first TLS deploy, `curl -I` each domain and confirm HSTS + CSP; consider `includeSubDomains`/`preload` later
 
 ## Cost estimate (minimal budget)

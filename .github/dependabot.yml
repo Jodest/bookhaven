@@ -1,0 +1,50 @@
+# Dependabot version updates (docs/features/dependency-scanning.md).
+# One grouped PR per ecosystem per month, targeting dev. Majors for gomod and npm are
+# ignored (the Next 15 / React 19 migration is tracked in #594). No labels: a label
+# that does not exist makes Dependabot error. Docker updates are intentionally not
+# configured (Go image bumps stay in lockstep with go.mod and ci.yml).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /backend
+    target-branch: dev
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      go-modules:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-packages:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      github-actions:
+        patterns: ["*"]
