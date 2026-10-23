@@ -19,7 +19,7 @@ BookHaven is a social book catalog for the Russian/CIS market, inspired by Goodr
 
 ### Backend
 
-- Go 1.23
+- Go 1.27
 - Echo
 - GORM
 - PostgreSQL 16
