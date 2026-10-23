@@ -4,6 +4,7 @@ import { api } from '@bookhaven/api-client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
+import { useMyRating, useMyRatingStore } from '@/entities/rating';
 import { useAuthStore } from '@/entities/session';
 import { loginHref } from '@/shared/lib/safe-redirect';
 
@@ -64,11 +65,21 @@ function InteractiveStars({ value, onChange }: { value: number; onChange: (value
 }
 
 export function BookRating({ bookId, slug }: BookRatingProps) {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const ownerId = user?.id ?? null;
   const router = useRouter();
-  const [myRating, setMyRating] = useState(0);
+  const storedRating = useMyRating(ownerId, bookId);
+  const setStoredRating = useMyRatingStore((s) => s.setMyRating);
+  const setOwner = useMyRatingStore((s) => s.setOwner);
+  // Optimistic value while a save is in flight; otherwise the shared store wins.
+  const [pendingRating, setPendingRating] = useState<number | null>(null);
+  const myRating = pendingRating ?? storedRating ?? 0;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setOwner(ownerId);
+  }, [ownerId, setOwner]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -78,7 +89,7 @@ export function BookRating({ bookId, slug }: BookRatingProps) {
       .my(bookId)
       .then((res) => {
         if (!cancelled && res) {
-          setMyRating(res.value);
+          setStoredRating(bookId, res.value);
         }
       })
       .catch(() => {
@@ -88,24 +99,24 @@ export function BookRating({ bookId, slug }: BookRatingProps) {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, bookId]);
+  }, [isAuthenticated, bookId, setStoredRating]);
 
   const handleSetRating = async (value: number) => {
     if (!isAuthenticated || loading) return;
 
-    const previousMyRating = myRating;
-    setMyRating(value);
+    setPendingRating(value);
     setLoading(true);
     setError(null);
 
     try {
       await api.ratings.set(bookId, value);
+      setStoredRating(bookId, value);
       // Re-render the server-side rating summary with the new average.
       router.refresh();
     } catch (err) {
-      setMyRating(previousMyRating);
       setError(err instanceof Error ? err.message : 'Ошибка сохранения оценки');
     } finally {
+      setPendingRating(null);
       setLoading(false);
     }
   };
