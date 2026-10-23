@@ -1,13 +1,6 @@
 {
   "entries": [
     {
-      "id": "GO-2025-3553",
-      "package": "github.com/golang-jwt/jwt",
-      "reason": "golang-jwt/jwt v3.2.2+incompatible has no upstream fix. It is only pulled in by labstack/echo/v4/middleware (package init, deprecated JWT middleware); the backend verifies tokens with golang-jwt/jwt/v5 (already patched) and never calls the v3 parser. govulncheck flags the init-time reachability only.",
-      "issue": "#590",
-      "expires": "2027-01-15"
-    },
-    {
       "id": "GHSA-587h-7wmj-h5pm",
       "package": "vite",
       "reason": "Dev-server-only advisory (launch-editor: `fs.existsSync()` existence check can be bypassed on Windows). vite 5.4.x is vitest's dev dependency (devDependency of the apps), seen by pnpm audit only through the optional @sentry/cloudflare peer. No vite dev server is run in production and the Next.js build does not use vite. Fix needs vite >=6.4.4 (major bump of vitest); revisit with the toolchain upgrade.",

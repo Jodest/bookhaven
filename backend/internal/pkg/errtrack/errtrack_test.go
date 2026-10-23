@@ -155,8 +155,10 @@ func TestCaptureTaskFailure(t *testing.T) {
 			t.Errorf("tag %s = %q, want %q", k, e.Tags[k], v)
 		}
 	}
-	if e.Request != nil || len(e.Extra) != 0 || len(e.Contexts["payload"]) != 0 {
-		t.Error("no request/extra/payload allowed")
+	// sentry-go v0.50 removed Event.Extra, so request and contexts are the
+	// remaining channels a payload could leak through.
+	if e.Request != nil || len(e.Contexts["payload"]) != 0 {
+		t.Error("no request/payload allowed")
 	}
 }
 
