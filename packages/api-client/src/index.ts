@@ -1784,6 +1784,12 @@ export function onTokenRefresh(listener: (tokens: RefreshedTokens) => void): () 
   };
 }
 
+// `code` of the 401 from POST /auth/refresh when the cookie's token was rotated
+// in the last 30 s (typically by another tab of the same browser): the newer
+// cookie is already in the shared jar, so one repeat after a short pause works.
+export const REFRESH_TOKEN_SUPERSEDED_CODE = 'refresh_token_superseded';
+const REFRESH_SUPERSEDED_RETRY_DELAY_MS = 1000;
+
 async function rawRefresh(): Promise<RefreshedTokens> {
   const raw = await fetcher<{
     access_token: string;
@@ -1802,12 +1808,29 @@ async function rawRefresh(): Promise<RefreshedTokens> {
 // Dedups concurrent refresh attempts (reactive 401s and the proactive timer
 // alike) so only one `/auth/refresh` call is ever in flight at a time — the
 // backend rotates the refresh token on every call, so a second parallel call
-// would legitimately fail.
+// would legitimately fail. The single repeat on `refresh_token_superseded`
+// happens inside the same shared promise, so other callers keep waiting on it.
+async function refreshWithSupersededRetry(): Promise<RefreshedTokens> {
+  try {
+    return await rawRefresh();
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      error.status === 401 &&
+      error.code === REFRESH_TOKEN_SUPERSEDED_CODE
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, REFRESH_SUPERSEDED_RETRY_DELAY_MS));
+      return rawRefresh();
+    }
+    throw error;
+  }
+}
+
 function performRefresh(): Promise<RefreshedTokens> {
   if (refreshPromise) {
     return refreshPromise;
   }
-  refreshPromise = rawRefresh()
+  refreshPromise = refreshWithSupersededRetry()
     .then((tokens) => {
       setAccessToken(tokens.accessToken);
       refreshListeners.forEach((listener) => listener(tokens));

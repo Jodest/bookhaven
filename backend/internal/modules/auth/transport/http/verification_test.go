@@ -83,7 +83,9 @@ const testRefreshTokensDDL = `CREATE TABLE refresh_tokens (
 	token_hash TEXT NOT NULL,
 	expires_at INTEGER NOT NULL,
 	created_at INTEGER NOT NULL,
-	revoked_at INTEGER
+	revoked_at INTEGER,
+	family_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+	replaced_by TEXT
 )`
 
 type verificationHandlerEnv struct {
