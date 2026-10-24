@@ -46,12 +46,12 @@ const (
 	maxImportRows = 500
 )
 
-// ImportMaxRequestBody bounds the raw request body accepted by
-// POST /admin/books/import (NFR-002), applied via echomiddleware.BodyLimit
-// on the route (see internal/transport/http/router.go) so an oversized
-// upload is rejected (413) before any parsing happens. Exported so the
-// router can reference it without duplicating the literal.
-const ImportMaxRequestBody = "2M"
+// ImportMaxRequestBodyBytes bounds the raw request body accepted by
+// POST /admin/books/import (NFR-002). The 413 is applied before any parsing
+// by the global middleware.BodyLimit through the override table
+// (httptransport.BodyLimitOverrides), which is the only way to raise the
+// default limit for a route.
+const ImportMaxRequestBodyBytes int64 = 2 << 20
 
 // sniffImportFormat maps a filename extension to "csv"/"json", or "" if
 // undetectable. Used when the request omits the optional "format" field.

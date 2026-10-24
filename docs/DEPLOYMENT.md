@@ -470,7 +470,13 @@ Transactional email (verification, password reset, later notifications) is sent 
 | `DB_MAX_IDLE_CONNS` | Max idle connections kept per process. Integer >= 0, capped at `DB_MAX_OPEN_CONNS`. Default `5`. |
 | `DB_CONN_MAX_LIFETIME` | Recycle a connection after this age (Go duration, e.g. `30m`; `0` = no limit). Default `30m`. |
 | `DB_CONN_MAX_IDLE_TIME` | Close a connection idle this long (Go duration; `0` = no limit). Default `5m`. |
+| `HTTP_READ_HEADER_TIMEOUT` | Max time to read request headers (slowloris guard). Go duration; `0` = no limit; invalid or negative falls back to the default. Default `10s`. |
+| `HTTP_READ_TIMEOUT` | Max time to read the whole request including the body. Default `60s` (a 2 MiB import at about 40 KB/s still fits). |
+| `HTTP_WRITE_TIMEOUT` | Hard deadline for writing the response. A backstop only: synchronous admin Wikidata operations (up to 50 ids) and the 500-row import can run for minutes. Default `5m`. |
+| `HTTP_IDLE_TIMEOUT` | Keep-alive idle time between requests (from Caddy). Default `120s`. |
 | `WEB_BASE_URL` | Public origin of the web app, used to build absolute links in emails (e.g. `https://<WEB_DOMAIN>/verify-email?token=...`). Set in `docker-compose.prod.yml` as `https://${WEB_DOMAIN}` — no separate `.env` key. Must be an absolute `http(s)` URL; `config.Load` refuses to start in production when it is not set explicitly (the worker gets the same value for that reason). Dev default: `http://localhost:3000`. |
+
+**Request body limit and server timeouts** ([api-body-limit-timeouts.md](features/api-body-limit-timeouts.md)). Every api route caps the request body at **1 MiB**; only `POST /api/v1/admin/books/import` (the only multipart upload) gets **2 MiB**. An oversized body is answered with 413 and `{"error": "request body too large"}` before the handler runs (also for chunked bodies, which are buffered up to the limit). The limit is a code constant (`httptransport.DefaultBodyLimit` / `BodyLimitOverrides`), not an env var; a new upload route must add its own entry to the override table, because a route-level limit cannot raise the global one. `WriteTimeout` (5m) is longer than the 10s graceful-shutdown budget, so an admin request of that length that is still in flight during a deploy (SIGTERM) is cut after 10s, as before this change. Caddy keeps its default proxy timeouts and has no body limit: the api is the enforcement point.
 
 The `DB_*` pool limits apply per process. Connection budget: (number of api replicas + worker + one similarity run) x `DB_MAX_OPEN_CONNS` must stay below PostgreSQL `max_connections` (100 by default); with the defaults that is 60 for one api, one worker and one similarity run.
 
