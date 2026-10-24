@@ -9701,6 +9701,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "Дефолтные полки: «Хочу прочитать», «Читаю», «Прочитано», «Брошено» (создаются лениво). С book_id в ответ добавляется reads — сводка чтений этой книги вызывающим: reads_count (завершённые чтения), last_read_at, rereading (есть открытое чтение и хотя бы одно завершённое)",
                 "produces": [
                     "application/json"
                 ],
@@ -9809,7 +9810,7 @@ const docTemplate = `{
         },
         "/shelves/public/{id}": {
             "get": {
-                "description": "Доступно без авторизации. Приватная полка возвращает 404 (в том числе владельцу); владелец управляет ею через GET /shelves/{id}",
+                "description": "Доступно без авторизации. Приватная полка возвращает 404 (в том числе владельцу); владелец управляет ею через GET /shelves/{id}. reads_count и last_read_at считаются для владельца полки, не для вызывающего",
                 "produces": [
                     "application/json"
                 ],
@@ -9882,6 +9883,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "Каждая книга несёт reads_count и last_read_at — завершённые чтения владельца полки",
                 "produces": [
                     "application/json"
                 ],
@@ -10140,6 +10142,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "Дефолтные полки эксклюзивны: книга снимается с остальных. Журнал чтений обновляется в той же транзакции: «Читаю» открывает чтение (повторное нажатие после «Прочитано» — перечитывание, прежние чтения сохраняются), «Прочитано» закрывает открытое чтение как завершённое, «Брошено» — как брошенное, «Хочу прочитать» удаляет открытое",
                 "consumes": [
                     "application/json"
                 ],
@@ -10242,6 +10245,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "Снятие с «Прочитано» — отмена: удаляется только последнее завершённое чтение, история остаётся. Снятие с «Читаю» удаляет открытое чтение",
                 "produces": [
                     "application/json"
                 ],
@@ -16048,44 +16052,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_modules_shelves_transport_http.bookListItemResponse": {
-            "type": "object",
-            "properties": {
-                "authors": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_modules_shelves_transport_http.authorResponse"
-                    }
-                },
-                "cover_url": {
-                    "type": "string"
-                },
-                "genres": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_modules_shelves_transport_http.genreResponse"
-                    }
-                },
-                "id": {
-                    "type": "string"
-                },
-                "published_year": {
-                    "type": "integer"
-                },
-                "rating": {
-                    "type": "number"
-                },
-                "ratings_count": {
-                    "type": "integer"
-                },
-                "slug": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
         "internal_modules_shelves_transport_http.createShelfRequest": {
             "type": "object",
             "required": [
@@ -16129,8 +16095,74 @@ const docTemplate = `{
                         "$ref": "#/definitions/internal_modules_shelves_transport_http.shelfListItemResponse"
                     }
                 },
+                "reads": {
+                    "description": "Reads is the caller's reading summary of book_id; omitted without a valid book_id.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_shelves_transport_http.readsResponse"
+                        }
+                    ]
+                },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_modules_shelves_transport_http.readsResponse": {
+            "type": "object",
+            "properties": {
+                "last_read_at": {
+                    "type": "string"
+                },
+                "reads_count": {
+                    "type": "integer"
+                },
+                "rereading": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_modules_shelves_transport_http.shelfBookItemResponse": {
+            "type": "object",
+            "properties": {
+                "authors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_shelves_transport_http.authorResponse"
+                    }
+                },
+                "cover_url": {
+                    "type": "string"
+                },
+                "genres": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_shelves_transport_http.genreResponse"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_read_at": {
+                    "type": "string"
+                },
+                "published_year": {
+                    "type": "integer"
+                },
+                "rating": {
+                    "type": "number"
+                },
+                "ratings_count": {
+                    "type": "integer"
+                },
+                "reads_count": {
+                    "type": "integer"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
                 }
             }
         },
@@ -16140,7 +16172,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_modules_shelves_transport_http.bookListItemResponse"
+                        "$ref": "#/definitions/internal_modules_shelves_transport_http.shelfBookItemResponse"
                     }
                 },
                 "limit": {

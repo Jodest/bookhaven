@@ -59,20 +59,18 @@ func (r *GormRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]do
 	return challenges, nil
 }
 
-// CountReadBooks returns the number of distinct books on the user's "read"
-// shelf whose shelf_items.added_at falls within the given calendar year
-// (UTC). This is a completion-date proxy (see reading-challenge feature
-// docs); if BookHaven later adds an explicit "finished reading" date, this
-// query should prefer that field instead.
+// CountReadBooks returns the number of distinct books the user finished
+// reading within the given calendar year (UTC), counted from the reading
+// journal (book_reads.finished_at). A book finished twice in one year counts
+// once, and moving it off the "read" shelf does not lower the count.
 func (r *GormRepository) CountReadBooks(ctx context.Context, userID uuid.UUID, year int) (int64, error) {
 	start := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(year+1, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	sql := `
-		SELECT COUNT(DISTINCT si.book_id)
-		FROM shelf_items si
-		JOIN shelves s ON s.id = si.shelf_id
-		WHERE s.user_id = ? AND s.type = 'read' AND si.added_at >= ? AND si.added_at < ?
+		SELECT COUNT(DISTINCT book_id)
+		FROM book_reads
+		WHERE user_id = ? AND finished_at >= ? AND finished_at < ?
 	`
 
 	var count int64

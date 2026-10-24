@@ -19,6 +19,7 @@ const shelfTypeLabels: Record<string, string> = {
   want_to_read: 'Хочу прочитать',
   reading: 'Читаю',
   read: 'Прочитано',
+  abandoned: 'Брошено',
 };
 
 export function PublicProfileView({ id }: PublicProfileViewProps) {

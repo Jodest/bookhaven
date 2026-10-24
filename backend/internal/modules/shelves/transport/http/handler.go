@@ -67,6 +67,21 @@ type bookListItemResponse struct {
 	Genres        []genreResponse  `json:"genres"`
 }
 
+// shelfBookItemResponse is a shelf book item with the shelf owner's reading
+// counter (finished reads count and the latest finish date).
+type shelfBookItemResponse struct {
+	bookListItemResponse
+	ReadsCount int64      `json:"reads_count"`
+	LastReadAt *time.Time `json:"last_read_at"`
+}
+
+// readsResponse is the caller's reading summary of one book.
+type readsResponse struct {
+	ReadsCount int64      `json:"reads_count"`
+	LastReadAt *time.Time `json:"last_read_at"`
+	Rereading  bool       `json:"rereading"`
+}
+
 type shelfResponse struct {
 	ID          string    `json:"id"`
 	UserID      string    `json:"user_id"`
@@ -93,14 +108,34 @@ type shelfListItemResponse struct {
 type listShelvesResponse struct {
 	Items []shelfListItemResponse `json:"items"`
 	Total int                     `json:"total"`
+	// Reads is the caller's reading summary of book_id; omitted without a valid book_id.
+	Reads *readsResponse `json:"reads,omitempty"`
 }
 
 type shelfDetailResponse struct {
-	Shelf shelfResponse          `json:"shelf"`
-	Items []bookListItemResponse `json:"items"`
-	Total int64                  `json:"total"`
-	Page  int                    `json:"page"`
-	Limit int                    `json:"limit"`
+	Shelf shelfResponse           `json:"shelf"`
+	Items []shelfBookItemResponse `json:"items"`
+	Total int64                   `json:"total"`
+	Page  int                     `json:"page"`
+	Limit int                     `json:"limit"`
+}
+
+// toShelfBookItems builds shelf items with the read counters of the shelf owner.
+func (h *Handler) toShelfBookItems(c echo.Context, ownerID uuid.UUID, books []catalogDomain.Book) ([]shelfBookItemResponse, error) {
+	counts, err := h.service.ReadCounts(c.Request().Context(), ownerID, books)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]shelfBookItemResponse, 0, len(books))
+	for _, b := range books {
+		rc := counts[b.ID]
+		items = append(items, shelfBookItemResponse{
+			bookListItemResponse: toBookListItemResponse(b),
+			ReadsCount:           rc.Count,
+			LastReadAt:           rc.LastReadAt,
+		})
+	}
+	return items, nil
 }
 
 func formatDate(t *time.Time) *string {
@@ -199,6 +234,7 @@ func parseShelfID(c echo.Context) (uuid.UUID, error) {
 
 // ListShelves godoc
 // @Summary Список полок пользователя
+// @Description Дефолтные полки: «Хочу прочитать», «Читаю», «Прочитано», «Брошено» (создаются лениво). С book_id в ответ добавляется reads — сводка чтений этой книги вызывающим: reads_count (завершённые чтения), last_read_at, rereading (есть открытое чтение и хотя бы одно завершённое)
 // @Tags shelves
 // @Produce json
 // @Security BearerAuth
@@ -245,10 +281,16 @@ func (h *Handler) ListShelves(c echo.Context) error {
 		items = append(items, item)
 	}
 
-	return c.JSON(http.StatusOK, listShelvesResponse{
-		Items: items,
-		Total: len(items),
-	})
+	resp := listShelvesResponse{Items: items, Total: len(items)}
+	if bookID != nil {
+		sum, err := h.service.ReadSummary(ctx, userID, *bookID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list shelves"})
+		}
+		resp.Reads = &readsResponse{ReadsCount: sum.Count, LastReadAt: sum.LastReadAt, Rereading: sum.Rereading}
+	}
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 // CreateShelf godoc
@@ -295,6 +337,7 @@ func (h *Handler) CreateShelf(c echo.Context) error {
 
 // GetShelf godoc
 // @Summary Получить полку с книгами
+// @Description Каждая книга несёт reads_count и last_read_at — завершённые чтения владельца полки
 // @Tags shelves
 // @Produce json
 // @Security BearerAuth
@@ -344,9 +387,9 @@ func (h *Handler) GetShelf(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get shelf"})
 	}
 
-	items := make([]bookListItemResponse, 0, len(books))
-	for _, b := range books {
-		items = append(items, toBookListItemResponse(b))
+	items, err := h.toShelfBookItems(c, shelf.UserID, books)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get shelf"})
 	}
 
 	return c.JSON(http.StatusOK, shelfDetailResponse{
@@ -360,7 +403,7 @@ func (h *Handler) GetShelf(c echo.Context) error {
 
 // GetPublicShelf godoc
 // @Summary Получить публичную полку с книгами
-// @Description Доступно без авторизации. Приватная полка возвращает 404 (в том числе владельцу); владелец управляет ею через GET /shelves/{id}
+// @Description Доступно без авторизации. Приватная полка возвращает 404 (в том числе владельцу); владелец управляет ею через GET /shelves/{id}. reads_count и last_read_at считаются для владельца полки, не для вызывающего
 // @Tags shelves
 // @Produce json
 // @Param id path string true "ID полки"
@@ -399,9 +442,9 @@ func (h *Handler) GetPublicShelf(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get shelf"})
 	}
 
-	items := make([]bookListItemResponse, 0, len(books))
-	for _, b := range books {
-		items = append(items, toBookListItemResponse(b))
+	items, err := h.toShelfBookItems(c, shelf.UserID, books)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get shelf"})
 	}
 
 	return c.JSON(http.StatusOK, shelfDetailResponse{
@@ -512,6 +555,7 @@ func (h *Handler) DeleteShelf(c echo.Context) error {
 
 // AddBook godoc
 // @Summary Добавить книгу на полку
+// @Description Дефолтные полки эксклюзивны: книга снимается с остальных. Журнал чтений обновляется в той же транзакции: «Читаю» открывает чтение (повторное нажатие после «Прочитано» — перечитывание, прежние чтения сохраняются), «Прочитано» закрывает открытое чтение как завершённое, «Брошено» — как брошенное, «Хочу прочитать» удаляет открытое
 // @Tags shelves
 // @Accept json
 // @Produce json
@@ -572,6 +616,7 @@ func (h *Handler) AddBook(c echo.Context) error {
 
 // RemoveBook godoc
 // @Summary Убрать книгу с полки
+// @Description Снятие с «Прочитано» — отмена: удаляется только последнее завершённое чтение, история остаётся. Снятие с «Читаю» удаляет открытое чтение
 // @Tags shelves
 // @Produce json
 // @Security BearerAuth

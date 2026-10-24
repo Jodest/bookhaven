@@ -22,6 +22,7 @@ CREATE TABLE screen_works (id TEXT PRIMARY KEY, title TEXT NOT NULL, original_ti
 CREATE TABLE book_screen_works (book_id TEXT NOT NULL, screen_work_id TEXT NOT NULL, hidden BOOLEAN NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'wikidata', created_at DATETIME, updated_at DATETIME, PRIMARY KEY (book_id, screen_work_id));
 CREATE TABLE shelves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL);
 CREATE TABLE shelf_items (shelf_id TEXT NOT NULL, book_id TEXT NOT NULL, added_at DATETIME, PRIMARY KEY (shelf_id, book_id));
+CREATE TABLE book_reads (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, book_id TEXT NOT NULL, started_at DATETIME, finished_at DATETIME, abandoned_at DATETIME, created_at DATETIME);
 CREATE TABLE adaptation_votes (user_id TEXT NOT NULL, book_id TEXT NOT NULL, screen_work_id TEXT NOT NULL, value TEXT NOT NULL, created_at DATETIME, updated_at DATETIME, PRIMARY KEY (user_id, book_id, screen_work_id));
 `
 
@@ -72,6 +73,9 @@ func (f *fixture) makeReader(t *testing.T) uuid.UUID {
 		t.Fatal(err)
 	}
 	if err := f.db.Exec("INSERT INTO shelf_items (shelf_id, book_id, added_at) VALUES (?, ?, ?)", shelf, f.book, time.Now()).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Exec("INSERT INTO book_reads (id, user_id, book_id, finished_at, created_at) VALUES (?, ?, ?, ?, ?)", uuid.New(), user, f.book, time.Now(), time.Now()).Error; err != nil {
 		t.Fatal(err)
 	}
 	return user

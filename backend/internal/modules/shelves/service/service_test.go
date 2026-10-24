@@ -24,6 +24,7 @@ type fakeRepository struct {
 	items          map[shelfBookKey]time.Time
 	books          map[uuid.UUID]*catalogDomain.Book
 	defaultEnsured map[uuid.UUID]bool
+	reads          []domain.BookRead
 }
 
 func newFakeRepository() *fakeRepository {
@@ -46,6 +47,7 @@ func (f *fakeRepository) EnsureDefaultShelves(ctx context.Context, userID uuid.U
 		{"Хочу прочитать", domain.ShelfTypeWantToRead},
 		{"Читаю", domain.ShelfTypeReading},
 		{"Прочитано", domain.ShelfTypeRead},
+		{"Брошено", domain.ShelfTypeAbandoned},
 	}
 	for _, d := range defaults {
 		exists := false
@@ -232,16 +234,16 @@ func TestListShelves_CreatesDefaultsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(shelves) != 3 {
-		t.Fatalf("expected 3 default shelves, got %d", len(shelves))
+	if len(shelves) != 4 {
+		t.Fatalf("expected 4 default shelves, got %d", len(shelves))
 	}
 
 	shelves2, err := svc.ListShelves(ctx, userID, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(shelves2) != 3 {
-		t.Fatalf("expected 3 default shelves on second call, got %d", len(shelves2))
+	if len(shelves2) != 4 {
+		t.Fatalf("expected 4 default shelves on second call, got %d", len(shelves2))
 	}
 
 	count := 0
@@ -250,8 +252,8 @@ func TestListShelves_CreatesDefaultsOnce(t *testing.T) {
 			count++
 		}
 	}
-	if count != 3 {
-		t.Fatalf("expected 3 total shelves for user, got %d", count)
+	if count != 4 {
+		t.Fatalf("expected 4 total shelves for user, got %d", count)
 	}
 }
 
@@ -821,4 +823,31 @@ func findShelf(shelves []domain.Shelf, typ domain.ShelfType) *domain.Shelf {
 		}
 	}
 	return nil
+}
+
+func TestListShelves_AddsAbandonedForExistingUser(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	svc, repo := setupTestService()
+	for name, typ := range map[string]domain.ShelfType{"Хочу прочитать": domain.ShelfTypeWantToRead, "Читаю": domain.ShelfTypeReading, "Прочитано": domain.ShelfTypeRead} {
+		s := &domain.Shelf{ID: uuid.New(), UserID: userID, Name: name, Type: typ, IsPublic: true}
+		repo.shelves[s.ID] = s
+	}
+
+	shelves, err := svc.ListShelves(ctx, userID, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(shelves) != 4 {
+		t.Fatalf("expected 4 shelves, got %d", len(shelves))
+	}
+	found := false
+	for _, s := range shelves {
+		if s.Type == domain.ShelfTypeAbandoned && s.Name == "Брошено" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected the lazily created «Брошено» shelf")
+	}
 }

@@ -14,6 +14,7 @@ import (
 const votesDDL = `
 CREATE TABLE shelves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL);
 CREATE TABLE shelf_items (shelf_id TEXT NOT NULL, book_id TEXT NOT NULL, added_at DATETIME, PRIMARY KEY (shelf_id, book_id));
+CREATE TABLE book_reads (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, book_id TEXT NOT NULL, started_at DATETIME, finished_at DATETIME, abandoned_at DATETIME, created_at DATETIME);
 CREATE TABLE adaptation_votes (user_id TEXT NOT NULL, book_id TEXT NOT NULL, screen_work_id TEXT NOT NULL, value TEXT NOT NULL CHECK (value IN ('book','adaptation','same')), created_at DATETIME, updated_at DATETIME,
   PRIMARY KEY (user_id, book_id, screen_work_id),
   FOREIGN KEY (book_id, screen_work_id) REFERENCES book_screen_works (book_id, screen_work_id) ON DELETE CASCADE);
@@ -51,6 +52,12 @@ func mkShelfUser(t *testing.T, db *gorm.DB, shelfType string, book uuid.UUID) uu
 	}
 	if err := db.Exec("INSERT INTO shelf_items (shelf_id, book_id, added_at) VALUES (?, ?, ?)", shelf, book, time.Now()).Error; err != nil {
 		t.Fatal(err)
+	}
+	if shelfType == "read" {
+		// Voting eligibility comes from the reading journal.
+		if err := db.Exec("INSERT INTO book_reads (id, user_id, book_id, finished_at, created_at) VALUES (?, ?, ?, ?, ?)", uuid.New(), user, book, time.Now(), time.Now()).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	return user
 }
@@ -247,7 +254,7 @@ func TestVotes_HideKeepsDeleteRemoves(t *testing.T) {
 	}
 }
 
-func TestVotes_KeptAfterLeavingReadAndUnvoteIdempotent(t *testing.T) {
+func TestVotes_KeptAfterUndoOfOnlyReadAndUnvoteIdempotent(t *testing.T) {
 	svc, db := setupVotes(t)
 	ctx := context.Background()
 	book := mkBook(t, db, "published", "")
@@ -257,15 +264,29 @@ func TestVotes_KeptAfterLeavingReadAndUnvoteIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// A re-reader moves the book to «Читаю»: the finished reading stays, so
+	// the right to vote stays too.
 	if err := db.Exec("DELETE FROM shelf_items").Error; err != nil {
 		t.Fatal(err)
 	}
 	res, err := svc.ListVerdicts(ctx, book, &user)
+	if err != nil || !res.CanVote || res.Items[0].Votes != 1 || res.Items[0].MyVote == nil {
+		t.Fatalf("re-reader = %+v, %v", res, err)
+	}
+	if _, err := svc.Vote(ctx, user, book, work, "same"); err != nil {
+		t.Fatalf("re-reader vote change: %v", err)
+	}
+
+	// Undo of the only finished reading removes the right to vote.
+	if err := db.Exec("DELETE FROM book_reads").Error; err != nil {
+		t.Fatal(err)
+	}
+	res, err = svc.ListVerdicts(ctx, book, &user)
 	if err != nil || res.CanVote || res.Items[0].Votes != 1 || res.Items[0].MyVote == nil {
-		t.Fatalf("after leaving read = %+v, %v", res, err)
+		t.Fatalf("after undo = %+v, %v", res, err)
 	}
 	if _, err := svc.Vote(ctx, user, book, work, "same"); !errors.Is(err, domain.ErrNotReader) {
-		t.Errorf("vote change after leaving read: %v", err)
+		t.Errorf("vote change after undo: %v", err)
 	}
 	for i := 0; i < 2; i++ {
 		if err := svc.Unvote(ctx, user, book, work); err != nil {

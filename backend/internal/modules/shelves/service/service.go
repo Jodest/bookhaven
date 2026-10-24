@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
@@ -29,11 +30,12 @@ var (
 // Service provides shelves logic.
 type Service struct {
 	repo repository.Repository
+	now  func() time.Time
 }
 
 // NewService creates a new shelves Service.
 func NewService(repo repository.Repository) *Service {
-	return &Service{repo: repo}
+	return &Service{repo: repo, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // ListShelves returns all shelves for a user, optionally marking whether they contain a book.
@@ -60,6 +62,30 @@ func (s *Service) ListShelves(ctx context.Context, userID uuid.UUID, bookID *uui
 	}
 
 	return shelves, nil
+}
+
+// ReadSummary returns the caller's reading summary (finished reads count,
+// last finish date, re-reading flag) of one book.
+func (s *Service) ReadSummary(ctx context.Context, userID, bookID uuid.UUID) (domain.ReadSummary, error) {
+	sum, err := s.repo.ReadSummary(ctx, userID, bookID)
+	if err != nil {
+		return domain.ReadSummary{}, fmt.Errorf("read summary: %w", err)
+	}
+	return sum, nil
+}
+
+// ReadCounts returns the finished-reads counts of the given books for ownerID
+// (the shelf owner, not the caller), keyed by book id.
+func (s *Service) ReadCounts(ctx context.Context, ownerID uuid.UUID, books []catalogDomain.Book) (map[uuid.UUID]domain.ReadCount, error) {
+	ids := make([]uuid.UUID, 0, len(books))
+	for _, b := range books {
+		ids = append(ids, b.ID)
+	}
+	counts, err := s.repo.ReadCounts(ctx, ownerID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("read counts: %w", err)
+	}
+	return counts, nil
 }
 
 // CreateShelf creates a custom shelf for a user.
@@ -305,6 +331,7 @@ func (s *Service) AddBook(ctx context.Context, userID uuid.UUID, shelfID, bookID
 
 	if isDefaultShelf(shelf.Type) {
 		otherTypes := otherDefaultTypes(shelf.Type)
+		now := s.now()
 		return s.repo.Transaction(ctx, func(repo repository.Repository) error {
 			for _, t := range otherTypes {
 				otherShelf, err := repo.GetByUserAndType(ctx, userID, t)
@@ -318,7 +345,12 @@ func (s *Service) AddBook(ctx context.Context, userID uuid.UUID, shelfID, bookID
 					return err
 				}
 			}
-			return repo.AddBook(ctx, shelfID, bookID)
+			// The shelf mutation goes first; the journal step runs only when it
+			// actually changed a row (a duplicate add returns an error and rolls back).
+			if err := repo.AddBook(ctx, shelfID, bookID); err != nil {
+				return err
+			}
+			return journalOnAdd(ctx, repo, shelf.Type, userID, bookID, now)
 		})
 	}
 
@@ -342,32 +374,77 @@ func (s *Service) RemoveBook(ctx context.Context, userID uuid.UUID, shelfID, boo
 		return ErrForbidden
 	}
 
-	if err := s.repo.RemoveBook(ctx, shelfID, bookID); err != nil {
-		if errors.Is(err, repository.ErrBookNotOnShelf) {
-			return ErrBookNotOnShelf
+	remove := func(repo repository.Repository) error {
+		if err := repo.RemoveBook(ctx, shelfID, bookID); err != nil {
+			if errors.Is(err, repository.ErrBookNotOnShelf) {
+				return ErrBookNotOnShelf
+			}
+			return fmt.Errorf("remove book: %w", err)
 		}
-		return fmt.Errorf("remove book: %w", err)
+		return nil
 	}
 
+	if !isDefaultShelf(shelf.Type) {
+		return remove(s.repo)
+	}
+
+	return s.repo.Transaction(ctx, func(repo repository.Repository) error {
+		if err := remove(repo); err != nil {
+			return err
+		}
+		return journalOnRemove(ctx, repo, shelf.Type, userID, bookID)
+	})
+}
+
+// journalOnAdd applies the reading-journal transition for a move to the
+// default shelf of the given type. The effect depends only on the target.
+func journalOnAdd(ctx context.Context, repo repository.Repository, target domain.ShelfType, userID, bookID uuid.UUID, now time.Time) error {
+	switch target {
+	case domain.ShelfTypeReading:
+		return repo.OpenRead(ctx, userID, bookID, now)
+	case domain.ShelfTypeRead:
+		return repo.FinishRead(ctx, userID, bookID, now)
+	case domain.ShelfTypeAbandoned:
+		return repo.AbandonOpenRead(ctx, userID, bookID, now)
+	case domain.ShelfTypeWantToRead:
+		return repo.DeleteOpenRead(ctx, userID, bookID)
+	}
+	return nil
+}
+
+// journalOnRemove applies the reading-journal transition for removing the book
+// from the default shelf of the given type. Removing from «Прочитано» is an
+// undo of the latest finished reading only.
+func journalOnRemove(ctx context.Context, repo repository.Repository, from domain.ShelfType, userID, bookID uuid.UUID) error {
+	switch from {
+	case domain.ShelfTypeReading:
+		return repo.DeleteOpenRead(ctx, userID, bookID)
+	case domain.ShelfTypeRead:
+		return repo.DeleteLatestFinishedRead(ctx, userID, bookID)
+	}
 	return nil
 }
 
 func isDefaultShelf(t domain.ShelfType) bool {
-	return t == domain.ShelfTypeWantToRead || t == domain.ShelfTypeReading || t == domain.ShelfTypeRead
+	return t == domain.ShelfTypeWantToRead || t == domain.ShelfTypeReading ||
+		t == domain.ShelfTypeRead || t == domain.ShelfTypeAbandoned
 }
 
 func isCustomShelf(t domain.ShelfType) bool {
 	return t == domain.ShelfTypeCustom
 }
 
-func otherDefaultTypes(t domain.ShelfType) [2]domain.ShelfType {
-	switch t {
-	case domain.ShelfTypeWantToRead:
-		return [2]domain.ShelfType{domain.ShelfTypeReading, domain.ShelfTypeRead}
-	case domain.ShelfTypeReading:
-		return [2]domain.ShelfType{domain.ShelfTypeWantToRead, domain.ShelfTypeRead}
-	case domain.ShelfTypeRead:
-		return [2]domain.ShelfType{domain.ShelfTypeWantToRead, domain.ShelfTypeReading}
+var defaultShelfTypes = []domain.ShelfType{
+	domain.ShelfTypeWantToRead, domain.ShelfTypeReading, domain.ShelfTypeRead, domain.ShelfTypeAbandoned,
+}
+
+// otherDefaultTypes returns the other default shelf types of the exclusive group.
+func otherDefaultTypes(t domain.ShelfType) []domain.ShelfType {
+	others := make([]domain.ShelfType, 0, len(defaultShelfTypes)-1)
+	for _, d := range defaultShelfTypes {
+		if d != t {
+			others = append(others, d)
+		}
 	}
-	return [2]domain.ShelfType{}
+	return others
 }

@@ -28,6 +28,7 @@ type fakeRepository struct {
 	shelves map[uuid.UUID]*domain.Shelf
 	items   map[shelfBookKey]time.Time
 	books   map[uuid.UUID]*catalogDomain.Book
+	reads   []domain.BookRead
 }
 
 func newFakeRepository() *fakeRepository {
@@ -429,5 +430,103 @@ func TestGetPublicShelf_PrivateReturns404EvenForOwner(t *testing.T) {
 	}
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestGetPublicShelf_ReadsCountOfOwnerNotCaller(t *testing.T) {
+	h, repo := setupHandler()
+	owner, caller := uuid.New(), uuid.New()
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: owner, Name: "Прочитано", Type: domain.ShelfTypeRead, IsPublic: true}
+	repo.shelves[shelf.ID] = shelf
+	bookID := uuid.New()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Книга", Slug: "kniga"}
+	repo.items[shelfBookKey{shelfID: shelf.ID, bookID: bookID}] = time.Now()
+	now := time.Now()
+	repo.reads = append(repo.reads,
+		domain.BookRead{ID: uuid.New(), UserID: owner, BookID: bookID, FinishedAt: &now, CreatedAt: now},
+		domain.BookRead{ID: uuid.New(), UserID: owner, BookID: bookID, FinishedAt: &now, CreatedAt: now},
+		domain.BookRead{ID: uuid.New(), UserID: caller, BookID: bookID, FinishedAt: &now, CreatedAt: now},
+	)
+
+	c, rec := newContext(http.MethodGet, "/api/v1/shelves/public/"+shelf.ID.String())
+	c.Set("user_id", caller.String())
+	c.SetPath("/api/v1/shelves/public/:id")
+	c.SetParamNames("id")
+	c.SetParamValues(shelf.ID.String())
+	if err := h.GetPublicShelf(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body struct {
+		Items []struct {
+			ReadsCount int64      `json:"reads_count"`
+			LastReadAt *time.Time `json:"last_read_at"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Items) != 1 || body.Items[0].ReadsCount != 2 || body.Items[0].LastReadAt == nil {
+		t.Fatalf("expected owner's 2 reads, got %+v", body.Items)
+	}
+}
+
+func TestGetPublicShelf_NeverFinishedHasZeroCountAndNullDate(t *testing.T) {
+	h, repo := setupHandler()
+	owner := uuid.New()
+	shelf := &domain.Shelf{ID: uuid.New(), UserID: owner, Name: "Читаю", Type: domain.ShelfTypeReading, IsPublic: true}
+	repo.shelves[shelf.ID] = shelf
+	bookID := uuid.New()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Книга", Slug: "kniga"}
+	repo.items[shelfBookKey{shelfID: shelf.ID, bookID: bookID}] = time.Now()
+
+	c, rec := newContext(http.MethodGet, "/api/v1/shelves/public/"+shelf.ID.String())
+	c.SetPath("/api/v1/shelves/public/:id")
+	c.SetParamNames("id")
+	c.SetParamValues(shelf.ID.String())
+	if err := h.GetPublicShelf(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(rec.Body.String(), `"reads_count":0`) || !strings.Contains(rec.Body.String(), `"last_read_at":null`) {
+		t.Fatalf("expected zero counter and null date, got %s", rec.Body.String())
+	}
+}
+
+func TestListShelves_ReadsSummaryOnlyWithBookID(t *testing.T) {
+	h, repo := setupHandler()
+	user := uuid.New()
+	bookID := uuid.New()
+	earlier := time.Date(2025, 5, 1, 0, 0, 0, 0, time.UTC)
+	open := time.Now()
+	repo.reads = append(repo.reads,
+		domain.BookRead{ID: uuid.New(), UserID: user, BookID: bookID, FinishedAt: &earlier, CreatedAt: earlier},
+		domain.BookRead{ID: uuid.New(), UserID: user, BookID: bookID, StartedAt: &open, CreatedAt: open},
+	)
+
+	c, rec := newContext(http.MethodGet, "/api/v1/shelves?book_id="+bookID.String())
+	c.Set("user_id", user.String())
+	if err := h.ListShelves(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body struct {
+		Reads *struct {
+			ReadsCount int64      `json:"reads_count"`
+			LastReadAt *time.Time `json:"last_read_at"`
+			Rereading  bool       `json:"rereading"`
+		} `json:"reads"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Reads == nil || body.Reads.ReadsCount != 1 || !body.Reads.Rereading || body.Reads.LastReadAt == nil {
+		t.Fatalf("unexpected reads %+v", body.Reads)
+	}
+
+	c, rec = newContext(http.MethodGet, "/api/v1/shelves")
+	c.Set("user_id", user.String())
+	if err := h.ListShelves(c); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rec.Body.String(), `"reads"`) {
+		t.Fatalf("reads must be omitted without book_id: %s", rec.Body.String())
 	}
 }
