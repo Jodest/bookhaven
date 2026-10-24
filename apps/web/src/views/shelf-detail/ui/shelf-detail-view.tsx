@@ -3,8 +3,9 @@
 import { useAuthStore } from '@/entities/session';
 import { shelfKeys, shelvesApi } from '@/entities/shelf';
 import { invalidateShelfContents, invalidateShelfMeta } from '@/features/shelve-book';
+import { formatReadCount } from '@/shared/lib/format-read-count';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Book, Shelf } from '@bookhaven/api-client';
+import { Shelf, ShelfBook } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -52,7 +53,7 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
   });
   const data = query.data;
   const shelf: Shelf | null = data?.shelf ?? null;
-  const books: Book[] = data?.items ?? [];
+  const books: ShelfBook[] = data?.items ?? [];
   const total = data?.total ?? 0;
   const loading = query.isFetching;
   const error =
@@ -244,6 +245,11 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
                   <p className="line-clamp-1 text-xs text-muted-foreground">
                     {book.authors.map((a) => a.name).join(', ')}
                   </p>
+                  {book.readsCount >= 1 && (
+                    <p className="line-clamp-1 text-xs text-muted-foreground">
+                      {formatReadCount(book.readsCount)}
+                    </p>
+                  )}
                 </Link>
                 <Button
                   variant="outline"

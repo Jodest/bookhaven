@@ -3753,31 +3753,6 @@ definitions:
       slug:
         type: string
     type: object
-  internal_modules_shelves_transport_http.bookListItemResponse:
-    properties:
-      authors:
-        items:
-          $ref: '#/definitions/internal_modules_shelves_transport_http.authorResponse'
-        type: array
-      cover_url:
-        type: string
-      genres:
-        items:
-          $ref: '#/definitions/internal_modules_shelves_transport_http.genreResponse'
-        type: array
-      id:
-        type: string
-      published_year:
-        type: integer
-      rating:
-        type: number
-      ratings_count:
-        type: integer
-      slug:
-        type: string
-      title:
-        type: string
-    type: object
   internal_modules_shelves_transport_http.createShelfRequest:
     properties:
       description:
@@ -3807,14 +3782,57 @@ definitions:
         items:
           $ref: '#/definitions/internal_modules_shelves_transport_http.shelfListItemResponse'
         type: array
+      reads:
+        allOf:
+        - $ref: '#/definitions/internal_modules_shelves_transport_http.readsResponse'
+        description: Reads is the caller's reading summary of book_id; omitted without
+          a valid book_id.
       total:
         type: integer
+    type: object
+  internal_modules_shelves_transport_http.readsResponse:
+    properties:
+      last_read_at:
+        type: string
+      reads_count:
+        type: integer
+      rereading:
+        type: boolean
+    type: object
+  internal_modules_shelves_transport_http.shelfBookItemResponse:
+    properties:
+      authors:
+        items:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.authorResponse'
+        type: array
+      cover_url:
+        type: string
+      genres:
+        items:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.genreResponse'
+        type: array
+      id:
+        type: string
+      last_read_at:
+        type: string
+      published_year:
+        type: integer
+      rating:
+        type: number
+      ratings_count:
+        type: integer
+      reads_count:
+        type: integer
+      slug:
+        type: string
+      title:
+        type: string
     type: object
   internal_modules_shelves_transport_http.shelfDetailResponse:
     properties:
       items:
         items:
-          $ref: '#/definitions/internal_modules_shelves_transport_http.bookListItemResponse'
+          $ref: '#/definitions/internal_modules_shelves_transport_http.shelfBookItemResponse'
         type: array
       limit:
         type: integer
@@ -10568,6 +10586,10 @@ paths:
       - reviews
   /shelves:
     get:
+      description: 'Дефолтные полки: «Хочу прочитать», «Читаю», «Прочитано», «Брошено»
+        (создаются лениво). С book_id в ответ добавляется reads — сводка чтений этой
+        книги вызывающим: reads_count (завершённые чтения), last_read_at, rereading
+        (есть открытое чтение и хотя бы одно завершённое)'
       parameters:
       - description: Если указан, для каждой полки помечается наличие книги
         in: query
@@ -10690,6 +10712,8 @@ paths:
       tags:
       - shelves
     get:
+      description: Каждая книга несёт reads_count и last_read_at — завершённые чтения
+        владельца полки
       parameters:
       - description: ID полки
         in: path
@@ -10809,6 +10833,11 @@ paths:
     post:
       consumes:
       - application/json
+      description: 'Дефолтные полки эксклюзивны: книга снимается с остальных. Журнал
+        чтений обновляется в той же транзакции: «Читаю» открывает чтение (повторное
+        нажатие после «Прочитано» — перечитывание, прежние чтения сохраняются), «Прочитано»
+        закрывает открытое чтение как завершённое, «Брошено» — как брошенное, «Хочу
+        прочитать» удаляет открытое'
       parameters:
       - description: ID полки
         in: path
@@ -10873,6 +10902,8 @@ paths:
       - shelves
   /shelves/{id}/books/{bookId}:
     delete:
+      description: 'Снятие с «Прочитано» — отмена: удаляется только последнее завершённое
+        чтение, история остаётся. Снятие с «Читаю» удаляет открытое чтение'
       parameters:
       - description: ID полки
         in: path
@@ -10931,7 +10962,8 @@ paths:
   /shelves/public/{id}:
     get:
       description: Доступно без авторизации. Приватная полка возвращает 404 (в том
-        числе владельцу); владелец управляет ею через GET /shelves/{id}
+        числе владельцу); владелец управляет ею через GET /shelves/{id}. reads_count
+        и last_read_at считаются для владельца полки, не для вызывающего
       parameters:
       - description: ID полки
         in: path

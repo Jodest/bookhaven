@@ -1,15 +1,17 @@
 'use client';
 
+import { formatReadCounter } from '@/shared/lib/format-read-count';
 import { loginHref } from '@/shared/lib/safe-redirect';
 import { Button, Popover, PopoverContent, PopoverTrigger } from '@bookhaven/ui';
-import { Bookmark, BookCheck, BookOpen, Check, ChevronDown, X } from 'lucide-react';
+import { Bookmark, BookCheck, BookOpen, BookX, Check, ChevronDown, RotateCw, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import {
   defaultTypeLabels,
-  defaultTypeOrder,
   isDefaultType,
+  statusTypeLabels,
+  statusTypeOrder,
   useBookShelves,
 } from '../model/use-book-shelves';
 
@@ -17,6 +19,7 @@ const statusIcons: Record<string, LucideIcon> = {
   want_to_read: Bookmark,
   reading: BookOpen,
   read: BookCheck,
+  abandoned: BookX,
 };
 
 interface BookShelfActionsProps {
@@ -26,10 +29,10 @@ interface BookShelfActionsProps {
 
 /**
  * Shelving controls for the book page: one status control (want to read /
- * reading / read) and a "На полку" popover with the reader's custom shelves.
+ * reading / read / abandoned) with a re-read button, a read counter and a "На полку" popover with the reader's custom shelves.
  */
 export function BookShelfActions({ bookId, slug }: BookShelfActionsProps) {
-  const { isAuthenticated, shelves, status, error, toggleDefault, toggleCustom, clearStatus } =
+  const { isAuthenticated, shelves, reads, status, error, toggleDefault, toggleCustom, clearStatus } =
     useBookShelves(bookId);
   const [statusOpen, setStatusOpen] = useState(false);
 
@@ -51,7 +54,7 @@ export function BookShelfActions({ bookId, slug }: BookShelfActionsProps) {
     );
   }
 
-  const defaultShelves = defaultTypeOrder
+  const defaultShelves = statusTypeOrder
     .map((type) => shelves.find((s) => s.type === type))
     .filter((s): s is NonNullable<typeof s> => !!s);
   const currentShelf = defaultShelves.find((s) => s.hasBook);
@@ -60,8 +63,10 @@ export function BookShelfActions({ bookId, slug }: BookShelfActionsProps) {
   const customCount = customShelves.filter((s) => s.hasBook).length;
   const CurrentIcon = currentShelf ? (statusIcons[currentShelf.type] ?? Check) : Check;
   const currentLabel = currentShelf
-    ? defaultTypeLabels[currentShelf.type as keyof typeof defaultTypeLabels]
+    ? statusTypeLabels[currentShelf.type as keyof typeof statusTypeLabels]
     : null;
+  const readingShelf = defaultShelves.find((s) => s.type === 'reading');
+  const rereading = currentShelf?.type === 'reading' && Boolean(reads?.rereading);
 
   return (
     <div className="space-y-3">
@@ -77,10 +82,15 @@ export function BookShelfActions({ bookId, slug }: BookShelfActionsProps) {
                 <PopoverTrigger asChild>
                   <Button
                     variant="secondary"
-                    aria-label={`Статус: ${currentLabel}. Изменить`}
+                    aria-label={`Статус: ${currentLabel}${rereading ? ', перечитываю' : ''}. Изменить`}
                   >
                     <CurrentIcon className="mr-2 h-4 w-4" aria-hidden="true" />
                     {currentLabel}
+                    {rereading && (
+                      <span className="ml-2 rounded-full bg-background/60 px-2 py-0.5 text-xs">
+                        перечитываю
+                      </span>
+                    )}
                     <ChevronDown className="ml-2 h-4 w-4" aria-hidden="true" />
                   </Button>
                 </PopoverTrigger>
@@ -120,7 +130,7 @@ export function BookShelfActions({ bookId, slug }: BookShelfActionsProps) {
                     }}
                   >
                     {Icon && <Icon className="mr-2 h-4 w-4" aria-hidden="true" />}
-                    {defaultTypeLabels[shelf.type as keyof typeof defaultTypeLabels]}
+                    {statusTypeLabels[shelf.type as keyof typeof statusTypeLabels]}
                     {shelf.hasBook && <Check className="ml-auto h-4 w-4" aria-hidden="true" />}
                   </Button>
                 );
@@ -143,6 +153,13 @@ export function BookShelfActions({ bookId, slug }: BookShelfActionsProps) {
               )}
             </PopoverContent>
           </Popover>
+        )}
+
+        {currentShelf?.type === 'read' && readingShelf && (
+          <Button variant="secondary" onClick={() => void toggleDefault(readingShelf)}>
+            <RotateCw className="mr-2 h-4 w-4" aria-hidden="true" />
+            Читаю снова
+          </Button>
         )}
 
         {customShelves.length > 0 && (
@@ -170,6 +187,12 @@ export function BookShelfActions({ bookId, slug }: BookShelfActionsProps) {
           </Popover>
         )}
       </div>
+
+      {reads && reads.readsCount >= 1 && (
+        <p className="text-sm text-muted-foreground">
+          {formatReadCounter(reads.readsCount, reads.lastReadAt)}
+        </p>
+      )}
     </div>
   );
 }

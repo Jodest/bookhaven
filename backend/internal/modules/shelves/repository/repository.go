@@ -34,6 +34,24 @@ type Repository interface {
 	BookExists(ctx context.Context, bookID uuid.UUID) (bool, error)
 	UserShelvesWithBook(ctx context.Context, userID, bookID uuid.UUID) (map[uuid.UUID]struct{}, error)
 	Transaction(ctx context.Context, fn func(repo Repository) error) error
+
+	// Reading journal (book_reads). All methods work on the tx repository.
+
+	// OpenRead starts an attempt unless one is already open.
+	OpenRead(ctx context.Context, userID, bookID uuid.UUID, now time.Time) error
+	// FinishRead closes the open attempt as finished, or inserts a finished one
+	// without a start date when none is open.
+	FinishRead(ctx context.Context, userID, bookID uuid.UUID, now time.Time) error
+	// AbandonOpenRead closes the open attempt as abandoned (no-op without one).
+	AbandonOpenRead(ctx context.Context, userID, bookID uuid.UUID, now time.Time) error
+	// DeleteOpenRead deletes the open attempt (no-op without one).
+	DeleteOpenRead(ctx context.Context, userID, bookID uuid.UUID) error
+	// DeleteLatestFinishedRead deletes only the latest finished attempt.
+	DeleteLatestFinishedRead(ctx context.Context, userID, bookID uuid.UUID) error
+	// ReadSummary returns the caller's reading summary of one book.
+	ReadSummary(ctx context.Context, userID, bookID uuid.UUID) (domain.ReadSummary, error)
+	// ReadCounts returns finished-readings counts for many books in one query.
+	ReadCounts(ctx context.Context, userID uuid.UUID, bookIDs []uuid.UUID) (map[uuid.UUID]domain.ReadCount, error)
 }
 
 // GormRepository is a GORM-based implementation of Repository.
@@ -46,17 +64,18 @@ func NewGormRepository(db *gorm.DB) Repository {
 	return &GormRepository{db: db}
 }
 
-// EnsureDefaultShelves lazily creates the three default shelves for a user.
+// EnsureDefaultShelves lazily creates the four default shelves for a user.
 func (r *GormRepository) EnsureDefaultShelves(ctx context.Context, userID uuid.UUID) error {
 	sql := `
 		INSERT INTO shelves (id, user_id, name, type)
 		VALUES
 			(gen_random_uuid(), ?, 'Хочу прочитать', 'want_to_read'),
 			(gen_random_uuid(), ?, 'Читаю', 'reading'),
-			(gen_random_uuid(), ?, 'Прочитано', 'read')
+			(gen_random_uuid(), ?, 'Прочитано', 'read'),
+			(gen_random_uuid(), ?, 'Брошено', 'abandoned')
 		ON CONFLICT (user_id, type) WHERE type <> 'custom' DO NOTHING
 	`
-	return r.db.WithContext(ctx).Exec(sql, userID, userID, userID).Error
+	return r.db.WithContext(ctx).Exec(sql, userID, userID, userID, userID).Error
 }
 
 type shelfListRow struct {
@@ -89,7 +108,8 @@ func (r *GormRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]do
 				WHEN 'want_to_read' THEN 1
 				WHEN 'reading' THEN 2
 				WHEN 'read' THEN 3
-				ELSE 4
+				WHEN 'abandoned' THEN 4
+				ELSE 5
 			END,
 			s.created_at ASC
 	`
@@ -268,4 +288,119 @@ func (r *GormRepository) Transaction(ctx context.Context, fn func(repo Repositor
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return fn(NewGormRepository(tx))
 	})
+}
+
+// openReadExists reports whether the user has an open attempt for the book.
+func (r *GormRepository) openReadExists(ctx context.Context, userID, bookID uuid.UUID) (bool, error) {
+	var n int64
+	if err := r.db.WithContext(ctx).Model(&domain.BookRead{}).
+		Where("user_id = ? AND book_id = ? AND finished_at IS NULL AND abandoned_at IS NULL", userID, bookID).
+		Count(&n).Error; err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// OpenRead starts an attempt unless one is already open. The partial unique
+// index uq_book_reads_open is the backstop for concurrent opens.
+func (r *GormRepository) OpenRead(ctx context.Context, userID, bookID uuid.UUID, now time.Time) error {
+	open, err := r.openReadExists(ctx, userID, bookID)
+	if err != nil {
+		return err
+	}
+	if open {
+		return nil
+	}
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&domain.BookRead{ID: uuid.New(), UserID: userID, BookID: bookID, StartedAt: &now, CreatedAt: now}).Error
+}
+
+// FinishRead closes the open attempt as finished, or inserts a finished one.
+func (r *GormRepository) FinishRead(ctx context.Context, userID, bookID uuid.UUID, now time.Time) error {
+	res := r.db.WithContext(ctx).Model(&domain.BookRead{}).
+		Where("user_id = ? AND book_id = ? AND finished_at IS NULL AND abandoned_at IS NULL", userID, bookID).
+		Update("finished_at", now)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Create(&domain.BookRead{ID: uuid.New(), UserID: userID, BookID: bookID, FinishedAt: &now, CreatedAt: now}).Error
+}
+
+// AbandonOpenRead closes the open attempt as abandoned.
+func (r *GormRepository) AbandonOpenRead(ctx context.Context, userID, bookID uuid.UUID, now time.Time) error {
+	return r.db.WithContext(ctx).Model(&domain.BookRead{}).
+		Where("user_id = ? AND book_id = ? AND finished_at IS NULL AND abandoned_at IS NULL", userID, bookID).
+		Update("abandoned_at", now).Error
+}
+
+// DeleteOpenRead deletes the open attempt.
+func (r *GormRepository) DeleteOpenRead(ctx context.Context, userID, bookID uuid.UUID) error {
+	return r.db.WithContext(ctx).
+		Where("user_id = ? AND book_id = ? AND finished_at IS NULL AND abandoned_at IS NULL", userID, bookID).
+		Delete(&domain.BookRead{}).Error
+}
+
+// DeleteLatestFinishedRead deletes the single latest finished attempt.
+func (r *GormRepository) DeleteLatestFinishedRead(ctx context.Context, userID, bookID uuid.UUID) error {
+	var latest domain.BookRead
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND book_id = ? AND finished_at IS NOT NULL", userID, bookID).
+		Order("finished_at DESC, created_at DESC").
+		Limit(1).Take(&latest).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	return r.db.WithContext(ctx).Delete(&domain.BookRead{}, "id = ?", latest.ID).Error
+}
+
+// ReadSummary returns the caller's reading summary of one book.
+func (r *GormRepository) ReadSummary(ctx context.Context, userID, bookID uuid.UUID) (domain.ReadSummary, error) {
+	var finished []domain.BookRead
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND book_id = ? AND finished_at IS NOT NULL", userID, bookID).
+		Order("finished_at DESC").Find(&finished).Error; err != nil {
+		return domain.ReadSummary{}, err
+	}
+	sum := domain.ReadSummary{Count: int64(len(finished))}
+	if len(finished) > 0 {
+		sum.LastReadAt = finished[0].FinishedAt
+		open, err := r.openReadExists(ctx, userID, bookID)
+		if err != nil {
+			return domain.ReadSummary{}, err
+		}
+		sum.Rereading = open
+	}
+	return sum, nil
+}
+
+// ReadCounts returns finished-readings counts for many books in one query.
+func (r *GormRepository) ReadCounts(ctx context.Context, userID uuid.UUID, bookIDs []uuid.UUID) (map[uuid.UUID]domain.ReadCount, error) {
+	result := make(map[uuid.UUID]domain.ReadCount, len(bookIDs))
+	if len(bookIDs) == 0 {
+		return result, nil
+	}
+	var rows []domain.BookRead
+	if err := r.db.WithContext(ctx).
+		Select("book_id", "finished_at").
+		Where("user_id = ? AND book_id IN ? AND finished_at IS NOT NULL", userID, bookIDs).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		c := result[row.BookID]
+		c.Count++
+		if row.FinishedAt != nil && (c.LastReadAt == nil || row.FinishedAt.After(*c.LastReadAt)) {
+			t := *row.FinishedAt
+			c.LastReadAt = &t
+		}
+		result[row.BookID] = c
+	}
+	return result, nil
 }

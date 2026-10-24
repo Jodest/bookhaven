@@ -46,12 +46,13 @@ function shelf(id: string, type: Shelf['type'], name: string, hasBook = false): 
   } as Shelf;
 }
 
-function shelves(opts: { active?: string; custom?: boolean } = {}) {
+function shelves(opts: { active?: string; custom?: boolean; abandoned?: boolean } = {}) {
   const items = [
     shelf('s1', 'want_to_read', 'Хочу прочитать', opts.active === 's1'),
     shelf('s2', 'reading', 'Читаю', opts.active === 's2'),
     shelf('s3', 'read', 'Прочитано', opts.active === 's3'),
   ];
+  if (opts.abandoned) items.push(shelf('s5', 'abandoned', 'Брошено', opts.active === 's5'));
   if (opts.custom !== false) items.push(shelf('s4', 'custom', 'Отпуск'));
   return { items, total: items.length };
 }
@@ -259,5 +260,97 @@ describe('BookShelfActions', () => {
     expect(selected.querySelector('svg.lucide-check')).not.toBeNull();
     const other = screen.getByRole('button', { name: 'Прочитано' });
     expect(other.querySelector('svg.lucide-check')).toBeNull();
+  });
+
+  it('offers four statuses in the chooser including "Брошено"', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue(shelves({ abandoned: true }));
+    addBookMock.mockResolvedValue({});
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать статус' }));
+    // «Хочу прочитать» is both the primary button and a chooser item.
+    expect(await screen.findAllByRole('button', { name: 'Хочу прочитать' })).toHaveLength(2);
+    for (const name of ['Читаю', 'Прочитано', 'Брошено']) {
+      expect(await screen.findByRole('button', { name })).toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Брошено' }));
+    await waitFor(() => expect(addBookMock).toHaveBeenCalledWith('s5', 'b1'));
+  });
+
+  it('"Читаю снова" shows on "Прочитано" and moves the book to reading', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue({
+      ...shelves({ active: 's3' }),
+      reads: { readsCount: 1, lastReadAt: new Date(2025, 4, 15, 12).toISOString(), rereading: false },
+    });
+    addBookMock.mockResolvedValue({});
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Читаю снова' }));
+    await waitFor(() => expect(addBookMock).toHaveBeenCalledWith('s2', 'b1'));
+  });
+
+  it('has no "Читаю снова" for other statuses', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue(shelves({ active: 's2' }));
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+
+    await screen.findByRole('button', { name: 'Статус: Читаю. Изменить' });
+    expect(screen.queryByRole('button', { name: 'Читаю снова' })).not.toBeInTheDocument();
+  });
+
+  it('marks "перечитываю" on "Читаю" while re-reading', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue({
+      ...shelves({ active: 's2' }),
+      reads: { readsCount: 1, lastReadAt: new Date(2025, 4, 15, 12).toISOString(), rereading: true },
+    });
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+
+    const trigger = await screen.findByRole('button', { name: 'Статус: Читаю, перечитываю. Изменить' });
+    expect(trigger).toHaveTextContent('перечитываю');
+  });
+
+  it('shows no mark on the first reading', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue({
+      ...shelves({ active: 's2' }),
+      reads: { readsCount: 0, lastReadAt: null, rereading: false },
+    });
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+
+    const trigger = await screen.findByRole('button', { name: 'Статус: Читаю. Изменить' });
+    expect(trigger).not.toHaveTextContent('перечитываю');
+  });
+
+  it('shows the read counter with the last read month and year', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue({
+      ...shelves({ active: 's3' }),
+      reads: { readsCount: 2, lastReadAt: new Date(2025, 4, 15, 12).toISOString(), rereading: false },
+    });
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+
+    expect(await screen.findByText('Прочитано 2 раза · последний раз — май 2025')).toBeInTheDocument();
+  });
+
+  it('shows no counter without finished reads', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue({
+      ...shelves({ active: 's2' }),
+      reads: { readsCount: 0, lastReadAt: null, rereading: false },
+    });
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+
+    await screen.findByRole('button', { name: /Статус: Читаю/ });
+    expect(screen.queryByText(/Прочитано \d/)).not.toBeInTheDocument();
+  });
+
+  it('a guest sees no re-read button, mark or counter', () => {
+    render(<BookShelfActions bookId="b1" slug="book-1" />);
+    expect(screen.queryByText('Читаю снова')).not.toBeInTheDocument();
+    expect(screen.queryByText('перечитываю')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Прочитано \d/)).not.toBeInTheDocument();
   });
 });

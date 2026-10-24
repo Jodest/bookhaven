@@ -22,7 +22,8 @@ import (
 type VoteRepository interface {
 	// LinkVisible reports whether the work has a non-hidden link to the book.
 	LinkVisible(ctx context.Context, bookID, workID uuid.UUID) (bool, error)
-	// IsReader reports whether the book is on the user's «Прочитано» shelf.
+	// IsReader reports whether the user has at least one finished reading of the
+	// book in the reading journal (book_reads).
 	IsReader(ctx context.Context, userID, bookID uuid.UUID) (bool, error)
 	// UpsertVote stores the vote; updated_at moves only when the value changes.
 	UpsertVote(ctx context.Context, userID, bookID, workID uuid.UUID, value string) error
@@ -43,9 +44,8 @@ func (r *GormRepository) LinkVisible(ctx context.Context, bookID, workID uuid.UU
 
 func (r *GormRepository) IsReader(ctx context.Context, userID, bookID uuid.UUID) (bool, error) {
 	var n int64
-	err := r.db.WithContext(ctx).Table("shelf_items AS si").
-		Joins("JOIN shelves s ON s.id = si.shelf_id").
-		Where("s.user_id = ? AND s.type = ? AND si.book_id = ?", userID, "read", bookID).
+	err := r.db.WithContext(ctx).Table("book_reads").
+		Where("user_id = ? AND book_id = ? AND finished_at IS NOT NULL", userID, bookID).
 		Count(&n).Error
 	return n > 0, err
 }

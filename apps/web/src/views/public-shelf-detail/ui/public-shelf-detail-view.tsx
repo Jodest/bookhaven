@@ -1,7 +1,8 @@
 'use client';
 
 import { shelvesApi } from '@/entities/shelf';
-import { Book, Shelf } from '@bookhaven/api-client';
+import { formatReadCount } from '@/shared/lib/format-read-count';
+import { Shelf, ShelfBook } from '@bookhaven/api-client';
 import { Badge, Button } from '@bookhaven/ui';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -15,11 +16,12 @@ const shelfTypeLabels: Record<string, string> = {
   want_to_read: 'Хочу прочитать',
   reading: 'Читаю',
   read: 'Прочитано',
+  abandoned: 'Брошено',
 };
 
 export function PublicShelfDetailView({ id }: PublicShelfDetailViewProps) {
   const [shelf, setShelf] = useState<Shelf | null>(null);
-  const [books, setBooks] = useState<Book[]>([]);
+  const [books, setBooks] = useState<ShelfBook[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [limit] = useState(12);
@@ -136,6 +138,11 @@ export function PublicShelfDetailView({ id }: PublicShelfDetailViewProps) {
                   {book.genres.length > 0 && (
                     <p className="line-clamp-1 text-xs text-muted-foreground">
                       {book.genres.map((g) => g.name).join(', ')}
+                    </p>
+                  )}
+                  {book.readsCount >= 1 && (
+                    <p className="line-clamp-1 text-xs text-muted-foreground">
+                      {formatReadCount(book.readsCount)}
                     </p>
                   )}
                 </Link>

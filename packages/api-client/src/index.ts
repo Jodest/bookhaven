@@ -219,6 +219,21 @@ export interface Shelf {
   updatedAt: string;
 }
 
+/** The caller's reading summary of one book (GET /shelves?book_id=). */
+export interface BookReadsSummary {
+  readsCount: number;
+  /** Finish time of the latest finished reading, or null. */
+  lastReadAt: string | null;
+  /** True while the book is being read again (open reading + at least one finished). */
+  rereading: boolean;
+}
+
+/** A shelf book item with the shelf owner's finished-reads counter. */
+export type ShelfBook = Book & {
+  readsCount: number;
+  lastReadAt: string | null;
+};
+
 export interface Language {
   code: string;
   name: string;
@@ -2286,6 +2301,16 @@ type RawShelf = {
   updated_at?: string;
 };
 
+type RawShelfBook = RawBook & { reads_count?: number; last_read_at?: string | null };
+
+function normalizeShelfBook(raw: RawShelfBook): ShelfBook {
+  return {
+    ...normalizeBook(raw),
+    readsCount: raw.reads_count ?? 0,
+    lastReadAt: raw.last_read_at ?? null,
+  };
+}
+
 function normalizeShelf(raw: RawShelf): Shelf {
   return {
     id: raw.id,
@@ -2614,12 +2639,22 @@ export const api = {
         queryParams.book_id = params.book_id;
       }
       const query = new URLSearchParams(queryParams).toString();
-      const raw = await fetcher<{ items: RawShelf[]; total: number }>(
-        `/api/v1/shelves${query ? `?${query}` : ''}`
-      );
+      const raw = await fetcher<{
+        items: RawShelf[];
+        total: number;
+        reads?: { reads_count: number; last_read_at: string | null; rereading: boolean };
+      }>(`/api/v1/shelves${query ? `?${query}` : ''}`);
+      const reads: BookReadsSummary | undefined = raw.reads
+        ? {
+            readsCount: raw.reads.reads_count,
+            lastReadAt: raw.reads.last_read_at ?? null,
+            rereading: raw.reads.rereading,
+          }
+        : undefined;
       return {
-        ...raw,
         items: raw.items.map(normalizeShelf),
+        total: raw.total,
+        reads,
       };
     },
     get: async (
@@ -2632,7 +2667,7 @@ export const api = {
       const query = new URLSearchParams(queryParams).toString();
       const raw = await fetcher<{
         shelf: RawShelf;
-        items: RawBook[];
+        items: RawShelfBook[];
         total: number;
         page: number;
         limit: number;
@@ -2640,7 +2675,7 @@ export const api = {
       return {
         ...raw,
         shelf: normalizeShelf(raw.shelf),
-        items: raw.items.map(normalizeBook),
+        items: raw.items.map(normalizeShelfBook),
       };
     },
     create: async (data: { name: string; description?: string; is_public?: boolean }) => {
@@ -2677,7 +2712,7 @@ export const api = {
       const query = new URLSearchParams(queryParams).toString();
       const raw = await fetcher<{
         shelf: RawShelf;
-        items: RawBook[];
+        items: RawShelfBook[];
         total: number;
         page: number;
         limit: number;
@@ -2685,7 +2720,7 @@ export const api = {
       return {
         ...raw,
         shelf: normalizeShelf(raw.shelf),
-        items: raw.items.map(normalizeBook),
+        items: raw.items.map(normalizeShelfBook),
       };
     },
   },

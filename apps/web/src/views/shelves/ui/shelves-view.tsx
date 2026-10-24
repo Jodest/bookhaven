@@ -19,7 +19,7 @@ const createShelfSchema = z.object({
 
 type CreateShelfForm = z.infer<typeof createShelfSchema>;
 
-const defaultTypeOrder = ['want_to_read', 'reading', 'read'];
+const defaultTypeOrder = ['want_to_read', 'reading', 'read', 'abandoned'];
 
 export function ShelvesView() {
   const { user } = useAuthStore();
