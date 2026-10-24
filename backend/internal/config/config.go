@@ -127,6 +127,13 @@ type Config struct {
 	DBConnMaxLifetime time.Duration
 	DBConnMaxIdleTime time.Duration
 
+	// HTTP server timeouts (docs/features/api-body-limit-timeouts.md);
+	// 0 = no limit.
+	HTTPReadHeaderTimeout time.Duration
+	HTTPReadTimeout       time.Duration
+	HTTPWriteTimeout      time.Duration
+	HTTPIdleTimeout       time.Duration
+
 	// Error tracking (docs/features/error-tracking.md): empty SentryDSN = off.
 	SentryDSN         string
 	SentryEnvironment string
@@ -169,6 +176,14 @@ const (
 	DefaultDBMaxIdleConns    = 5
 	DefaultDBConnMaxLifetime = 30 * time.Minute
 	DefaultDBConnMaxIdleTime = 5 * time.Minute
+)
+
+// HTTP server timeout defaults (api process).
+const (
+	DefaultHTTPReadHeaderTimeout = 10 * time.Second
+	DefaultHTTPReadTimeout       = 60 * time.Second
+	DefaultHTTPWriteTimeout      = 5 * time.Minute
+	DefaultHTTPIdleTimeout       = 120 * time.Second
 )
 
 // Scheduled harvest defaults and bounds.
@@ -350,6 +365,10 @@ func Load() (*Config, error) {
 	}
 	cfg.DBConnMaxLifetime = parseNonNegDuration(os.Getenv("DB_CONN_MAX_LIFETIME"), DefaultDBConnMaxLifetime)
 	cfg.DBConnMaxIdleTime = parseNonNegDuration(os.Getenv("DB_CONN_MAX_IDLE_TIME"), DefaultDBConnMaxIdleTime)
+	cfg.HTTPReadHeaderTimeout = parseNonNegDuration(os.Getenv("HTTP_READ_HEADER_TIMEOUT"), DefaultHTTPReadHeaderTimeout)
+	cfg.HTTPReadTimeout = parseNonNegDuration(os.Getenv("HTTP_READ_TIMEOUT"), DefaultHTTPReadTimeout)
+	cfg.HTTPWriteTimeout = parseNonNegDuration(os.Getenv("HTTP_WRITE_TIMEOUT"), DefaultHTTPWriteTimeout)
+	cfg.HTTPIdleTimeout = parseNonNegDuration(os.Getenv("HTTP_IDLE_TIMEOUT"), DefaultHTTPIdleTimeout)
 
 	smtpPort, err := strconv.Atoi(strings.TrimSpace(getEnv("SMTP_PORT", "587")))
 	if err != nil || smtpPort <= 0 || smtpPort > 65535 {

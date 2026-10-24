@@ -298,6 +298,8 @@ func main() {
 			return nil
 		},
 	}))
+	// After CORS and the logger so the 413 carries CORS headers and is logged.
+	e.Use(middleware.BodyLimit(httptransport.DefaultBodyLimit, httptransport.BodyLimitOverrides()))
 
 	// Auth middleware
 	authMiddleware := middleware.Auth(authService, usersRepo)
@@ -348,6 +350,18 @@ func main() {
 	coverhttp.NewHandler(coverstore.NewFS(cfg.CoversDir)).Register(e)
 
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
+
+	httptransport.ApplyServerTimeouts(e.Server, httptransport.ServerTimeouts{
+		ReadHeader: cfg.HTTPReadHeaderTimeout,
+		Read:       cfg.HTTPReadTimeout,
+		Write:      cfg.HTTPWriteTimeout,
+		Idle:       cfg.HTTPIdleTimeout,
+	})
+	logger.Info("http server timeouts configured",
+		zap.Duration("read_header_timeout", cfg.HTTPReadHeaderTimeout),
+		zap.Duration("read_timeout", cfg.HTTPReadTimeout),
+		zap.Duration("write_timeout", cfg.HTTPWriteTimeout),
+		zap.Duration("idle_timeout", cfg.HTTPIdleTimeout))
 
 	go func() {
 		if err := e.Start(":" + cfg.Port); err != nil && err != http.ErrServerClosed {
