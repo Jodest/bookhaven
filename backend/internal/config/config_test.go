@@ -744,3 +744,28 @@ func TestLoad_Sentry(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadProbe_Defaults(t *testing.T) {
+	t.Setenv("APP_PORT", "")
+	t.Setenv("REDIS_URL", "")
+
+	got := LoadProbe()
+	if got.Port != defaultPort || got.RedisURL != defaultRedisURL {
+		t.Errorf("LoadProbe() = %+v, want port %q, redis %q", got, defaultPort, defaultRedisURL)
+	}
+}
+
+func TestLoadProbe_FromEnvIgnoresProductionValidation(t *testing.T) {
+	// A production environment that Load rejects (no JWT_SECRET, no
+	// WEB_BASE_URL) must still give the probe its address.
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("JWT_SECRET", "")
+	t.Setenv("WEB_BASE_URL", "")
+	t.Setenv("APP_PORT", "9090")
+	t.Setenv("REDIS_URL", "redis:6379")
+
+	got := LoadProbe()
+	if got.Port != "9090" || got.RedisURL != "redis:6379" {
+		t.Errorf("LoadProbe() = %+v, want port 9090, redis redis:6379", got)
+	}
+}
