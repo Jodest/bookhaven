@@ -146,7 +146,7 @@ const (
 
 // Register godoc
 // @Summary Регистрация пользователя
-// @Description Создаёт пользователя (имя 2-255 символов после обрезки пробелов, пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.
+// @Description Создаёт пользователя (имя 2-255 символов после обрезки пробелов, пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email. Запросы ограничиваются: 10 запросов в час с одного IP и 5 в час для одного адреса (считаются и успешные, и ответы 409); при превышении - 429 с кодом rate_limited, одинаковый для новых и существующих адресов.
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -154,6 +154,8 @@ const (
 // @Success 201 {object} registerResponse
 // @Failure 400 {object} map[string]string
 // @Failure 409 {object} map[string]string
+// @Failure 429 {object} rateLimitedResponse "code: rate_limited"
+// @Header 429 {integer} Retry-After "Секунд до следующей попытки"
 // @Failure 500 {object} map[string]string
 // @Router /auth/register [post]
 func (h *Handler) Register(c echo.Context) error {
@@ -165,8 +167,12 @@ func (h *Handler) Register(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	user, err := h.service.Register(c.Request().Context(), req.Email, req.Password, req.Name)
+	user, err := h.service.Register(c.Request().Context(), req.Email, req.Password, req.Name, c.RealIP())
 	if err != nil {
+		var rateErr *service.RateLimitError
+		if errors.As(err, &rateErr) {
+			return writeRateLimited(c, rateErr)
+		}
 		if errors.Is(err, service.ErrInvalidName) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "name must be between 2 and 255 characters"})
 		}

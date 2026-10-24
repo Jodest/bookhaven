@@ -17,7 +17,7 @@ func TestRegister_PasswordByteLimit(t *testing.T) {
 	for name, pw := range tooLong {
 		t.Run("rejects "+name, func(t *testing.T) {
 			env := setupVerificationEnv(t)
-			user, err := env.svc.Register(context.Background(), "anna@example.com", pw, "Анна")
+			user, err := env.svc.Register(context.Background(), "anna@example.com", pw, "Анна", "")
 			if !errors.Is(err, ErrPasswordTooLong) || user != nil {
 				t.Fatalf("expected ErrPasswordTooLong, got user=%v err=%v", user, err)
 			}
@@ -36,7 +36,7 @@ func TestRegister_PasswordByteLimit(t *testing.T) {
 	for name, pw := range ok {
 		t.Run("accepts "+name, func(t *testing.T) {
 			env := setupVerificationEnv(t)
-			user, err := env.svc.Register(context.Background(), "anna@example.com", pw, "Анна")
+			user, err := env.svc.Register(context.Background(), "anna@example.com", pw, "Анна", "")
 			if err != nil {
 				t.Fatalf("register: %v", err)
 			}

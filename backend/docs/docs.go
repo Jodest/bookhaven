@@ -7567,7 +7567,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
-                "description": "Создаёт пользователя (имя 2-255 символов после обрезки пробелов, пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.",
+                "description": "Создаёт пользователя (имя 2-255 символов после обрезки пробелов, пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email. Запросы ограничиваются: 10 запросов в час с одного IP и 5 в час для одного адреса (считаются и успешные, и ответы 409); при превышении - 429 с кодом rate_limited, одинаковый для новых и существующих адресов.",
                 "consumes": [
                     "application/json"
                 ],
@@ -7611,6 +7611,18 @@ const docTemplate = `{
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string"
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "code: rate_limited",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_auth_transport_http.rateLimitedResponse"
+                        },
+                        "headers": {
+                            "Retry-After": {
+                                "type": "integer",
+                                "description": "Секунд до следующей попытки"
                             }
                         }
                     },

@@ -31,7 +31,7 @@ func loginHandlerWithLimiters(t *testing.T, ipL, emailL *loginStubLimiter) *Hand
 		AccessTokenTTL: 15 * time.Minute,
 		Issuer:         "bookhaven-test",
 	}, env.db, env.users, env.mailer, service.ResendLimiters{}, service.ResendLimiters{},
-		service.LoginLimiters{IP: ipL, Email: emailL}, nil)
+		service.LoginLimiters{IP: ipL, Email: emailL}, service.RegisterLimiters{}, nil)
 	return NewHandler(svc)
 }
 

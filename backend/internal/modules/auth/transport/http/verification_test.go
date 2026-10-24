@@ -140,7 +140,7 @@ func setupVerificationHandler(t *testing.T) *verificationHandlerEnv {
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		Issuer:          "bookhaven-test",
 		WebBaseURL:      "http://localhost:3000",
-	}, db, users, m, service.ResendLimiters{IP: ipL, Email: emailL}, service.ResendLimiters{IP: resetIPL, Email: resetEmailL}, service.LoginLimiters{}, nil)
+	}, db, users, m, service.ResendLimiters{IP: ipL, Email: emailL}, service.ResendLimiters{IP: resetIPL, Email: resetEmailL}, service.LoginLimiters{}, service.RegisterLimiters{}, nil)
 
 	name := "Анна"
 	user := &usersDomain.User{

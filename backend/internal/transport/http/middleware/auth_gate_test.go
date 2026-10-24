@@ -50,7 +50,7 @@ func gateFixture(t *testing.T, verified bool) (*authservice.Service, *stubUsersR
 		JWTSecret:      gateSecret,
 		AccessTokenTTL: 15 * time.Minute,
 		Issuer:         gateIssuer,
-	}, nil, nil, nil, authservice.ResendLimiters{}, authservice.ResendLimiters{}, authservice.LoginLimiters{}, nil)
+	}, nil, nil, nil, authservice.ResendLimiters{}, authservice.ResendLimiters{}, authservice.LoginLimiters{}, authservice.RegisterLimiters{}, nil)
 
 	now := time.Now()
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
