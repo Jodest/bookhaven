@@ -11,8 +11,12 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 const registerSchema = z.object({
-  name: z.string().min(2, 'Имя должно быть не короче 2 символов'),
-  email: z.string().email('Введите корректный email'),
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Имя должно содержать от 2 до 255 символов')
+    .max(255, 'Имя должно содержать от 2 до 255 символов'),
+  email: z.email('Введите корректный email'),
   password: z
     .string()
     .min(8, 'Пароль должен быть не короче 8 символов')

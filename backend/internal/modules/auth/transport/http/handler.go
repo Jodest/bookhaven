@@ -40,7 +40,7 @@ func NewHandler(service *service.Service, opts ...Option) *Handler {
 type registerRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
-	Name     string `json:"name" validate:"required,min=2"`
+	Name     string `json:"name" validate:"required"`
 }
 
 type loginRequest struct {
@@ -137,13 +137,16 @@ const (
 	codeRateLimited      = "rate_limited"
 	codeEmailSendFailed  = "email_send_failed"
 	codeEmailNotVerified = "email_not_verified"
-	codeInvalidEmail     = "invalid_email"
-	codeInvalidPassword  = "invalid_password"
+	// codeRefreshTokenSuperseded: the refresh token was rotated within the last
+	// 30 s; the client may retry once with the newer cookie.
+	codeRefreshTokenSuperseded = "refresh_token_superseded"
+	codeInvalidEmail           = "invalid_email"
+	codeInvalidPassword        = "invalid_password"
 )
 
 // Register godoc
 // @Summary Регистрация пользователя
-// @Description Создаёт пользователя (пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.
+// @Description Создаёт пользователя (имя 2-255 символов после обрезки пробелов, пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -164,6 +167,9 @@ func (h *Handler) Register(c echo.Context) error {
 
 	user, err := h.service.Register(c.Request().Context(), req.Email, req.Password, req.Name)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidName) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "name must be between 2 and 255 characters"})
+		}
 		if errors.Is(err, service.ErrPasswordTooLong) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "password must be at most 72 bytes"})
 		}
@@ -238,7 +244,7 @@ func (h *Handler) Login(c echo.Context) error {
 // @Param body body refreshRequest false "Refresh-токен (опционально, можно передать через cookie)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
-// @Failure 401 {object} errorResponse "code: email_not_verified (без кода - недействительный токен)"
+// @Failure 401 {object} errorResponse "code: email_not_verified | refresh_token_superseded (токен ротирован <30с назад, можно повторить один раз); без кода - недействительный токен или повторное использование"
 // @Router /auth/refresh [post]
 func (h *Handler) Refresh(c echo.Context) error {
 	var req refreshRequest
@@ -263,6 +269,9 @@ func (h *Handler) Refresh(c echo.Context) error {
 	if errors.Is(err, service.ErrEmailNotVerified) {
 		h.clearAuthCookies(c)
 		return c.JSON(http.StatusUnauthorized, errorResponse{Error: "email not verified", Code: codeEmailNotVerified})
+	}
+	if errors.Is(err, service.ErrRefreshSuperseded) {
+		return c.JSON(http.StatusUnauthorized, errorResponse{Error: "refresh token superseded", Code: codeRefreshTokenSuperseded})
 	}
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid or expired refresh token"})

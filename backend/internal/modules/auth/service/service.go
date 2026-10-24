@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bookhaven/backend/internal/modules/auth/domain"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
@@ -31,11 +32,18 @@ var (
 	// ErrPasswordTooLong is returned by Register and ResetPassword for a
 	// password longer than MaxPasswordBytes.
 	ErrPasswordTooLong = errors.New("password is too long")
+	// ErrInvalidName is returned when the trimmed name is not 2-255 characters.
+	ErrInvalidName = errors.New("name must be between 2 and 255 characters")
 
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserExists         = errors.New("user with this email already exists")
 	ErrTokenInvalid       = errors.New("invalid or expired token")
 	ErrTokenRevoked       = errors.New("token has been revoked")
+
+	// ErrRefreshSuperseded is returned by RefreshTokens for a token that was
+	// rotated within domain.RefreshReuseGrace (including the loser of a
+	// concurrent refresh). Nothing is revoked.
+	ErrRefreshSuperseded = errors.New("refresh token superseded")
 
 	// Email verification errors.
 	ErrVerificationTokenInvalid = errors.New("invalid verification token")
@@ -169,6 +177,10 @@ func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mai
 
 // Register creates a new user account.
 func (s *Service) Register(ctx context.Context, email, password, name string) (*usersDomain.User, error) {
+	name = strings.TrimSpace(name)
+	if n := utf8.RuneCountInString(name); n < 2 || n > 255 {
+		return nil, ErrInvalidName
+	}
 	if len(password) > MaxPasswordBytes {
 		return nil, ErrPasswordTooLong
 	}
@@ -301,7 +313,7 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (*users
 		return user, nil, ErrEmailNotVerified
 	}
 
-	tokens, err := s.createTokenPair(ctx, user.ID)
+	tokens, err := s.createTokenPair(ctx, s.db.WithContext(ctx), user.ID, uuid.New(), uuid.Nil)
 	if err != nil {
 		settleInternal()
 		return nil, nil, fmt.Errorf("create token pair: %w", err)
@@ -313,11 +325,17 @@ func (s *Service) Login(ctx context.Context, email, password, ip string) (*users
 
 // CreateTokenPair creates a new access and refresh token pair for a user.
 func (s *Service) CreateTokenPair(ctx context.Context, userID uuid.UUID) (*domain.TokenPair, error) {
-	return s.createTokenPair(ctx, userID)
+	return s.createTokenPair(ctx, s.db.WithContext(ctx), userID, uuid.New(), uuid.Nil)
 }
 
-func (s *Service) createTokenPair(ctx context.Context, userID uuid.UUID) (*domain.TokenPair, error) {
+// createTokenPair signs an access token and stores a refresh token with the
+// given id using db (a plain handle or a transaction). A zero familyID starts
+// a new family (family_id = id); otherwise the token joins familyID.
+func (s *Service) createTokenPair(_ context.Context, db *gorm.DB, userID, tokenID, familyID uuid.UUID) (*domain.TokenPair, error) {
 	now := time.Now()
+	if familyID == uuid.Nil {
+		familyID = tokenID
+	}
 
 	// Access token
 	accessExpiresAt := now.Add(s.config.AccessTokenTTL)
@@ -344,13 +362,15 @@ func (s *Service) createTokenPair(ctx context.Context, userID uuid.UUID) (*domai
 
 	refreshExpiresAt := now.Add(s.config.RefreshTokenTTL).Unix()
 	refresh := &domain.RefreshToken{
+		ID:        tokenID,
+		FamilyID:  familyID,
 		UserID:    userID,
 		TokenHash: refreshTokenHash,
 		ExpiresAt: refreshExpiresAt,
 		CreatedAt: now.Unix(),
 	}
 
-	if err := s.db.WithContext(ctx).Create(refresh).Error; err != nil {
+	if err := db.Create(refresh).Error; err != nil {
 		return nil, fmt.Errorf("save refresh token: %w", err)
 	}
 
@@ -395,20 +415,51 @@ func (s *Service) ValidateAccessToken(tokenString string) (uuid.UUID, error) {
 	return userID, nil
 }
 
-// RefreshTokens validates a refresh token and issues a new token pair. If
-// the token's user is not verified, all of the user's refresh tokens are
-// revoked and ErrEmailNotVerified is returned.
+// RefreshTokens validates a refresh token and rotates it atomically into a
+// new token pair of the same session family. A token revoked by rotation is
+// answered ErrRefreshSuperseded within domain.RefreshReuseGrace; later it is a
+// reuse: the token's family is revoked and ErrTokenInvalid is returned. If the
+// token's user is not verified, all of the user's refresh tokens are revoked
+// and ErrEmailNotVerified is returned.
 func (s *Service) RefreshTokens(ctx context.Context, refreshTokenPlain string) (*domain.TokenPair, error) {
 	refreshTokenHash := hashToken(refreshTokenPlain)
+	nowTime := time.Now()
+	now := nowTime.Unix()
 
 	var token domain.RefreshToken
 	if err := s.db.WithContext(ctx).
-		Where("token_hash = ? AND revoked_at IS NULL AND expires_at > ?", refreshTokenHash, time.Now().Unix()).
+		Where("token_hash = ?", refreshTokenHash).
 		First(&token).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrTokenInvalid
 		}
 		return nil, fmt.Errorf("find refresh token: %w", err)
+	}
+
+	if token.RevokedAt != nil {
+		if token.ReplacedBy == nil {
+			return nil, ErrTokenInvalid
+		}
+		since := now - *token.RevokedAt
+		if time.Duration(since)*time.Second <= domain.RefreshReuseGrace {
+			return nil, ErrRefreshSuperseded
+		}
+		res := s.db.WithContext(ctx).Model(&domain.RefreshToken{}).
+			Where("family_id = ? AND revoked_at IS NULL", token.FamilyID).
+			Update("revoked_at", now)
+		if res.Error != nil {
+			return nil, fmt.Errorf("revoke token family: %w", res.Error)
+		}
+		s.logger.Warn("refresh token reuse detected",
+			zap.String("user_id", token.UserID.String()),
+			zap.String("family_id", token.FamilyID.String()),
+			zap.Int64("revoked_count", res.RowsAffected),
+			zap.Int64("seconds_since_rotation", since),
+		)
+		return nil, ErrTokenInvalid
+	}
+	if token.ExpiresAt <= now {
+		return nil, ErrTokenInvalid
 	}
 
 	user, err := s.users.GetByID(ctx, token.UserID)
@@ -425,13 +476,36 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshTokenPlain string) (
 		return nil, ErrEmailNotVerified
 	}
 
-	// Revoke old token
-	now := time.Now().Unix()
-	if err := s.db.WithContext(ctx).Model(&token).Update("revoked_at", now).Error; err != nil {
-		return nil, fmt.Errorf("revoke old token: %w", err)
-	}
+	return s.rotate(ctx, &token)
+}
 
-	return s.createTokenPair(ctx, token.UserID)
+// rotate revokes token only if it is still active and creates its successor
+// in the same transaction. If the conditional update touches no row, a
+// concurrent refresh already rotated it: ErrRefreshSuperseded.
+func (s *Service) rotate(ctx context.Context, token *domain.RefreshToken) (*domain.TokenPair, error) {
+	newID := uuid.New()
+	var pair *domain.TokenPair
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&domain.RefreshToken{}).
+			Where("id = ? AND revoked_at IS NULL", token.ID).
+			Updates(map[string]interface{}{"revoked_at": time.Now().Unix(), "replaced_by": newID})
+		if res.Error != nil {
+			return fmt.Errorf("revoke old token: %w", res.Error)
+		}
+		if res.RowsAffected != 1 {
+			return ErrRefreshSuperseded
+		}
+		p, err := s.createTokenPair(ctx, tx, token.UserID, newID, token.FamilyID)
+		if err != nil {
+			return err
+		}
+		pair = p
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return pair, nil
 }
 
 // Logout revokes all refresh tokens for a user.

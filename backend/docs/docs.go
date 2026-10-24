@@ -7557,7 +7557,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "code: email_not_verified (без кода - недействительный токен)",
+                        "description": "code: email_not_verified | refresh_token_superseded (токен ротирован \u003c30с назад, можно повторить один раз); без кода - недействительный токен или повторное использование",
                         "schema": {
                             "$ref": "#/definitions/internal_modules_auth_transport_http.errorResponse"
                         }
@@ -7567,7 +7567,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
-                "description": "Создаёт пользователя (пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.",
+                "description": "Создаёт пользователя (имя 2-255 символов после обрезки пробелов, пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.",
                 "consumes": [
                     "application/json"
                 ],
@@ -13585,8 +13585,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
-                    "type": "string",
-                    "minLength": 2
+                    "type": "string"
                 },
                 "password": {
                     "type": "string",

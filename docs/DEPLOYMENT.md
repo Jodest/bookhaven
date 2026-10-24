@@ -269,6 +269,12 @@ Live tokens are never touched. During the 30 days a used or expired verification
 
 Check `docker compose -f docker-compose.prod.yml logs worker` for `auth token purge scheduled` at startup and a daily `auth tokens purged` line with `refresh_deleted`, `verification_deleted` and `reset_deleted` (logged even when zero; no tokens, emails or user ids are logged). The single-replica rule applies here too: `Unique(6h)` is only a safety net.
 
+#### Refresh token reuse detection
+
+The API rotates refresh tokens atomically and groups them into session families (one login = one family). If a refresh token that was already rotated is presented again more than 30 seconds after the rotation, the API revokes every active token of that session (only that session, not the user's other devices) and logs a warning `refresh token reuse detected` with `user_id`, `family_id`, `revoked_count` and `seconds_since_rotation`. It never contains a token or its hash. The affected session has to log in again; the client gets a plain 401, identical to an unknown token. A replay within 30 seconds is a benign race (two tabs, a lost response): it gets 401 with code `refresh_token_superseded`, nothing is revoked, and the web and admin apps retry once. Rotated tokens purged after 7 days can no longer be detected.
+
+Migration 000040 (`refresh_tokens.family_id`, `replaced_by`) is safe with the old binary still running between `migrate up` and `up -d`: the column default gives the old binary's inserts their own family.
+
 ### Scheduled harvest
 
 Off by default. When `HARVEST_SCHEDULE_ENABLED=true`, the scheduler enqueues a `harvest:schedule_tick` task (queue `harvest_schedule`) on `HARVEST_SCHEDULE_CRON` (UTC). The tick picks up to `HARVEST_SCHEDULE_BATCH` authors that an admin flagged «Автоматически пополнять книги из Wikidata», that are published and have a Wikidata QID, and that were not auto-harvested in the last 30 days (never-harvested first, then the oldest). It queues **one** ordinary harvest job for them (shown as «Авто» on `/import/jobs`). Everything that job creates is `pending` and goes through `/moderation/books`; nothing is published automatically. A run is skipped while an earlier scheduled job is still pending, active or retrying. Worst case per run: one SPARQL query plus up to 500 Open Library lookups, throttled at about 1 request per second.

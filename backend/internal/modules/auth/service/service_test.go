@@ -77,7 +77,9 @@ const refreshTokensDDL = `CREATE TABLE refresh_tokens (
 	token_hash TEXT NOT NULL,
 	expires_at INTEGER NOT NULL,
 	created_at INTEGER NOT NULL,
-	revoked_at INTEGER
+	revoked_at INTEGER,
+	family_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+	replaced_by TEXT
 )`
 
 // setupTestDB returns an in-memory SQLite-backed *gorm.DB with the
@@ -186,8 +188,8 @@ func TestRefreshTokens_RotationRevokesOldToken(t *testing.T) {
 		t.Fatalf("expected first refresh to succeed: %v", err)
 	}
 
-	if _, err := svc.RefreshTokens(ctx, issued.RefreshToken); !errors.Is(err, ErrTokenInvalid) {
-		t.Fatalf("expected ErrTokenInvalid for the revoked original token, got %v", err)
+	if _, err := svc.RefreshTokens(ctx, issued.RefreshToken); !errors.Is(err, ErrRefreshSuperseded) {
+		t.Fatalf("expected ErrRefreshSuperseded for the just-rotated original token, got %v", err)
 	}
 
 	if _, err := svc.RefreshTokens(ctx, rotated.RefreshToken); err != nil {
