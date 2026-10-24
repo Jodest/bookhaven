@@ -241,6 +241,19 @@ func main() {
 		Window:      15 * time.Minute,
 	})
 
+	registerIPLimiter := ratelimit.NewRedisLimiter(redisClient, ratelimit.Options{
+		Prefix:      "rl:register-ip",
+		MinInterval: 0,
+		WindowLimit: 10,
+		Window:      time.Hour,
+	})
+	registerEmailLimiter := ratelimit.NewRedisLimiter(redisClient, ratelimit.Options{
+		Prefix:      "rl:register-email",
+		MinInterval: 0,
+		WindowLimit: 5,
+		Window:      time.Hour,
+	})
+
 	authService := authservice.NewService(authservice.Config{
 		JWTSecret:            cfg.JWTSecret,
 		AccessTokenTTL:       15 * time.Minute,
@@ -257,6 +270,9 @@ func main() {
 	}, authservice.LoginLimiters{
 		IP:    loginIPLimiter,
 		Email: loginEmailLimiter,
+	}, authservice.RegisterLimiters{
+		IP:    registerIPLimiter,
+		Email: registerEmailLimiter,
 	}, logger)
 
 	// Validator
@@ -268,7 +284,7 @@ func main() {
 	// In prod Caddy reaches the api over the private Docker network and does
 	// not trust client-supplied X-Forwarded-For, so the header carries the
 	// real client IP; direct callers cannot spoof it. Used by the per-IP
-	// login, resend-verification and forgot-password rate limits - see
+	// login, registration, resend-verification and forgot-password rate limits - see
 	// docs/DEPLOYMENT.md before putting another proxy in front.
 	e.IPExtractor = echo.ExtractIPFromXFFHeader()
 

@@ -110,6 +110,14 @@ type LoginLimiters struct {
 	Email LoginLimiter
 }
 
+// RegisterLimiters are the two registration limiters: IP is keyed by the
+// client IP, Email by the sha256 of the normalised address. A nil limiter
+// means "no limit".
+type RegisterLimiters struct {
+	IP    LoginLimiter
+	Email LoginLimiter
+}
+
 // defaultVerificationTokenTTL is used when Config.VerificationTokenTTL is 0.
 const defaultVerificationTokenTTL = 24 * time.Hour
 
@@ -150,13 +158,16 @@ type Service struct {
 	resetLimiters ResendLimiters
 	// loginLimiters throttle failed logins (fail-open on limiter errors).
 	loginLimiters LoginLimiters
-	logger        *zap.Logger
+	// registerLimiters throttle registration (fail-open on limiter errors).
+	registerLimiters RegisterLimiters
+	logger           *zap.Logger
 }
 
 // NewService creates a new auth Service. limiters limit resend-verification,
 // resetLimiters limit forgot-password, loginLimiters throttle failed logins
-// (empty = no limits). logger may be nil (no logging).
-func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mailer, limiters ResendLimiters, resetLimiters ResendLimiters, loginLimiters LoginLimiters, logger *zap.Logger) *Service {
+// (empty = no limits), registerLimiters throttle registration (empty = no
+// limits). logger may be nil (no logging).
+func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mailer, limiters ResendLimiters, resetLimiters ResendLimiters, loginLimiters LoginLimiters, registerLimiters RegisterLimiters, logger *zap.Logger) *Service {
 	if cfg.VerificationTokenTTL <= 0 {
 		cfg.VerificationTokenTTL = defaultVerificationTokenTTL
 	}
@@ -164,19 +175,29 @@ func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mai
 		logger = zap.NewNop()
 	}
 	return &Service{
-		config:        cfg,
-		db:            db,
-		users:         users,
-		mailer:        mailer,
-		limiters:      limiters,
-		resetLimiters: resetLimiters,
-		loginLimiters: loginLimiters,
-		logger:        logger,
+		config:           cfg,
+		db:               db,
+		users:            users,
+		mailer:           mailer,
+		limiters:         limiters,
+		resetLimiters:    resetLimiters,
+		loginLimiters:    loginLimiters,
+		registerLimiters: registerLimiters,
+		logger:           logger,
 	}
 }
 
 // Register creates a new user account.
-func (s *Service) Register(ctx context.Context, email, password, name string) (*usersDomain.User, error) {
+//
+// Requests are throttled per client ip and per address. After the name and
+// password checks (which never consume quota) a slot is reserved in both
+// limiters before the user lookup, so the answer is identical for new and
+// existing addresses; 201 and 409 both keep their slots, an internal error
+// releases both, and a verification-email failure keeps them. An ip refusal
+// does not spend the address slot; an address refusal keeps the ip slot.
+// Limiter errors fail open (logged). Errors: *RateLimitError
+// (ErrRateLimited), ErrInvalidName, ErrPasswordTooLong, ErrUserExists.
+func (s *Service) Register(ctx context.Context, email, password, name, ip string) (*usersDomain.User, error) {
 	name = strings.TrimSpace(name)
 	if n := utf8.RuneCountInString(name); n < 2 || n > 255 {
 		return nil, ErrInvalidName
@@ -185,9 +206,49 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 		return nil, ErrPasswordTooLong
 	}
 
+	emailKey := emailRateLimitKey(email)
+	ipReserved, emailReserved := false, false
+	if lim := s.registerLimiters.IP; lim != nil {
+		allowed, retryAfter, err := lim.Allow(ctx, ip)
+		switch {
+		case err != nil:
+			s.logger.Warn("register: ip rate limiter unavailable, failing open", zap.Error(err))
+		case !allowed:
+			return nil, &RateLimitError{RetryAfter: retryAfter}
+		default:
+			ipReserved = true
+		}
+	}
+	if lim := s.registerLimiters.Email; lim != nil {
+		allowed, retryAfter, err := lim.Allow(ctx, emailKey)
+		switch {
+		case err != nil:
+			s.logger.Warn("register: email rate limiter unavailable, failing open", zap.Error(err))
+		case !allowed:
+			// The ip slot stays spent.
+			return nil, &RateLimitError{RetryAfter: retryAfter}
+		default:
+			emailReserved = true
+		}
+	}
+	// settleInternal: an internal error is not a registration attempt.
+	settleInternal := func() {
+		if ipReserved {
+			if err := s.registerLimiters.IP.Release(ctx, ip); err != nil {
+				s.logger.Warn("register: failed to release ip slot", zap.Error(err))
+			}
+		}
+		if emailReserved {
+			if err := s.registerLimiters.Email.Release(ctx, emailKey); err != nil {
+				s.logger.Warn("register: failed to release email slot", zap.Error(err))
+			}
+		}
+	}
+
 	// Check if user exists
 	existing, err := s.users.GetByEmail(ctx, email)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		settleInternal()
 		return nil, fmt.Errorf("check existing user: %w", err)
 	}
 	if existing != nil {
@@ -197,6 +258,7 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 	// Hash password
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
+		settleInternal()
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
@@ -211,6 +273,7 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (*
 	}
 
 	if err := s.users.Create(ctx, user); err != nil {
+		settleInternal()
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 

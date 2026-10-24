@@ -9144,7 +9144,9 @@ paths:
       description: 'Создаёт пользователя (имя 2-255 символов после обрезки пробелов,
         пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения
         email. Вход не выполняется и cookies не устанавливаются: войти можно только
-        после подтверждения email.'
+        после подтверждения email. Запросы ограничиваются: 10 запросов в час с одного
+        IP и 5 в час для одного адреса (считаются и успешные, и ответы 409); при превышении
+        - 429 с кодом rate_limited, одинаковый для новых и существующих адресов.'
       parameters:
       - description: Данные регистрации
         in: body
@@ -9171,6 +9173,14 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "429":
+          description: 'code: rate_limited'
+          headers:
+            Retry-After:
+              description: Секунд до следующей попытки
+              type: integer
+          schema:
+            $ref: '#/definitions/internal_modules_auth_transport_http.rateLimitedResponse'
         "500":
           description: Internal Server Error
           schema:

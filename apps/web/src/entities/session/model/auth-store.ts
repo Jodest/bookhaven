@@ -26,17 +26,28 @@ interface AuthState {
 }
 
 const LOGIN_RATE_LIMIT_FALLBACK_SECONDS = 900;
+const REGISTER_RATE_LIMIT_FALLBACK_SECONDS = 3600;
 
-function loginRateLimitMessage(error: unknown): string | null {
+function rateLimitMessage(error: unknown, prefix: string, fallbackSeconds: number): string | null {
   if (!isApiError(error) || !(error.status === 429 || error.code === 'rate_limited')) {
     return null;
   }
   const retry = error.retryAfterSeconds;
   const seconds =
-    typeof retry === 'number' && Number.isFinite(retry) && retry > 0
-      ? retry
-      : LOGIN_RATE_LIMIT_FALLBACK_SECONDS;
-  return `Слишком много попыток входа. Попробуйте снова через ${formatRetryAfter(seconds)}.`;
+    typeof retry === 'number' && Number.isFinite(retry) && retry > 0 ? retry : fallbackSeconds;
+  return `${prefix} Попробуйте снова через ${formatRetryAfter(seconds)}.`;
+}
+
+function loginRateLimitMessage(error: unknown): string | null {
+  return rateLimitMessage(error, 'Слишком много попыток входа.', LOGIN_RATE_LIMIT_FALLBACK_SECONDS);
+}
+
+function registerRateLimitMessage(error: unknown): string | null {
+  return rateLimitMessage(
+    error,
+    'Слишком много попыток регистрации.',
+    REGISTER_RATE_LIMIT_FALLBACK_SECONDS,
+  );
 }
 
 let cancelRefreshTimer: (() => void) | null = null;
@@ -98,7 +109,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       const response = await api.auth.register({ email, password, name });
       return { email: response.email };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Ошибка регистрации';
+      const message =
+        registerRateLimitMessage(error) ??
+        (error instanceof Error ? error.message : 'Ошибка регистрации');
       set({ error: message });
       throw error;
     }
