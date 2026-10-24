@@ -127,7 +127,7 @@ func setupVerificationEnv(t *testing.T) *verificationEnv {
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		Issuer:          "bookhaven-test",
 		WebBaseURL:      "http://localhost:3000",
-	}, db, users, m, ResendLimiters{IP: ipL, Email: emailL}, ResendLimiters{IP: resetIPL, Email: resetEmailL}, LoginLimiters{}, nil)
+	}, db, users, m, ResendLimiters{IP: ipL, Email: emailL}, ResendLimiters{IP: resetIPL, Email: resetEmailL}, LoginLimiters{}, RegisterLimiters{}, nil)
 	return &verificationEnv{
 		svc: svc, db: db, users: users, mailer: m,
 		ipLimiter: ipL, emailLimiter: emailL,
@@ -153,7 +153,7 @@ func tokenFromMessage(t *testing.T, msg mailer.Message) string {
 func (e *verificationEnv) register(t *testing.T, email string) (*usersDomain.User, string) {
 	t.Helper()
 	before := len(e.mailer.messages)
-	user, err := e.svc.Register(context.Background(), email, "password123", "Анна")
+	user, err := e.svc.Register(context.Background(), email, "password123", "Анна", "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestRegister_EnqueueFailureDoesNotFailRegistration(t *testing.T) {
 	env := setupVerificationEnv(t)
 	env.mailer.err = errors.New("redis down")
 
-	user, err := env.svc.Register(context.Background(), "anna@example.com", "password123", "Анна")
+	user, err := env.svc.Register(context.Background(), "anna@example.com", "password123", "Анна", "")
 	if err != nil {
 		t.Fatalf("expected registration to succeed, got %v", err)
 	}
@@ -265,7 +265,7 @@ func TestRegister_TokenInsertFailureDoesNotFailRegistration(t *testing.T) {
 		t.Fatalf("drop table: %v", err)
 	}
 
-	user, err := env.svc.Register(context.Background(), "anna@example.com", "password123", "Анна")
+	user, err := env.svc.Register(context.Background(), "anna@example.com", "password123", "Анна", "")
 	if err != nil {
 		t.Fatalf("expected registration to succeed, got %v", err)
 	}

@@ -147,6 +147,36 @@ describe('auth-store proactive refresh', () => {
     );
   });
 
+  it('maps a register 429 to a message with the formatted wait', async () => {
+    useAuthStore.setState({ error: null });
+    registerMock.mockRejectedValue(
+      new ApiError(429, 'Too Many Requests', 'too many requests', '/api/v1/auth/register', 'rate_limited', 600)
+    );
+
+    await expect(
+      useAuthStore.getState().register('user@example.com', 'password123', 'User')
+    ).rejects.toBeTruthy();
+
+    expect(useAuthStore.getState().error).toBe(
+      'Слишком много попыток регистрации. Попробуйте снова через 10 мин.'
+    );
+  });
+
+  it('falls back to 1 ч when a register 429 carries no retry_after_seconds', async () => {
+    useAuthStore.setState({ error: null });
+    registerMock.mockRejectedValue(
+      new ApiError(429, 'Too Many Requests', 'too many requests', '/api/v1/auth/register')
+    );
+
+    await expect(
+      useAuthStore.getState().register('user@example.com', 'password123', 'User')
+    ).rejects.toBeTruthy();
+
+    expect(useAuthStore.getState().error).toBe(
+      'Слишком много попыток регистрации. Попробуйте снова через 1 ч.'
+    );
+  });
+
   it('schedules a fallback refresh timer when fetchUser finds an existing session', async () => {
     meMock.mockResolvedValue({ id: '1', email: 'user@example.com' });
 

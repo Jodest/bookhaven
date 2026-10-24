@@ -18,7 +18,7 @@ const gatePassword = "password123"
 // registerUser creates a password user via the service (unverified).
 func (e *verificationHandlerEnv) registerUser(t *testing.T, email string) *usersDomain.User {
 	t.Helper()
-	user, err := e.svc.Register(context.Background(), email, gatePassword, "Пётр")
+	user, err := e.svc.Register(context.Background(), email, gatePassword, "Пётр", "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}

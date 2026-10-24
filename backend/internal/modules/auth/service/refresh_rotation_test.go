@@ -24,7 +24,7 @@ func setupObservedAuthService(t *testing.T) (*Service, *fakeUsersRepository, *ob
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		Issuer:          "bookhaven-test",
 	}
-	return NewService(cfg, db, users, nil, ResendLimiters{}, ResendLimiters{}, LoginLimiters{}, zap.New(core)), users, logs
+	return NewService(cfg, db, users, nil, ResendLimiters{}, ResendLimiters{}, LoginLimiters{}, RegisterLimiters{}, zap.New(core)), users, logs
 }
 
 func findToken(t *testing.T, svc *Service, plain string) domain.RefreshToken {
