@@ -12,7 +12,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 const loginSchema = z.object({
-  email: z.string().email('Введите корректный email'),
+  email: z.email('Введите корректный email'),
   password: z.string().min(1, 'Введите пароль'),
 });
 

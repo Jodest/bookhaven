@@ -11,13 +11,14 @@ import { z } from 'zod';
 
 const goalSchema = z.object({
   goal: z.coerce
-    .number({ invalid_type_error: 'Введите целое число' })
+    .number({ error: 'Введите целое число' })
     .int('Цель должна быть целым числом')
     .min(1, 'Минимум 1 книга')
     .max(10000, 'Максимум 10000 книг'),
 });
 
-type GoalForm = z.infer<typeof goalSchema>;
+type GoalFormInput = z.input<typeof goalSchema>;
+type GoalForm = z.output<typeof goalSchema>;
 
 interface ManageReadingChallengeGoalProps {
   year: number;
@@ -63,7 +64,7 @@ export function ManageReadingChallengeGoal({
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<GoalForm>({
+  } = useForm<GoalFormInput, unknown, GoalForm>({
     resolver: zodResolver(goalSchema),
   });
 
