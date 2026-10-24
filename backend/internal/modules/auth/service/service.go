@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bookhaven/backend/internal/modules/auth/domain"
 	usersDomain "github.com/bookhaven/backend/internal/modules/users/domain"
@@ -31,6 +32,8 @@ var (
 	// ErrPasswordTooLong is returned by Register and ResetPassword for a
 	// password longer than MaxPasswordBytes.
 	ErrPasswordTooLong = errors.New("password is too long")
+	// ErrInvalidName is returned when the trimmed name is not 2-255 characters.
+	ErrInvalidName = errors.New("name must be between 2 and 255 characters")
 
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserExists         = errors.New("user with this email already exists")
@@ -169,6 +172,10 @@ func NewService(cfg Config, db *gorm.DB, users repository.Repository, mailer Mai
 
 // Register creates a new user account.
 func (s *Service) Register(ctx context.Context, email, password, name string) (*usersDomain.User, error) {
+	name = strings.TrimSpace(name)
+	if n := utf8.RuneCountInString(name); n < 2 || n > 255 {
+		return nil, ErrInvalidName
+	}
 	if len(password) > MaxPasswordBytes {
 		return nil, ErrPasswordTooLong
 	}

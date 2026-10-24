@@ -40,7 +40,7 @@ func NewHandler(service *service.Service, opts ...Option) *Handler {
 type registerRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
-	Name     string `json:"name" validate:"required,min=2"`
+	Name     string `json:"name" validate:"required"`
 }
 
 type loginRequest struct {
@@ -143,7 +143,7 @@ const (
 
 // Register godoc
 // @Summary Регистрация пользователя
-// @Description Создаёт пользователя (пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.
+// @Description Создаёт пользователя (имя 2-255 символов после обрезки пробелов, пароль 8 символов - 72 байта в UTF-8) и отправляет письмо со ссылкой подтверждения email. Вход не выполняется и cookies не устанавливаются: войти можно только после подтверждения email.
 // @Tags auth
 // @Accept json
 // @Produce json
@@ -164,6 +164,9 @@ func (h *Handler) Register(c echo.Context) error {
 
 	user, err := h.service.Register(c.Request().Context(), req.Email, req.Password, req.Name)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidName) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "name must be between 2 and 255 characters"})
+		}
 		if errors.Is(err, service.ErrPasswordTooLong) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "password must be at most 72 bytes"})
 		}

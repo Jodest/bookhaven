@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -708,5 +709,41 @@ func TestListReviews_HiddenOwnReviewIsMyReviewOnly(t *testing.T) {
 	}
 	if len(result.Items) != 0 {
 		t.Fatalf("hidden review must not be in items, got %d", len(result.Items))
+	}
+}
+
+func TestCreateReview_ContentLimitCountsCharacters(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+
+	if _, err := svc.CreateReview(ctx, userID, bookID, 3, strings.Repeat("я", 10001)); !errors.Is(err, ErrInvalidContent) {
+		t.Fatalf("expected ErrInvalidContent for 10001 chars, got %v", err)
+	}
+	if _, err := svc.CreateReview(ctx, userID, bookID, 3, strings.Repeat("я", 10000)); err != nil {
+		t.Fatalf("expected 10000 Cyrillic chars accepted, got %v", err)
+	}
+}
+
+func TestUpdateReview_ContentLimitCountsCharacters(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	bookID := uuid.New()
+	svc, repo := setupTestService()
+	repo.books[bookID] = &catalogDomain.Book{ID: bookID, Title: "Book"}
+	review, err := svc.CreateReview(ctx, userID, bookID, 3, "Okay")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tooLong := strings.Repeat("я", 10001)
+	if _, err := svc.UpdateReview(ctx, userID, review.ID, nil, &tooLong); !errors.Is(err, ErrInvalidContent) {
+		t.Fatalf("expected ErrInvalidContent for 10001 chars, got %v", err)
+	}
+	ok := strings.Repeat("я", 10000)
+	if _, err := svc.UpdateReview(ctx, userID, review.ID, nil, &ok); err != nil {
+		t.Fatalf("expected 10000 Cyrillic chars accepted, got %v", err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	reviewsDomain "github.com/bookhaven/backend/internal/modules/reviews/domain"
 	"github.com/bookhaven/backend/internal/modules/reviews/repository"
@@ -102,7 +103,7 @@ func (s *Service) CreateReview(ctx context.Context, userID, bookID uuid.UUID, ra
 	if rating < 1 || rating > 5 {
 		return nil, ErrInvalidRating
 	}
-	if len(content) < 1 || len(content) > 10000 {
+	if !validContentLength(content) {
 		return nil, ErrInvalidContent
 	}
 
@@ -163,7 +164,7 @@ func (s *Service) UpdateReview(ctx context.Context, userID, reviewID uuid.UUID, 
 	}
 	if content != nil {
 		c := strings.TrimSpace(*content)
-		if len(c) < 1 || len(c) > 10000 {
+		if !validContentLength(c) {
 			return nil, ErrInvalidContent
 		}
 		review.Content = c
@@ -213,4 +214,13 @@ func (s *Service) ToggleLike(ctx context.Context, userID, reviewID uuid.UUID) (l
 		return 0, false, fmt.Errorf("toggle like: %w", err)
 	}
 	return likesCount, liked, nil
+}
+
+// maxReviewContentChars is the maximum review length in characters (not bytes).
+const maxReviewContentChars = 10000
+
+// validContentLength reports whether trimmed content is 1..maxReviewContentChars characters long.
+func validContentLength(content string) bool {
+	n := utf8.RuneCountInString(content)
+	return n >= 1 && n <= maxReviewContentChars
 }
