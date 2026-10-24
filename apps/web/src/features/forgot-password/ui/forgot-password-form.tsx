@@ -13,7 +13,7 @@ import {
 import { useForgotPassword } from '../model/use-forgot-password';
 
 const forgotSchema = z.object({
-  email: z.string().email(INVALID_EMAIL_MESSAGE),
+  email: z.email(INVALID_EMAIL_MESSAGE),
 });
 
 type ForgotFormData = z.infer<typeof forgotSchema>;

@@ -16,7 +16,7 @@ const registerSchema = z.object({
     .trim()
     .min(2, 'Имя должно содержать от 2 до 255 символов')
     .max(255, 'Имя должно содержать от 2 до 255 символов'),
-  email: z.string().email('Введите корректный email'),
+  email: z.email('Введите корректный email'),
   password: z
     .string()
     .min(8, 'Пароль должен быть не короче 8 символов')
