@@ -28,8 +28,11 @@ jobs:
   #   - skip:     true when this exact head SHA already has a successful CI run
   #               (typical for the main PR after the dev PR of the same branch passed)
   #   - backend:  backend/** or CI config changed
-  #   - frontend: apps/**, packages/**, root pnpm/turbo/tsconfig files or CI config changed
-  # Not run on workflow_call (manual Deploy) — there everything runs unconditionally.
+  #   - frontend: apps/**, packages/**, root pnpm/turbo/tsconfig files,
+  #               infrastructure/docker/** (Dockerfile.node) or CI config changed
+  #   - compose:  docker-compose.prod.yml, .env.production.example or CI config changed
+  # Not run on workflow_call (manual Deploy) — there everything runs unconditionally,
+  # except frontend-images (Deploy's build-and-push builds those images anyway).
   precheck:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -40,6 +43,7 @@ jobs:
     outputs:
       backend: ${{ steps.decide.outputs.backend }}
       frontend: ${{ steps.decide.outputs.frontend }}
+      compose: ${{ steps.decide.outputs.compose }}
     steps:
       - id: decide
         env:
@@ -55,27 +59,36 @@ jobs:
             --jq "[.workflow_runs[] | select(.id != ${RUN_ID})] | length")
           if [ "${prior}" -gt 0 ]; then
             echo "Head SHA ${HEAD_SHA} already has ${prior} successful CI run(s); skipping jobs."
-            echo "backend=false" >> "$GITHUB_OUTPUT"
-            echo "frontend=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "backend=false"
+              echo "frontend=false"
+              echo "compose=false"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           backend=false
           frontend=false
+          compose=false
           while IFS= read -r f; do
             case "$f" in
               .github/workflows/*|.github/scripts/*|.github/vuln-allowlist.json)
-                backend=true; frontend=true ;;
+                backend=true; frontend=true; compose=true ;;
               backend/*)
                 backend=true ;;
-              apps/*|packages/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|tsconfig*.json)
+              apps/*|packages/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|tsconfig*.json|infrastructure/docker/*)
                 frontend=true ;;
+              docker-compose.prod.yml|.env.production.example)
+                compose=true ;;
             esac
           done < <(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename')
 
-          echo "backend=${backend} frontend=${frontend}"
-          echo "backend=${backend}" >> "$GITHUB_OUTPUT"
-          echo "frontend=${frontend}" >> "$GITHUB_OUTPUT"
+          echo "backend=${backend} frontend=${frontend} compose=${compose}"
+          {
+            echo "backend=${backend}"
+            echo "frontend=${frontend}"
+            echo "compose=${compose}"
+          } >> "$GITHUB_OUTPUT"
 
   backend:
     needs: precheck
@@ -104,6 +117,72 @@ jobs:
           "$(go env GOPATH)/bin/govulncheck" -format json ./... > govulncheck.json
       - name: Vulnerability gate (Go)
         run: node ../.github/scripts/vuln-gate.mjs go govulncheck.json
+
+  # Builds the backend production image exactly as Deploy does (no push) and
+  # runs its /app/migrate binary against an ephemeral PostgreSQL service:
+  # up -> down-all -> up. Catches broken down migrations and up/down pairs that
+  # don't round-trip before Deploy migrates production. Never touches any
+  # database other than this job's throwaway service container.
+  backend-image:
+    needs: precheck
+    if: >-
+      !cancelled() && (github.event_name != 'pull_request' ||
+      (needs.precheck.result == 'success' && needs.precheck.outputs.backend == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Keep the major version in sync with docker-compose*.yml.
+        image: postgres:16-alpine
+        env:
+          # CI-only throwaway credentials, not a secret.
+          POSTGRES_USER: bookhaven_ci
+          POSTGRES_PASSWORD: bookhaven_ci
+          POSTGRES_DB: bookhaven_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bookhaven_ci -d bookhaven_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      IMAGE: bookhaven-backend:ci
+      # Ephemeral CI service DB only (reached via --network host).
+      DATABASE_URL: postgres://bookhaven_ci:bookhaven_ci@localhost:5432/bookhaven_ci?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build backend image (production target, no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          target: production
+          push: false
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Migrations up
+        run: docker run --rm --network host -e DATABASE_URL --entrypoint /app/migrate "$IMAGE" up
+      - name: Migrations down (all)
+        run: docker run --rm --network host -e DATABASE_URL --entrypoint /app/migrate "$IMAGE" down-all --yes-drop-everything
+      - name: Schema is empty after down
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          left=$(docker exec "$PG_CONTAINER" psql -U bookhaven_ci -d bookhaven_ci -tAc \
+            "SELECT string_agg(tablename, ', ') FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'schema_migrations'")
+          if [ -n "$left" ]; then
+            echo "::error::down migrations left tables behind: $left"
+            exit 1
+          fi
+      - name: Migrations up again
+        run: docker run --rm --network host -e DATABASE_URL --entrypoint /app/migrate "$IMAGE" up
+      - name: Final schema version
+        run: docker run --rm --network host -e DATABASE_URL --entrypoint /app/migrate "$IMAGE" version
 
   frontend:
     needs: precheck
@@ -135,3 +214,66 @@ jobs:
         env:
           API_URL: http://localhost:8080
           NEXT_PUBLIC_API_URL: http://localhost:8080
+
+  # Builds the web/admin production images exactly as Deploy does (no push).
+  # One job on purpose: both targets share the `builder` stage, so the second
+  # build reuses it. PRs only: on a manual Deploy (workflow_call) build-and-push
+  # builds the same images right after CI, so building them here would only
+  # double the minutes.
+  frontend-images:
+    needs: precheck
+    if: >-
+      !cancelled() && github.event_name == 'pull_request' &&
+      needs.precheck.result == 'success' && needs.precheck.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build web image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./infrastructure/docker/Dockerfile.node
+          target: web-production
+          # Same build arg as deploy.yml (baked into the Next rewrites).
+          build-args: |
+            API_URL=http://backend:8080
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - name: Build admin image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./infrastructure/docker/Dockerfile.node
+          target: admin-production
+          build-args: |
+            API_URL=http://backend:8080
+          push: false
+          cache-from: type=gha,scope=admin
+          cache-to: type=gha,mode=max,scope=admin
+
+  # Validates docker-compose.prod.yml syntax and interpolation. The env file is
+  # the committed .env.production.example (placeholders only); compose only
+  # warns on an unset variable, so the step turns that warning into a failure:
+  # a variable the compose file needs without a default must be in the example.
+  compose:
+    needs: precheck
+    if: >-
+      !cancelled() && (github.event_name != 'pull_request' ||
+      (needs.precheck.result == 'success' && needs.precheck.outputs.compose == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: docker compose config (prod)
+        run: |
+          set -euo pipefail
+          docker compose --env-file .env.production.example -f docker-compose.prod.yml config --quiet 2> compose-config.err \
+            || { cat compose-config.err; exit 1; }
+          cat compose-config.err
+          if grep -q 'variable is not set' compose-config.err; then
+            echo "::error::docker-compose.prod.yml uses variables missing from .env.production.example (see above)"
+            exit 1
+          fi

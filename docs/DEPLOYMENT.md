@@ -95,8 +95,12 @@ Treat `main` as production — land features via the existing `/feature` workflo
 
 `ci.yml` is tuned for the Free plan (2000 min/month, private repo):
 - PRs touching only `docs/**`, `openspec/**`, `.claude/**`, `.opencode/**`, `opencode.json` or root `*.md` don't start CI at all.
-- Otherwise a small `precheck` job (~1 billed minute) lists the PR's files via the API and runs `backend` only for `backend/**`, `frontend` only for `apps/**`, `packages/**`, root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json` / `tsconfig*.json`; any `.github/workflows/**`, `.github/scripts/**` or `.github/vuln-allowlist.json` change runs both.
-- If the PR head SHA already has a successful CI run (the PR into `dev` validated it), the PR into `main` from the same branch skips both jobs. If the dev run is still in progress when the main PR opens, the main PR runs CI normally.
+- Otherwise a small `precheck` job (~1 billed minute) lists the PR's files via the API and runs `backend` + `backend-image` only for `backend/**`, `frontend` + `frontend-images` only for `apps/**`, `packages/**`, `infrastructure/docker/**`, root `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` / `turbo.json` / `tsconfig*.json`, and `compose` only for `docker-compose.prod.yml` / `.env.production.example`; any `.github/workflows/**`, `.github/scripts/**` or `.github/vuln-allowlist.json` change runs all of them.
+- Pre-deploy checks (issue #642), so a broken migration or image is caught before Deploy half-updates production:
+  - `backend-image` builds `backend/Dockerfile` (`production` target, no push, GHA cache shared with Deploy) and runs the image's `/app/migrate` against an ephemeral `postgres:16-alpine` service container: `up` → `down-all --yes-drop-everything` → check no tables except `schema_migrations` remain → `up` again → `version`. Only that throwaway CI database is ever touched.
+  - `frontend-images` builds the `web-production` and `admin-production` targets of `infrastructure/docker/Dockerfile.node` with the same `API_URL` build arg as Deploy (no push; one job, the second build reuses the shared `builder` stage). PRs only: on a manual Deploy `build-and-push` builds the same images right after CI.
+  - `compose` runs `docker compose --env-file .env.production.example -f docker-compose.prod.yml config --quiet` and fails on any "variable is not set" warning, so every variable the prod compose needs without a default must be present (as a placeholder) in the example.
+- If the PR head SHA already has a successful CI run (the PR into `dev` validated it), the PR into `main` from the same branch skips all jobs. If the dev run is still in progress when the main PR opens, the main PR runs CI normally.
 - `concurrency` cancels a stale run when a new commit is pushed to the same PR.
 - Skipped jobs block nothing: there are no required checks (branch protection isn't available on Free for private repos).
 
