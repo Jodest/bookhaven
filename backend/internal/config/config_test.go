@@ -717,6 +717,41 @@ func TestLoad_DBPool(t *testing.T) {
 	}
 }
 
+func TestLoad_HTTPTimeouts(t *testing.T) {
+	type want struct{ header, read, write, idle time.Duration }
+	def := want{10 * time.Second, 60 * time.Second, 5 * time.Minute, 120 * time.Second}
+	cases := []struct {
+		name string
+		env  map[string]string
+		want want
+	}{
+		{"defaults", nil, def},
+		{"overrides", map[string]string{"HTTP_READ_HEADER_TIMEOUT": "5s", "HTTP_READ_TIMEOUT": "30s", "HTTP_WRITE_TIMEOUT": "10m", "HTTP_IDLE_TIMEOUT": "1m"}, want{5 * time.Second, 30 * time.Second, 10 * time.Minute, time.Minute}},
+		{"invalid", map[string]string{"HTTP_READ_HEADER_TIMEOUT": "soon", "HTTP_READ_TIMEOUT": "30", "HTTP_WRITE_TIMEOUT": "x", "HTTP_IDLE_TIMEOUT": "?"}, def},
+		{"negative", map[string]string{"HTTP_READ_HEADER_TIMEOUT": "-1s", "HTTP_READ_TIMEOUT": "-1m", "HTTP_WRITE_TIMEOUT": "-5m", "HTTP_IDLE_TIMEOUT": "-1s"}, def},
+		{"zero means no limit", map[string]string{"HTTP_READ_TIMEOUT": "0", "HTTP_WRITE_TIMEOUT": "0"}, want{10 * time.Second, 0, 0, 120 * time.Second}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setSMTPEnv(t, nil)
+			for _, k := range []string{"HTTP_READ_HEADER_TIMEOUT", "HTTP_READ_TIMEOUT", "HTTP_WRITE_TIMEOUT", "HTTP_IDLE_TIMEOUT"} {
+				t.Setenv(k, "")
+			}
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			got := want{cfg.HTTPReadHeaderTimeout, cfg.HTTPReadTimeout, cfg.HTTPWriteTimeout, cfg.HTTPIdleTimeout}
+			if got != tc.want {
+				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoad_Sentry(t *testing.T) {
 	tests := []struct {
 		name                      string
