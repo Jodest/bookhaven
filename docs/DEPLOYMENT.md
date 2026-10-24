@@ -145,6 +145,8 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+Rolling back to an image built before the container healthchecks (#645) also needs the `docker-compose.prod.yml` from that commit. See the rollback caveat in [Health checks](#health-checks).
+
 If the rollback also needs a schema rollback, run the down migration explicitly first — `docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/migrate backend down` rolls back **one** migration step (`down N` rolls back N steps, N must be a positive integer); check `backend/migrations` before running it, and prefer forward-fixing over rolling back a schema in a database with real user data whenever possible. The command prints the resulting schema version.
 
 A full rollback (every migration, i.e. dropping the whole schema) is only available as `down-all --yes-drop-everything`; without that exact flag it refuses, and with `APP_ENV=production` it additionally requires `--force`. Never use it on a database with real data — restore from a backup instead (see [Restore](#restore)). (Before #186, plain `down` rolled back everything; it is now one step.)
@@ -260,7 +262,7 @@ The worker never recomputes on startup. Run the recompute by hand once right aft
 docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/similarity backend
 ```
 
-It prints the run stats and exits non-zero on error. If the worker is unhealthy (see the known config issue with the worker's environment), the nightly run never fires and every book silently stays on the stage-1 list: check `docker compose -f docker-compose.prod.yml logs worker` for `asynq scheduler started` and `similar books recomputed`.
+It prints the run stats and exits non-zero on error. If the worker is unhealthy (see the known config issue with the worker's environment), the nightly run never fires and every book silently stays on the stage-1 list: check the worker's health in `docker compose -f docker-compose.prod.yml ps` (see [Health checks](#health-checks)) and `docker compose -f docker-compose.prod.yml logs worker` for `asynq scheduler started` and `similar books recomputed`.
 
 ### Auth token purge
 
@@ -503,12 +505,81 @@ Without these, mail lands in spam or is rejected. All records go on the domain u
 
 Send a real email to a Gmail and a Yandex inbox — either through the first real flow (registration: the verification email) or by enqueuing a test email from a machine that can reach the production Redis (the dev-only `go run ./cmd/mailtest -to you@example.com` CLI is not shipped in the production image). In the received message open "Show original" / "Message properties" and check for `spf=pass`, `dkim=pass` and `dmarc=pass`. Watch `docker compose -f docker-compose.prod.yml logs -f worker` for send errors.
 
+## Health checks, resource limits and logs
+
+Everything below lives in `docker-compose.prod.yml`; `docker compose -f docker-compose.prod.yml ps` shows each container's health.
+
+### Health checks
+
+| Service | Probe | What it proves |
+|---|---|---|
+| `postgres` | `pg_isready` | accepts connections |
+| `redis` | `redis-cli ping` | answers commands |
+| `backend` | `/app/healthcheck api`: `GET http://127.0.0.1:$APP_PORT/health` must return 200 | the api serves HTTP (liveness) |
+| `worker` | `/app/healthcheck worker`: at least one asynq server of this container (same hostname) heartbeats to Redis in the `active` state | the worker process runs its queues |
+| `web`, `admin` | `node -e "fetch(...)"` to `http://$HOSTNAME:3000/favicon.ico`, any status below 500 | the Next.js server answers HTTP |
+| `caddy` | `wget http://127.0.0.1:2019/config/` (admin API, only inside the container) | Caddy runs with a loaded config |
+
+Why these probes:
+
+- **The backend image is distroless** (no shell, curl or wget), so `backend/cmd/healthcheck` is a small static binary shipped at `/app/healthcheck`, like `migrate`. It reads only `APP_PORT` and `REDIS_URL` (`config.LoadProbe`), never the full config, so it reports the process state and does not fail on unrelated settings.
+- **`backend` uses `/health`, not `/health/ready`**, for the same reason as Caddy's `health_uri`: a PostgreSQL/Redis blip must not mark the api unhealthy. Readiness is checked by the deploy workflow and uptime monitoring (see [Monitoring](#monitoring)).
+- **The worker has no HTTP port.** asynq writes a heartbeat for each server to Redis every 5 s with a 10 s TTL, so the probe sees a crashed or shut-down worker within seconds (a single hung task handler does not stop the heartbeat and is not detected). It also fails while Redis is down. That is honest (the worker can't process tasks without Redis) and harmless: nothing depends on the worker's health, and Docker never restarts a container just because it is unhealthy.
+- **web/admin**: the Next standalone server listens on `$HOSTNAME` (the container IP), not on `127.0.0.1`, so the probe connects to `$HOSTNAME`. `/favicon.ico` is a static route: it skips the auth middleware and the API, so a backend outage does not make web/admin unhealthy.
+- **caddy**: the probe does not cover TLS or ACME. The deploy's external `https://<API_DOMAIN>/health/ready` check does.
+
+All probes run every 30 s (timeout 5 s, 3 retries). The first 30 s are a start period with a probe every 2 s (`start_interval`, needs Docker Engine 25 or later; `server-setup.sh` installs the current one).
+
+Start order: `backend` and `worker` wait for healthy `postgres` and `redis`; `web` and `admin` wait for a healthy `backend` (`condition: service_healthy`); `caddy` waits only until the apps are started, so it always comes up for ACME, TLS and the 502 pages. As a result, `docker compose up -d` in the deploy fails if the new backend never gets healthy, and the workflow then prints `docker compose ps` and the app logs. The deploy does not use `up --wait`, because that would also wait on the worker's signal-only check.
+
+> **Rollback caveat:** images built before this change have no `/app/healthcheck`, so with the current compose file their backend never gets healthy, and web/admin don't start. To roll back to such an image, also restore the `docker-compose.prod.yml` from that commit.
+
+### Memory limits
+
+`mem_limit` caps per container. Plain `docker compose` applies them; no swarm is needed. The defaults are sized for the 2 vCPU / 4 GB VPS from [Prerequisites](#prerequisites):
+
+| Service | `.env` override | Default |
+|---|---|---|
+| postgres | `POSTGRES_MEM_LIMIT` | `1g` |
+| redis | `REDIS_MEM_LIMIT` | `256m` |
+| backend | `BACKEND_MEM_LIMIT` | `512m` |
+| worker | `WORKER_MEM_LIMIT` | `512m` |
+| web | `WEB_MEM_LIMIT` | `512m` |
+| admin | `ADMIN_MEM_LIMIT` | `384m` |
+| caddy | `CADDY_MEM_LIMIT` | `128m` |
+
+The caps add up to about 3.3 GB and leave about 0.7 GB for the OS, dockerd and SSH. They are ceilings, not reservations. Idle usage is much lower (a Next.js app idles at about 60-100 MB). A container that reaches its cap is OOM-killed and restarted by `restart: unless-stopped`. One runaway process then can't push the whole VPS into swap or into the kernel OOM killer.
+
+Tuning:
+
+1. Watch the real usage for a few days: `docker stats --no-stream`.
+2. To change a cap, set the variable in `/opt/bookhaven/.env` (for example `WORKER_MEM_LIMIT=768m`) and run `docker compose -f docker-compose.prod.yml up -d`. Only the changed containers are recreated.
+3. Signs that a cap is too low: `docker inspect -f '{{.State.OOMKilled}} {{.RestartCount}}' bookhaven-<service>` shows `true` or a growing restart count, or `dmesg` shows OOM kills. The worker is the likeliest candidate: the nightly similarity recompute and harvests hold more data in memory as the catalog grows.
+4. On a bigger VPS, raise postgres first (its page cache also counts toward the cap), then the worker.
+
+### Logs
+
+Every service uses the `json-file` driver with rotation (`x-logging` anchor): `LOG_MAX_SIZE` (default `10m`) per file and `LOG_MAX_FILE` (default `5`) files per container. The worst case on disk is 7 x 10 MB x 5 = 350 MB. `docker compose logs` keeps working. Older lines are dropped. The options only apply to containers created after the change, which `up -d` handles because changed options recreate the containers.
+
+### Redis persistence (AOF)
+
+Redis holds the asynq queues (pending, scheduled and retried tasks). It runs with `--appendonly yes --appendfsync everysec` on top of the default RDB snapshots. After a crash or a power loss, at most about 1 s of writes is lost, instead of everything since the last snapshot. Files land in the `redis-data` volume: `/data/dump.rdb` and `/data/appendonlydir/`. Redis 7 uses the RDB format as the AOF base and rewrites the AOF automatically, so the size stays bounded. The Postgres backup does not cover Redis. Queued tasks are transient, and losing the Redis volume loses only queued jobs.
+
+**One-time step when turning AOF on over an existing RDB-only volume.** This is not needed on a fresh server. If Redis restarts with `appendonly yes` and no AOF files yet, it starts **empty** and ignores `dump.rdb` (verified with `redis:7-alpine` 7.4). Convert the live data first, then deploy:
+
+```
+docker compose -f docker-compose.prod.yml exec redis redis-cli CONFIG SET appendonly yes
+docker compose -f docker-compose.prod.yml exec redis redis-cli INFO persistence | grep -E 'aof_rewrite_in_progress|aof_last_bgrewrite_status'
+# wait for aof_rewrite_in_progress:0 and aof_last_bgrewrite_status:ok, then deploy as usual
+```
+
 ## Monitoring
 
 Kept intentionally minimal for an MVP with no ops budget:
 
+- **Container health**: `docker compose -f docker-compose.prod.yml ps` shows each container's healthcheck status, see [Health checks](#health-checks).
 - **Uptime**: point a free external checker (UptimeRobot, or Yandex/VK equivalents) at `https://<API_DOMAIN>/health/ready` and `https://<WEB_DOMAIN>/`. Free tier is enough for one project. Liveness vs readiness: `/health` is liveness (static `200 {"status":"ok"}`, the process serves HTTP; Caddy's active health check uses it and must keep doing so, otherwise a PostgreSQL/Redis blip would turn into 502/503 for the whole API), while `/health/ready` is readiness (pings PostgreSQL and Redis, 2 s timeout each; `503` with `"unavailable"` for the failing dependency, details only in the backend logs). The deploy workflow and uptime monitoring use `/health/ready`.
-- **Logs**: `docker compose -f docker-compose.prod.yml logs -f backend|web|admin|caddy` over SSH. The backend already logs structured JSON (zap) with method/URI/status per request.
+- **Logs**: `docker compose -f docker-compose.prod.yml logs -f backend|web|admin|caddy` over SSH. The backend already logs structured JSON (zap) with method/URI/status per request. Container logs are rotated (10 MB x 5 files per container by default), see [Logs](#logs).
 - **Errors**: opt-in Sentry error tracking, see [Error tracking (Sentry)](#error-tracking-sentry) below.
 
 Revisit this section once there's a real incident or real user volume — don't build observability infrastructure speculatively on a minimal-budget MVP.

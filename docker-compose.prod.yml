@@ -1,8 +1,21 @@
+# Log rotation for every service (docs/DEPLOYMENT.md "Resource limits and
+# logs"): without max-size the json-file logs grow until the disk is full.
+# Worst case on disk: services x LOG_MAX_SIZE x LOG_MAX_FILE.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: ${LOG_MAX_FILE:-5}
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: bookhaven-postgres
     restart: unless-stopped
+    logging: *default-logging
+    # Memory caps sized for the 4 GB VPS (docs/DEPLOYMENT.md "Resource limits
+    # and logs"); override any of them in .env.
+    mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -20,6 +33,14 @@ services:
     image: redis:7-alpine
     container_name: bookhaven-redis
     restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${REDIS_MEM_LIMIT:-256m}
+    # AOF on top of the default RDB snapshots: queued asynq tasks survive a
+    # crash with at most ~1 s of writes lost. Files land in the redis-data
+    # volume (/data/appendonlydir). Turning AOF on over an existing RDB-only
+    # volume needs the one-time step in docs/DEPLOYMENT.md, otherwise Redis
+    # starts empty.
+    command: ["redis-server", "--dir", "/data", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - redis-data:/data
     healthcheck:
@@ -33,6 +54,18 @@ services:
     image: ${BACKEND_IMAGE}:${IMAGE_TAG:-latest}
     container_name: bookhaven-backend
     restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${BACKEND_MEM_LIMIT:-512m}
+    # Liveness (/health), not readiness: a PostgreSQL/Redis blip must not
+    # turn the api unhealthy (same reason as Caddy's health_uri). The image
+    # is distroless, so the probe is the static /app/healthcheck binary.
+    healthcheck:
+      test: ["CMD", "/app/healthcheck", "api"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
     environment:
       APP_ENV: production
       # Error tracking (docs/DEPLOYMENT.md): empty = off.
@@ -90,7 +123,20 @@ services:
     image: ${BACKEND_IMAGE}:${IMAGE_TAG:-latest}
     container_name: bookhaven-worker
     restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${WORKER_MEM_LIMIT:-512m}
     entrypoint: ["/app/worker"]
+    # No HTTP port: the probe passes while at least one asynq server of this
+    # container heartbeats to Redis (so it also fails while Redis is down;
+    # nothing depends on the worker's health and Docker never restarts an
+    # unhealthy container, so this is a signal only).
+    healthcheck:
+      test: ["CMD", "/app/healthcheck", "worker"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
     environment:
       APP_ENV: production
       # Error tracking (docs/DEPLOYMENT.md): empty = off.
@@ -154,6 +200,18 @@ services:
     image: ${WEB_IMAGE}:${IMAGE_TAG:-latest}
     container_name: bookhaven-web
     restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${WEB_MEM_LIMIT:-512m}
+    # Next standalone listens on $HOSTNAME (the container IP, not 127.0.0.1).
+    # /favicon.ico is static and skips the middleware and the API, so a
+    # backend outage does not make web unhealthy.
+    healthcheck: &next-healthcheck
+      test: ["CMD", "node", "-e", "fetch('http://'+(process.env.HOSTNAME||'127.0.0.1')+':3000/favicon.ico',{redirect:'manual',signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
     environment:
       NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
       API_URL: http://backend:8080
@@ -164,13 +222,17 @@ services:
       # absolute in Open Graph and structured data.
       SITE_URL: https://${WEB_DOMAIN}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks: [internal]
 
   admin:
     image: ${ADMIN_IMAGE}:${IMAGE_TAG:-latest}
     container_name: bookhaven-admin
     restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${ADMIN_MEM_LIMIT:-384m}
+    healthcheck: *next-healthcheck
     environment:
       NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
       API_URL: http://backend:8080
@@ -178,13 +240,26 @@ services:
       SENTRY_DSN: ${SENTRY_DSN_FRONTEND:-}
       SENTRY_RELEASE: ${IMAGE_TAG:-}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks: [internal]
 
   caddy:
     image: caddy:2-alpine
     container_name: bookhaven-caddy
     restart: unless-stopped
+    logging: *default-logging
+    mem_limit: ${CADDY_MEM_LIMIT:-128m}
+    # Caddy's admin API (127.0.0.1:2019 inside the container only) answers
+    # once the config is loaded. TLS/ACME is not covered: the deploy's
+    # external /health/ready check is.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
     ports:
       - "80:80"
       - "443:443"
@@ -197,6 +272,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    # service_started on purpose: Caddy must come up (ACME, TLS, 502 pages)
+    # even if an app is unhealthy; it probes the backend itself (health_uri).
     depends_on:
       - web
       - admin

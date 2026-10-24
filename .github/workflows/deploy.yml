@@ -108,8 +108,11 @@ jobs:
             sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${IMAGE_TAG}/" .env
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/migrate backend up
-            docker compose -f docker-compose.prod.yml up -d
+            # web/admin wait for backend's healthcheck (depends_on: service_healthy),
+            # so up -d fails when the new backend never gets healthy: show why.
+            # No --wait: it would also gate on the worker (signal-only healthcheck).
+            docker compose -f docker-compose.prod.yml up -d || { docker compose -f docker-compose.prod.yml ps; docker compose -f docker-compose.prod.yml logs --tail=100 backend web admin; exit 1; }
             docker image prune -f
             sleep 5
             set -a; source .env; set +a
-            curl -fsS --retry 6 --retry-delay 5 --retry-all-errors "https://${API_DOMAIN}/health/ready" || (docker compose -f docker-compose.prod.yml logs --tail=100 backend caddy && exit 1)
+            curl -fsS --retry 6 --retry-delay 5 --retry-all-errors "https://${API_DOMAIN}/health/ready" || { docker compose -f docker-compose.prod.yml ps; docker compose -f docker-compose.prod.yml logs --tail=100 backend caddy; exit 1; }

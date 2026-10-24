@@ -22,6 +22,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/migrate ./cmd/migrate
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/worker ./cmd/worker
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/harvest ./cmd/harvest
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/similarity ./cmd/similarity
+# Container HEALTHCHECK probe for api and worker (distroless: no shell/curl).
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/healthcheck ./cmd/healthcheck
 # Empty mount point for the self-hosted covers volume (copied below with the
 # nonroot owner: a fresh named volume inherits the owner of its mount point).
 RUN mkdir -p /out/data/covers
@@ -34,6 +36,7 @@ COPY --from=builder /app/bin/migrate /app/migrate
 COPY --from=builder /app/bin/worker /app/worker
 COPY --from=builder /app/bin/harvest /app/harvest
 COPY --from=builder /app/bin/similarity /app/similarity
+COPY --from=builder /app/bin/healthcheck /app/healthcheck
 COPY --from=builder /app/migrations /app/migrations
 # Covers volume mount point owned by nonroot (65532): the worker writes there.
 COPY --from=builder --chown=65532:65532 /out/data/covers /data/covers
