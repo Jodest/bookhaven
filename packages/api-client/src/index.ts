@@ -228,6 +228,26 @@ export interface BookReadsSummary {
   rereading: boolean;
 }
 
+/** One reading attempt of the caller's reading history (GET /reads?book_id=). */
+export interface BookRead {
+  id: string;
+  bookId: string;
+  state: 'open' | 'finished' | 'abandoned';
+  startedAt: string | null;
+  finishedAt: string | null;
+  abandonedAt: string | null;
+}
+
+/**
+ * Fields of PATCH /reads/{id}: dates are days (YYYY-MM-DD). `undefined` leaves
+ * a field unchanged, `null` (startedOn of a closed reading only) clears it.
+ */
+export interface UpdateReadInput {
+  startedOn?: string | null;
+  finishedOn?: string;
+  abandonedOn?: string;
+}
+
 /** A shelf book item with the shelf owner's finished-reads counter. */
 export type ShelfBook = Book & {
   readsCount: number;
@@ -2301,6 +2321,26 @@ type RawShelf = {
   updated_at?: string;
 };
 
+type RawBookRead = {
+  id: string;
+  book_id: string;
+  state: BookRead['state'];
+  started_at: string | null;
+  finished_at: string | null;
+  abandoned_at: string | null;
+};
+
+function normalizeBookRead(raw: RawBookRead): BookRead {
+  return {
+    id: raw.id,
+    bookId: raw.book_id,
+    state: raw.state,
+    startedAt: raw.started_at ?? null,
+    finishedAt: raw.finished_at ?? null,
+    abandonedAt: raw.abandoned_at ?? null,
+  };
+}
+
 type RawShelfBook = RawBook & { reads_count?: number; last_read_at?: string | null };
 
 function normalizeShelfBook(raw: RawShelfBook): ShelfBook {
@@ -2631,6 +2671,45 @@ export const api = {
       });
       return normalizeUser(raw);
     },
+  },
+  reads: {
+    list: async (bookId: string): Promise<BookRead[]> => {
+      const raw = await fetcher<{ items: RawBookRead[] }>(
+        `/api/v1/reads?${new URLSearchParams({ book_id: bookId }).toString()}`,
+      );
+      return raw.items.map(normalizeBookRead);
+    },
+    create: async (input: {
+      bookId: string;
+      startedOn?: string | null;
+      finishedOn: string;
+    }): Promise<BookRead> => {
+      const raw = await fetcher<RawBookRead>('/api/v1/reads', {
+        method: 'POST',
+        body: JSON.stringify({
+          book_id: input.bookId,
+          started_on: input.startedOn ?? null,
+          finished_on: input.finishedOn,
+        }),
+      });
+      return normalizeBookRead(raw);
+    },
+    // JSON.stringify drops undefined keys and keeps null, which is the PATCH contract.
+    update: async (id: string, input: UpdateReadInput): Promise<BookRead> => {
+      const raw = await fetcher<RawBookRead>(`/api/v1/reads/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          started_on: input.startedOn,
+          finished_on: input.finishedOn,
+          abandoned_on: input.abandonedOn,
+        }),
+      });
+      return normalizeBookRead(raw);
+    },
+    remove: (id: string) =>
+      fetcher<{ status: string }>(`/api/v1/reads/${id}`, {
+        method: 'DELETE',
+      }),
   },
   shelves: {
     list: async (params?: { book_id?: string }) => {

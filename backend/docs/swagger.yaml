@@ -3753,6 +3753,15 @@ definitions:
       slug:
         type: string
     type: object
+  internal_modules_shelves_transport_http.createReadRequest:
+    properties:
+      book_id:
+        type: string
+      finished_on:
+        type: string
+      started_on:
+        type: string
+    type: object
   internal_modules_shelves_transport_http.createShelfRequest:
     properties:
       description:
@@ -3789,6 +3798,32 @@ definitions:
           a valid book_id.
       total:
         type: integer
+    type: object
+  internal_modules_shelves_transport_http.readListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.readResponse'
+        type: array
+    type: object
+  internal_modules_shelves_transport_http.readResponse:
+    properties:
+      abandoned_at:
+        type: string
+      book_id:
+        type: string
+      finished_at:
+        type: string
+      id:
+        type: string
+      started_at:
+        type: string
+      state:
+        enum:
+        - open
+        - finished
+        - abandoned
+        type: string
     type: object
   internal_modules_shelves_transport_http.readsResponse:
     properties:
@@ -3881,6 +3916,18 @@ definitions:
       updated_at:
         type: string
       user_id:
+        type: string
+    type: object
+  internal_modules_shelves_transport_http.updateReadRequest:
+    properties:
+      abandoned_on:
+        example: "2020-06-01"
+        type: string
+      finished_on:
+        example: "2020-06-01"
+        type: string
+      started_on:
+        example: "2020-05-03"
         type: string
     type: object
   internal_modules_shelves_transport_http.updateShelfRequest:
@@ -10425,6 +10472,208 @@ paths:
       summary: Установить/обновить цель читательского вызова на год
       tags:
       - reading-challenges
+  /reads:
+    get:
+      description: Собственные чтения вызывающего по книге, от старых к новым. Чужую
+        историю получить нельзя
+      parameters:
+      - description: ID книги
+        in: query
+        name: book_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_shelves_transport_http.readListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: История чтений книги
+      tags:
+      - reads
+    post:
+      consumes:
+      - application/json
+      description: Записывает завершённое чтение с датами (YYYY-MM-DD, хранится как
+        12:00 UTC). Полки не меняются. Не больше 100 чтений на книгу
+      parameters:
+      - description: Книга и даты
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.createReadRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_modules_shelves_transport_http.readResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Добавить прошлое прочтение
+      tags:
+      - reads
+  /reads/{id}:
+    delete:
+      description: 'Удаляет завершённое или брошенное чтение. Открытое чтение удалить
+        нельзя (409): оно следует статусу «Читаю». Полки не меняются'
+      parameters:
+      - description: ID чтения
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удалить чтение из истории
+      tags:
+      - reads
+    patch:
+      consumes:
+      - application/json
+      description: 'Открытое чтение меняет только started_on (не null). Завершённое:
+        started_on (null очищает) и finished_on; брошенное: started_on и abandoned_on.
+        Исход чтения не меняется'
+      parameters:
+      - description: ID чтения
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Изменяемые даты
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_modules_shelves_transport_http.updateReadRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_shelves_transport_http.readResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Изменить даты чтения
+      tags:
+      - reads
   /reviews/{id}:
     delete:
       parameters:
@@ -10902,8 +11151,9 @@ paths:
       - shelves
   /shelves/{id}/books/{bookId}:
     delete:
-      description: 'Снятие с «Прочитано» — отмена: удаляется только последнее завершённое
-        чтение, история остаётся. Снятие с «Читаю» удаляет открытое чтение'
+      description: 'Снятие с «Прочитано» — отмена: удаляется только чтение, которое
+        записал этот статус (не правленное вручную), остальная история остаётся. Снятие
+        с «Читаю» удаляет открытое чтение'
       parameters:
       - description: ID полки
         in: path

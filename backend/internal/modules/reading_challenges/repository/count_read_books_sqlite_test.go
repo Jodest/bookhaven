@@ -11,7 +11,7 @@ import (
 )
 
 const readsDDL = `
-CREATE TABLE book_reads (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, book_id TEXT NOT NULL, started_at DATETIME, finished_at DATETIME, abandoned_at DATETIME, created_at DATETIME);
+CREATE TABLE book_reads (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, book_id TEXT NOT NULL, started_at DATETIME, finished_at DATETIME, abandoned_at DATETIME, created_at DATETIME, manual_end BOOLEAN NOT NULL DEFAULT 0);
 `
 
 // The challenge counts distinct books finished within a calendar year from
@@ -79,5 +79,46 @@ func TestCountReadBooks_FromJournal(t *testing.T) {
 	}
 	if got := count(user, 2024); got != 1 {
 		t.Errorf("2024 after undo = %d, want 1", got)
+	}
+}
+
+// A reading added by hand counts for the year of its picked day (stored at
+// 12:00 UTC), and re-dating it moves it to the new year.
+func TestCountReadBooks_HandAddedAndRedated(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(readsDDL).Error; err != nil {
+		t.Fatal(err)
+	}
+	repo := NewGormRepository(db)
+	ctx := context.Background()
+	user, book, id := uuid.New(), uuid.New(), uuid.New()
+	last := time.Date(2015, 12, 31, 12, 0, 0, 0, time.UTC)
+	if err := db.Exec("INSERT INTO book_reads (id, user_id, book_id, finished_at, created_at, manual_end) VALUES (?, ?, ?, ?, ?, 1)", id, user, book, last, time.Now()).Error; err != nil {
+		t.Fatal(err)
+	}
+	count := func(year int) int64 {
+		n, err := repo.CountReadBooks(ctx, user, year)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if count(2015) != 1 || count(2016) != 0 {
+		t.Fatalf("hand-added 31 Dec 2015: 2015=%d 2016=%d", count(2015), count(2016))
+	}
+	if err := db.Exec("UPDATE book_reads SET finished_at = ? WHERE id = ?", time.Date(2016, 1, 2, 12, 0, 0, 0, time.UTC), id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count(2015) != 0 || count(2016) != 1 {
+		t.Fatalf("re-dated: 2015=%d 2016=%d", count(2015), count(2016))
+	}
+	if err := db.Exec("DELETE FROM book_reads WHERE id = ?", id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count(2016) != 0 {
+		t.Fatal("deleted reading must not count")
 	}
 }

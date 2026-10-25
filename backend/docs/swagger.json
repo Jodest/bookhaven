@@ -9440,6 +9440,311 @@
                 }
             }
         },
+        "/reads": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Собственные чтения вызывающего по книге, от старых к новым. Чужую историю получить нельзя",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reads"
+                ],
+                "summary": "История чтений книги",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID книги",
+                        "name": "book_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_shelves_transport_http.readListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Записывает завершённое чтение с датами (YYYY-MM-DD, хранится как 12:00 UTC). Полки не меняются. Не больше 100 чтений на книгу",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reads"
+                ],
+                "summary": "Добавить прошлое прочтение",
+                "parameters": [
+                    {
+                        "description": "Книга и даты",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_shelves_transport_http.createReadRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_shelves_transport_http.readResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/reads/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Удаляет завершённое или брошенное чтение. Открытое чтение удалить нельзя (409): оно следует статусу «Читаю». Полки не меняются",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reads"
+                ],
+                "summary": "Удалить чтение из истории",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID чтения",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Открытое чтение меняет только started_on (не null). Завершённое: started_on (null очищает) и finished_on; брошенное: started_on и abandoned_on. Исход чтения не меняется",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reads"
+                ],
+                "summary": "Изменить даты чтения",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID чтения",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Изменяемые даты",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_shelves_transport_http.updateReadRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_shelves_transport_http.readResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/reviews/{id}": {
             "delete": {
                 "security": [
@@ -10238,7 +10543,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Снятие с «Прочитано» — отмена: удаляется только последнее завершённое чтение, история остаётся. Снятие с «Читаю» удаляет открытое чтение",
+                "description": "Снятие с «Прочитано» — отмена: удаляется только чтение, которое записал этот статус (не правленное вручную), остальная история остаётся. Снятие с «Читаю» удаляет открытое чтение",
                 "produces": [
                     "application/json"
                 ],
@@ -16045,6 +16350,20 @@
                 }
             }
         },
+        "internal_modules_shelves_transport_http.createReadRequest": {
+            "type": "object",
+            "properties": {
+                "book_id": {
+                    "type": "string"
+                },
+                "finished_on": {
+                    "type": "string"
+                },
+                "started_on": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_modules_shelves_transport_http.createShelfRequest": {
             "type": "object",
             "required": [
@@ -16098,6 +16417,45 @@
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_modules_shelves_transport_http.readListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_modules_shelves_transport_http.readResponse"
+                    }
+                }
+            }
+        },
+        "internal_modules_shelves_transport_http.readResponse": {
+            "type": "object",
+            "properties": {
+                "abandoned_at": {
+                    "type": "string"
+                },
+                "book_id": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string",
+                    "enum": [
+                        "open",
+                        "finished",
+                        "abandoned"
+                    ]
                 }
             }
         },
@@ -16240,6 +16598,23 @@
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_modules_shelves_transport_http.updateReadRequest": {
+            "type": "object",
+            "properties": {
+                "abandoned_on": {
+                    "type": "string",
+                    "example": "2020-06-01"
+                },
+                "finished_on": {
+                    "type": "string",
+                    "example": "2020-06-01"
+                },
+                "started_on": {
+                    "type": "string",
+                    "example": "2020-05-03"
                 }
             }
         },

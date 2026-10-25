@@ -389,10 +389,22 @@ func (s *Service) RemoveBook(ctx context.Context, userID uuid.UUID, shelfID, boo
 	}
 
 	return s.repo.Transaction(ctx, func(repo repository.Repository) error {
+		// The «Прочитано» undo needs the moment the book was put on the shelf,
+		// so it is read before the shelf item is deleted.
+		var addedAt time.Time
+		if shelf.Type == domain.ShelfTypeRead {
+			at, ok, err := repo.ShelfItemAddedAt(ctx, shelfID, bookID)
+			if err != nil {
+				return fmt.Errorf("shelf item added at: %w", err)
+			}
+			if ok {
+				addedAt = at
+			}
+		}
 		if err := remove(repo); err != nil {
 			return err
 		}
-		return journalOnRemove(ctx, repo, shelf.Type, userID, bookID)
+		return journalOnRemove(ctx, repo, shelf.Type, userID, bookID, addedAt)
 	})
 }
 
@@ -414,13 +426,15 @@ func journalOnAdd(ctx context.Context, repo repository.Repository, target domain
 
 // journalOnRemove applies the reading-journal transition for removing the book
 // from the default shelf of the given type. Removing from «Прочитано» is an
-// undo of the latest finished reading only.
-func journalOnRemove(ctx context.Context, repo repository.Repository, from domain.ShelfType, userID, bookID uuid.UUID) error {
+// undo of the reading that the status recorded: the latest finished attempt
+// that was not dated by hand and finished when the book was put on the shelf
+// (addedAt, minus a slack for the Go/DB clock difference) or later.
+func journalOnRemove(ctx context.Context, repo repository.Repository, from domain.ShelfType, userID, bookID uuid.UUID, addedAt time.Time) error {
 	switch from {
 	case domain.ShelfTypeReading:
 		return repo.DeleteOpenRead(ctx, userID, bookID)
 	case domain.ShelfTypeRead:
-		return repo.DeleteLatestFinishedRead(ctx, userID, bookID)
+		return repo.DeleteLatestFinishedRead(ctx, userID, bookID, addedAt.Add(-time.Minute))
 	}
 	return nil
 }

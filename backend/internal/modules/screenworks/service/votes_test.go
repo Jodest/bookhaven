@@ -14,7 +14,7 @@ import (
 const votesDDL = `
 CREATE TABLE shelves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL);
 CREATE TABLE shelf_items (shelf_id TEXT NOT NULL, book_id TEXT NOT NULL, added_at DATETIME, PRIMARY KEY (shelf_id, book_id));
-CREATE TABLE book_reads (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, book_id TEXT NOT NULL, started_at DATETIME, finished_at DATETIME, abandoned_at DATETIME, created_at DATETIME);
+CREATE TABLE book_reads (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, book_id TEXT NOT NULL, started_at DATETIME, finished_at DATETIME, abandoned_at DATETIME, created_at DATETIME, manual_end BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE adaptation_votes (user_id TEXT NOT NULL, book_id TEXT NOT NULL, screen_work_id TEXT NOT NULL, value TEXT NOT NULL CHECK (value IN ('book','adaptation','same')), created_at DATETIME, updated_at DATETIME,
   PRIMARY KEY (user_id, book_id, screen_work_id),
   FOREIGN KEY (book_id, screen_work_id) REFERENCES book_screen_works (book_id, screen_work_id) ON DELETE CASCADE);
@@ -295,5 +295,33 @@ func TestVotes_KeptAfterUndoOfOnlyReadAndUnvoteIdempotent(t *testing.T) {
 	}
 	if count(t, db, "adaptation_votes") != 0 {
 		t.Error("vote not removed")
+	}
+}
+
+// A reading added by hand in the reading history grants the right to vote
+// (no «Прочитано» shelf needed), and deleting the only reading removes it.
+func TestVote_HandAddedReadGrantsAndDeleteRevokes(t *testing.T) {
+	svc, db := setupVotes(t)
+	ctx := context.Background()
+	book := mkBook(t, db, "published", "")
+	work := mkLink(t, svc, book, "Фильм")
+	user := uuid.New()
+
+	if _, err := svc.Vote(ctx, user, book, work, "book"); !errors.Is(err, domain.ErrNotReader) {
+		t.Fatalf("before the reading: %v", err)
+	}
+	readID := uuid.New()
+	d := time.Date(2015, 4, 20, 12, 0, 0, 0, time.UTC)
+	if err := db.Exec("INSERT INTO book_reads (id, user_id, book_id, finished_at, created_at, manual_end) VALUES (?, ?, ?, ?, ?, 1)", readID, user, book, d, time.Now()).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Vote(ctx, user, book, work, "book"); err != nil {
+		t.Fatalf("hand-added reading must grant voting: %v", err)
+	}
+	if err := db.Exec("DELETE FROM book_reads WHERE id = ?", readID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Vote(ctx, user, book, work, "same"); !errors.Is(err, domain.ErrNotReader) {
+		t.Fatalf("after deleting the only reading: %v", err)
 	}
 }

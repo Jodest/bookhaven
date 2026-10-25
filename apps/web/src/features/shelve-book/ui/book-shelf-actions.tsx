@@ -14,6 +14,7 @@ import {
   statusTypeOrder,
   useBookShelves,
 } from '../model/use-book-shelves';
+import { ReadingHistory } from './reading-history';
 
 const statusIcons: Record<string, LucideIcon> = {
   want_to_read: Bookmark,
@@ -193,6 +194,8 @@ export function BookShelfActions({ bookId, slug }: BookShelfActionsProps) {
           {formatReadCounter(reads.readsCount, reads.lastReadAt)}
         </p>
       )}
+
+      <ReadingHistory bookId={bookId} />
     </div>
   );
 }
