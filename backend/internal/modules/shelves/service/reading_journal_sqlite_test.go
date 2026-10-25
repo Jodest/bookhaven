@@ -19,7 +19,7 @@ const journalDDL = `
 CREATE TABLE books (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'published');
 CREATE TABLE shelves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', type TEXT NOT NULL DEFAULT 'custom', description TEXT NOT NULL DEFAULT '', is_public BOOLEAN NOT NULL DEFAULT 1, created_at DATETIME, updated_at DATETIME);
 CREATE TABLE shelf_items (shelf_id TEXT NOT NULL, book_id TEXT NOT NULL, added_at DATETIME, PRIMARY KEY (shelf_id, book_id));
-CREATE TABLE book_reads (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, book_id TEXT NOT NULL, started_at DATETIME, finished_at DATETIME, abandoned_at DATETIME, created_at DATETIME NOT NULL, CHECK (finished_at IS NULL OR abandoned_at IS NULL));
+CREATE TABLE book_reads (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, book_id TEXT NOT NULL, started_at DATETIME, finished_at DATETIME, abandoned_at DATETIME, created_at DATETIME NOT NULL, manual_end BOOLEAN NOT NULL DEFAULT 0, CHECK (finished_at IS NULL OR abandoned_at IS NULL));
 CREATE UNIQUE INDEX uq_book_reads_open ON book_reads (user_id, book_id) WHERE finished_at IS NULL AND abandoned_at IS NULL;
 `
 

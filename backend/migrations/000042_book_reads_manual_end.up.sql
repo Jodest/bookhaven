@@ -1,0 +1,1 @@
+ALTER TABLE book_reads ADD COLUMN manual_end BOOLEAN NOT NULL DEFAULT false;

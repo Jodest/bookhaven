@@ -1,5 +1,7 @@
 import { api } from '@bookhaven/api-client';
 
+export const readsApi = api.reads;
+
 export const shelvesApi = {
   list: api.shelves.list,
   get: api.shelves.get,
