@@ -44,3 +44,33 @@ type ShelfItem struct {
 	BookID  uuid.UUID `gorm:"type:uuid;primaryKey"`
 	AddedAt time.Time `gorm:"not null;default:now()"`
 }
+
+// BookRead is one reading attempt in the reading journal (table book_reads).
+// An attempt is open (no finished_at/abandoned_at), finished or abandoned.
+type BookRead struct {
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	UserID      uuid.UUID `gorm:"type:uuid;not null"`
+	BookID      uuid.UUID `gorm:"type:uuid;not null"`
+	StartedAt   *time.Time
+	FinishedAt  *time.Time
+	AbandonedAt *time.Time
+	CreatedAt   time.Time
+}
+
+// TableName binds BookRead to book_reads.
+func (BookRead) TableName() string { return "book_reads" }
+
+// ReadSummary is the caller's reading summary of one book.
+type ReadSummary struct {
+	Count      int64
+	LastReadAt *time.Time
+	// Rereading is true while the book is being read again, i.e. there is an
+	// open attempt and at least one finished one.
+	Rereading bool
+}
+
+// ReadCount is the finished-readings count of one book with the latest date.
+type ReadCount struct {
+	Count      int64
+	LastReadAt *time.Time
+}

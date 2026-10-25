@@ -129,4 +129,28 @@ describe('ShelfDetailView', () => {
 
     await waitFor(() => expect(getMock).toHaveBeenCalledWith('s1', { page: 2, limit: 12 }));
   });
+
+  it('shows "Прочитано N раз" only under books finished at least once', async () => {
+    const book = (id: string, title: string, readsCount: number) => ({
+      id,
+      slug: id,
+      title,
+      coverUrl: null,
+      authors: [],
+      genres: [],
+      readsCount,
+      lastReadAt: readsCount > 0 ? '2025-05-15T12:00:00Z' : null,
+    });
+    getMock.mockResolvedValue({
+      shelf: shelf({ type: 'read', name: 'Прочитано' }),
+      items: [book('b1', 'Дюна', 2), book('b2', 'Эмма', 0)],
+      total: 2,
+      page: 1,
+      limit: 12,
+    });
+    render(<ShelfDetailView id="s1" />);
+
+    expect(await screen.findByText('Прочитано 2 раза')).toBeInTheDocument();
+    expect(screen.getAllByText(/Прочитано \d/)).toHaveLength(1);
+  });
 });

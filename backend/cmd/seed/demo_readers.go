@@ -116,9 +116,10 @@ func seedDemoReaders(db *gorm.DB) error {
 				VALUES
 					(gen_random_uuid(), ?, 'Хочу прочитать', 'want_to_read'),
 					(gen_random_uuid(), ?, 'Читаю', 'reading'),
-					(gen_random_uuid(), ?, 'Прочитано', 'read')
+					(gen_random_uuid(), ?, 'Прочитано', 'read'),
+					(gen_random_uuid(), ?, 'Брошено', 'abandoned')
 				ON CONFLICT (user_id, type) WHERE type <> 'custom' DO NOTHING`,
-				user.ID, user.ID, user.ID).Error; err != nil {
+				user.ID, user.ID, user.ID, user.ID).Error; err != nil {
 				return fmt.Errorf("create shelves for demo reader %d: %w", n, err)
 			}
 			var shelfIDs []uuid.UUID
@@ -143,6 +144,17 @@ func seedDemoReaders(db *gorm.DB) error {
 					shelfID, bookID,
 				).Error; err != nil {
 					return fmt.Errorf("shelve %s for demo reader %d: %w", slug, n, err)
+				}
+				// Reading journal: a finished read, so challenge counts and
+				// adaptation voting work for the demo readers. Idempotent.
+				if err := tx.Exec(`
+					INSERT INTO book_reads (user_id, book_id, finished_at)
+					SELECT ?, ?, now()
+					WHERE NOT EXISTS (
+						SELECT 1 FROM book_reads WHERE user_id = ? AND book_id = ? AND finished_at IS NOT NULL
+					)`,
+					user.ID, bookID, user.ID, bookID).Error; err != nil {
+					return fmt.Errorf("journal %s for demo reader %d: %w", slug, n, err)
 				}
 				items++
 			}

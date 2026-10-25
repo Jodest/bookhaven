@@ -115,4 +115,17 @@ describe('ShelveBookButtons', () => {
     expect(screen.getByText('Загрузка полок')).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
+
+  it('keeps three buttons and marks none for an abandoned book', async () => {
+    isAuthenticatedValue = true;
+    listMock.mockResolvedValue({
+      items: [...allShelves.slice(0, 3), shelf('s5', 'abandoned', 'Брошено', true)],
+      total: 4,
+    });
+    render(<ShelveBookButtons bookId="b1" slug="book-1" showCustomShelves={false} />);
+
+    await screen.findByRole('button', { name: 'Читаю' });
+    expect(screen.getAllByRole('button')).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: 'Брошено' })).not.toBeInTheDocument();
+  });
 });

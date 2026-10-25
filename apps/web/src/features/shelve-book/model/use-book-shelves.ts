@@ -2,11 +2,12 @@
 
 import { shelfKeys, shelvesApi } from '@/entities/shelf';
 import { useAuthStore } from '@/entities/session';
-import type { Shelf } from '@bookhaven/api-client';
+import type { BookReadsSummary, Shelf } from '@bookhaven/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { invalidateShelfContents } from './invalidate-shelf-caches';
 
+/** Shelves that get a button on book cards. */
 export type DefaultShelfType = 'want_to_read' | 'reading' | 'read';
 
 export const defaultTypeOrder: DefaultShelfType[] = ['want_to_read', 'reading', 'read'];
@@ -16,8 +17,22 @@ export const defaultTypeLabels: Record<DefaultShelfType, string> = {
   read: 'Прочитано',
 };
 
+/** The exclusive reading-status group: the card set plus «Брошено». */
+export type StatusShelfType = DefaultShelfType | 'abandoned';
+
+export const statusTypeOrder: StatusShelfType[] = [...defaultTypeOrder, 'abandoned'];
+export const statusTypeLabels: Record<StatusShelfType, string> = {
+  ...defaultTypeLabels,
+  abandoned: 'Брошено',
+};
+
 // Shelf.type is a wider union (custom shelves); compare as plain strings.
-export const isDefaultType = (type: string) => (defaultTypeOrder as string[]).includes(type);
+export const isDefaultType = (type: string) => (statusTypeOrder as string[]).includes(type);
+
+interface BookShelvesData {
+  items: Shelf[];
+  reads?: BookReadsSummary;
+}
 
 export type ShelvesStatus = 'loading' | 'ready' | 'error';
 
@@ -41,7 +56,10 @@ export function useBookShelves(bookId: string) {
 
   const query = useQuery({
     queryKey,
-    queryFn: () => shelvesApi.list({ book_id: bookId }).then((response) => response.items),
+    queryFn: async (): Promise<BookShelvesData> => {
+      const response = await shelvesApi.list({ book_id: bookId });
+      return { items: response.items, reads: response.reads };
+    },
     enabled: isAuthenticated,
   });
 
@@ -52,25 +70,31 @@ export function useBookShelves(bookId: string) {
     onMutate: async ({ shelf, wasActive, kind }) => {
       setToggleError(null);
       await queryClient.cancelQueries({ queryKey });
-      queryClient.setQueryData<Shelf[]>(queryKey, (prev) =>
-        prev?.map((s) => {
-          if (kind === 'default') {
-            return isDefaultType(s.type)
-              ? { ...s, hasBook: s.type === shelf.type ? !wasActive : false }
-              : s;
-          }
-          return s.id === shelf.id ? { ...s, hasBook: !wasActive } : s;
-        })
+      queryClient.setQueryData<BookShelvesData>(queryKey, (prev) =>
+        prev && {
+          ...prev,
+          items: prev.items.map((s) => {
+            if (kind === 'default') {
+              return isDefaultType(s.type)
+                ? { ...s, hasBook: s.type === shelf.type ? !wasActive : false }
+                : s;
+            }
+            return s.id === shelf.id ? { ...s, hasBook: !wasActive } : s;
+          }),
+        }
       );
     },
     onError: (err, { shelf, wasActive, kind }) => {
-      queryClient.setQueryData<Shelf[]>(queryKey, (prev) =>
-        prev?.map((s) => {
-          if (kind === 'default') {
-            return isDefaultType(s.type) && s.type === shelf.type ? { ...s, hasBook: wasActive } : s;
-          }
-          return s.id === shelf.id ? { ...s, hasBook: wasActive } : s;
-        })
+      queryClient.setQueryData<BookShelvesData>(queryKey, (prev) =>
+        prev && {
+          ...prev,
+          items: prev.items.map((s) => {
+            if (kind === 'default') {
+              return isDefaultType(s.type) && s.type === shelf.type ? { ...s, hasBook: wasActive } : s;
+            }
+            return s.id === shelf.id ? { ...s, hasBook: wasActive } : s;
+          }),
+        }
       );
       setToggleError(err instanceof Error ? err.message : 'Ошибка обновления полки');
     },
@@ -85,7 +109,8 @@ export function useBookShelves(bookId: string) {
 
   const { mutateAsync } = mutation;
 
-  const shelves = useMemo(() => query.data ?? [], [query.data]);
+  const shelves = useMemo(() => query.data?.items ?? [], [query.data]);
+  const reads = query.data?.reads;
   const status: ShelvesStatus = !isAuthenticated
     ? 'ready'
     : query.isPending
@@ -122,5 +147,5 @@ export function useBookShelves(bookId: string) {
     if (current) await toggleDefault(current);
   }, [shelves, toggleDefault]);
 
-  return { isAuthenticated, shelves, status, error, toggleDefault, toggleCustom, clearStatus };
+  return { isAuthenticated, shelves, reads, status, error, toggleDefault, toggleCustom, clearStatus };
 }
