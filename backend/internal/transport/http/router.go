@@ -78,6 +78,11 @@ func RegisterRoutes(
 	shelves.POST("/:id/books", shelvesHandler.AddBook)
 	shelves.DELETE("/:id/books/:bookId", shelvesHandler.RemoveBook)
 	api.GET("/shelves/public/:id", shelvesHandler.GetPublicShelf, optionalAuth)
+	reads := api.Group("/reads", authMiddleware)
+	reads.GET("", shelvesHandler.ListReads)
+	reads.POST("", shelvesHandler.CreateRead)
+	reads.PATCH("/:id", shelvesHandler.UpdateRead)
+	reads.DELETE("/:id", shelvesHandler.DeleteRead)
 
 	ratingsHandler := ratingshttp.NewHandler(ratingsService)
 	reviewsHandler := reviewshttp.NewHandler(reviewsService)

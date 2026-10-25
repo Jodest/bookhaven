@@ -55,10 +55,33 @@ type BookRead struct {
 	FinishedAt  *time.Time
 	AbandonedAt *time.Time
 	CreatedAt   time.Time
+	// ManualEnd is true when the finish/abandon date was entered or changed by
+	// hand in the reading history (such a row is skipped by the «Прочитано» undo).
+	ManualEnd bool `gorm:"not null;default:false"`
 }
 
 // TableName binds BookRead to book_reads.
 func (BookRead) TableName() string { return "book_reads" }
+
+// ReadState is the state of a reading attempt.
+type ReadState string
+
+const (
+	ReadStateOpen      ReadState = "open"
+	ReadStateFinished  ReadState = "finished"
+	ReadStateAbandoned ReadState = "abandoned"
+)
+
+// State returns the state derived from the outcome columns.
+func (b BookRead) State() ReadState {
+	switch {
+	case b.FinishedAt != nil:
+		return ReadStateFinished
+	case b.AbandonedAt != nil:
+		return ReadStateAbandoned
+	}
+	return ReadStateOpen
+}
 
 // ReadSummary is the caller's reading summary of one book.
 type ReadSummary struct {

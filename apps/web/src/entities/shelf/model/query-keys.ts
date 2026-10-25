@@ -4,6 +4,8 @@ export const shelfKeys = {
   list: (userId?: string) => [...shelfKeys.user(userId), 'list'] as const,
   forBook: (userId: string | undefined, bookId: string) =>
     [...shelfKeys.user(userId), 'book', bookId] as const,
+  readsForBook: (userId: string | undefined, bookId: string) =>
+    [...shelfKeys.user(userId), 'reads', bookId] as const,
   detail: (userId: string | undefined, shelfId: string) =>
     [...shelfKeys.user(userId), 'detail', shelfId] as const,
   detailPage: (userId: string | undefined, shelfId: string, page: number, limit: number) =>

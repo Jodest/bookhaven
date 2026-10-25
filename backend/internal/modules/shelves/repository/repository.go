@@ -46,12 +46,31 @@ type Repository interface {
 	AbandonOpenRead(ctx context.Context, userID, bookID uuid.UUID, now time.Time) error
 	// DeleteOpenRead deletes the open attempt (no-op without one).
 	DeleteOpenRead(ctx context.Context, userID, bookID uuid.UUID) error
-	// DeleteLatestFinishedRead deletes only the latest finished attempt.
-	DeleteLatestFinishedRead(ctx context.Context, userID, bookID uuid.UUID) error
+	// DeleteLatestFinishedRead deletes only the latest finished attempt that was
+	// not dated by hand (manual_end = false) and finished at or after since.
+	DeleteLatestFinishedRead(ctx context.Context, userID, bookID uuid.UUID, since time.Time) error
 	// ReadSummary returns the caller's reading summary of one book.
 	ReadSummary(ctx context.Context, userID, bookID uuid.UUID) (domain.ReadSummary, error)
 	// ReadCounts returns finished-readings counts for many books in one query.
 	ReadCounts(ctx context.Context, userID uuid.UUID, bookIDs []uuid.UUID) (map[uuid.UUID]domain.ReadCount, error)
+
+	// Reading history (owner edits of book_reads).
+
+	// ListReads returns the user's attempts of a book, oldest first.
+	ListReads(ctx context.Context, userID, bookID uuid.UUID) ([]domain.BookRead, error)
+	// GetRead returns the user's attempt; gorm.ErrRecordNotFound when missing or not owned.
+	GetRead(ctx context.Context, userID, readID uuid.UUID) (*domain.BookRead, error)
+	// CountReads returns how many attempts the user has for a book.
+	CountReads(ctx context.Context, userID, bookID uuid.UUID) (int64, error)
+	// InsertFinishedRead inserts a hand-entered finished attempt.
+	InsertFinishedRead(ctx context.Context, read *domain.BookRead) error
+	// UpdateReadDates updates columns only while the attempt is still in loadedState;
+	// it returns the affected row count.
+	UpdateReadDates(ctx context.Context, userID, readID uuid.UUID, loadedState domain.ReadState, fields map[string]any) (int64, error)
+	// DeleteClosedRead deletes a finished/abandoned attempt (never the open one).
+	DeleteClosedRead(ctx context.Context, userID, readID uuid.UUID) (int64, error)
+	// ShelfItemAddedAt returns when the book was put on the shelf.
+	ShelfItemAddedAt(ctx context.Context, shelfID, bookID uuid.UUID) (time.Time, bool, error)
 }
 
 // GormRepository is a GORM-based implementation of Repository.
@@ -344,11 +363,12 @@ func (r *GormRepository) DeleteOpenRead(ctx context.Context, userID, bookID uuid
 		Delete(&domain.BookRead{}).Error
 }
 
-// DeleteLatestFinishedRead deletes the single latest finished attempt.
-func (r *GormRepository) DeleteLatestFinishedRead(ctx context.Context, userID, bookID uuid.UUID) error {
+// DeleteLatestFinishedRead deletes the single latest finished attempt that was
+// recorded by the status (manual_end = false) at or after since.
+func (r *GormRepository) DeleteLatestFinishedRead(ctx context.Context, userID, bookID uuid.UUID, since time.Time) error {
 	var latest domain.BookRead
 	err := r.db.WithContext(ctx).
-		Where("user_id = ? AND book_id = ? AND finished_at IS NOT NULL", userID, bookID).
+		Where("user_id = ? AND book_id = ? AND finished_at IS NOT NULL AND manual_end = ? AND finished_at >= ?", userID, bookID, false, since).
 		Order("finished_at DESC, created_at DESC").
 		Limit(1).Take(&latest).Error
 	if err != nil {
@@ -403,4 +423,81 @@ func (r *GormRepository) ReadCounts(ctx context.Context, userID uuid.UUID, bookI
 		result[row.BookID] = c
 	}
 	return result, nil
+}
+
+const readOrder = "COALESCE(started_at, finished_at, abandoned_at) ASC, created_at ASC"
+
+// ListReads returns the user's attempts of a book, oldest first.
+func (r *GormRepository) ListReads(ctx context.Context, userID, bookID uuid.UUID) ([]domain.BookRead, error) {
+	var reads []domain.BookRead
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND book_id = ?", userID, bookID).
+		Order(readOrder).Find(&reads).Error; err != nil {
+		return nil, err
+	}
+	return reads, nil
+}
+
+// GetRead returns the user's attempt by id.
+func (r *GormRepository) GetRead(ctx context.Context, userID, readID uuid.UUID) (*domain.BookRead, error) {
+	var read domain.BookRead
+	if err := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", readID, userID).Take(&read).Error; err != nil {
+		return nil, err
+	}
+	return &read, nil
+}
+
+// CountReads returns how many attempts the user has for a book.
+func (r *GormRepository) CountReads(ctx context.Context, userID, bookID uuid.UUID) (int64, error) {
+	var n int64
+	if err := r.db.WithContext(ctx).Model(&domain.BookRead{}).
+		Where("user_id = ? AND book_id = ?", userID, bookID).Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// InsertFinishedRead inserts a hand-entered finished attempt.
+func (r *GormRepository) InsertFinishedRead(ctx context.Context, read *domain.BookRead) error {
+	return r.db.WithContext(ctx).Create(read).Error
+}
+
+func stateCondition(state domain.ReadState) string {
+	switch state {
+	case domain.ReadStateFinished:
+		return "finished_at IS NOT NULL"
+	case domain.ReadStateAbandoned:
+		return "abandoned_at IS NOT NULL"
+	}
+	return "finished_at IS NULL AND abandoned_at IS NULL"
+}
+
+// UpdateReadDates updates columns while the attempt is still in loadedState.
+func (r *GormRepository) UpdateReadDates(ctx context.Context, userID, readID uuid.UUID, loadedState domain.ReadState, fields map[string]any) (int64, error) {
+	res := r.db.WithContext(ctx).Model(&domain.BookRead{}).
+		Where("id = ? AND user_id = ? AND "+stateCondition(loadedState), readID, userID).
+		Updates(fields)
+	return res.RowsAffected, res.Error
+}
+
+// DeleteClosedRead deletes a finished/abandoned attempt, never the open one.
+func (r *GormRepository) DeleteClosedRead(ctx context.Context, userID, readID uuid.UUID) (int64, error) {
+	res := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ? AND NOT (finished_at IS NULL AND abandoned_at IS NULL)", readID, userID).
+		Delete(&domain.BookRead{})
+	return res.RowsAffected, res.Error
+}
+
+// ShelfItemAddedAt returns when the book was put on the shelf.
+func (r *GormRepository) ShelfItemAddedAt(ctx context.Context, shelfID, bookID uuid.UUID) (time.Time, bool, error) {
+	var items []domain.ShelfItem
+	if err := r.db.WithContext(ctx).
+		Where("shelf_id = ? AND book_id = ?", shelfID, bookID).Limit(1).Find(&items).Error; err != nil {
+		return time.Time{}, false, err
+	}
+	if len(items) == 0 {
+		return time.Time{}, false, nil
+	}
+	return items[0].AddedAt, true, nil
 }
