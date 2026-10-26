@@ -35,8 +35,10 @@ describe('BookAdaptations', () => {
     expect(screen.getByRole('heading', { name: 'Экранизации' })).toBeInTheDocument();
     const [first, second] = screen.getAllByRole('listitem');
     expect(within(first).getByText('Мастер и Маргарита')).toBeInTheDocument();
-    expect(within(first).getByText('2005 · Сериал')).toBeInTheDocument();
-    expect(within(first).getByText('Режиссёр: Владимир Бортко')).toBeInTheDocument();
+    // Year, type, director and links share one line.
+    const meta = within(first).getByText('Режиссёр: Владимир Бортко').closest('p');
+    expect(meta).toHaveTextContent('2005·Сериал·Режиссёр: Владимир Бортко·Кинопоиск·IMDb');
+    expect(within(first).getAllByRole('paragraph')).toHaveLength(2);
     const kp = within(first).getByRole('link', { name: 'Кинопоиск' });
     expect(kp).toHaveAttribute('href', 'https://www.kinopoisk.ru/film/1234/');
     expect(kp).toHaveAttribute('target', '_blank');
@@ -67,6 +69,18 @@ describe('BookAdaptations', () => {
     const [first, second] = screen.getAllByRole('listitem');
     expect(within(first).getByText('extra w1')).toBeInTheDocument();
     expect(within(second).getByText('extra w2')).toBeInTheDocument();
+  });
+
+  it('renders the intro once under the heading', () => {
+    render(
+      <BookAdaptations
+        items={[item(), item({ id: 'w2', title: 'Мастер (фильм)' })]}
+        intro={<p>intro text</p>}
+      />,
+    );
+    expect(screen.getAllByText('intro text')).toHaveLength(1);
+    const heading = screen.getByRole('heading', { name: 'Экранизации' });
+    expect(heading.nextElementSibling).toHaveTextContent('intro text');
   });
 
   it('renders nothing for an empty list', () => {

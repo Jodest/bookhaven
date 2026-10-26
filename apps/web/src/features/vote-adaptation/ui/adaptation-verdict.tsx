@@ -1,16 +1,13 @@
 'use client';
 
-import { ADAPTATION_VOTE_LABELS, verdictLabel } from '@/entities/screen-work';
+import { ADAPTATION_VOTE_LABELS, ADAPTATION_VOTE_SHORT_LABELS, verdictLabel } from '@/entities/screen-work';
 import { useAuthStore } from '@/entities/session';
-import { loginHref } from '@/shared/lib/safe-redirect';
 import type { AdaptationVoteValue } from '@bookhaven/api-client';
 import { Button } from '@bookhaven/ui';
-import Link from 'next/link';
 import { useAdaptationVerdicts } from '../model/use-adaptation-verdicts';
 
 interface AdaptationVerdictProps {
   bookId: string;
-  slug: string;
   screenWorkId: string;
 }
 
@@ -21,7 +18,7 @@ const VOTE_VALUES: AdaptationVoteValue[] = ['book', 'adaptation', 'same'];
  * Renders nothing until the verdicts load, and when they fail or the
  * adaptation has no item, so the card stays usable.
  */
-export function AdaptationVerdict({ bookId, slug, screenWorkId }: AdaptationVerdictProps) {
+export function AdaptationVerdict({ bookId, screenWorkId }: AdaptationVerdictProps) {
   const { isAuthenticated } = useAuthStore();
   const { verdicts, item, setVote, isPending, saveFailed } = useAdaptationVerdicts(
     bookId,
@@ -35,14 +32,10 @@ export function AdaptationVerdict({ bookId, slug, screenWorkId }: AdaptationVerd
     <div className="mt-3 space-y-2 border-t pt-3 text-sm">
       <p className="font-medium">{verdictLabel(item, verdicts.min_votes)}</p>
 
-      {!isAuthenticated ? (
-        <Link href={loginHref(`/books/${slug}`)} className="block text-primary hover:underline">
-          Войдите, чтобы сравнить книгу и экранизацию
-        </Link>
-      ) : verdicts.can_vote ? (
-        <div className="space-y-2">
-          <p className="text-muted-foreground">Что лучше?</p>
-          <div className="flex flex-wrap gap-2">
+      {isAuthenticated && verdicts.can_vote ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="text-muted-foreground">Что лучше:</span>
+          <div role="group" aria-label="Что лучше" className="inline-flex">
             {VOTE_VALUES.map((value) => (
               <Button
                 key={value}
@@ -51,27 +44,21 @@ export function AdaptationVerdict({ bookId, slug, screenWorkId }: AdaptationVerd
                 aria-pressed={myVote === value}
                 disabled={isPending}
                 onClick={() => setVote(myVote === value ? null : value)}
+                className="rounded-none first:rounded-l-md last:rounded-r-md [&:not(:first-child)]:-ml-px"
               >
-                {ADAPTATION_VOTE_LABELS[value]}
+                {ADAPTATION_VOTE_SHORT_LABELS[value]}
               </Button>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">
-            Голосуя, вы отмечаете, что смотрели экранизацию.
-          </p>
         </div>
-      ) : myVote ? (
+      ) : isAuthenticated && myVote ? (
         <div className="flex flex-wrap items-center gap-2">
           <span>Ваш голос: {ADAPTATION_VOTE_LABELS[myVote]}</span>
           <Button size="sm" variant="outline" disabled={isPending} onClick={() => setVote(null)}>
             Убрать голос
           </Button>
         </div>
-      ) : (
-        <p className="text-muted-foreground">
-          Отметьте книгу как «Прочитано», чтобы сравнить её с экранизацией.
-        </p>
-      )}
+      ) : null}
 
       {saveFailed && (
         <p role="alert" className="text-destructive">
