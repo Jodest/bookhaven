@@ -455,6 +455,20 @@ Downloads are limited to `http`/`https` on ports 80/443, hosts on the allowlist,
 
 Check the state: `SELECT cover_status, cover_error, count(*) FROM books WHERE cover_url <> '' GROUP BY 1, 2;` and `docker compose logs worker | grep -i cover`.
 
+## Screen work posters
+
+Films and series (adaptations and author films) show a 2:3 poster. Sources, in priority order: an admin upload, a free Wikimedia Commons image from Wikidata (P3383, then P18), and a TMDB poster resolved from the Wikidata TMDB ids (P4947/P4983). Commons and TMDB images are hotlinked (like author photos); only admin uploads are stored on our server. OpenSpec: `screen-works/book-adaptations`, `catalog-import/wikidata-adaptation-sync`.
+
+- **Volume `posters-data`**: mounted at `/data/posters`, **read-write in `backend` (the api) only**; the worker never writes posters. Both compose files declare it. The api serves the files at `GET /posters/{shard}/{hash}.{jpg|png|webp}` (immutable cache headers); web and admin proxy `/posters/*` to the api like `/covers/*`. The production image pre-creates `/data/posters` owned by `nonroot` (65532).
+- **Not covered by the backup (parked prod item).** The backup script dumps only PostgreSQL, and uploaded posters live only in `posters-data`. Losing the volume loses the uploaded posters; the database rows then point to missing files (the placeholder is shown). Add the volume to the backup when going to production.
+- **`TMDB_API_KEY`** (optional, api and worker): without it the adaptation sync skips TMDB and fills only Commons posters. Never commit the key. The TMDB attribution notice is always shown in the site footer. The key is sent only to `api.themoviedb.org` and is never written to logs.
+- **Backfill.** Re-running the adaptation sync (admin button or the catalog job) fills missing posters of existing works; it never overwrites an admin upload or an admin removal, and skips works edited by hand.
+
+| Variable | Meaning |
+|---|---|
+| `POSTERS_DIR` | Storage root of uploaded posters. Default `./storage/posters` for native runs; `/data/posters` in compose. |
+| `TMDB_API_KEY` | Optional TMDB API key (v3). Empty by default. |
+
 ## Email (SMTP)
 
 Transactional email (verification, password reset, later notifications) is sent asynchronously: the api enqueues an `email:send` task on the `email` asynq queue and the **worker** delivers it over SMTP (see `backend/internal/pkg/mailer` and [docs/features/mailer-infrastructure.md](features/mailer-infrastructure.md)). Only the `worker` container receives the SMTP variables; the `backend` (api) container never talks to SMTP.

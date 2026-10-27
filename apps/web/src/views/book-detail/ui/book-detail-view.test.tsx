@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { Book } from '@bookhaven/api-client';
-import type { ImgHTMLAttributes } from 'react';
+import type { ImgHTMLAttributes, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BookDetailView } from './book-detail-view';
 
@@ -27,7 +27,10 @@ vi.mock('next/image', () => ({
   default: ({ fill: _fill, priority: _priority, ...props }: ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; priority?: boolean }) => <img {...props} />,
 }));
 
-vi.mock('next/navigation', () => ({ notFound: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  notFound: vi.fn(),
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
 vi.mock('@/features/rate-book', () => ({ BookRating: () => null }));
 vi.mock('@/features/shelve-book', () => ({ BookShelfActions: () => null }));
 vi.mock('@/features/vote-adaptation', () => ({
@@ -38,8 +41,22 @@ vi.mock('@/features/vote-adaptation', () => ({
     <p>{`prompt:${bookId}:${slug}`}</p>
   ),
 }));
-vi.mock('@/widgets/reviews-section', () => ({ ReviewsSection: () => <section><h2>Рецензии</h2></section> }));
-vi.mock('@/widgets/similar-books', () => ({ SimilarBooks: () => <section><h2>Похожие книги</h2></section> }));
+vi.mock('@/widgets/reviews-section', () => ({
+  ReviewsSection: ({ headingHidden }: { headingHidden?: boolean }) => (
+    <section>
+      <h2>Рецензии</h2>
+      <p>{`reviews-panel hidden-heading:${headingHidden ? 'yes' : 'no'}`}</p>
+    </section>
+  ),
+}));
+vi.mock('@/widgets/similar-books', () => ({
+  SimilarBooks: ({ emptyFallback }: { emptyFallback?: ReactNode }) => (
+    <section>
+      <h2>Похожие книги</h2>
+      {emptyFallback}
+    </section>
+  ),
+}));
 
 const author = {
   biography: null,
@@ -72,7 +89,20 @@ const book: Book = {
   updatedAt: '',
 };
 
+const adaptationItem = {
+  id: 'w1',
+  title: 'Отцы и дети (фильм)',
+  original_title: null,
+  kind: 'film',
+  year: 1958,
+  director: null,
+  imdb_url: null,
+  kinopoisk_url: null,
+  poster: null,
+};
+
 beforeEach(() => {
+  window.history.replaceState(null, '', '/');
   forBook.mockReset();
   forBook.mockResolvedValue({ items: [], total: 0 });
   adaptationsForBook.mockReset();
@@ -170,6 +200,7 @@ describe('BookDetailView adaptations', () => {
           director: 'Адольф Бергункер',
           imdb_url: null,
           kinopoisk_url: 'https://www.kinopoisk.ru/film/1/',
+          poster: null,
         },
       ],
       total: 1,
@@ -248,7 +279,7 @@ describe('BookDetailView layout and summary', () => {
 
     expect(screen.getByText('21 оценка')).toBeInTheDocument();
     expect(screen.getByText('4.3')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '3 рецензии' })).toHaveAttribute('href', '#reviews');
+    expect(screen.getByRole('link', { name: '3 рецензии' })).toHaveAttribute('href', '?tab=reviews#book-tabs');
   });
 
   it('shows the empty summary for a book without ratings and reviews', async () => {
@@ -257,25 +288,127 @@ describe('BookDetailView layout and summary', () => {
     render(await BookDetailView({ slug: 'fathers-and-sons' }));
 
     expect(screen.getByText('Пока нет оценок')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Написать рецензию' })).toHaveAttribute('href', '#reviews');
+    expect(screen.getByRole('link', { name: 'Написать рецензию' })).toHaveAttribute('href', '?tab=reviews#book-tabs');
   });
 
-  it('orders full-width sections: adaptations, similar, reviews', async () => {
+  it('keeps the panels with the voting prompt and verdicts inside the adaptations tab', async () => {
     getBook.mockResolvedValue(book);
-    adaptationsForBook.mockResolvedValue({
-      items: [
-        { id: 'w1', title: 'Фильм', original_title: null, kind: 'film', year: 1958, director: null, imdb_url: null, kinopoisk_url: null },
-      ],
-      total: 1,
-    });
+    adaptationsForBook.mockResolvedValue({ items: [adaptationItem], total: 1 });
 
     render(await BookDetailView({ slug: 'fathers-and-sons' }));
 
-    const adaptations = screen.getByRole('heading', { name: 'Экранизации' });
-    const similar = screen.getByRole('heading', { name: 'Похожие книги' });
-    const reviews = screen.getByRole('heading', { name: 'Рецензии' });
-    expect(adaptations.compareDocumentPosition(similar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(similar.compareDocumentPosition(reviews) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const panel = screen.getByRole('tabpanel', { name: 'Экранизации (1)' });
+    expect(panel).toHaveTextContent('prompt:b1:fathers-and-sons');
+    expect(panel).toHaveTextContent('verdict:b1:w1');
+  });
+});
+
+describe('BookDetailView tabs', () => {
+  const twoAdaptations = {
+    items: [adaptationItem, { ...adaptationItem, id: 'w2', title: 'Сериал', kind: 'series' }],
+    total: 2,
+  };
+
+  it('orders the tabs and selects the adaptations for a book that has them', async () => {
+    getBook.mockResolvedValue(book);
+    adaptationsForBook.mockResolvedValue(twoAdaptations);
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Экранизации (2)', 'Рецензии', 'Похожие книги']);
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Экранизации (2)' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Экранизации' })).toHaveClass('sr-only');
+  });
+
+  it('has no adaptations tab and selects the reviews without adaptations', async () => {
+    getBook.mockResolvedValue(book);
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Рецензии', 'Похожие книги']);
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText(/экранизаци/i)).not.toBeInTheDocument();
+  });
+
+  it('opens the requested tab in the first render and keeps the adaptations in the page', async () => {
+    getBook.mockResolvedValue(book);
+    adaptationsForBook.mockResolvedValue(twoAdaptations);
+
+    render(await BookDetailView({ slug: 'fathers-and-sons', tab: 'reviews' }));
+
+    expect(screen.getByRole('tab', { name: 'Рецензии' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Рецензии' })).toBeVisible();
+    // Hidden, but present in the HTML.
+    const adaptationsPanel = document.getElementById('book-tabpanel-adaptations');
+    expect(adaptationsPanel).toHaveAttribute('hidden');
+    expect(adaptationsPanel).toHaveTextContent('Отцы и дети (фильм)');
+    expect(adaptationsPanel).toHaveTextContent('Сериал');
+  });
+
+  it('falls back to the default tab for an unknown value and a missing tab', async () => {
+    getBook.mockResolvedValue(book);
+    adaptationsForBook.mockResolvedValue(twoAdaptations);
+    const first = render(await BookDetailView({ slug: 'fathers-and-sons', tab: 'bogus' }));
+    expect(screen.getByRole('tab', { name: 'Экранизации (2)' })).toHaveAttribute('aria-selected', 'true');
+    first.unmount();
+
+    adaptationsForBook.mockResolvedValue({ items: [], total: 0 });
+    render(await BookDetailView({ slug: 'fathers-and-sons', tab: 'adaptations' }));
+    expect(screen.getByRole('tab', { name: 'Рецензии' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('hides the panel headings and gives the similar books an empty fallback', async () => {
+    getBook.mockResolvedValue(book);
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+
+    expect(screen.getByText('reviews-panel hidden-heading:yes')).toBeInTheDocument();
+    expect(document.getElementById('book-tabpanel-similar')).toHaveTextContent('Похожих книг пока нет.');
+  });
+
+  it('shows the header link only with visible adaptations', async () => {
+    getBook.mockResolvedValue(book);
+    adaptationsForBook.mockResolvedValue(twoAdaptations);
+    const first = render(await BookDetailView({ slug: 'fathers-and-sons' }));
+    const link = screen.getByRole('link', { name: '2 экранизации' });
+    expect(link).toHaveAttribute('href', '?tab=adaptations#book-tabs');
+    first.unmount();
+
+    adaptationsForBook.mockResolvedValue({ items: [], total: 0 });
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+    expect(screen.queryByRole('link', { name: /экранизаци/ })).not.toBeInTheDocument();
+  });
+
+  it('selects the tab and scrolls it into view from the header link', async () => {
+    getBook.mockResolvedValue(book);
+    adaptationsForBook.mockResolvedValue(twoAdaptations);
+    const scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    render(await BookDetailView({ slug: 'fathers-and-sons', tab: 'reviews' }));
+    expect(screen.getByRole('tab', { name: 'Рецензии' })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByRole('link', { name: '2 экранизации' }));
+
+    expect(screen.getByRole('tab', { name: 'Экранизации (2)' })).toHaveAttribute('aria-selected', 'true');
+    expect(window.location.search).toBe('?tab=adaptations');
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute('id', 'book-tabs');
+  });
+
+  it('selects the reviews from the review count link of the rating summary', async () => {
+    getBook.mockResolvedValue({ ...book, rating: 4.3, ratingsCount: 21, reviewsCount: 3 });
+    adaptationsForBook.mockResolvedValue(twoAdaptations);
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
+    render(await BookDetailView({ slug: 'fathers-and-sons' }));
+    fireEvent.click(screen.getByRole('link', { name: '3 рецензии' }));
+
+    expect(screen.getByRole('tab', { name: 'Рецензии' })).toHaveAttribute('aria-selected', 'true');
+    expect(window.location.search).toBe('?tab=reviews');
   });
 });
 
@@ -370,10 +503,10 @@ describe('BookDetailView actions column', () => {
 
     const aside = container.querySelector('aside') as HTMLElement;
     const genre = screen.getByRole('link', { name: 'Роман' });
-    const similar = screen.getByRole('heading', { name: 'Похожие книги' });
+    const similar = screen.getByRole('heading', { name: 'Похожие книги', hidden: true });
     const reviews = screen.getByRole('heading', { name: 'Рецензии' });
     expect(aside.contains(similar)).toBe(false);
-    expect(genre.compareDocumentPosition(similar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(similar.compareDocumentPosition(reviews) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(genre.compareDocumentPosition(reviews) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(reviews.compareDocumentPosition(similar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

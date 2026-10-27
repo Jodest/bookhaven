@@ -6,11 +6,13 @@ export function isAdaptationSyncJob(job: Pick<AdminHarvestJob, 'kind'>): boolean
   return job.kind === 'adaptation_sync';
 }
 
-/** Completed summary: «Книг: 683 из 683, обновлено: 40, добавлено экранизаций: 75, ошибок: 0». */
+/** Completed summary: «Книг: 683 из 683, обновлено: 40, добавлено экранизаций: 75, ошибок: 0»;
+ * «, добавлено постеров: N» is inserted before the errors when posters were filled. */
 export function adaptationSyncSummary(job: Pick<AdminHarvestJob, 'adaptation_sync' | 'last_error'>): string {
   const r = job.adaptation_sync;
   if (!r) return job.last_error || '—';
-  return `Книг: ${r.processed} из ${r.total}, обновлено: ${r.updated}, добавлено экранизаций: ${r.added}, ошибок: ${r.failed}`;
+  const posters = r.posters > 0 ? `, добавлено постеров: ${r.posters}` : '';
+  return `Книг: ${r.processed} из ${r.total}, обновлено: ${r.updated}, добавлено экранизаций: ${r.added}${posters}, ошибок: ${r.failed}`;
 }
 
 /** Progress of an active catalog sync, or null while the total is unknown. */

@@ -24,8 +24,13 @@ type Repository interface {
 	// BookStatus returns the status of a book or domain.ErrBookNotFound.
 	BookStatus(ctx context.Context, id uuid.UUID) (string, error)
 	// SyncBook stores the works and links them to the book in one
-	// transaction. It returns the number of links created.
-	SyncBook(ctx context.Context, bookID uuid.UUID, works []domain.WorkInput) (int, error)
+	// transaction. It returns the number of links created and of posters
+	// filled.
+	SyncBook(ctx context.Context, bookID uuid.UUID, works []domain.WorkInput) (SyncCounts, error)
+	// PosterCandidates reports, for every given work QID, whether the sync
+	// may fill its poster: true when the work is not stored yet or has no
+	// poster state and was not edited by hand.
+	PosterCandidates(ctx context.Context, qids []string) (map[string]bool, error)
 	// ListPublicByBook returns the non-hidden links, ordered.
 	ListPublicByBook(ctx context.Context, bookID uuid.UUID) ([]domain.LinkedWork, error)
 	// ListAdminByBook returns every link including hidden ones, ordered.
@@ -56,8 +61,19 @@ type Repository interface {
 	GetWork(ctx context.Context, id uuid.UUID) (*domain.WorkDetail, error)
 	// UpdateWork replaces the fields and sets manually_edited_at.
 	UpdateWork(ctx context.Context, id uuid.UUID, f domain.WorkFields) error
-	// DeleteWorkIfUnlinked: ErrWorkNotFound or ErrWorkHasLinks otherwise.
-	DeleteWorkIfUnlinked(ctx context.Context, id uuid.UUID) error
+	// DeleteWorkIfUnlinked: ErrWorkNotFound or ErrWorkHasLinks otherwise. It
+	// returns the uploaded poster path of the deleted work (nil without one).
+	DeleteWorkIfUnlinked(ctx context.Context, id uuid.UUID) (*string, error)
+	// SetManualPoster stores an uploaded poster (source manual) and returns
+	// the previous uploaded path (nil if none); ErrWorkNotFound. It never
+	// touches manually_edited_at.
+	SetManualPoster(ctx context.Context, id uuid.UUID, path string) (prevPath *string, err error)
+	// RemovePoster turns manual into no poster and commons/tmdb into
+	// removed; other states stay. It returns the removed uploaded path (nil
+	// if none); ErrWorkNotFound.
+	RemovePoster(ctx context.Context, id uuid.UUID) (prevPath *string, err error)
+	// PosterPathReferenced reports whether any work still uses the path.
+	PosterPathReferenced(ctx context.Context, path string) (bool, error)
 	// AddManualBookLink resolves or creates the work and inserts a manual
 	// link in one transaction; created is true for a new work.
 	AddManualBookLink(ctx context.Context, bookID uuid.UUID, ref domain.WorkRef) (workID uuid.UUID, created bool, err error)
@@ -137,14 +153,21 @@ func (r *GormRepository) BookStatus(ctx context.Context, id uuid.UUID) (string, 
 	return rows[0].Status, nil
 }
 
-func (r *GormRepository) SyncBook(ctx context.Context, bookID uuid.UUID, works []domain.WorkInput) (int, error) {
-	added := 0
+// SyncCounts are the counters of one book sync.
+type SyncCounts struct {
+	Added   int
+	Posters int
+}
+
+func (r *GormRepository) SyncBook(ctx context.Context, bookID uuid.UUID, works []domain.WorkInput) (SyncCounts, error) {
+	var counts SyncCounts
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, w := range works {
-			workID, err := upsertWikidataWork(tx, w)
+			workID, posters, err := upsertWikidataWork(tx, w)
 			if err != nil {
 				return err
 			}
+			counts.Posters += posters
 			now := time.Now()
 			res := tx.Exec(`INSERT INTO book_screen_works (book_id, screen_work_id, hidden, source, created_at, updated_at)
 VALUES (?, ?, FALSE, ?, ?, ?) ON CONFLICT (book_id, screen_work_id) DO NOTHING`,
@@ -152,28 +175,64 @@ VALUES (?, ?, FALSE, ?, ?, ?) ON CONFLICT (book_id, screen_work_id) DO NOTHING`,
 			if res.Error != nil {
 				return res.Error
 			}
-			added += int(res.RowsAffected)
+			counts.Added += int(res.RowsAffected)
 		}
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return SyncCounts{}, err
 	}
-	return added, nil
+	return counts, nil
+}
+
+func (r *GormRepository) PosterCandidates(ctx context.Context, qids []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(qids))
+	for _, q := range qids {
+		out[q] = true
+	}
+	if len(qids) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		ExternalID   string  `gorm:"column:external_id"`
+		PosterSource *string `gorm:"column:poster_source"`
+		Edited       bool    `gorm:"column:edited"`
+	}
+	err := r.db.WithContext(ctx).Table("screen_works").
+		Select("external_id, poster_source, (manually_edited_at IS NOT NULL) AS edited").
+		Where("external_source = ? AND external_id IN ?", domain.ExternalSourceWikidata, qids).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.ExternalID] = row.PosterSource == nil && !row.Edited
+	}
+	return out, nil
 }
 
 // upsertWikidataWork inserts the work once per QID. For an existing work it
 // fills only empty fields, skipping works edited by hand; title and kind
-// never change.
-func upsertWikidataWork(tx *gorm.DB, w domain.WorkInput) (uuid.UUID, error) {
+// never change. A poster is stored for a new work and filled into an existing
+// one only while it has no poster state and was not edited by hand; the
+// second result is the number of posters stored (0 or 1). A nil poster leaves
+// the poster columns untouched.
+func upsertWikidataWork(tx *gorm.DB, w domain.WorkInput) (uuid.UUID, int, error) {
 	now := time.Now()
-	res := tx.Exec(`INSERT INTO screen_works (id, title, original_title, kind, year, director, imdb_id, kinopoisk_id, external_source, external_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	var pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL, pUpdated any
+	if p := w.Poster; p != nil {
+		pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL = p.Source, p.URL, p.Author, p.License, p.LicenseURL, p.SourceURL
+		pUpdated = now
+	}
+	res := tx.Exec(`INSERT INTO screen_works (id, title, original_title, kind, year, director, imdb_id, kinopoisk_id, external_source, external_id,
+  poster_source, poster_url, poster_author, poster_license, poster_license_url, poster_source_url, poster_updated_at, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (external_source, external_id) WHERE external_id IS NOT NULL DO NOTHING`,
 		uuid.New(), w.Title, w.OriginalTitle, w.Kind, w.Year, w.Director, w.IMDbID, w.KinopoiskID,
-		domain.ExternalSourceWikidata, w.QID, now, now)
+		domain.ExternalSourceWikidata, w.QID,
+		pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL, pUpdated, now, now)
 	if res.Error != nil {
-		return uuid.Nil, res.Error
+		return uuid.Nil, 0, res.Error
 	}
 	created := res.RowsAffected > 0
 
@@ -183,10 +242,10 @@ ON CONFLICT (external_source, external_id) WHERE external_id IS NOT NULL DO NOTH
 	if err := tx.Table("screen_works").Select("id").
 		Where("external_source = ? AND external_id = ?", domain.ExternalSourceWikidata, w.QID).
 		Limit(1).Scan(&rows).Error; err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, 0, err
 	}
 	if len(rows) == 0 {
-		return uuid.Nil, errors.New("screen work vanished after upsert")
+		return uuid.Nil, 0, errors.New("screen work vanished after upsert")
 	}
 	id := rows[0].ID
 
@@ -198,13 +257,29 @@ ON CONFLICT (external_source, external_id) WHERE external_id IS NOT NULL DO NOTH
 WHERE id = ? AND manually_edited_at IS NULL`,
 			w.Year, w.OriginalTitle, w.Director, w.IMDbID, w.KinopoiskID, now, id).Error
 		if err != nil {
-			return uuid.Nil, err
+			return uuid.Nil, 0, err
 		}
 	}
-	return id, nil
+	posters := 0
+	if created && w.Poster != nil {
+		posters = 1
+	} else if !created && w.Poster != nil {
+		res := tx.Exec(`UPDATE screen_works SET poster_source = ?, poster_url = ?, poster_author = ?, poster_license = ?,
+  poster_license_url = ?, poster_source_url = ?, poster_updated_at = ?
+WHERE id = ? AND poster_source IS NULL AND manually_edited_at IS NULL`,
+			pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL, now, id)
+		if res.Error != nil {
+			return uuid.Nil, 0, res.Error
+		}
+		posters = int(res.RowsAffected)
+	}
+	return id, posters, nil
 }
 
-const linkedSelect = "w.id, w.title, w.original_title, w.kind, w.year, w.director, w.imdb_id, w.kinopoisk_id, w.external_id, l.hidden, l.source"
+// posterSelect lists the poster columns of a screen work aliased w.
+const posterSelect = "w.poster_source, w.poster_url, w.poster_path, w.poster_author, w.poster_license, w.poster_license_url, w.poster_source_url"
+
+const linkedSelect = "w.id, w.title, w.original_title, w.kind, w.year, w.director, w.imdb_id, w.kinopoisk_id, w.external_id, l.hidden, l.source, " + posterSelect
 
 // Year ascending with undated works last, then title; id keeps it stable.
 const linkedOrder = "CASE WHEN w.year IS NULL THEN 1 ELSE 0 END, w.year, w.title, w.id"

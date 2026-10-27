@@ -804,3 +804,19 @@ func TestLoadProbe_FromEnvIgnoresProductionValidation(t *testing.T) {
 		t.Errorf("LoadProbe() = %+v, want port 9090, redis redis:6379", got)
 	}
 }
+
+func TestLoad_Posters(t *testing.T) {
+	setCoversEnv(t, map[string]string{"POSTERS_DIR": "", "TMDB_API_KEY": ""})
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.PostersDir != "./storage/posters" || cfg.TMDBAPIKey != "" {
+		t.Errorf("defaults: %q %q", cfg.PostersDir, cfg.TMDBAPIKey)
+	}
+	setCoversEnv(t, map[string]string{"POSTERS_DIR": " /data/posters ", "TMDB_API_KEY": " k "})
+	cfg, _ = Load()
+	if cfg.PostersDir != "/data/posters" || cfg.TMDBAPIKey != "k" {
+		t.Errorf("overrides: %q %q", cfg.PostersDir, cfg.TMDBAPIKey)
+	}
+}

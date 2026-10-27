@@ -32,6 +32,7 @@ const film = (id: string, source: 'wikidata' | 'manual', relation: 'biopic' | 'd
   director: null,
   imdb_url: null,
   kinopoisk_url: null,
+  poster: null,
   relation,
   hidden: false,
   source,

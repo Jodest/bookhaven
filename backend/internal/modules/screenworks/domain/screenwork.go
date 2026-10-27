@@ -66,6 +66,9 @@ type WorkInput struct {
 	Director      *string
 	IMDbID        *string
 	KinopoiskID   *string
+	// Poster is filled by the sync when found; nil leaves the poster columns
+	// untouched.
+	Poster *PosterInput
 }
 
 // BookRef is the read-only part of a book the sync needs.
@@ -123,6 +126,7 @@ type LinkedWork struct {
 	Hidden        bool      `gorm:"column:hidden"`
 	Source        string    `gorm:"column:source"`
 	Relation      string    `gorm:"column:relation"`
+	PosterColumns
 }
 
 // IMDbURL is the public IMDb link or nil.

@@ -117,6 +117,12 @@ type Config struct {
 	CoversSweepBatch    int
 	CoversAllowedHosts  []string
 
+	// Screen work posters. PostersDir is the storage root of admin-uploaded
+	// posters (the api writes and serves). TMDBAPIKey enables the TMDB poster
+	// lookup of the adaptation sync (empty = no TMDB calls).
+	PostersDir string
+	TMDBAPIKey string
+
 	// AuthCookieSecure sets the Secure attribute on auth cookies. From
 	// AUTH_COOKIE_SECURE; unset/unparsable means on iff APP_ENV=production.
 	AuthCookieSecure bool
@@ -232,6 +238,7 @@ const (
 // a sweep every 15 minutes, 50 books per sweep.
 const (
 	DefaultCoversDir        = "./storage/covers"
+	DefaultPostersDir       = "./storage/posters"
 	DefaultCoversSweepCron  = "*/15 * * * *"
 	DefaultCoversSweepBatch = 50
 	MaxCoversSweepBatch     = 500
@@ -342,6 +349,11 @@ func Load() (*Config, error) {
 	if cfg.CoversDir == "" {
 		cfg.CoversDir = DefaultCoversDir
 	}
+	cfg.PostersDir = strings.TrimSpace(getEnv("POSTERS_DIR", DefaultPostersDir))
+	if cfg.PostersDir == "" {
+		cfg.PostersDir = DefaultPostersDir
+	}
+	cfg.TMDBAPIKey = strings.TrimSpace(getEnv("TMDB_API_KEY", ""))
 	cfg.CoversMirrorEnabled = parseBoolEnvDefaultTrue("COVERS_MIRROR_ENABLED")
 	// An explicitly empty COVERS_SWEEP_CRON disables the sweep.
 	if raw, ok := os.LookupEnv("COVERS_SWEEP_CRON"); ok {

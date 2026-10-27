@@ -213,3 +213,54 @@ func TestFetchAdaptations_ServerError(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestCommonsFileName(t *testing.T) {
+	cases := map[string]string{
+		"http://commons.wikimedia.org/wiki/Special:FilePath/Hobbit%20poster.jpg":                "Hobbit poster.jpg",
+		"http://commons.wikimedia.org/wiki/Special:FilePath/%D0%A4%D0%B8%D0%BB%D1%8C%D0%BC.png": "Фильм.png",
+		"http://commons.wikimedia.org/wiki/Special:FilePath/":                                   "",
+		"http://commons.wikimedia.org/wiki/Special:FilePath/a%7Cb.jpg":                          "",
+		"http://commons.wikimedia.org/wiki/Special:FilePath/%zz":                                "",
+		"http://example.com/x.jpg":                                                              "",
+		"":                                                                                      "",
+	}
+	for in, want := range cases {
+		if got := commonsFileName(in); got != want {
+			t.Errorf("commonsFileName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestFetchAdaptations_PosterFields(t *testing.T) {
+	const fp = "http://commons.wikimedia.org/wiki/Special:FilePath/"
+	body := adaptResponse(
+		adaptRow("Q1", "Q10", map[string]string{
+			"classes": "Q11424", "ruLabel": "A",
+			"posterFile": fp + "Poster%20A.jpg", "imageFile": fp + "Still.jpg",
+			"tmdbMovie": "603", "tmdbTv": "1399",
+		}),
+		adaptRow("Q1", "Q11", map[string]string{
+			"classes": "Q11424", "ruLabel": "B", "tmdbMovie": "12a", "tmdbTv": "12345678901",
+		}),
+	)
+	got, err := adaptClient(t, body, nil, nil).FetchAdaptations(context.Background(), []string{"Q1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]ExternalScreenWork{}
+	for _, w := range got["Q1"] {
+		by[w.QID] = w
+	}
+	if w := by["Q10"]; w.PosterFile != "Poster A.jpg" || w.ImageFile != "Still.jpg" || w.TMDBMovieID != "603" || w.TMDBTVID != "1399" {
+		t.Errorf("Q10 = %+v", w)
+	}
+	if w := by["Q11"]; w.PosterFile != "" || w.TMDBMovieID != "" || w.TMDBTVID != "" {
+		t.Errorf("Q11 = %+v", w)
+	}
+	q := buildAdaptationsQuery([]string{"Q1"})
+	for _, p := range []string{"P3383", "P18", "P4947", "P4983"} {
+		if !strings.Contains(q, p) {
+			t.Errorf("query lacks %s", p)
+		}
+	}
+}

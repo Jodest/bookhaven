@@ -1,7 +1,19 @@
 import type { BookAdaptation } from '@bookhaven/api-client';
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import type { ImgHTMLAttributes } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { BookAdaptations } from './book-adaptations';
+
+vi.mock('next/image', () => ({
+  default: ({
+    fill: _fill,
+    unoptimized,
+    ...props
+  }: ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; unoptimized?: boolean }) => (
+    // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+    <img {...props} data-unoptimized={unoptimized ? 'true' : 'false'} />
+  ),
+}));
 
 function item(over: Partial<BookAdaptation> = {}): BookAdaptation {
   return {
@@ -13,6 +25,7 @@ function item(over: Partial<BookAdaptation> = {}): BookAdaptation {
     director: null,
     imdb_url: null,
     kinopoisk_url: null,
+    poster: null,
     ...over,
   };
 }
@@ -81,6 +94,114 @@ describe('BookAdaptations', () => {
     expect(screen.getAllByText('intro text')).toHaveLength(1);
     const heading = screen.getByRole('heading', { name: 'Экранизации' });
     expect(heading.nextElementSibling).toHaveTextContent('intro text');
+  });
+
+  it('renders a hidden heading and the adaptations anchor', () => {
+    const { container } = render(<BookAdaptations items={[item()]} headingHidden />);
+    expect(screen.getByRole('heading', { name: 'Экранизации' })).toHaveClass('sr-only');
+    expect(container.querySelector('section#adaptations')).not.toBeNull();
+  });
+
+  it('shows a placeholder with the type icon and the year when there is no poster', () => {
+    render(<BookAdaptations items={[item({ year: 1975 }), item({ id: 'w2', title: 'Без года', year: null })]} />);
+    const [first, second] = screen.getAllByRole('listitem');
+    const placeholder = within(first).getByTestId('poster-placeholder');
+    expect(placeholder).toHaveTextContent('1975');
+    expect(placeholder.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(within(second).getByTestId('poster-placeholder')).not.toHaveTextContent(/\d/);
+  });
+
+  it('shows the poster image with the title as alt text', () => {
+    render(
+      <BookAdaptations
+        items={[
+          item({
+            poster: { url: '/posters/ab/abc.jpg', source: 'manual', author: null, license: null, license_url: null, source_url: null },
+          }),
+          item({
+            id: 'w2',
+            title: 'Мастер (фильм)',
+            poster: {
+              url: 'https://image.tmdb.org/t/p/w342/a.jpg',
+              source: 'tmdb',
+              author: null,
+              license: null,
+              license_url: null,
+              source_url: null,
+            },
+          }),
+        ]}
+      />,
+    );
+    const [first, second] = screen.getAllByRole('img');
+    expect(first).toHaveAttribute('alt', 'Мастер и Маргарита');
+    expect(first).toHaveAttribute('data-unoptimized', 'false');
+    expect(second).toHaveAttribute('data-unoptimized', 'true');
+    expect(screen.queryByText(/Постер:/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('poster-placeholder')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the placeholder when the image fails to load', () => {
+    render(
+      <BookAdaptations
+        items={[
+          item({
+            year: 1988,
+            poster: { url: 'https://upload.wikimedia.org/x.jpg', source: 'tmdb', author: null, license: null, license_url: null, source_url: null },
+          }),
+        ]}
+      />,
+    );
+    fireEvent.error(screen.getByRole('img'));
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByTestId('poster-placeholder')).toHaveTextContent('1988');
+  });
+
+  it('credits a Commons poster under the image', () => {
+    render(
+      <BookAdaptations
+        items={[
+          item({
+            poster: {
+              url: 'https://upload.wikimedia.org/x.jpg',
+              source: 'commons',
+              author: 'Jane Doe',
+              license: 'CC BY-SA 4.0',
+              license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+              source_url: 'https://commons.wikimedia.org/wiki/File:X.jpg',
+            },
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText(/Постер: Jane Doe,/)).toBeInTheDocument();
+    const licence = screen.getByRole('link', { name: 'CC BY-SA 4.0' });
+    expect(licence).toHaveAttribute('href', 'https://creativecommons.org/licenses/by-sa/4.0/');
+    expect(licence).toHaveAttribute('target', '_blank');
+    const file = screen.getByRole('link', { name: 'Wikimedia Commons' });
+    expect(file).toHaveAttribute('href', 'https://commons.wikimedia.org/wiki/File:X.jpg');
+    expect(file).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  });
+
+  it('leaves out an unknown author in the credit', () => {
+    render(
+      <BookAdaptations
+        items={[
+          item({
+            poster: {
+              url: 'https://upload.wikimedia.org/x.jpg',
+              source: 'commons',
+              author: null,
+              license: 'CC0',
+              license_url: null,
+              source_url: 'https://commons.wikimedia.org/wiki/File:X.jpg',
+            },
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText(/^Постер: CC0,/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'CC0' })).not.toBeInTheDocument();
   });
 
   it('renders nothing for an empty list', () => {

@@ -29,10 +29,11 @@ export function syncItemText(item: AdminAdaptationSyncItem, fallbackTitle = ''):
   if (item.outcome === 'skipped') {
     return `Книга «${title}»: пропущена — ${notesText(item.notes) || 'нет данных'}.`;
   }
+  const posters = item.posters > 0 ? ` Добавлено постеров: ${item.posters}.` : '';
   if (item.outcome === 'added') {
-    return `Книга «${title}»: добавлено экранизаций — ${item.added}.`;
+    return `Книга «${title}»: добавлено экранизаций — ${item.added}.${posters}`;
   }
-  return `Книга «${title}»: новых экранизаций нет.`;
+  return `Книга «${title}»: новых экранизаций нет.${posters}`;
 }
 
 /**
@@ -46,6 +47,9 @@ export function bulkSyncSummary(
   titles: Record<string, string> = {}
 ): string {
   let text = `Обновлено книг: ${report.updated} из ${report.processed}, добавлено экранизаций: ${report.added}.`;
+  if (report.posters > 0) {
+    text += ` Добавлено постеров: ${report.posters}.`;
+  }
   if (skippedWithoutQid > 0) {
     text += ` Без QID пропущено: ${skippedWithoutQid}.`;
   }

@@ -7114,6 +7114,199 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/screen-works/{id}/poster": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. multipart/form-data: file (обязательно) - JPEG, PNG или WebP до 5 МиБ; тип определяется по содержимому, а не по имени файла или Content-Type. Постер сохраняется на сервере и заменяет любой прежний (источник manual); пометка «изменено вручную» у работы не ставится. Возвращает работу. Ошибки: 400 - нет файла, 413 - файл больше 5 МиБ, 422 - не JPEG/PNG/WebP, 404 - работа не найдена",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Загрузить постер фильма или сериала (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID фильма",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Постер (JPEG, PNG или WebP, до 5 МиБ)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.workDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Требуется роль admin и Bearer-токен. Загруженный вручную постер удаляется (синхронизация может найти новый), автоматический (Commons, TMDB) помечается как убранный и синхронизацией больше не возвращается. Идемпотентно: без постера ничего не меняется. Возвращает работу. Работа не найдена - 404",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Убрать постер фильма или сериала (админ)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID фильма",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.workDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/admin/users": {
             "get": {
                 "security": [
@@ -8094,7 +8287,7 @@ const docTemplate = `{
         },
         "/books/{id}/adaptations/verdicts": {
             "get": {
-                "description": "Доступно без авторизации (токен необязателен). Для каждой видимой экранизации опубликованной книги - число голосов; счётчики по значениям (book_better, adaptation_better, same) null, пока голосов меньше min_votes (5). my_vote - голос текущего пользователя, can_vote - true, если книга у него на полке «Прочитано». Порядок как у списка экранизаций. Неизвестная или неопубликованная книга - 404",
+                "description": "Доступно без авторизации (токен необязателен). Для каждой видимой экранизации опубликованной книги - число голосов; счётчики по значениям (book_better, adaptation_better, same) null, пока голосов меньше min_votes (1). my_vote - голос текущего пользователя, can_vote - true, если книга у него на полке «Прочитано». Порядок как у списка экранизаций. Неизвестная или неопубликованная книга - 404",
                 "produces": [
                     "application/json"
                 ],
@@ -11306,6 +11499,9 @@ const docTemplate = `{
                 "failed": {
                     "type": "integer"
                 },
+                "posters": {
+                    "type": "integer"
+                },
                 "processed": {
                     "type": "integer"
                 },
@@ -11347,6 +11543,9 @@ const docTemplate = `{
                 "outcome": {
                     "type": "string"
                 },
+                "posters": {
+                    "type": "integer"
+                },
                 "title": {
                     "type": "string"
                 }
@@ -11363,6 +11562,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_service.SyncItem"
                     }
+                },
+                "posters": {
+                    "type": "integer"
                 },
                 "processed": {
                     "type": "integer"
@@ -15782,6 +15984,14 @@ const docTemplate = `{
                 "original_title": {
                     "type": "string"
                 },
+                "poster": {
+                    "description": "Poster is null when the work has no poster.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.posterResponse"
+                        }
+                    ]
+                },
                 "title": {
                     "type": "string"
                 },
@@ -15845,6 +16055,14 @@ const docTemplate = `{
                 "original_title": {
                     "type": "string"
                 },
+                "poster": {
+                    "description": "Poster is null when the work has no poster.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.posterResponse"
+                        }
+                    ]
+                },
                 "qid": {
                     "type": "string"
                 },
@@ -15906,6 +16124,14 @@ const docTemplate = `{
                 "original_title": {
                     "type": "string"
                 },
+                "poster": {
+                    "description": "Poster is null when the work has no poster.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.posterResponse"
+                        }
+                    ]
+                },
                 "qid": {
                     "type": "string"
                 },
@@ -15955,6 +16181,14 @@ const docTemplate = `{
                 },
                 "original_title": {
                     "type": "string"
+                },
+                "poster": {
+                    "description": "Poster is null when the work has no poster.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.posterResponse"
+                        }
+                    ]
                 },
                 "qid": {
                     "type": "string"
@@ -16014,6 +16248,14 @@ const docTemplate = `{
                 "original_title": {
                     "type": "string"
                 },
+                "poster": {
+                    "description": "Poster is null when the work has no poster.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.posterResponse"
+                        }
+                    ]
+                },
                 "qid": {
                     "type": "string"
                 },
@@ -16066,6 +16308,14 @@ const docTemplate = `{
                 "original_title": {
                     "type": "string"
                 },
+                "poster": {
+                    "description": "Poster is null when the work has no poster.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.posterResponse"
+                        }
+                    ]
+                },
                 "relation": {
                     "type": "string"
                 },
@@ -16088,6 +16338,34 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_modules_screenworks_transport_http.posterResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "license": {
+                    "type": "string"
+                },
+                "license_url": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string",
+                    "enum": [
+                        "manual",
+                        "commons",
+                        "tmdb"
+                    ]
+                },
+                "source_url": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
                 }
             }
         },
@@ -16253,6 +16531,17 @@ const docTemplate = `{
                 },
                 "original_title": {
                     "type": "string"
+                },
+                "poster": {
+                    "description": "Poster is null without a poster; PosterRemoved is true when an admin\nremoved an automatic poster (the sync will not refill it).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_modules_screenworks_transport_http.posterResponse"
+                        }
+                    ]
+                },
+                "poster_removed": {
+                    "type": "boolean"
                 },
                 "qid": {
                     "type": "string"

@@ -155,6 +155,7 @@ import (
 	"github.com/bookhaven/backend/internal/pkg/errtrack"
 	"github.com/bookhaven/backend/internal/pkg/llm"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
+	"github.com/bookhaven/backend/internal/pkg/tmdb"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -218,7 +219,11 @@ func main() {
 
 	// Adaptation sync of the books a harvest created shares the same
 	// WikidataClient (one rate limiter).
-	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger)
+	var screenWorksOpts []screenworksservice.Option
+	if cfg.TMDBAPIKey != "" {
+		screenWorksOpts = append(screenWorksOpts, screenworksservice.WithTMDB(tmdb.New(cfg.TMDBAPIKey)))
+	}
+	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger, screenWorksOpts...)
 	harvestHandler := harvestservice.NewHandler(wikidataClient, openLibraryClient, adminService,
 		harvestservice.WithAdaptationSyncer(screenWorksService),
 		harvestservice.WithAuthorFilmSyncer(screenWorksService))

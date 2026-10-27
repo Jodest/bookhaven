@@ -1,5 +1,6 @@
 import type { Book } from '@bookhaven/api-client';
 import type { Metadata } from 'next';
+import { getSiteUrl } from '@/shared/config/site';
 import { absoluteCoverUrl } from '@/shared/lib/absolute-cover-url';
 
 const DESCRIPTION_LIMIT = 160;
@@ -34,6 +35,8 @@ export function buildBookMetadata(book: Book): Metadata {
   return {
     title,
     description,
+    // The book address without `?tab=`, so tab variants are not duplicates.
+    alternates: { canonical: `${getSiteUrl()}/books/${book.slug}` },
     openGraph: {
       type: 'book',
       title,

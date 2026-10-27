@@ -44,7 +44,7 @@ function item(over: Partial<Verdict> = {}): Verdict {
 }
 
 function verdicts(over: Partial<AdaptationVerdicts> = {}): AdaptationVerdicts {
-  return { can_vote: true, min_votes: 5, items: [item()], ...over };
+  return { can_vote: true, min_votes: 1, items: [item()], ...over };
 }
 
 const ui = <AdaptationVerdict bookId="b1" screenWorkId="w1" />;
@@ -78,47 +78,133 @@ describe('AdaptationVerdict', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('shows the segmented buttons with the current vote selected and no note', async () => {
+  it('shows a compact dropdown with the current vote', async () => {
     verdictsMock.mockResolvedValue(verdicts({ items: [item({ my_vote: 'same' })] }));
     render(ui);
 
-    expect(await screen.findByText('Что лучше:')).toBeInTheDocument();
+    const select = (await screen.findByLabelText('Что лучше:')) as HTMLSelectElement;
     expect(screen.queryByText(/Голосуя/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Одинаково' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Книга' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: 'Экранизация' })).toHaveAttribute('aria-pressed', 'false');
+    expect(select.value).toBe('same');
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      'Книга',
+      'Экранизация',
+      'Одинаково',
+      'Убрать голос',
+    ]);
+  });
+
+  it('offers «Не выбрано» and no «Убрать голос» without a vote', async () => {
+    verdictsMock.mockResolvedValue(verdicts());
+    render(ui);
+
+    const select = (await screen.findByLabelText('Что лучше:')) as HTMLSelectElement;
+    expect(select.value).toBe('');
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      'Не выбрано',
+      'Книга',
+      'Экранизация',
+      'Одинаково',
+    ]);
+  });
+
+  it('has no divider line above the verdict', async () => {
+    verdictsMock.mockResolvedValue(verdicts());
+    const { container } = render(ui);
+    await screen.findByLabelText('Что лучше:');
+    expect(container.querySelector('.border-t')).toBeNull();
+  });
+
+  it('shows no verdict line with no votes, but keeps the dropdown', async () => {
+    verdictsMock.mockResolvedValue(
+      verdicts({ items: [item({ votes_count: 0, book_better: null, adaptation_better: null, same: null })] }),
+    );
+    render(ui);
+
+    expect(await screen.findByLabelText('Что лучше:')).toBeInTheDocument();
+    expect(screen.queryByText(/читателей/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Пока мало голосов')).not.toBeInTheDocument();
+  });
+
+  it('shows the verdict of a single vote to a guest', async () => {
+    isAuthenticatedValue = false;
+    verdictsMock.mockResolvedValue(
+      verdicts({
+        can_vote: false,
+        items: [item({ votes_count: 1, book_better: 1, adaptation_better: 0, same: 0 })],
+      }),
+    );
+    render(ui);
+
+    expect(await screen.findByText('100% читателей: книга лучше · 1 голос')).toBeInTheDocument();
+  });
+
+  it('renders nothing for a guest when there are no votes', async () => {
+    isAuthenticatedValue = false;
+    verdictsMock.mockResolvedValue(
+      verdicts({
+        can_vote: false,
+        items: [item({ votes_count: 0, book_better: null, adaptation_better: null, same: null })],
+      }),
+    );
+    const { container } = render(ui);
+    await waitFor(() => expect(verdictsMock).toHaveBeenCalled());
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
   it('votes and updates the verdict line from the response', async () => {
     verdictsMock.mockResolvedValue(
-      verdicts({ items: [item({ votes_count: 3, book_better: null, adaptation_better: null, same: null })] }),
+      verdicts({ items: [item({ votes_count: 0, book_better: null, adaptation_better: null, same: null })] }),
     );
     voteMock.mockResolvedValue(
-      item({ my_vote: 'adaptation', votes_count: 6, book_better: 1, adaptation_better: 4, same: 1 }),
+      item({ my_vote: 'adaptation', votes_count: 1, book_better: 0, adaptation_better: 1, same: 0 }),
     );
     render(ui);
 
-    expect(await screen.findByText('Пока мало голосов')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Экранизация' }));
+    fireEvent.change(await screen.findByLabelText('Что лучше:'), { target: { value: 'adaptation' } });
 
-    expect(await screen.findByText('67% читателей: экранизация лучше · 6 голосов')).toBeInTheDocument();
+    expect(await screen.findByText('100% читателей: экранизация лучше · 1 голос')).toBeInTheDocument();
     expect(voteMock).toHaveBeenCalledWith('b1', 'w1', 'adaptation');
-    expect(screen.getByRole('button', { name: 'Экранизация' })).toHaveAttribute('aria-pressed', 'true');
+    expect((screen.getByLabelText('Что лучше:') as HTMLSelectElement).value).toBe('adaptation');
   });
 
-  it('removes the vote when the selected button is clicked', async () => {
+  it('changes the vote to another value', async () => {
+    verdictsMock.mockResolvedValue(verdicts({ items: [item({ my_vote: 'book' })] }));
+    voteMock.mockResolvedValue(item({ my_vote: 'same' }));
+    render(ui);
+
+    fireEvent.change(await screen.findByLabelText('Что лучше:'), { target: { value: 'same' } });
+
+    await waitFor(() => expect(voteMock).toHaveBeenCalledWith('b1', 'w1', 'same'));
+    await waitFor(() => expect((screen.getByLabelText('Что лучше:') as HTMLSelectElement).value).toBe('same'));
+  });
+
+  it('removes the vote with «Убрать голос» and falls back to «Не выбрано»', async () => {
     verdictsMock
       .mockResolvedValueOnce(verdicts({ items: [item({ my_vote: 'adaptation' })] }))
       .mockResolvedValue(verdicts());
     unvoteMock.mockResolvedValue(undefined);
     render(ui);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Экранизация' }));
+    fireEvent.change(await screen.findByLabelText('Что лучше:'), { target: { value: 'remove' } });
 
     await waitFor(() => expect(unvoteMock).toHaveBeenCalledWith('b1', 'w1'));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Экранизация' })).toHaveAttribute('aria-pressed', 'false'),
-    );
+    await waitFor(() => {
+      const select = screen.getByLabelText('Что лучше:') as HTMLSelectElement;
+      expect(select.value).toBe('');
+      expect(Array.from(select.options).map((o) => o.textContent)).not.toContain('Убрать голос');
+    });
+  });
+
+  it('disables the dropdown while a request runs', async () => {
+    verdictsMock.mockResolvedValue(verdicts());
+    let resolveVote: (v: Verdict) => void = () => {};
+    voteMock.mockReturnValue(new Promise<Verdict>((resolve) => (resolveVote = resolve)));
+    render(ui);
+
+    fireEvent.change(await screen.findByLabelText('Что лучше:'), { target: { value: 'book' } });
+    await waitFor(() => expect(screen.getByLabelText('Что лучше:')).toBeDisabled());
+    resolveVote(item({ my_vote: 'book' }));
+    await waitFor(() => expect(screen.getByLabelText('Что лучше:')).not.toBeDisabled());
   });
 
   it('keeps the vote of a reader who left «Прочитано» and lets them remove it', async () => {
@@ -129,22 +215,22 @@ describe('AdaptationVerdict', () => {
     render(ui);
 
     expect(await screen.findByText('Ваш голос: Книга лучше')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Экранизация' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Что лучше:')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Убрать голос' }));
 
     await waitFor(() => expect(unvoteMock).toHaveBeenCalledWith('b1', 'w1'));
     await waitFor(() => expect(screen.queryByText('Ваш голос: Книга лучше')).not.toBeInTheDocument());
   });
 
-  it('shows an error and keeps the previous state when saving fails', async () => {
+  it('shows an error and restores the previous value when saving fails', async () => {
     verdictsMock.mockResolvedValue(verdicts({ items: [item({ my_vote: 'book' })] }));
     voteMock.mockRejectedValue(new Error('boom'));
     render(ui);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Одинаково' }));
+    fireEvent.change(await screen.findByLabelText('Что лучше:'), { target: { value: 'same' } });
 
     expect(await screen.findByText('Не удалось сохранить голос.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Книга' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect((screen.getByLabelText('Что лучше:') as HTMLSelectElement).value).toBe('book'));
   });
 
   it('renders nothing when the verdicts fail to load or the adaptation has no item', async () => {

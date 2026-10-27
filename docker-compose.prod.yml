@@ -110,8 +110,13 @@ services:
       # worker writes (mounted read-only); it queues copies after saves.
       COVERS_DIR: /data/covers
       COVERS_MIRROR_ENABLED: ${COVERS_MIRROR_ENABLED:-true}
+      # Screen work posters: uploaded by admins through the api (volume
+      # mounted read-write here only). TMDB_API_KEY is optional.
+      POSTERS_DIR: /data/posters
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
     volumes:
       - covers-data:/data/covers:ro
+      - posters-data:/data/posters
     depends_on:
       postgres:
         condition: service_healthy
@@ -187,6 +192,8 @@ services:
       COVERS_SWEEP_CRON: ${COVERS_SWEEP_CRON-*/15 * * * *}
       COVERS_SWEEP_BATCH: ${COVERS_SWEEP_BATCH:-50}
       COVERS_ALLOWED_HOSTS: ${COVERS_ALLOWED_HOSTS:-covers.openlibrary.org,archive.org,*.archive.org,upload.wikimedia.org}
+      # Optional TMDB posters for the adaptation sync (empty = skipped).
+      TMDB_API_KEY: ${TMDB_API_KEY:-}
     volumes:
       - covers-data:/data/covers
     depends_on:
@@ -289,3 +296,4 @@ volumes:
   caddy-data:
   caddy-config:
   covers-data:
+  posters-data:

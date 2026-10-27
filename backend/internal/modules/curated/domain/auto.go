@@ -28,8 +28,8 @@ const (
 	DefaultMinRatings = 3
 	DefaultConfidence = 10
 	// DefaultMinVerdictVotes is the default and the floor of the verdict
-	// metrics' minimum. Keep equal to screenworks MinVerdictVotes (the curated
-	// module must not import screenworks).
+	// metrics' minimum. Intentionally independent of screenworks MinVerdictVotes
+	// (1); the curated floor stays 5.
 	DefaultMinVerdictVotes = 5
 	DefaultTrendingDays    = 30
 	MaxPeriodDays          = 3650

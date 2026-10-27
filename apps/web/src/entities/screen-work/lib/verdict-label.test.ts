@@ -33,10 +33,15 @@ describe('verdictLabel', () => {
     ).toBe('Мнения разделились · 6 голосов');
   });
 
-  it('asks for more votes below the minimum or without counts', () => {
-    expect(verdictLabel(verdict({ votes_count: 3 }), 5)).toBe('Пока мало голосов');
-    expect(verdictLabel(verdict({ votes_count: 0 }), 5)).toBe('Пока мало голосов');
-    expect(verdictLabel(verdict({ votes_count: 9 }), 5)).toBe('Пока мало голосов');
+  it('returns null below the minimum or without counts', () => {
+    expect(verdictLabel(verdict({ votes_count: 3 }), 5)).toBeNull();
+    expect(verdictLabel(verdict({ votes_count: 0 }), 1)).toBeNull();
+    expect(verdictLabel(verdict({ votes_count: 9 }), 5)).toBeNull();
+  });
+
+  it('reveals the verdict from the first vote when the minimum is 1', () => {
+    const single = verdict({ votes_count: 1, book_better: 1, adaptation_better: 0, same: 0 });
+    expect(verdictLabel(single, 1)).toBe('100% читателей: книга лучше · 1 голос');
   });
 
   it('uses the right plural form', () => {

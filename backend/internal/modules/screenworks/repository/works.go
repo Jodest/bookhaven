@@ -17,7 +17,7 @@ import (
 // Books and authors tables are read only here.
 
 const workListSelect = `w.id, w.title, w.original_title, w.kind, w.year, w.director, w.imdb_id, w.kinopoisk_id,
-w.external_id AS qid, w.manually_edited_at,
+w.external_id AS qid, w.manually_edited_at, w.poster_source, w.poster_url, w.poster_path, w.poster_author, w.poster_license, w.poster_license_url, w.poster_source_url,
 (SELECT COUNT(*) FROM book_screen_works b WHERE b.screen_work_id = w.id) AS book_count,
 (SELECT COUNT(*) FROM author_screen_works a WHERE a.screen_work_id = w.id) AS author_count`
 
@@ -155,14 +155,16 @@ func (r *GormRepository) UpdateWork(ctx context.Context, id uuid.UUID, f domain.
 // first (it conflicts with the link insert's FOR KEY SHARE, which serialises
 // the two), and the links are checked in a separate statement that takes a
 // fresh snapshot.
-func (r *GormRepository) DeleteWorkIfUnlinked(ctx context.Context, id uuid.UUID) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		q := tx.Table("screen_works").Select("id").Where("id = ?", id)
+func (r *GormRepository) DeleteWorkIfUnlinked(ctx context.Context, id uuid.UUID) (*string, error) {
+	var posterPath *string
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		q := tx.Table("screen_works").Select("id, poster_path").Where("id = ?", id)
 		if tx.Dialector.Name() == "postgres" {
 			q = q.Clauses(clause.Locking{Strength: "UPDATE"})
 		}
 		var rows []struct {
-			ID uuid.UUID `gorm:"column:id"`
+			ID         uuid.UUID `gorm:"column:id"`
+			PosterPath *string   `gorm:"column:poster_path"`
 		}
 		if err := q.Scan(&rows).Error; err != nil {
 			return err
@@ -170,6 +172,7 @@ func (r *GormRepository) DeleteWorkIfUnlinked(ctx context.Context, id uuid.UUID)
 		if len(rows) == 0 {
 			return domain.ErrWorkNotFound
 		}
+		posterPath = rows[0].PosterPath
 		var links int64
 		if err := tx.Raw(`SELECT (SELECT COUNT(*) FROM book_screen_works WHERE screen_work_id = ?)
 + (SELECT COUNT(*) FROM author_screen_works WHERE screen_work_id = ?)`, id, id).Scan(&links).Error; err != nil {
@@ -180,6 +183,86 @@ func (r *GormRepository) DeleteWorkIfUnlinked(ctx context.Context, id uuid.UUID)
 		}
 		return tx.Exec("DELETE FROM screen_works WHERE id = ?", id).Error
 	})
+	if err != nil {
+		return nil, err
+	}
+	return posterPath, nil
+}
+
+// lockPosterRow reads the poster state of a work, locking the row on Postgres.
+func lockPosterRow(tx *gorm.DB, id uuid.UUID) (source, path *string, err error) {
+	q := tx.Table("screen_works").Select("poster_source, poster_path").Where("id = ?", id)
+	if tx.Dialector.Name() == "postgres" {
+		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	var rows []struct {
+		PosterSource *string `gorm:"column:poster_source"`
+		PosterPath   *string `gorm:"column:poster_path"`
+	}
+	if err := q.Scan(&rows).Error; err != nil {
+		return nil, nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil, domain.ErrWorkNotFound
+	}
+	return rows[0].PosterSource, rows[0].PosterPath, nil
+}
+
+// SetManualPoster stores an uploaded poster. manually_edited_at is untouched.
+func (r *GormRepository) SetManualPoster(ctx context.Context, id uuid.UUID, path string) (*string, error) {
+	var prev *string
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, p, err := lockPosterRow(tx, id)
+		if err != nil {
+			return err
+		}
+		prev = p
+		now := time.Now()
+		return tx.Exec(`UPDATE screen_works SET poster_source = ?, poster_path = ?, poster_url = NULL, poster_author = NULL,
+  poster_license = NULL, poster_license_url = NULL, poster_source_url = NULL, poster_updated_at = ?, updated_at = ?
+WHERE id = ?`, domain.PosterSourceManual, path, now, now, id).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return prev, nil
+}
+
+// RemovePoster: manual becomes no poster (NULL), commons and tmdb become
+// removed (the sync never refills them); NULL and removed stay unchanged.
+func (r *GormRepository) RemovePoster(ctx context.Context, id uuid.UUID) (*string, error) {
+	var prev *string
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		source, path, err := lockPosterRow(tx, id)
+		if err != nil {
+			return err
+		}
+		if source == nil || *source == domain.PosterSourceRemoved {
+			return nil
+		}
+		var next any // NULL
+		if *source != domain.PosterSourceManual {
+			next = domain.PosterSourceRemoved
+		} else {
+			prev = path
+		}
+		now := time.Now()
+		return tx.Exec(`UPDATE screen_works SET poster_source = ?, poster_path = NULL, poster_url = NULL, poster_author = NULL,
+  poster_license = NULL, poster_license_url = NULL, poster_source_url = NULL, poster_updated_at = ?, updated_at = ?
+WHERE id = ?`, next, now, now, id).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return prev, nil
+}
+
+func (r *GormRepository) PosterPathReferenced(ctx context.Context, path string) (bool, error) {
+	var n int64
+	if err := r.db.WithContext(ctx).Table("screen_works").Where("poster_path = ?", path).Count(&n).Error; err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 // resolveWork returns the id of the referenced work, creating it when needed.
