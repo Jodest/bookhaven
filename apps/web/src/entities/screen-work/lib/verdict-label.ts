@@ -8,6 +8,13 @@ export const ADAPTATION_VOTE_LABELS: Record<AdaptationVoteValue, string> = {
   same: 'Одинаково',
 };
 
+/** Short captions of the segmented vote control. */
+export const ADAPTATION_VOTE_SHORT_LABELS: Record<AdaptationVoteValue, string> = {
+  book: 'Книга',
+  adaptation: 'Экранизация',
+  same: 'Одинаково',
+};
+
 const LEADER_LABELS: Record<AdaptationVoteValue, string> = {
   book: 'книга лучше',
   adaptation: 'экранизация лучше',
