@@ -47,7 +47,7 @@ function verdicts(over: Partial<AdaptationVerdicts> = {}): AdaptationVerdicts {
   return { can_vote: true, min_votes: 5, items: [item()], ...over };
 }
 
-const ui = <AdaptationVerdict bookId="b1" slug="book-1" screenWorkId="w1" />;
+const ui = <AdaptationVerdict bookId="b1" screenWorkId="w1" />;
 
 describe('AdaptationVerdict', () => {
   beforeEach(() => {
@@ -59,36 +59,34 @@ describe('AdaptationVerdict', () => {
     unvoteMock.mockReset();
   });
 
-  it('shows the verdict and a login prompt without voting buttons to a guest', async () => {
+  it('shows only the verdict line to a guest, without prompt or buttons', async () => {
     isAuthenticatedValue = false;
     verdictsMock.mockResolvedValue(verdicts({ can_vote: false }));
     render(ui);
 
     expect(await screen.findByText('78% читателей: книга лучше · 23 голоса')).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: 'Войдите, чтобы сравнить книгу и экранизацию' });
-    expect(link.getAttribute('href')).toContain('/login');
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('asks a reader without the book on «Прочитано» to mark it', async () => {
+  it('shows only the verdict line to a reader without the book on «Прочитано»', async () => {
     verdictsMock.mockResolvedValue(verdicts({ can_vote: false }));
     render(ui);
 
-    expect(
-      await screen.findByText('Отметьте книгу как «Прочитано», чтобы сравнить её с экранизацией.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('78% читателей: книга лучше · 23 голоса')).toBeInTheDocument();
+    expect(screen.queryByText(/Отметьте книгу/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('shows the three buttons with the current vote selected', async () => {
+  it('shows the segmented buttons with the current vote selected and no note', async () => {
     verdictsMock.mockResolvedValue(verdicts({ items: [item({ my_vote: 'same' })] }));
     render(ui);
 
-    expect(await screen.findByText('Что лучше?')).toBeInTheDocument();
-    expect(screen.getByText('Голосуя, вы отмечаете, что смотрели экранизацию.')).toBeInTheDocument();
+    expect(await screen.findByText('Что лучше:')).toBeInTheDocument();
+    expect(screen.queryByText(/Голосуя/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Одинаково' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Книга лучше' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: 'Экранизация лучше' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Книга' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Экранизация' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('votes and updates the verdict line from the response', async () => {
@@ -101,11 +99,11 @@ describe('AdaptationVerdict', () => {
     render(ui);
 
     expect(await screen.findByText('Пока мало голосов')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Экранизация лучше' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Экранизация' }));
 
     expect(await screen.findByText('67% читателей: экранизация лучше · 6 голосов')).toBeInTheDocument();
     expect(voteMock).toHaveBeenCalledWith('b1', 'w1', 'adaptation');
-    expect(screen.getByRole('button', { name: 'Экранизация лучше' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Экранизация' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('removes the vote when the selected button is clicked', async () => {
@@ -115,11 +113,11 @@ describe('AdaptationVerdict', () => {
     unvoteMock.mockResolvedValue(undefined);
     render(ui);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Экранизация лучше' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Экранизация' }));
 
     await waitFor(() => expect(unvoteMock).toHaveBeenCalledWith('b1', 'w1'));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Экранизация лучше' })).toHaveAttribute('aria-pressed', 'false'),
+      expect(screen.getByRole('button', { name: 'Экранизация' })).toHaveAttribute('aria-pressed', 'false'),
     );
   });
 
@@ -131,13 +129,11 @@ describe('AdaptationVerdict', () => {
     render(ui);
 
     expect(await screen.findByText('Ваш голос: Книга лучше')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Экранизация лучше' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Экранизация' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Убрать голос' }));
 
     await waitFor(() => expect(unvoteMock).toHaveBeenCalledWith('b1', 'w1'));
-    expect(
-      await screen.findByText('Отметьте книгу как «Прочитано», чтобы сравнить её с экранизацией.'),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Ваш голос: Книга лучше')).not.toBeInTheDocument());
   });
 
   it('shows an error and keeps the previous state when saving fails', async () => {
@@ -148,7 +144,7 @@ describe('AdaptationVerdict', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Одинаково' }));
 
     expect(await screen.findByText('Не удалось сохранить голос.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Книга лучше' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Книга' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('renders nothing when the verdicts fail to load or the adaptation has no item', async () => {
