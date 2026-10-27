@@ -8,6 +8,7 @@ import { ApiError } from '@bookhaven/api-client';
 import { Badge, Button } from '@bookhaven/ui';
 import { adminScreenWorksApi, deleteWorkErrorText } from '@/entities/screen-work';
 import { ScreenWorkEditForm, useDeleteScreenWork } from '@/features/edit-screen-work';
+import { ScreenWorkPosterSection } from '@/features/screen-work-poster';
 import { safeBackHref, setFlash } from '@/shared/lib';
 import { EditPageHeader } from '@/shared/ui';
 
@@ -99,6 +100,8 @@ export function ScreenWorkEditView() {
         onSaved={(updated) => leave(`Фильм «${updated.title}» сохранён.`)}
         onCancel={() => router.push(backHref as any)}
       />
+
+      <ScreenWorkPosterSection work={work} />
 
       <section className="space-y-3 rounded-lg border p-4">
         <h2 className="text-lg font-semibold">Связи</h2>

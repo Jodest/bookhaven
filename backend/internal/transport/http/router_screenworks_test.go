@@ -39,7 +39,7 @@ func TestScreenWorksRoutes(t *testing.T) {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.Exec(`
 CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', slug TEXT, status TEXT NOT NULL DEFAULT 'pending', external_source TEXT, external_id TEXT);
-CREATE TABLE screen_works (id TEXT PRIMARY KEY, title TEXT NOT NULL, original_title TEXT, kind TEXT NOT NULL, year INTEGER, director TEXT, imdb_id TEXT, kinopoisk_id TEXT, external_source TEXT, external_id TEXT, manually_edited_at DATETIME, created_at DATETIME, updated_at DATETIME);
+CREATE TABLE screen_works (id TEXT PRIMARY KEY, title TEXT NOT NULL, original_title TEXT, kind TEXT NOT NULL, year INTEGER, director TEXT, imdb_id TEXT, kinopoisk_id TEXT, external_source TEXT, external_id TEXT, manually_edited_at DATETIME, poster_source TEXT, poster_url TEXT, poster_path TEXT, poster_author TEXT, poster_license TEXT, poster_license_url TEXT, poster_source_url TEXT, poster_updated_at DATETIME, created_at DATETIME, updated_at DATETIME);
 CREATE UNIQUE INDEX uq_screen_works_external ON screen_works (external_source, external_id) WHERE external_id IS NOT NULL;
 CREATE TABLE book_screen_works (book_id TEXT NOT NULL, screen_work_id TEXT NOT NULL, hidden BOOLEAN NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'wikidata', created_at DATETIME, updated_at DATETIME, PRIMARY KEY (book_id, screen_work_id));
 `).Error; err != nil {

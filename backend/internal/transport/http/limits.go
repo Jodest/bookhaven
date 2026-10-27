@@ -5,6 +5,7 @@ import (
 	"time"
 
 	adminhttp "github.com/bookhaven/backend/internal/modules/admin/transport/http"
+	screenworkshttp "github.com/bookhaven/backend/internal/modules/screenworks/transport/http"
 )
 
 // DefaultBodyLimit is the request body cap applied to every route (1 MiB).
@@ -15,7 +16,8 @@ const DefaultBodyLimit int64 = 1 << 20
 // its own entry here: a route-level limit cannot raise the global one.
 func BodyLimitOverrides() map[string]int64 {
 	return map[string]int64{
-		"POST /api/v1/admin/books/import": adminhttp.ImportMaxRequestBodyBytes,
+		"POST /api/v1/admin/books/import":           adminhttp.ImportMaxRequestBodyBytes,
+		"PUT /api/v1/admin/screen-works/:id/poster": screenworkshttp.MaxPosterRequestBytes,
 	}
 }
 

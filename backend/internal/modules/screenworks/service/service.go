@@ -11,6 +11,7 @@ import (
 	"github.com/bookhaven/backend/internal/modules/screenworks/domain"
 	"github.com/bookhaven/backend/internal/modules/screenworks/repository"
 	"github.com/bookhaven/backend/internal/pkg/bookdata"
+	"github.com/bookhaven/backend/internal/pkg/coverstore"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -38,6 +39,7 @@ type SyncReport struct {
 	Processed int        `json:"processed"`
 	Updated   int        `json:"updated"`
 	Added     int        `json:"added"`
+	Posters   int        `json:"posters"`
 	Items     []SyncItem `json:"items"`
 }
 
@@ -48,6 +50,7 @@ type SyncItem struct {
 	Outcome string   `json:"outcome"`
 	Found   int      `json:"found"`
 	Added   int      `json:"added"`
+	Posters int      `json:"posters"`
 	Notes   []string `json:"notes"`
 	Message string   `json:"message"`
 }
@@ -57,20 +60,30 @@ type Service struct {
 	repo         repository.Repository
 	source       Source
 	authorSource AuthorSource
+	commons      CommonsSource
+	tmdb         PosterLookup
+	posters      coverstore.Store
 	log          *zap.Logger
 }
 
 // NewService creates a Service. source may be nil: the sync is then
 // unavailable (the lists and hide/show still work). When source also
 // implements AuthorSource (as *bookdata.WikidataClient does) the author film
-// sync is enabled too. log may be nil.
-func NewService(repo repository.Repository, source Source, log *zap.Logger) *Service {
+// sync is enabled too, and when it implements CommonsSource the sync resolves
+// Wikimedia Commons posters. log may be nil.
+func NewService(repo repository.Repository, source Source, log *zap.Logger, opts ...Option) *Service {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	s := &Service{repo: repo, source: source, log: log}
 	if as, ok := source.(AuthorSource); ok {
 		s.authorSource = as
+	}
+	if cs, ok := source.(CommonsSource); ok {
+		s.commons = cs
+	}
+	for _, o := range opts {
+		o(s)
 	}
 	return s
 }
@@ -163,6 +176,7 @@ func (s *Service) syncBooks(ctx context.Context, ids []uuid.UUID) (*SyncReport, 
 	report := &SyncReport{Processed: len(items), Items: items}
 	for _, item := range items {
 		report.Added += item.Added
+		report.Posters += item.Posters
 		if item.Outcome == domain.OutcomeAdded {
 			report.Updated++
 		}
@@ -198,33 +212,38 @@ func (s *Service) syncChunk(ctx context.Context, chunk []int, ids []uuid.UUID, b
 		return err
 	}
 
+	posters := s.resolvePosters(ctx, found)
+
 	for _, i := range chunk {
 		book := books[ids[i]]
 		works := found[book.WikidataQID()]
 		items[i].Found = len(works)
-		added, err := s.repo.SyncBook(ctx, book.ID, toInputs(works))
+		counts, err := s.repo.SyncBook(ctx, book.ID, toInputs(works, posters))
 		if err != nil {
 			s.log.Warn("wikidata adaptation sync: save failed", zap.String("book_id", book.ID.String()), zap.Error(err))
 			items[i].Outcome = domain.OutcomeError
 			items[i].Message = "failed to save adaptations"
 			continue
 		}
+		added := counts.Added
 		items[i].Added = added
+		items[i].Posters = counts.Posters
 		if added > 0 {
 			items[i].Outcome = domain.OutcomeAdded
 		} else {
 			items[i].Outcome = domain.OutcomeUnchanged
 		}
 		s.log.Info("wikidata adaptation sync",
-			zap.String("book_id", book.ID.String()), zap.Int("found", len(works)), zap.Int("added", added))
+			zap.String("book_id", book.ID.String()), zap.Int("found", len(works)), zap.Int("added", added), zap.Int("posters", counts.Posters))
 	}
 	return nil
 }
 
-func toInputs(works []bookdata.ExternalScreenWork) []domain.WorkInput {
+func toInputs(works []bookdata.ExternalScreenWork, posters map[string]*domain.PosterInput) []domain.WorkInput {
 	out := make([]domain.WorkInput, 0, len(works))
 	for _, w := range works {
 		out = append(out, domain.WorkInput{
+			Poster:        posters[w.QID],
 			QID:           w.QID,
 			Title:         w.Title,
 			OriginalTitle: strPtr(w.OriginalTitle),

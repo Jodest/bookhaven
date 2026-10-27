@@ -50,6 +50,7 @@ import (
 	"github.com/bookhaven/backend/internal/pkg/errtrack"
 	"github.com/bookhaven/backend/internal/pkg/mailer"
 	"github.com/bookhaven/backend/internal/pkg/ratelimit"
+	"github.com/bookhaven/backend/internal/pkg/tmdb"
 	httptransport "github.com/bookhaven/backend/internal/transport/http"
 	"github.com/bookhaven/backend/internal/transport/http/middleware"
 	"github.com/hibiken/asynq"
@@ -142,10 +143,17 @@ func main() {
 	// budget; it does not share the OpenLibraryClient's budget, nor the
 	// same host.
 	wikidataClient := bookdata.NewWikidataClient()
+	postersStore := coverstore.NewFS(cfg.PostersDir)
 	// Screen works (openspec screen-works): shares the Wikidata client (and
 	// its rate limiter) with the author enrichment. Built before the admin
 	// service because the direct author import syncs the new author's films.
-	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger)
+	// Posters: uploads go to the posters store (read-write here only); the
+	// TMDB lookup is on only when TMDB_API_KEY is set.
+	screenWorksOpts := []screenworksservice.Option{screenworksservice.WithPosterStore(postersStore)}
+	if cfg.TMDBAPIKey != "" {
+		screenWorksOpts = append(screenWorksOpts, screenworksservice.WithTMDB(tmdb.New(cfg.TMDBAPIKey)))
+	}
+	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger, screenWorksOpts...)
 	// Built before the admin service: a genre merge recomputes the automatic
 	// collections it switches.
 	curatedService := curatedservice.NewService(curatedrepository.NewGormRepository(db)).WithLogger(logger)
@@ -360,6 +368,10 @@ func main() {
 		httptransport.NewGormHealthChecker(db),
 		httptransport.NewRedisHealthChecker(redisClient),
 	)
+
+	// Uploaded screen work posters: the same content-addressed file server on
+	// /posters, backed by a separate store.
+	coverhttp.NewHandler(postersStore).RegisterAt(e, "/posters")
 
 	// Self-hosted cover files (#489): public, read-only use of the storage the
 	// worker writes. Registered at the root, outside /api/v1.

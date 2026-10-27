@@ -95,3 +95,35 @@ func TestServe_OtherMethods(t *testing.T) {
 		t.Fatalf("POST: %d", rec.Code)
 	}
 }
+
+func TestRegisterAt_Posters(t *testing.T) {
+	store := coverstore.NewMem()
+	hash := strings.Repeat("ab", 32)
+	name := "ab/" + hash + ".png"
+	if err := store.Put(context.Background(), name, []byte("PNGDATA")); err != nil {
+		t.Fatal(err)
+	}
+	e := echo.New()
+	NewHandler(store).RegisterAt(e, "/posters")
+
+	rec := do(e, http.MethodGet, "/posters/"+name, nil)
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" ||
+		rec.Header().Get("X-Content-Type-Options") != "nosniff" || !strings.Contains(rec.Header().Get("Cache-Control"), "immutable") {
+		t.Fatalf("get = %d %v", rec.Code, rec.Header())
+	}
+	if rec := do(e, http.MethodGet, "/posters/"+name, map[string]string{"If-None-Match": rec.Header().Get("ETag")}); rec.Code != http.StatusNotModified {
+		t.Errorf("etag = %d", rec.Code)
+	}
+	if rec := do(e, http.MethodHead, "/posters/"+name, nil); rec.Code != http.StatusOK {
+		t.Errorf("head = %d", rec.Code)
+	}
+	for _, p := range []string{"/posters/cd/" + hash + ".png", "/posters/ab/..%2f..%2fetc%2fpasswd", "/posters/../../etc/passwd", "/posters/zz/zz.png"} {
+		if rec := do(e, http.MethodGet, p, nil); rec.Code != http.StatusNotFound {
+			t.Errorf("%s = %d", p, rec.Code)
+		}
+	}
+	// The covers route is not registered by RegisterAt.
+	if rec := do(e, http.MethodGet, "/covers/"+name, nil); rec.Code != http.StatusNotFound {
+		t.Errorf("covers = %d", rec.Code)
+	}
+}

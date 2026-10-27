@@ -94,6 +94,7 @@ function makeAdaptation(overrides: Partial<AdminBookAdaptation> = {}): AdminBook
     director: 'Владимир Бортко',
     imdb_url: null,
     kinopoisk_url: null,
+    poster: null,
     hidden: false,
     source: 'wikidata',
     qid: 'Q10',

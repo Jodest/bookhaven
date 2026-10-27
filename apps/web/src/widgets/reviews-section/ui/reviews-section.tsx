@@ -14,9 +14,11 @@ import { useEffect, useState } from 'react';
 interface ReviewsSectionProps {
   bookId: string;
   slug: string;
+  /** Hide the heading visually (the book page shows it as a tab). */
+  headingHidden?: boolean;
 }
 
-export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
+export function ReviewsSection({ bookId, slug, headingHidden }: ReviewsSectionProps) {
   const { isAuthenticated, user } = useAuthStore();
   const router = useRouter();
   const ownerId = user?.id ?? null;
@@ -138,7 +140,7 @@ export function ReviewsSection({ bookId, slug }: ReviewsSectionProps) {
 
   return (
     <section id="reviews" className="scroll-mt-24">
-      <h2 className="font-display text-xl font-semibold">Рецензии</h2>
+      <h2 className={headingHidden ? 'sr-only' : 'font-display text-xl font-semibold'}>Рецензии</h2>
 
       {error && (
         <div className="mt-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">

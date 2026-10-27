@@ -66,6 +66,7 @@ describe('AuthorDetailView', () => {
           director: null,
           imdb_url: null,
           kinopoisk_url: null,
+          poster: null,
         },
       ],
       total: 1,

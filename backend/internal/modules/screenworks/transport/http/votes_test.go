@@ -18,7 +18,7 @@ import (
 
 const ddl = `
 CREATE TABLE books (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', external_source TEXT, external_id TEXT, created_at DATETIME, updated_at DATETIME);
-CREATE TABLE screen_works (id TEXT PRIMARY KEY, title TEXT NOT NULL, original_title TEXT, kind TEXT NOT NULL, year INTEGER, director TEXT, imdb_id TEXT, kinopoisk_id TEXT, external_source TEXT, external_id TEXT, manually_edited_at DATETIME, created_at DATETIME, updated_at DATETIME);
+CREATE TABLE screen_works (id TEXT PRIMARY KEY, title TEXT NOT NULL, original_title TEXT, kind TEXT NOT NULL, year INTEGER, director TEXT, imdb_id TEXT, kinopoisk_id TEXT, external_source TEXT, external_id TEXT, manually_edited_at DATETIME, poster_source TEXT, poster_url TEXT, poster_path TEXT, poster_author TEXT, poster_license TEXT, poster_license_url TEXT, poster_source_url TEXT, poster_updated_at DATETIME, created_at DATETIME, updated_at DATETIME);
 CREATE TABLE book_screen_works (book_id TEXT NOT NULL, screen_work_id TEXT NOT NULL, hidden BOOLEAN NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'wikidata', created_at DATETIME, updated_at DATETIME, PRIMARY KEY (book_id, screen_work_id));
 CREATE TABLE shelves (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL);
 CREATE TABLE shelf_items (shelf_id TEXT NOT NULL, book_id TEXT NOT NULL, added_at DATETIME, PRIMARY KEY (shelf_id, book_id));
@@ -151,7 +151,7 @@ func TestVoteAdaptation(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ScreenWorkID != w || got.VotesCount != 1 || got.MyVote == nil || *got.MyVote != "adaptation" || got.BookBetter != nil {
+	if got.ScreenWorkID != w || got.VotesCount != 1 || got.MyVote == nil || *got.MyVote != "adaptation" || got.AdaptationBetter == nil || *got.AdaptationBetter != 1 {
 		t.Errorf("response = %+v", got)
 	}
 }
@@ -214,7 +214,7 @@ func TestListBookVerdicts(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &guest); err != nil {
 		t.Fatal(err)
 	}
-	if guest.CanVote || guest.MinVotes != 5 || len(guest.Items) != 1 || guest.Items[0].MyVote != nil || guest.Items[0].VotesCount != 1 {
+	if guest.CanVote || guest.MinVotes != 1 || len(guest.Items) != 1 || guest.Items[0].MyVote != nil || guest.Items[0].VotesCount != 1 {
 		t.Errorf("guest = %+v", guest)
 	}
 
@@ -226,7 +226,7 @@ func TestListBookVerdicts(t *testing.T) {
 	if !mine.CanVote || mine.Items[0].MyVote == nil || *mine.Items[0].MyVote != "same" {
 		t.Errorf("reader = %+v", mine)
 	}
-	if !strings.Contains(rec.Body.String(), `"book_better":null`) {
-		t.Errorf("counts must be null below the minimum: %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"same":1`) {
+		t.Errorf("counts must be revealed from the first vote: %s", rec.Body.String())
 	}
 }

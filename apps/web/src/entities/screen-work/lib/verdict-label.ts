@@ -23,12 +23,12 @@ const LEADER_LABELS: Record<AdaptationVoteValue, string> = {
 
 /**
  * Verdict line of an adaptation: the leader and its share from minVotes votes,
- * «Мнения разделились» on a tie for the lead, «Пока мало голосов» below it.
+ * «Мнения разделились» on a tie for the lead, null below it (no line is shown).
  */
-export function verdictLabel(item: AdaptationVerdict, minVotes: number): string {
+export function verdictLabel(item: AdaptationVerdict, minVotes: number): string | null {
   const { book_better, adaptation_better, same, votes_count } = item;
   if (votes_count < minVotes || book_better === null || adaptation_better === null || same === null) {
-    return 'Пока мало голосов';
+    return null;
   }
   const counts: [AdaptationVoteValue, number][] = [
     ['book', book_better],

@@ -2,6 +2,7 @@
 
 import { BookCard, booksApi } from '@/entities/book';
 import { useQuery } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 
 const SIMILAR_LIMIT = 8;
 const SKELETON_COUNT = 4;
@@ -10,13 +11,18 @@ const HEADING_ID = 'similar-books-heading';
 interface SimilarBooksProps {
   bookId: string;
   className?: string;
+  /** Hide the heading visually (the book page shows it as a tab). */
+  headingHidden?: boolean;
+  /** Rendered instead of nothing on an empty result or an error. */
+  emptyFallback?: ReactNode;
 }
 
 /**
  * "Похожие книги" row on the book page (see docs/features/similar-books.md).
  * A secondary block: renders nothing on an empty result or an error.
  */
-export function SimilarBooks({ bookId, className }: SimilarBooksProps) {
+export function SimilarBooks({ bookId, className, headingHidden, emptyFallback }: SimilarBooksProps) {
+  const headingClass = headingHidden ? 'sr-only' : 'font-display text-xl font-semibold';
   const { data, isPending, isError } = useQuery({
     queryKey: ['books', bookId, 'similar'],
     queryFn: () => booksApi.similar(bookId, { limit: SIMILAR_LIMIT }),
@@ -26,7 +32,7 @@ export function SimilarBooks({ bookId, className }: SimilarBooksProps) {
   if (isPending) {
     return (
       <section aria-busy="true" aria-labelledby={HEADING_ID} className={className}>
-        <h2 id={HEADING_ID} className="font-display text-xl font-semibold">
+        <h2 id={HEADING_ID} className={headingClass}>
           Похожие книги
         </h2>
         <ul className="mt-4 flex gap-4 overflow-hidden pb-2">
@@ -43,12 +49,12 @@ export function SimilarBooks({ bookId, className }: SimilarBooksProps) {
   }
 
   if (isError || !data || data.items.length === 0) {
-    return null;
+    return emptyFallback ? <>{emptyFallback}</> : null;
   }
 
   return (
     <section aria-labelledby={HEADING_ID} className={className}>
-      <h2 id={HEADING_ID} className="font-display text-xl font-semibold">
+      <h2 id={HEADING_ID} className={headingClass}>
         Похожие книги
       </h2>
       <ul className="mt-4 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2">

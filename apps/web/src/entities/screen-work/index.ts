@@ -4,3 +4,6 @@ export { SCREEN_WORK_KIND_LABELS, screenWorkKindLabel } from './lib/kind-label';
 export { screenWorkKeys } from './model/keys';
 export { AuthorFilms } from './ui/author-films';
 export { BookAdaptations } from './ui/book-adaptations';
+export { screenWorkKindIcon } from './lib/kind-icon';
+export { PosterAttribution } from './ui/poster-attribution';
+export { ScreenWorkPoster } from './ui/screen-work-poster';

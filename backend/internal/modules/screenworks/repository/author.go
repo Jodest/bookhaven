@@ -60,7 +60,7 @@ func (r *GormRepository) SyncAuthor(ctx context.Context, authorID uuid.UUID, fil
 	added := 0
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, f := range films {
-			workID, err := upsertWikidataWork(tx, f.WorkInput)
+			workID, _, err := upsertWikidataWork(tx, f.WorkInput)
 			if err != nil {
 				return err
 			}

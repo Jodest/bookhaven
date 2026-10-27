@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/similarity ./cmd/similarity
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/healthcheck ./cmd/healthcheck
 # Empty mount point for the self-hosted covers volume (copied below with the
 # nonroot owner: a fresh named volume inherits the owner of its mount point).
-RUN mkdir -p /out/data/covers
+RUN mkdir -p /out/data/covers /out/data/posters
 
 # Production stage
 FROM gcr.io/distroless/static-debian12:nonroot AS production
@@ -40,6 +40,7 @@ COPY --from=builder /app/bin/healthcheck /app/healthcheck
 COPY --from=builder /app/migrations /app/migrations
 # Covers volume mount point owned by nonroot (65532): the worker writes there.
 COPY --from=builder --chown=65532:65532 /out/data/covers /data/covers
+COPY --from=builder --chown=65532:65532 /out/data/posters /data/posters
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/app/api"]

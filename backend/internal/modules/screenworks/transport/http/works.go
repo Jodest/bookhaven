@@ -2,11 +2,13 @@ package http
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/bookhaven/backend/internal/modules/screenworks/domain"
+	"github.com/bookhaven/backend/internal/pkg/coverfetch"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -47,8 +49,12 @@ type workAuthorLinkResponse struct {
 
 type workDetailResponse struct {
 	workItemResponse
-	Books   []workBookLinkResponse   `json:"books"`
-	Authors []workAuthorLinkResponse `json:"authors"`
+	// Poster is null without a poster; PosterRemoved is true when an admin
+	// removed an automatic poster (the sync will not refill it).
+	Poster        *posterResponse          `json:"poster"`
+	PosterRemoved bool                     `json:"poster_removed"`
+	Books         []workBookLinkResponse   `json:"books"`
+	Authors       []workAuthorLinkResponse `json:"authors"`
 }
 
 type workListResponse struct {
@@ -69,6 +75,8 @@ func toWorkItemResponse(w domain.WorkListItem) workItemResponse {
 func toWorkDetailResponse(d domain.WorkDetail) workDetailResponse {
 	out := workDetailResponse{
 		workItemResponse: toWorkItemResponse(d.WorkListItem),
+		Poster:           toPosterResponse(d.Poster()),
+		PosterRemoved:    d.PosterRemoved(),
 		Books:            make([]workBookLinkResponse, 0, len(d.Books)),
 		Authors:          make([]workAuthorLinkResponse, 0, len(d.Authors)),
 	}
@@ -99,6 +107,12 @@ func workErr(c echo.Context, err error) (handled bool, result error) {
 		return true, errJSON(c, http.StatusUnprocessableEntity, domain.ErrQIDImmutable.Error())
 	case errors.Is(err, domain.ErrWorkHasLinks):
 		return true, errJSON(c, http.StatusConflict, domain.ErrWorkHasLinks.Error())
+	case errors.Is(err, domain.ErrPosterTooLarge):
+		return true, errJSON(c, http.StatusRequestEntityTooLarge, domain.ErrPosterTooLarge.Error())
+	case errors.Is(err, domain.ErrPosterType):
+		return true, errJSON(c, http.StatusUnprocessableEntity, domain.ErrPosterType.Error())
+	case errors.Is(err, domain.ErrPostersUnavailable):
+		return true, errJSON(c, http.StatusServiceUnavailable, domain.ErrPostersUnavailable.Error())
 	}
 	return false, nil
 }
@@ -226,4 +240,92 @@ func (h *Handler) AdminDeleteWork(c echo.Context) error {
 		return errJSON(c, http.StatusInternalServerError, "failed to delete screen work")
 	}
 	return c.NoContent(http.StatusNoContent)
+}
+
+// MaxPosterRequestBytes is the body limit of the poster upload route: the
+// image limit plus the multipart envelope.
+const MaxPosterRequestBytes int64 = 6 << 20
+
+// AdminUploadPoster godoc
+// @Summary Загрузить постер фильма или сериала (админ)
+// @Description Требуется роль admin и Bearer-токен. multipart/form-data: file (обязательно) - JPEG, PNG или WebP до 5 МиБ; тип определяется по содержимому, а не по имени файла или Content-Type. Постер сохраняется на сервере и заменяет любой прежний (источник manual); пометка «изменено вручную» у работы не ставится. Возвращает работу. Ошибки: 400 - нет файла, 413 - файл больше 5 МиБ, 422 - не JPEG/PNG/WebP, 404 - работа не найдена
+// @Tags admin
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID фильма"
+// @Param file formData file true "Постер (JPEG, PNG или WebP, до 5 МиБ)"
+// @Success 200 {object} workDetailResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 413 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Router /admin/screen-works/{id}/poster [put]
+func (h *Handler) AdminUploadPoster(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid screen work id")
+	}
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		var maxErr *http.MaxBytesError
+		var httpErr *echo.HTTPError
+		if errors.As(err, &maxErr) || (errors.As(err, &httpErr) && httpErr.Code == http.StatusRequestEntityTooLarge) {
+			return errJSON(c, http.StatusRequestEntityTooLarge, domain.ErrPosterTooLarge.Error())
+		}
+		return errJSON(c, http.StatusBadRequest, "file is required")
+	}
+	if fileHeader.Size > coverfetch.MaxBytes {
+		return errJSON(c, http.StatusRequestEntityTooLarge, domain.ErrPosterTooLarge.Error())
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "failed to read uploaded file")
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, coverfetch.MaxBytes+1))
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "failed to read uploaded file")
+	}
+	d, err := h.service.UploadPoster(c.Request().Context(), id, data)
+	if err != nil {
+		if handled, res := workErr(c, err); handled {
+			return res
+		}
+		return errJSON(c, http.StatusInternalServerError, "failed to upload poster")
+	}
+	return c.JSON(http.StatusOK, toWorkDetailResponse(*d))
+}
+
+// AdminDeletePoster godoc
+// @Summary Убрать постер фильма или сериала (админ)
+// @Description Требуется роль admin и Bearer-токен. Загруженный вручную постер удаляется (синхронизация может найти новый), автоматический (Commons, TMDB) помечается как убранный и синхронизацией больше не возвращается. Идемпотентно: без постера ничего не меняется. Возвращает работу. Работа не найдена - 404
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "ID фильма"
+// @Success 200 {object} workDetailResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /admin/screen-works/{id}/poster [delete]
+func (h *Handler) AdminDeletePoster(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid screen work id")
+	}
+	d, err := h.service.RemovePoster(c.Request().Context(), id)
+	if err != nil {
+		if handled, res := workErr(c, err); handled {
+			return res
+		}
+		return errJSON(c, http.StatusInternalServerError, "failed to remove poster")
+	}
+	return c.JSON(http.StatusOK, toWorkDetailResponse(*d))
 }

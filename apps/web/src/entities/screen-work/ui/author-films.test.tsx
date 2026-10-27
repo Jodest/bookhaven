@@ -14,6 +14,7 @@ function item(over: Partial<AuthorFilm> = {}): AuthorFilm {
     director: null,
     imdb_url: null,
     kinopoisk_url: null,
+    poster: null,
     ...over,
   };
 }
@@ -50,6 +51,11 @@ describe('AuthorFilms', () => {
 
     expect(within(second).getByText('2011 · Телефильм · Документальный')).toBeInTheDocument();
     expect(within(second).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('shows the placeholder with the type icon and the year for a film without a poster', () => {
+    render(<AuthorFilms items={[item({ id: 'w2', title: 'Волшебство слов', year: 2011, relation: 'documentary' })]} />);
+    expect(screen.getByTestId('poster-placeholder')).toHaveTextContent('2011');
   });
 
   it('renders nothing for an empty list', () => {

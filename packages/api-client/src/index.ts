@@ -824,6 +824,23 @@ export type ScreenWorkKind =
   | 'animated_series'
   | 'teleplay';
 
+/** Where a screen work poster comes from: admin upload, Wikimedia Commons or TMDB. */
+export type ScreenWorkPosterSource = 'manual' | 'commons' | 'tmdb';
+
+/**
+ * Poster of a screen work. url is a site path (/posters/...) for 'manual' and
+ * an absolute https URL otherwise. The attribution fields are set only for
+ * 'commons' (each null when unknown).
+ */
+export interface ScreenWorkPoster {
+  url: string;
+  source: ScreenWorkPosterSource;
+  author: string | null;
+  license: string | null;
+  license_url: string | null;
+  source_url: string | null;
+}
+
 /** Adaptation of a book (GET /books/{id}/adaptations). */
 export interface BookAdaptation {
   id: string;
@@ -834,6 +851,8 @@ export interface BookAdaptation {
   director: string | null;
   imdb_url: string | null;
   kinopoisk_url: string | null;
+  /** null when the work has no poster. */
+  poster: ScreenWorkPoster | null;
 }
 
 /** Reader vote «Книга или экранизация?»: book better, adaptation better, same. */
@@ -920,6 +939,10 @@ export interface AdminScreenWorkAuthorLink {
 export interface AdminScreenWorkDetail extends AdminScreenWork {
   books: AdminScreenWorkBookLink[];
   authors: AdminScreenWorkAuthorLink[];
+  /** null without a poster. */
+  poster: ScreenWorkPoster | null;
+  /** true when an admin removed an automatic poster (the sync will not refill it). */
+  poster_removed: boolean;
 }
 
 /** Exactly one of screen_work_id and work; relation is required for authors. */
@@ -938,6 +961,7 @@ export interface AdminAdaptationSyncItem {
   outcome: 'added' | 'unchanged' | 'skipped' | 'error';
   found: number;
   added: number;
+  posters: number;
   notes: string[];
   message: string;
 }
@@ -948,6 +972,8 @@ export interface AdminAdaptationSyncReport {
   updated: number;
   /** Links created. */
   added: number;
+  /** Posters filled (new works and backfilled existing ones). */
+  posters: number;
   items: AdminAdaptationSyncItem[];
 }
 
@@ -1163,6 +1189,8 @@ export interface AdminAdaptationSyncResult {
   updated: number;
   /** Links created. */
   added: number;
+  /** Posters filled. */
+  posters: number;
   unchanged: number;
   skipped: number;
   failed: number;
@@ -3135,6 +3163,23 @@ export const api = {
       // 409 while the work has any link.
       delete: (id: string) =>
         fetcher<void>(`/api/v1/admin/screen-works/${id}`, { method: 'DELETE' }),
+      // Uploads a JPEG/PNG/WebP poster (at most 5 MiB); it replaces any current
+      // poster and does not mark the work as edited by hand. Errors: 400 no
+      // file, 404, 413 too large, 422 not a supported image.
+      uploadPoster: (id: string, file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return fetcher<AdminScreenWorkDetail>(`/api/v1/admin/screen-works/${id}/poster`, {
+          method: 'PUT',
+          body: formData,
+        });
+      },
+      // Removes the poster (idempotent): an uploaded one is deleted, an
+      // automatic one is marked removed so the sync does not refill it.
+      deletePoster: (id: string) =>
+        fetcher<AdminScreenWorkDetail>(`/api/v1/admin/screen-works/${id}/poster`, {
+          method: 'DELETE',
+        }),
     },
     genres: {
       list: async (params?: {

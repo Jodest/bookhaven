@@ -15,9 +15,9 @@ const (
 )
 
 // MinVerdictVotes is the number of votes from which the per-value counts of an
-// adaptation are revealed. Keep equal to curated domain.DefaultMinVerdictVotes
-// (the curated module must not import screenworks).
-const MinVerdictVotes = 5
+// adaptation are revealed. Intentionally independent of curated
+// domain.DefaultMinVerdictVotes (the curated floor stays 5).
+const MinVerdictVotes = 1
 
 var (
 	ErrVoteValue          = errors.New("invalid vote value")

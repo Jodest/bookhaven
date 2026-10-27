@@ -31,6 +31,14 @@ const book: Book = {
 };
 
 describe('buildBookMetadata', () => {
+  it('canonical address is the book page without ?tab=', () => {
+    vi.stubEnv('SITE_URL', 'https://bookhaven.example');
+    expect(buildBookMetadata(book).alternates?.canonical).toBe(
+      'https://bookhaven.example/books/fathers-and-sons'
+    );
+    vi.unstubAllEnvs();
+  });
+
   it('title with and without authors', () => {
     expect(buildBookMetadata(book).title).toBe('Отцы и дети — Иван Тургенев — BookHaven');
     expect(buildBookMetadata({ ...book, authors: [] }).title).toBe('Отцы и дети — BookHaven');

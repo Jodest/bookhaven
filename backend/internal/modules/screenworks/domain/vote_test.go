@@ -16,12 +16,12 @@ func TestParseVoteValue(t *testing.T) {
 }
 
 func TestNewVerdictMinimum(t *testing.T) {
-	below := NewVerdict(VerdictCounts{Votes: MinVerdictVotes - 1, BookBetter: 4})
-	if below.Votes != 4 || below.BookBetter != nil || below.AdaptationBetter != nil || below.Same != nil {
-		t.Fatalf("below = %+v", below)
+	zero := NewVerdict(VerdictCounts{Votes: MinVerdictVotes - 1})
+	if zero.Votes != 0 || zero.BookBetter != nil || zero.AdaptationBetter != nil || zero.Same != nil {
+		t.Fatalf("zero = %+v", zero)
 	}
-	at := NewVerdict(VerdictCounts{Votes: MinVerdictVotes, BookBetter: 5})
-	if at.BookBetter == nil || *at.BookBetter != 5 || at.Same == nil || *at.Same != 0 {
-		t.Fatalf("at = %+v", at)
+	one := NewVerdict(VerdictCounts{Votes: MinVerdictVotes, BookBetter: 1})
+	if MinVerdictVotes != 1 || one.BookBetter == nil || *one.BookBetter != 1 || one.Same == nil || *one.Same != 0 {
+		t.Fatalf("one = %+v", one)
 	}
 }

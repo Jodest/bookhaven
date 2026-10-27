@@ -254,6 +254,8 @@ func RegisterAdminRoutes(
 	screenWorks.GET("/:id", screenWorksHandler.AdminGetWork)
 	screenWorks.PATCH("/:id", screenWorksHandler.AdminUpdateWork, requireBearer)
 	screenWorks.DELETE("/:id", screenWorksHandler.AdminDeleteWork, requireBearer)
+	screenWorks.PUT("/:id/poster", screenWorksHandler.AdminUploadPoster, requireBearer)
+	screenWorks.DELETE("/:id/poster", screenWorksHandler.AdminDeletePoster, requireBearer)
 
 	genres := admin.Group("/genres", adminRole)
 	genres.GET("", adminHandler.ListGenres)

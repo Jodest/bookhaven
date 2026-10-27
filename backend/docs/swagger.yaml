@@ -373,6 +373,8 @@ definitions:
         type: array
       failed:
         type: integer
+      posters:
+        type: integer
       processed:
         type: integer
       skipped:
@@ -400,6 +402,8 @@ definitions:
         type: array
       outcome:
         type: string
+      posters:
+        type: integer
       title:
         type: string
     type: object
@@ -411,6 +415,8 @@ definitions:
         items:
           $ref: '#/definitions/github_com_bookhaven_backend_internal_modules_screenworks_service.SyncItem'
         type: array
+      posters:
+        type: integer
       processed:
         type: integer
       updated:
@@ -3378,6 +3384,10 @@ definitions:
         type: string
       original_title:
         type: string
+      poster:
+        allOf:
+        - $ref: '#/definitions/internal_modules_screenworks_transport_http.posterResponse'
+        description: Poster is null when the work has no poster.
       title:
         type: string
       year:
@@ -3419,6 +3429,10 @@ definitions:
         type: string
       original_title:
         type: string
+      poster:
+        allOf:
+        - $ref: '#/definitions/internal_modules_screenworks_transport_http.posterResponse'
+        description: Poster is null when the work has no poster.
       qid:
         type: string
       source:
@@ -3459,6 +3473,10 @@ definitions:
         type: string
       original_title:
         type: string
+      poster:
+        allOf:
+        - $ref: '#/definitions/internal_modules_screenworks_transport_http.posterResponse'
+        description: Poster is null when the work has no poster.
       qid:
         type: string
       relation:
@@ -3492,6 +3510,10 @@ definitions:
         type: string
       original_title:
         type: string
+      poster:
+        allOf:
+        - $ref: '#/definitions/internal_modules_screenworks_transport_http.posterResponse'
+        description: Poster is null when the work has no poster.
       qid:
         type: string
       source:
@@ -3530,6 +3552,10 @@ definitions:
         type: string
       original_title:
         type: string
+      poster:
+        allOf:
+        - $ref: '#/definitions/internal_modules_screenworks_transport_http.posterResponse'
+        description: Poster is null when the work has no poster.
       qid:
         type: string
       relation:
@@ -3564,6 +3590,10 @@ definitions:
         type: string
       original_title:
         type: string
+      poster:
+        allOf:
+        - $ref: '#/definitions/internal_modules_screenworks_transport_http.posterResponse'
+        description: Poster is null when the work has no poster.
       relation:
         type: string
       title:
@@ -3579,6 +3609,25 @@ definitions:
         type: array
       total:
         type: integer
+    type: object
+  internal_modules_screenworks_transport_http.posterResponse:
+    properties:
+      author:
+        type: string
+      license:
+        type: string
+      license_url:
+        type: string
+      source:
+        enum:
+        - manual
+        - commons
+        - tmdb
+        type: string
+      source_url:
+        type: string
+      url:
+        type: string
     type: object
   internal_modules_screenworks_transport_http.setHiddenRequest:
     properties:
@@ -3686,6 +3735,14 @@ definitions:
         type: string
       original_title:
         type: string
+      poster:
+        allOf:
+        - $ref: '#/definitions/internal_modules_screenworks_transport_http.posterResponse'
+        description: |-
+          Poster is null without a poster; PosterRemoved is true when an admin
+          removed an automatic poster (the sync will not refill it).
+      poster_removed:
+        type: boolean
       qid:
         type: string
       title:
@@ -8887,6 +8944,140 @@ paths:
       summary: Изменить фильм или сериал (админ)
       tags:
       - admin
+  /admin/screen-works/{id}/poster:
+    delete:
+      description: 'Требуется роль admin и Bearer-токен. Загруженный вручную постер
+        удаляется (синхронизация может найти новый), автоматический (Commons, TMDB)
+        помечается как убранный и синхронизацией больше не возвращается. Идемпотентно:
+        без постера ничего не меняется. Возвращает работу. Работа не найдена - 404'
+      parameters:
+      - description: ID фильма
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_screenworks_transport_http.workDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Убрать постер фильма или сериала (админ)
+      tags:
+      - admin
+    put:
+      consumes:
+      - multipart/form-data
+      description: 'Требуется роль admin и Bearer-токен. multipart/form-data: file
+        (обязательно) - JPEG, PNG или WebP до 5 МиБ; тип определяется по содержимому,
+        а не по имени файла или Content-Type. Постер сохраняется на сервере и заменяет
+        любой прежний (источник manual); пометка «изменено вручную» у работы не ставится.
+        Возвращает работу. Ошибки: 400 - нет файла, 413 - файл больше 5 МиБ, 422 -
+        не JPEG/PNG/WebP, 404 - работа не найдена'
+      parameters:
+      - description: ID фильма
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Постер (JPEG, PNG или WebP, до 5 МиБ)
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_modules_screenworks_transport_http.workDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "413":
+          description: Request Entity Too Large
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Загрузить постер фильма или сериала (админ)
+      tags:
+      - admin
   /admin/users:
     get:
       description: 'Требуется роль admin. Поиск по email или имени (подстрока без
@@ -9683,7 +9874,7 @@ paths:
     get:
       description: Доступно без авторизации (токен необязателен). Для каждой видимой
         экранизации опубликованной книги - число голосов; счётчики по значениям (book_better,
-        adaptation_better, same) null, пока голосов меньше min_votes (5). my_vote
+        adaptation_better, same) null, пока голосов меньше min_votes (1). my_vote
         - голос текущего пользователя, can_vote - true, если книга у него на полке
         «Прочитано». Порядок как у списка экранизаций. Неизвестная или неопубликованная
         книга - 404

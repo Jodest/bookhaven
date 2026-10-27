@@ -67,6 +67,7 @@ type CatalogSyncResult struct {
 	Processed int                `json:"processed"`
 	Updated   int                `json:"updated"`
 	Added     int                `json:"added"`
+	Posters   int                `json:"posters"`
 	Unchanged int                `json:"unchanged"`
 	Skipped   int                `json:"skipped"`
 	Failed    int                `json:"failed"`
@@ -227,6 +228,7 @@ func (r *CatalogSyncResult) add(report *SyncReport) {
 		}
 	}
 	r.Added += report.Added
+	r.Posters += report.Posters
 }
 
 // write stores the result as job progress; failures are only logged.
