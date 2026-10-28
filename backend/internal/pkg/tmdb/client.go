@@ -22,8 +22,8 @@ import (
 
 const (
 	defaultBaseURL = "https://api.themoviedb.org/3"
-	// ImageBaseURL is the TMDB image CDN path of a 342 px wide poster.
-	ImageBaseURL   = "https://image.tmdb.org/t/p/w342"
+	// ImageBaseURL is the TMDB image CDN path of a 500 px wide poster.
+	ImageBaseURL   = "https://image.tmdb.org/t/p/w500"
 	requestTimeout = 10 * time.Second
 	maxBodyBytes   = 64 << 10
 	requestsPerSec = 10

@@ -63,6 +63,7 @@ type Service struct {
 	commons      CommonsSource
 	tmdb         PosterLookup
 	posters      coverstore.Store
+	posterMirror PosterMirrorEnqueuer
 	log          *zap.Logger
 }
 
@@ -225,6 +226,7 @@ func (s *Service) syncChunk(ctx context.Context, chunk []int, ids []uuid.UUID, b
 			items[i].Message = "failed to save adaptations"
 			continue
 		}
+		s.enqueuePosterCopies(ctx, counts.PosterWorkIDs)
 		added := counts.Added
 		items[i].Added = added
 		items[i].Posters = counts.Posters

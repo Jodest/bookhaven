@@ -1,5 +1,5 @@
-// Package service mirrors book covers into our own storage (#489): one
-// copy attempt per book (MirrorOne), a periodic Sweep (backfill, retries,
+// Package service mirrors book covers and screen work posters into our own storage
+// (#489): one copy attempt per row (MirrorOne), a periodic Sweep (backfill, retries,
 // recovery after a lost volume, orphan cleanup) and the asynq tasks.
 package service
 
@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -50,6 +51,11 @@ type Service struct {
 	now      func() time.Time
 	sleep    func(ctx context.Context, d time.Duration) error
 	lastCall time.Time
+
+	// tmdb re-checks TMDB posters; nil means no API key is configured.
+	tmdb PosterLookup
+	// rnd returns a value in [0, 1) for the re-check jitter.
+	rnd func() float64
 }
 
 // Option configures Service.
@@ -60,11 +66,21 @@ func WithClock(now func() time.Time, sleep func(ctx context.Context, d time.Dura
 	return func(s *Service) { s.now, s.sleep = now, sleep }
 }
 
+// WithTMDB enables the TMDB poster re-check with the given client.
+func WithTMDB(l PosterLookup) Option {
+	return func(s *Service) { s.tmdb = l }
+}
+
+// WithRand overrides the random source of the re-check jitter (tests).
+func WithRand(rnd func() float64) Option {
+	return func(s *Service) { s.rnd = rnd }
+}
+
 func New(repo repository.Repository, store coverstore.Store, fetcher Fetcher, log *zap.Logger, opts ...Option) *Service {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	s := &Service{repo: repo, store: store, fetcher: fetcher, log: log, now: time.Now, sleep: sleepCtx}
+	s := &Service{repo: repo, store: store, fetcher: fetcher, log: log, now: time.Now, sleep: sleepCtx, rnd: rand.Float64}
 	for _, o := range opts {
 		o(s)
 	}
@@ -94,24 +110,24 @@ func (s *Service) pace(ctx context.Context) error {
 	return nil
 }
 
-// MirrorOne makes (or refreshes) the copy of one book's current cover link.
-// Failures are recorded on the book and swallowed; only context errors and
-// database errors are returned.
-func (s *Service) MirrorOne(ctx context.Context, bookID uuid.UUID, reason string) error {
-	book, err := s.repo.GetBook(ctx, bookID)
+// MirrorOne makes (or refreshes) the copy of one row's current source link
+// (a book cover or a screen work poster). Failures are recorded on the row and
+// swallowed; only context errors and database errors are returned.
+func (s *Service) MirrorOne(ctx context.Context, owner domain.Owner, id uuid.UUID, reason string) error {
+	sub, err := s.repo.GetSubject(ctx, owner, id)
 	if err != nil {
 		return err
 	}
-	if book == nil || book.CoverURL == nil || strings.TrimSpace(*book.CoverURL) == "" {
+	if sub == nil || strings.TrimSpace(sub.Link) == "" {
 		return nil
 	}
-	link := *book.CoverURL
-	if book.HasStoredCover() {
+	link := sub.Link
+	if sub.HasStoredCopy() {
 		return nil
 	}
 	attempts := 0
-	if reason != ReasonSave && book.CoverSourceURL != nil && *book.CoverSourceURL == link {
-		attempts = book.CoverAttempts
+	if reason != ReasonSave && sub.CopySourceURL != nil && *sub.CopySourceURL == link {
+		attempts = sub.Attempts
 	}
 
 	if err := s.pace(ctx); err != nil {
@@ -127,20 +143,24 @@ func (s *Service) MirrorOne(ctx context.Context, bookID uuid.UUID, reason string
 	st := repository.StateUpdate{SourceURL: link, Now: now}
 	var newName string
 	switch {
-	case ferr == nil && res != nil && res.Absent:
+	case ferr == nil && res != nil && res.Absent && owner == domain.OwnerBook:
 		st.Status = catalogDomain.CoverStatusAbsent
-	case ferr == nil && res != nil:
+	case ferr == nil && res != nil && !res.Absent:
 		sum := sha256.Sum256(res.Data)
 		h := hex.EncodeToString(sum[:])
 		newName = h[:2] + "/" + h + "." + res.Ext
 		if perr := s.store.Put(ctx, newName, res.Data); perr != nil {
-			s.log.Warn("cover store put failed", zap.String("book_id", bookID.String()), zap.Error(perr))
+			s.log.Warn("cover store put failed", zap.String("owner", string(owner)), zap.String("id", id.String()), zap.Error(perr))
 			ferr = &coverfetch.Error{Code: coverfetch.CodeNetwork, Transient: true, Err: perr}
 			newName = ""
 		} else {
 			st.Status = catalogDomain.CoverStatusStored
 			st.Path = &newName
 		}
+	case ferr == nil:
+		// "Absent" is a book-only answer (Open Library); for other owners it
+		// is a permanent failure.
+		ferr = &coverfetch.Error{Code: coverfetch.CodeHTTPError}
 	}
 	if st.Status == "" {
 		var fe *coverfetch.Error
@@ -156,10 +176,11 @@ func (s *Service) MirrorOne(ctx context.Context, bookID uuid.UUID, reason string
 			st.Status = catalogDomain.CoverStatusFailed
 		}
 		s.log.Info("cover copy failed",
-			zap.String("book_id", bookID.String()), zap.String("error", code), zap.Bool("transient", fe.Transient), zap.String("status", st.Status))
+			zap.String("owner", string(owner)), zap.String("id", id.String()),
+			zap.String("error", code), zap.Bool("transient", fe.Transient), zap.String("status", st.Status))
 	}
 
-	applied, prev, err := s.repo.SaveState(ctx, bookID, st)
+	applied, prev, err := s.repo.SaveState(ctx, owner, id, st)
 	if err != nil {
 		return err
 	}
@@ -173,7 +194,7 @@ func (s *Service) MirrorOne(ctx context.Context, bookID uuid.UUID, reason string
 	return nil
 }
 
-// collect deletes a stored file once no book refers to it.
+// collect deletes a stored file once nothing refers to it.
 func (s *Service) collect(ctx context.Context, name string) {
 	used, err := s.repo.PathReferenced(ctx, name)
 	if err != nil {
@@ -195,10 +216,14 @@ type SweepStats struct {
 	Verified int
 	Mirrored int
 	Orphans  int
+	// TMDBDropped counts TMDB posters dropped (hard limit and re-check),
+	// TMDBChecked the re-checks that reached a verdict.
+	TMDBDropped int
+	TMDBChecked int
 }
 
-// Sweep runs the four periodic steps: marker/reset, verify, mirror due
-// candidates (at most batch), orphan cleanup.
+// Sweep runs the periodic steps: marker/reset, verify, mirror due candidates
+// of every owner (at most batch), TMDB poster re-check, orphan cleanup.
 func (s *Service) Sweep(ctx context.Context, batch int) (SweepStats, error) {
 	var stats SweepStats
 	if batch <= 0 {
@@ -216,7 +241,7 @@ func (s *Service) Sweep(ctx context.Context, batch int) (SweepStats, error) {
 		}
 		stats.Reset = n
 		if n > 0 {
-			s.log.Warn("cover storage is new: stored copies reset to pending", zap.Int64("books", n))
+			s.log.Warn("cover storage is new: stored copies reset to pending", zap.Int64("copies", n))
 		}
 	}
 
@@ -224,35 +249,43 @@ func (s *Service) Sweep(ctx context.Context, batch int) (SweepStats, error) {
 	if err != nil {
 		return stats, err
 	}
-	var ok []uuid.UUID
+	ok := map[domain.Owner][]uuid.UUID{}
+	verified := 0
 	for _, ref := range refs {
 		exists, err := s.store.Exists(ctx, ref.Path)
 		if err != nil && !errors.Is(err, coverstore.ErrInvalidName) {
 			return stats, err
 		}
 		if exists {
-			ok = append(ok, ref.ID)
+			ok[ref.Owner] = append(ok[ref.Owner], ref.ID)
+			verified++
 			continue
 		}
-		if err := s.repo.MarkMissing(ctx, ref.ID, ref.Path, s.clock()); err != nil {
+		if err := s.repo.MarkMissing(ctx, ref.Owner, ref.ID, ref.Path, s.clock()); err != nil {
 			return stats, err
 		}
 		stats.Missing++
 	}
-	if err := s.repo.TouchChecked(ctx, ok, s.clock()); err != nil {
-		return stats, err
+	for owner, ids := range ok {
+		if err := s.repo.TouchChecked(ctx, owner, ids, s.clock()); err != nil {
+			return stats, err
+		}
 	}
-	stats.Verified = len(ok)
+	stats.Verified = verified
 
-	ids, err := s.repo.DueCandidates(ctx, s.clock(), batch)
+	due, err := s.repo.DueCandidates(ctx, s.clock(), batch)
 	if err != nil {
 		return stats, err
 	}
-	for _, id := range ids {
-		if err := s.MirrorOne(ctx, id, ReasonSweep); err != nil {
+	for _, ref := range due {
+		if err := s.MirrorOne(ctx, ref.Owner, ref.ID, ReasonSweep); err != nil {
 			return stats, err
 		}
 		stats.Mirrored++
+	}
+
+	if err := s.refreshTMDB(ctx, &stats); err != nil {
+		return stats, err
 	}
 
 	stats.Orphans, err = s.collectOrphans(ctx)
@@ -260,7 +293,8 @@ func (s *Service) Sweep(ctx context.Context, batch int) (SweepStats, error) {
 		s.log.Warn("cover orphan cleanup failed", zap.Error(err))
 	}
 	s.log.Info("cover sweep done", zap.Int64("reset", stats.Reset), zap.Int("missing", stats.Missing),
-		zap.Int("verified", stats.Verified), zap.Int("mirrored", stats.Mirrored), zap.Int("orphans", stats.Orphans))
+		zap.Int("verified", stats.Verified), zap.Int("mirrored", stats.Mirrored), zap.Int("orphans", stats.Orphans),
+		zap.Int("tmdb_checked", stats.TMDBChecked), zap.Int("tmdb_dropped", stats.TMDBDropped))
 	return stats, nil
 }
 

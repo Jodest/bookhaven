@@ -16358,6 +16358,7 @@
                     "type": "string"
                 },
                 "url": {
+                    "description": "URL is an own /covers/... path once a copy of a Commons or TMDB poster is stored, otherwise the source link;\nan uploaded poster is /posters/...",
                     "type": "string"
                 }
             }

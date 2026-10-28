@@ -223,6 +223,11 @@ func main() {
 	if cfg.TMDBAPIKey != "" {
 		screenWorksOpts = append(screenWorksOpts, screenworksservice.WithTMDB(tmdb.New(cfg.TMDBAPIKey)))
 	}
+	// Self-hosted posters: the catalog sync and the sync after a harvest
+	// queue the copy of a poster they fill.
+	if coversClient != nil {
+		screenWorksOpts = append(screenWorksOpts, screenworksservice.WithPosterMirror(coversservice.NewEnqueuer(coversClient)))
+	}
 	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger, screenWorksOpts...)
 	harvestHandler := harvestservice.NewHandler(wikidataClient, openLibraryClient, adminService,
 		harvestservice.WithAdaptationSyncer(screenWorksService),
@@ -536,8 +541,15 @@ func main() {
 	// Self-hosted covers (#489): the worker is the only writer of the storage.
 	// Own server with Concurrency 1 so downloads are serialized and paced.
 	if cfg.CoversMirrorEnabled {
+		// TMDB re-check of poster copies (TMDB API terms): its own client, so
+		// the limiter is per client and both stay under 10 rps. Without a key
+		// the sweep drops TMDB posters that fall due.
+		var coversOpts []coversservice.Option
+		if cfg.TMDBAPIKey != "" {
+			coversOpts = append(coversOpts, coversservice.WithTMDB(tmdb.New(cfg.TMDBAPIKey)))
+		}
 		coversSvc := coversservice.New(coversrepository.NewGormRepository(db), coverstore.NewFS(cfg.CoversDir),
-			coverfetch.New(cfg.CoversAllowedHosts), logger)
+			coverfetch.New(cfg.CoversAllowedHosts), logger, coversOpts...)
 		coversHandlers := coversservice.NewHandlers(coversSvc, cfg.CoversSweepBatch, logger)
 
 		coversMux := asynq.NewServeMux()

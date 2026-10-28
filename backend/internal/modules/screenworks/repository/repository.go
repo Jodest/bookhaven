@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"time"
 
 	"github.com/bookhaven/backend/internal/modules/screenworks/domain"
@@ -157,6 +158,9 @@ func (r *GormRepository) BookStatus(ctx context.Context, id uuid.UUID) (string, 
 type SyncCounts struct {
 	Added   int
 	Posters int
+	// PosterWorkIDs are the works that got a Commons or TMDB poster in this
+	// call; their copies are queued after the commit.
+	PosterWorkIDs []uuid.UUID
 }
 
 func (r *GormRepository) SyncBook(ctx context.Context, bookID uuid.UUID, works []domain.WorkInput) (SyncCounts, error) {
@@ -168,6 +172,9 @@ func (r *GormRepository) SyncBook(ctx context.Context, bookID uuid.UUID, works [
 				return err
 			}
 			counts.Posters += posters
+			if posters > 0 {
+				counts.PosterWorkIDs = append(counts.PosterWorkIDs, workID)
+			}
 			now := time.Now()
 			res := tx.Exec(`INSERT INTO book_screen_works (book_id, screen_work_id, hidden, source, created_at, updated_at)
 VALUES (?, ?, FALSE, ?, ?, ?) ON CONFLICT (book_id, screen_work_id) DO NOTHING`,
@@ -219,18 +226,27 @@ func (r *GormRepository) PosterCandidates(ctx context.Context, qids []string) (m
 // the poster columns untouched.
 func upsertWikidataWork(tx *gorm.DB, w domain.WorkInput) (uuid.UUID, int, error) {
 	now := time.Now()
-	var pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL, pUpdated any
+	var pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL, pUpdated, pRef, pVerified, pRefresh any
 	if p := w.Poster; p != nil {
 		pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL = p.Source, p.URL, p.Author, p.License, p.LicenseURL, p.SourceURL
 		pUpdated = now
+		if p.Source == domain.PosterSourceTMDB {
+			// Kept for the TMDB re-check: the id, and when the poster was
+			// confirmed and must be looked at again.
+			if p.TMDBRef != "" {
+				pRef = p.TMDBRef
+			}
+			pVerified, pRefresh = now, nextTMDBRefresh(now)
+		}
 	}
 	res := tx.Exec(`INSERT INTO screen_works (id, title, original_title, kind, year, director, imdb_id, kinopoisk_id, external_source, external_id,
-  poster_source, poster_url, poster_author, poster_license, poster_license_url, poster_source_url, poster_updated_at, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  poster_source, poster_url, poster_author, poster_license, poster_license_url, poster_source_url, poster_updated_at,
+  poster_tmdb_ref, poster_verified_at, poster_refresh_at, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (external_source, external_id) WHERE external_id IS NOT NULL DO NOTHING`,
 		uuid.New(), w.Title, w.OriginalTitle, w.Kind, w.Year, w.Director, w.IMDbID, w.KinopoiskID,
 		domain.ExternalSourceWikidata, w.QID,
-		pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL, pUpdated, now, now)
+		pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL, pUpdated, pRef, pVerified, pRefresh, now, now)
 	if res.Error != nil {
 		return uuid.Nil, 0, res.Error
 	}
@@ -265,9 +281,12 @@ WHERE id = ? AND manually_edited_at IS NULL`,
 		posters = 1
 	} else if !created && w.Poster != nil {
 		res := tx.Exec(`UPDATE screen_works SET poster_source = ?, poster_url = ?, poster_author = ?, poster_license = ?,
-  poster_license_url = ?, poster_source_url = ?, poster_updated_at = ?
+  poster_license_url = ?, poster_source_url = ?, poster_updated_at = ?,
+  poster_copy_source_url = NULL, poster_copy_path = NULL, poster_copy_status = NULL, poster_copy_error = NULL,
+  poster_copy_attempts = 0, poster_copy_next_attempt_at = NULL, poster_copy_fetched_at = NULL, poster_copy_checked_at = NULL,
+  poster_tmdb_ref = ?, poster_verified_at = ?, poster_refresh_at = ?
 WHERE id = ? AND poster_source IS NULL AND manually_edited_at IS NULL`,
-			pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL, now, id)
+			pSource, pURL, pAuthor, pLicense, pLicenseURL, pSourceURL, now, pRef, pVerified, pRefresh, id)
 		if res.Error != nil {
 			return uuid.Nil, 0, res.Error
 		}
@@ -276,8 +295,19 @@ WHERE id = ? AND poster_source IS NULL AND manually_edited_at IS NULL`,
 	return id, posters, nil
 }
 
+// TMDB poster re-check window: a TMDB poster is looked at again 150 to 164
+// days after it was set or confirmed (see covers/service).
+const (
+	tmdbRefreshMin    = 150 * 24 * time.Hour
+	tmdbRefreshJitter = 14 * 24 * time.Hour
+)
+
+func nextTMDBRefresh(now time.Time) time.Time {
+	return now.Add(tmdbRefreshMin + time.Duration(rand.Int63n(int64(tmdbRefreshJitter))))
+}
+
 // posterSelect lists the poster columns of a screen work aliased w.
-const posterSelect = "w.poster_source, w.poster_url, w.poster_path, w.poster_author, w.poster_license, w.poster_license_url, w.poster_source_url"
+const posterSelect = "w.poster_source, w.poster_url, w.poster_path, w.poster_author, w.poster_license, w.poster_license_url, w.poster_source_url, w.poster_copy_path, w.poster_copy_status, w.poster_copy_source_url"
 
 const linkedSelect = "w.id, w.title, w.original_title, w.kind, w.year, w.director, w.imdb_id, w.kinopoisk_id, w.external_id, l.hidden, l.source, " + posterSelect
 

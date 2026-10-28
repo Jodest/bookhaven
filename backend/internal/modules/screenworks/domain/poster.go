@@ -15,6 +15,10 @@ const (
 // PostersURLPrefix is the public route of uploaded posters.
 const PostersURLPrefix = "/posters/"
 
+// CoversURLPrefix is the public route of self-hosted copies of Commons and
+// TMDB posters (the shared cover store).
+const CoversURLPrefix = "/covers/"
+
 // Poster upload errors.
 var (
 	// ErrPosterTooLarge: the uploaded file exceeds the size limit (413).
@@ -33,6 +37,9 @@ type PosterInput struct {
 	License    *string
 	LicenseURL *string
 	SourceURL  *string
+	// TMDBRef is "movie/<id>" or "tv/<id>"; set for TMDB posters only. It is
+	// kept for the periodic TMDB re-check.
+	TMDBRef string
 }
 
 // PosterColumns are the stored poster columns of a screen work. It is
@@ -45,6 +52,10 @@ type PosterColumns struct {
 	PosterLicense    *string `gorm:"column:poster_license"`
 	PosterLicenseURL *string `gorm:"column:poster_license_url"`
 	PosterSourceURL  *string `gorm:"column:poster_source_url"`
+	// Copy state (read-only; written by the covers module).
+	PosterCopyPath      *string `gorm:"column:poster_copy_path;->"`
+	PosterCopyStatus    *string `gorm:"column:poster_copy_status;->"`
+	PosterCopySourceURL *string `gorm:"column:poster_copy_source_url;->"`
 }
 
 // Poster is the API poster object.
@@ -77,6 +88,11 @@ func (c PosterColumns) Poster() *Poster {
 			return nil
 		}
 		p.URL = *c.PosterURL
+		if c.PosterCopyStatus != nil && *c.PosterCopyStatus == "stored" &&
+			c.PosterCopyPath != nil && *c.PosterCopyPath != "" &&
+			c.PosterCopySourceURL != nil && *c.PosterCopySourceURL == *c.PosterURL {
+			p.URL = CoversURLPrefix + *c.PosterCopyPath
+		}
 	default:
 		return nil
 	}

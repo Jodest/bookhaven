@@ -149,7 +149,16 @@ func main() {
 	// service because the direct author import syncs the new author's films.
 	// Posters: uploads go to the posters store (read-write here only); the
 	// TMDB lookup is on only when TMDB_API_KEY is set.
+	// Shared asynq.Client for every task the api enqueues (see below); built
+	// before the screen works and admin services because saves and the
+	// adaptation sync queue cover and poster copies through it.
+	taskClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
+	defer taskClient.Close()
 	screenWorksOpts := []screenworksservice.Option{screenworksservice.WithPosterStore(postersStore)}
+	// Self-hosted posters: a sync that fills a Commons/TMDB poster queues its copy.
+	if cfg.CoversMirrorEnabled {
+		screenWorksOpts = append(screenWorksOpts, screenworksservice.WithPosterMirror(coversservice.NewEnqueuer(taskClient)))
+	}
 	if cfg.TMDBAPIKey != "" {
 		screenWorksOpts = append(screenWorksOpts, screenworksservice.WithTMDB(tmdb.New(cfg.TMDBAPIKey)))
 	}
@@ -157,10 +166,6 @@ func main() {
 	// Built before the admin service: a genre merge recomputes the automatic
 	// collections it switches.
 	curatedService := curatedservice.NewService(curatedrepository.NewGormRepository(db)).WithLogger(logger)
-	// Shared asynq.Client for every task the api enqueues (see below); built
-	// before the admin service because saves queue cover copies through it.
-	taskClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
-	defer taskClient.Close()
 	adminOpts := []adminservice.Option{
 		adminservice.WithSimilarInvalidator(similarCache),
 		adminservice.WithLookupClient(bookdata.NewOpenLibraryClient()),

@@ -63,8 +63,8 @@ An admin update that keeps the same link queues a copy only when no copy of it i
 - **THEN** the copy is attempted again
 
 ### Requirement: Download rules
-The download of a cover link SHALL follow all of these rules:
-- **Hosts.** The link MUST use `http` or `https` on port 80 or 443, and its host MUST be on the allowlist. The default allowlist is `covers.openlibrary.org`, `archive.org` with its subdomains, and `upload.wikimedia.org`; it is configurable.
+The download of a cover link, or of a screen work poster link (see `screen-works/poster-copies`), SHALL follow all of these rules:
+- **Hosts.** The link MUST use `http` or `https` on port 80 or 443, and its host MUST be on the allowlist. The default allowlist is `covers.openlibrary.org`, `archive.org` with its subdomains, `upload.wikimedia.org` and `image.tmdb.org`; it is configurable.
 - **Addresses.** Every address the host resolves to MUST be checked when connecting. Loopback, private, link-local, unique-local, multicast, unspecified and other non-public addresses are refused.
 - **Redirects.** At most 5 redirects. Each target MUST pass the host and address rules again.
 - **Limits.** The whole download is limited to 30 seconds and 5 MB.
@@ -89,20 +89,29 @@ A link that breaks a rule is not stored, and its copy becomes `failed`.
 - **WHEN** a cover link returns an HTML page or a GIF with an image content type
 - **THEN** the copy is `failed` and nothing is stored
 
+#### Scenario: TMDB poster host allowed by default
+- **WHEN** a screen work has a poster link on `image.tmdb.org` and the allowlist is not configured
+- **THEN** the poster is downloaded and stored like a cover
+
 ### Requirement: Retries and pacing
-A transient failure (a timeout, a network error, HTTP 408, 429 or 5xx) SHALL be retried with backoff. The first retry comes after 10 minutes, and each next pause doubles, up to 24 hours. After 6 failed attempts the copy is `failed`, and it is tried once more after 7 days. Other failures are permanent and MUST NOT be retried until the link changes or an admin saves the book again: a host off the allowlist, a refused address, too many redirects, a file over the limit, a non-image, or any other 4xx. Downloads run one at a time, at least 1 second apart.
+A transient failure (a timeout, a network error, HTTP 408, 429 or 5xx) SHALL be retried with backoff. The first retry comes after 10 minutes, and each next pause doubles, up to 24 hours. After 6 failed attempts the copy is `failed`, and it is tried once more after 7 days. Other failures are permanent and MUST NOT be retried until the link changes or an admin saves the book again (for a poster: until its poster link changes): a host off the allowlist, a refused address, too many redirects, a file over the limit, a non-image, or any other 4xx. Downloads of covers and posters run one at a time, together, at least 1 second apart.
 
 #### Scenario: Temporary outage
 - **WHEN** Open Library answers 503 for a cover
 - **THEN** the copy stays `pending` and is attempted again about 10 minutes later, and the book shows the source link meanwhile
 
+#### Scenario: Poster outage
+- **WHEN** Wikimedia answers 503 for a Commons poster
+- **THEN** the poster copy stays `pending`, is attempted again about 10 minutes later, and the work shows the source link meanwhile
+
 ### Requirement: Periodic sweep
 A periodic sweep SHALL run every 15 minutes by default. The schedule is configurable and the sweep can be turned off. Each run:
-- copies up to 50 books (configurable) that have a cover link but no copy for it, or whose retry is due;
-- checks a rolling batch of stored copies, and marks any copy whose file is missing as `pending` so it is copied again;
-- when the storage is new or empty while copies are recorded as stored, marks all of them `pending` at once.
+- copies up to 50 items in total (configurable), books and screen work posters together. These are books with a cover link and works with a Commons or TMDB poster that have no copy for their current link, or whose retry is due. The items whose copy has been waiting longest come first;
+- checks a rolling batch of stored copies of books and posters, and marks any copy whose file is missing as `pending` so it is copied again;
+- when the storage is new or empty while copies are recorded as stored, marks all of them, of books and posters, `pending` at once;
+- re-checks TMDB posters that are due (see `screen-works/poster-copies`).
 
-While a copy is not stored, the book shows its source link.
+While a copy is not stored, the book or work shows its source link.
 
 #### Scenario: Fresh database or empty storage
 - **WHEN** the storage is empty and 24 books have Open Library cover links
@@ -112,8 +121,12 @@ While a copy is not stored, the book shows its source link.
 - **WHEN** the file of a stored copy has disappeared from the storage
 - **THEN** a later sweep copies the cover again, and the book shows the source link in between
 
+#### Scenario: Storage rebuilt with poster copies
+- **WHEN** the cover storage is replaced by an empty one while 10 posters and 20 covers are recorded as stored
+- **THEN** the first sweep marks all 30 copies `pending`, the books and works show their source links, and later sweeps copy them again
+
 ### Requirement: Storage and cleanup
-Stored files SHALL be named by a hash of their content, so books with an identical image share one file. A file MUST be deleted once no book refers to it: either after a replacement copy is stored, or by the sweep, which removes files that no book refers to and that are older than one hour. Copies are not backed up: they can always be made again from the cover links.
+Stored files SHALL be named by a hash of their content, so books and works with an identical image share one file. A file MUST be deleted once no book cover and no screen work poster refers to it. This happens either after a replacement copy is stored, or in the sweep, which removes files that nothing refers to and that are older than one hour. Copies are not backed up: they can always be made again from the cover and poster links.
 
 #### Scenario: Cover replaced
 - **WHEN** a book's new cover is stored and no other book uses its old file
@@ -122,6 +135,10 @@ Stored files SHALL be named by a hash of their content, so books with an identic
 #### Scenario: Shared file kept
 - **WHEN** two books use the same image and one of them gets a new cover
 - **THEN** the shared file stays for the other book
+
+#### Scenario: Poster copy kept by cleanup
+- **WHEN** the sweep cleans up the storage while a work's stored poster copy is older than one hour
+- **THEN** the poster file is kept because the work refers to it
 
 ### Requirement: Serving copies
 `GET /covers/{file}` and `HEAD /covers/{file}` SHALL be public: no sign-in, no bearer and no role. They are served by the API and, through a proxy, on the origins of the public site and the admin app. The response carries:
