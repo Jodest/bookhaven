@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bookhaven/backend/internal/modules/covers/domain"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
@@ -20,15 +21,39 @@ const (
 	QueueName      = "covers"
 )
 
-// MirrorPayload is the payload of TaskTypeMirror.
+// MirrorPayload is the payload of TaskTypeMirror. A payload with only
+// book_id (queued before owners existed) decodes as the book owner.
 type MirrorPayload struct {
-	BookID string `json:"book_id"`
+	Owner  string `json:"owner,omitempty"`
+	ID     string `json:"id,omitempty"`
+	BookID string `json:"book_id,omitempty"`
 	Reason string `json:"reason"`
+}
+
+// Resolve returns the owner and id of the payload.
+func (p MirrorPayload) Resolve() (domain.Owner, uuid.UUID, error) {
+	owner, raw := domain.Owner(p.Owner), p.ID
+	if owner == "" && raw == "" && p.BookID != "" {
+		owner, raw = domain.OwnerBook, p.BookID
+	}
+	if !owner.Valid() {
+		return "", uuid.Nil, fmt.Errorf("covers: unknown owner %q", p.Owner)
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return "", uuid.Nil, fmt.Errorf("covers: bad id: %w", err)
+	}
+	return owner, id, nil
 }
 
 // NewMirrorTask builds the copy of one book's cover.
 func NewMirrorTask(bookID uuid.UUID, reason string) (*asynq.Task, error) {
-	payload, err := json.Marshal(MirrorPayload{BookID: bookID.String(), Reason: reason})
+	return NewOwnerMirrorTask(domain.OwnerBook, bookID, reason)
+}
+
+// NewOwnerMirrorTask builds the copy of one row's source link.
+func NewOwnerMirrorTask(owner domain.Owner, id uuid.UUID, reason string) (*asynq.Task, error) {
+	payload, err := json.Marshal(MirrorPayload{Owner: string(owner), ID: id.String(), Reason: reason})
 	if err != nil {
 		return nil, fmt.Errorf("covers: marshal mirror payload: %w", err)
 	}
@@ -80,6 +105,18 @@ func (e *Enqueuer) EnqueueMirror(ctx context.Context, bookID uuid.UUID, reason s
 	return nil
 }
 
+// EnqueuePosterMirror queues a copy of a screen work's poster.
+func (e *Enqueuer) EnqueuePosterMirror(ctx context.Context, workID uuid.UUID) error {
+	task, err := NewOwnerMirrorTask(domain.OwnerScreenWorkPoster, workID, ReasonSave)
+	if err != nil {
+		return err
+	}
+	if _, err := e.client.EnqueueContext(ctx, task, MirrorOptions()...); err != nil && !errors.Is(err, asynq.ErrDuplicateTask) {
+		return err
+	}
+	return nil
+}
+
 // Handlers adapts the service to asynq.
 type Handlers struct {
 	svc   *Service
@@ -101,12 +138,12 @@ func (h *Handlers) HandleMirror(ctx context.Context, t *asynq.Task) error {
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
 		return fmt.Errorf("covers: decode mirror payload: %v: %w", err, asynq.SkipRetry)
 	}
-	id, err := uuid.Parse(p.BookID)
+	owner, id, err := p.Resolve()
 	if err != nil {
-		return fmt.Errorf("covers: bad book id: %v: %w", err, asynq.SkipRetry)
+		return fmt.Errorf("%v: %w", err, asynq.SkipRetry)
 	}
-	if err := h.svc.MirrorOne(ctx, id, p.Reason); err != nil {
-		h.log.Error("cover mirror failed", zap.String("book_id", p.BookID), zap.Error(err))
+	if err := h.svc.MirrorOne(ctx, owner, id, p.Reason); err != nil {
+		h.log.Error("cover mirror failed", zap.String("owner", string(owner)), zap.String("id", id.String()), zap.Error(err))
 	}
 	return nil
 }

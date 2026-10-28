@@ -602,7 +602,7 @@ func TestLoad_Covers(t *testing.T) {
 	if cfg.CoversDir != "./storage/covers" || !cfg.CoversMirrorEnabled || cfg.CoversSweepCron != "*/15 * * * *" || cfg.CoversSweepBatch != 50 {
 		t.Errorf("unexpected defaults: %q %v %q %d", cfg.CoversDir, cfg.CoversMirrorEnabled, cfg.CoversSweepCron, cfg.CoversSweepBatch)
 	}
-	want := []string{"covers.openlibrary.org", "archive.org", "*.archive.org", "upload.wikimedia.org"}
+	want := []string{"covers.openlibrary.org", "archive.org", "*.archive.org", "upload.wikimedia.org", "image.tmdb.org"}
 	if len(cfg.CoversAllowedHosts) != len(want) {
 		t.Fatalf("hosts = %v", cfg.CoversAllowedHosts)
 	}

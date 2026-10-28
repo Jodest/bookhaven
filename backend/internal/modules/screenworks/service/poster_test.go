@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/bookhaven/backend/internal/modules/screenworks/domain"
 	"github.com/bookhaven/backend/internal/modules/screenworks/repository"
@@ -110,7 +112,7 @@ func TestSyncPosters_NonFreeFallsBackToTMDB_SeriesTVFirst(t *testing.T) {
 			ThumbURL: "https://upload.wikimedia.org/p.jpg", Free: false,
 		}},
 	}
-	tm := &fakeTMDB{posters: map[string]string{"tv:7": "https://image.tmdb.org/t/p/w342/a.jpg", "movie:5": "https://image.tmdb.org/t/p/w342/b.jpg"}}
+	tm := &fakeTMDB{posters: map[string]string{"tv:7": "https://image.tmdb.org/t/p/w500/a.jpg", "movie:5": "https://image.tmdb.org/t/p/w500/b.jpg"}}
 	_, db := setup(t, nil)
 	svc := withPosters(t, src, db, WithTMDB(tm))
 	book := mkBook(t, db, "published", "Q1")
@@ -118,7 +120,7 @@ func TestSyncPosters_NonFreeFallsBackToTMDB_SeriesTVFirst(t *testing.T) {
 	if _, err := svc.SyncBooks(context.Background(), []uuid.UUID{book}); err != nil {
 		t.Fatal(err)
 	}
-	if s, u := posterRow(t, db, "Q10"); s != "tmdb" || u != "https://image.tmdb.org/t/p/w342/a.jpg" {
+	if s, u := posterRow(t, db, "Q10"); s != "tmdb" || u != "https://image.tmdb.org/t/p/w500/a.jpg" {
 		t.Errorf("poster = %q %q", s, u)
 	}
 	if len(tm.calls) != 1 || tm.calls[0] != "tv:7" {
@@ -193,6 +195,116 @@ func TestSyncPosters_UnauthorizedStopsTMDBForChunk(t *testing.T) {
 	if len(tm.calls) != 1 {
 		t.Errorf("tmdb calls after 401 = %v", tm.calls)
 	}
+}
+
+type fakeMirror struct {
+	ids []uuid.UUID
+	err error
+}
+
+func (m *fakeMirror) EnqueuePosterMirror(_ context.Context, id uuid.UUID) error {
+	m.ids = append(m.ids, id)
+	return m.err
+}
+
+func tmdbState(t *testing.T, db *gorm.DB, qid string) (ref *string, verified, refresh *time.Time) {
+	t.Helper()
+	var row struct {
+		Ref        *string
+		VerifiedAt *time.Time
+		RefreshAt  *time.Time
+	}
+	if err := db.Raw(`SELECT poster_tmdb_ref AS ref, poster_verified_at AS verified_at, poster_refresh_at AS refresh_at
+		FROM screen_works WHERE external_id = ?`, qid).Scan(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	return row.Ref, row.VerifiedAt, row.RefreshAt
+}
+
+func TestSyncPosters_TMDBKeepsRefAndSchedulesRecheck_EnqueuesCopy(t *testing.T) {
+	w := work("Q10", "Сериал", year(2000))
+	w.Kind = bookdata.ScreenKindSeries
+	w.TMDBTVID = "7"
+	cw := work("Q11", "Фильм", year(1994))
+	cw.PosterFile = "Poster.jpg"
+	src := &fakeCommonsSource{
+		fakeSource: &fakeSource{works: map[string][]bookdata.ExternalScreenWork{"Q1": {w, cw}}},
+		images:     map[string]*bookdata.CommonsImage{"Poster.jpg": freeImage("https://upload.wikimedia.org/p.jpg")},
+	}
+	tm := &fakeTMDB{posters: map[string]string{"tv:7": "https://image.tmdb.org/t/p/w500/a.jpg"}}
+	mirror := &fakeMirror{}
+	_, db := setup(t, nil)
+	svc := withPosters(t, src, db, WithTMDB(tm), WithPosterMirror(mirror))
+	book := mkBook(t, db, "published", "Q1")
+	before := time.Now()
+	if _, err := svc.SyncBooks(context.Background(), []uuid.UUID{book}); err != nil {
+		t.Fatal(err)
+	}
+	ref, verified, refresh := tmdbState(t, db, "Q10")
+	if ref == nil || *ref != "tv/7" || verified == nil || refresh == nil {
+		t.Fatalf("tmdb state: %v %v %v", ref, verified, refresh)
+	}
+	lo, hi := before.Add(150*24*time.Hour), time.Now().Add(164*24*time.Hour)
+	if refresh.Before(lo) || !refresh.Before(hi) {
+		t.Errorf("refresh_at %v outside [150d, 164d)", refresh)
+	}
+	if cref, cv, cr := tmdbState(t, db, "Q11"); cref != nil || cv != nil || cr != nil {
+		t.Errorf("commons poster must not carry tmdb state: %v %v %v", cref, cv, cr)
+	}
+	if len(mirror.ids) != 2 {
+		t.Fatalf("enqueued %d copies, want 2", len(mirror.ids))
+	}
+}
+
+func TestSyncPosters_EnqueueErrorLeavesOutcomeUnchanged(t *testing.T) {
+	w := work("Q10", "Фильм", year(1994))
+	w.PosterFile = "Poster.jpg"
+	src := &fakeCommonsSource{
+		fakeSource: &fakeSource{works: map[string][]bookdata.ExternalScreenWork{"Q1": {w}}},
+		images:     map[string]*bookdata.CommonsImage{"Poster.jpg": freeImage("https://upload.wikimedia.org/p.jpg")},
+	}
+	mirror := &fakeMirror{err: errors.New("redis down")}
+	_, db := setup(t, nil)
+	svc := withPosters(t, src, db, WithPosterMirror(mirror))
+	book := mkBook(t, db, "published", "Q1")
+	rep, err := svc.SyncBooks(context.Background(), []uuid.UUID{book})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Items[0].Outcome != domain.OutcomeAdded || rep.Added != 1 || rep.Posters != 1 || len(mirror.ids) != 1 {
+		t.Fatalf("report = %+v, enqueue calls %d", rep, len(mirror.ids))
+	}
+}
+
+func TestSetManualAndRemovePoster_ClearCopyAndTMDBState(t *testing.T) {
+	ctx := context.Background()
+	svc, db, _, _, id := setupUpload(t)
+	reset := func() {
+		mustExec(t, db, `UPDATE screen_works SET poster_source = 'tmdb', poster_url = 'https://image.tmdb.org/t/p/w500/x.jpg',
+			poster_copy_source_url = poster_url, poster_copy_path = 'ab/abc.jpg', poster_copy_status = 'stored',
+			poster_tmdb_ref = 'movie/5', poster_verified_at = ?, poster_refresh_at = ? WHERE id = ?`, time.Now(), time.Now(), id)
+	}
+	check := func(label string) {
+		t.Helper()
+		var n int
+		db.Raw(`SELECT COUNT(*) FROM screen_works WHERE id = ? AND poster_copy_path IS NULL AND poster_copy_status IS NULL
+			AND poster_copy_source_url IS NULL AND poster_tmdb_ref IS NULL AND poster_verified_at IS NULL AND poster_refresh_at IS NULL`, id).Scan(&n)
+		if n != 1 {
+			t.Errorf("%s: copy/tmdb columns not cleared", label)
+		}
+	}
+	reset()
+	d, err := svc.RemovePoster(ctx, id)
+	if err != nil || d.Poster() != nil || !d.PosterRemoved() {
+		t.Fatalf("remove: %+v %v", d, err)
+	}
+	check("remove")
+	reset()
+	d, err = svc.UploadPoster(ctx, id, jpegBytes)
+	if err != nil || d.Poster() == nil || !strings.HasPrefix(d.Poster().URL, "/posters/") {
+		t.Fatalf("upload: %+v %v", d, err)
+	}
+	check("upload")
 }
 
 func mustExec(t *testing.T, db *gorm.DB, q string, args ...any) {

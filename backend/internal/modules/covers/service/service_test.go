@@ -8,6 +8,7 @@ import (
 	"time"
 
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
+	"github.com/bookhaven/backend/internal/modules/covers/domain"
 	"github.com/bookhaven/backend/internal/modules/covers/repository"
 	"github.com/bookhaven/backend/internal/pkg/coverfetch"
 	"github.com/bookhaven/backend/internal/pkg/coverstore"
@@ -33,6 +34,32 @@ CREATE TABLE books (
 	cover_next_attempt_at DATETIME,
 	cover_stored_at DATETIME,
 	cover_checked_at DATETIME
+);`
+
+const screenWorksDDL = `
+CREATE TABLE screen_works (
+	id TEXT PRIMARY KEY,
+	created_at DATETIME,
+	updated_at DATETIME,
+	poster_source TEXT,
+	poster_url TEXT,
+	poster_path TEXT,
+	poster_author TEXT,
+	poster_license TEXT,
+	poster_license_url TEXT,
+	poster_source_url TEXT,
+	poster_updated_at DATETIME,
+	poster_copy_source_url TEXT,
+	poster_copy_path TEXT,
+	poster_copy_status TEXT,
+	poster_copy_error TEXT,
+	poster_copy_attempts INTEGER NOT NULL DEFAULT 0,
+	poster_copy_next_attempt_at DATETIME,
+	poster_copy_fetched_at DATETIME,
+	poster_copy_checked_at DATETIME,
+	poster_tmdb_ref TEXT,
+	poster_verified_at DATETIME,
+	poster_refresh_at DATETIME
 );`
 
 type fakeFetcher struct {
@@ -66,6 +93,9 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	if err := db.Exec(booksDDL).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(screenWorksDDL).Error; err != nil {
 		t.Fatal(err)
 	}
 	f := &fixture{t: t, db: db, store: coverstore.NewMem(), now: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}
@@ -116,7 +146,7 @@ const ol = "https://covers.openlibrary.org/b/id/1-L.jpg"
 func TestMirrorOne_StoresAndDisplays(t *testing.T) {
 	f := newFixture(t)
 	id := f.book(ol)
-	if err := f.svc.MirrorOne(context.Background(), id, ReasonSave); err != nil {
+	if err := f.svc.MirrorOne(context.Background(), domain.OwnerBook, id, ReasonSave); err != nil {
 		t.Fatal(err)
 	}
 	b := f.load(id)
@@ -134,18 +164,18 @@ func TestMirrorOne_StoresAndDisplays(t *testing.T) {
 		t.Fatalf("files: %v", got)
 	}
 	// Stored copy of the same link: nothing more to do.
-	if err := f.svc.MirrorOne(context.Background(), id, ReasonSave); err != nil || len(f.fetcher.calls) != 1 {
+	if err := f.svc.MirrorOne(context.Background(), domain.OwnerBook, id, ReasonSave); err != nil || len(f.fetcher.calls) != 1 {
 		t.Fatalf("second mirror fetched again: %d %v", len(f.fetcher.calls), err)
 	}
 }
 
 func TestMirrorOne_NoBookOrNoCover(t *testing.T) {
 	f := newFixture(t)
-	if err := f.svc.MirrorOne(context.Background(), uuid.New(), ReasonSave); err != nil {
+	if err := f.svc.MirrorOne(context.Background(), domain.OwnerBook, uuid.New(), ReasonSave); err != nil {
 		t.Fatal(err)
 	}
 	id := f.book("")
-	if err := f.svc.MirrorOne(context.Background(), id, ReasonSave); err != nil {
+	if err := f.svc.MirrorOne(context.Background(), domain.OwnerBook, id, ReasonSave); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.fetcher.calls) != 0 {
@@ -157,7 +187,7 @@ func TestMirrorOne_Absent(t *testing.T) {
 	f := newFixture(t)
 	f.fetcher.fn = func(string) (*coverfetch.Result, error) { return &coverfetch.Result{Absent: true}, nil }
 	id := f.book(ol)
-	_ = f.svc.MirrorOne(context.Background(), id, ReasonSweep)
+	_ = f.svc.MirrorOne(context.Background(), domain.OwnerBook, id, ReasonSweep)
 	b := f.load(id)
 	if *b.CoverStatus != "absent" || b.DisplayCoverURL() != nil || len(f.storedFiles()) != 0 {
 		t.Fatalf("absent: %+v", b)
@@ -174,7 +204,7 @@ func TestMirrorOne_LinkChangedMidDownload_GuardedNoop(t *testing.T) {
 		}
 		return jpeg("old"), nil
 	}
-	if err := f.svc.MirrorOne(context.Background(), id, ReasonSave); err != nil {
+	if err := f.svc.MirrorOne(context.Background(), domain.OwnerBook, id, ReasonSave); err != nil {
 		t.Fatal(err)
 	}
 	b := f.load(id)
@@ -196,7 +226,7 @@ func TestMirrorOne_TransientBackoffAndExhaustion(t *testing.T) {
 	id := f.book(ol)
 	ctx := context.Background()
 
-	_ = f.svc.MirrorOne(ctx, id, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, id, ReasonSave)
 	b := f.load(id)
 	if *b.CoverStatus != "pending" || b.CoverAttempts != 1 || *b.CoverError != "http_error" {
 		t.Fatalf("first: %+v", b)
@@ -209,12 +239,12 @@ func TestMirrorOne_TransientBackoffAndExhaustion(t *testing.T) {
 	}
 
 	for i := 2; i <= 5; i++ {
-		_ = f.svc.MirrorOne(ctx, id, ReasonSweep)
+		_ = f.svc.MirrorOne(ctx, domain.OwnerBook, id, ReasonSweep)
 		if b = f.load(id); b.CoverAttempts != i || *b.CoverStatus != "pending" {
 			t.Fatalf("attempt %d: %+v", i, b)
 		}
 	}
-	_ = f.svc.MirrorOne(ctx, id, ReasonSweep)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, id, ReasonSweep)
 	b = f.load(id)
 	if *b.CoverStatus != "failed" || b.CoverAttempts != 0 {
 		t.Fatalf("6th: %+v", b)
@@ -230,7 +260,7 @@ func TestMirrorOne_PermanentNoNextAttempt(t *testing.T) {
 		return nil, &coverfetch.Error{Code: coverfetch.CodeNotImage}
 	}
 	id := f.book(ol)
-	_ = f.svc.MirrorOne(context.Background(), id, ReasonSave)
+	_ = f.svc.MirrorOne(context.Background(), domain.OwnerBook, id, ReasonSave)
 	b := f.load(id)
 	if *b.CoverStatus != "failed" || *b.CoverError != "not_image" || b.CoverNextAttemptAt != nil {
 		t.Fatalf("permanent: %+v", b)
@@ -247,12 +277,12 @@ func TestMirrorOne_SaveResetsAttempts(t *testing.T) {
 	id := f.book(ol)
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		_ = f.svc.MirrorOne(ctx, id, ReasonSweep)
+		_ = f.svc.MirrorOne(ctx, domain.OwnerBook, id, ReasonSweep)
 	}
 	if b := f.load(id); b.CoverAttempts != 3 {
 		t.Fatalf("attempts=%d", b.CoverAttempts)
 	}
-	_ = f.svc.MirrorOne(ctx, id, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, id, ReasonSave)
 	if b := f.load(id); b.CoverAttempts != 1 {
 		t.Fatalf("save must restart the count, attempts=%d", b.CoverAttempts)
 	}
@@ -261,8 +291,8 @@ func TestMirrorOne_SaveResetsAttempts(t *testing.T) {
 func TestMirrorOne_PacesDownloads(t *testing.T) {
 	f := newFixture(t)
 	a, b := f.book(ol), f.book("https://archive.org/b.jpg")
-	_ = f.svc.MirrorOne(context.Background(), a, ReasonSave)
-	_ = f.svc.MirrorOne(context.Background(), b, ReasonSave)
+	_ = f.svc.MirrorOne(context.Background(), domain.OwnerBook, a, ReasonSave)
+	_ = f.svc.MirrorOne(context.Background(), domain.OwnerBook, b, ReasonSave)
 	if len(f.slept) != 1 || f.slept[0] < time.Second {
 		t.Fatalf("slept=%v", f.slept)
 	}
@@ -274,8 +304,8 @@ func TestMirrorOne_ReplacedCoverGCsOldFile_SharedFileKept(t *testing.T) {
 	a, b := f.book("https://archive.org/a.jpg"), f.book("https://archive.org/b.jpg")
 	// Both books have the same image.
 	f.fetcher.fn = func(string) (*coverfetch.Result, error) { return jpeg("same"), nil }
-	_ = f.svc.MirrorOne(ctx, a, ReasonSave)
-	_ = f.svc.MirrorOne(ctx, b, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, a, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, b, ReasonSave)
 	if len(f.storedFiles()) != 1 {
 		t.Fatalf("identical images must share a file: %v", f.storedFiles())
 	}
@@ -284,7 +314,7 @@ func TestMirrorOne_ReplacedCoverGCsOldFile_SharedFileKept(t *testing.T) {
 	// Book a gets a new cover: the shared file stays for b.
 	f.db.Exec("UPDATE books SET cover_url = 'https://archive.org/a2.jpg' WHERE id = ?", a)
 	f.fetcher.fn = func(string) (*coverfetch.Result, error) { return jpeg("different"), nil }
-	_ = f.svc.MirrorOne(ctx, a, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, a, ReasonSave)
 	if ok, _ := f.store.Exists(ctx, shared); !ok {
 		t.Fatal("shared file deleted while b still uses it")
 	}
@@ -295,7 +325,7 @@ func TestMirrorOne_ReplacedCoverGCsOldFile_SharedFileKept(t *testing.T) {
 
 	// Now b gets a new cover too: the old shared file is deleted.
 	f.db.Exec("UPDATE books SET cover_url = 'https://archive.org/b2.jpg' WHERE id = ?", b)
-	_ = f.svc.MirrorOne(ctx, b, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, b, ReasonSave)
 	if ok, _ := f.store.Exists(ctx, shared); ok {
 		t.Fatal("unreferenced old file must be deleted")
 	}
@@ -308,13 +338,13 @@ func TestMirrorOne_FailedReplacementDropsOldCopy(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	id := f.book("https://archive.org/a.jpg")
-	_ = f.svc.MirrorOne(ctx, id, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, id, ReasonSave)
 	old := *f.load(id).CoverPath
 	f.db.Exec("UPDATE books SET cover_url = 'https://evil.example/x.jpg' WHERE id = ?", id)
 	f.fetcher.fn = func(string) (*coverfetch.Result, error) {
 		return nil, &coverfetch.Error{Code: coverfetch.CodeHostNotAllowed}
 	}
-	_ = f.svc.MirrorOne(ctx, id, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, id, ReasonSave)
 	b := f.load(id)
 	if b.CoverPath != nil || *b.CoverStatus != "failed" || *b.CoverError != "host_not_allowed" {
 		t.Fatalf("%+v", b)
@@ -366,7 +396,7 @@ func TestSweep_MissingFileBecomesPendingThenRestored(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	id := f.book(ol)
-	_ = f.svc.MirrorOne(ctx, id, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, id, ReasonSave)
 	_, _ = f.svc.Sweep(ctx, 50) // consumes the new-marker reset and re-mirrors
 	path := *f.load(id).CoverPath
 	if err := f.store.Delete(ctx, path); err != nil {
@@ -391,7 +421,7 @@ func TestSweep_MissingFileShownAsSourceInBetween(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	id := f.book(ol)
-	_ = f.svc.MirrorOne(ctx, id, ReasonSave)
+	_ = f.svc.MirrorOne(ctx, domain.OwnerBook, id, ReasonSave)
 	_, _ = f.svc.Sweep(ctx, 50)
 	path := *f.load(id).CoverPath
 	_ = f.store.Delete(ctx, path)
