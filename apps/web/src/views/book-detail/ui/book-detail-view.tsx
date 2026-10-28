@@ -15,19 +15,14 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getBook } from '../api/get-book';
 import { buildBookJsonLd } from '../lib/book-seo';
-import { resolveInitialTab } from '../lib/book-tabs';
 import { BookDescription } from './book-description';
-import { BookTabLink } from './book-tab-link';
-import { BookTabs, type BookTabDef } from './book-tabs';
 import { RatingSummary } from './rating-summary';
 
 interface BookDetailViewProps {
   slug: string;
-  /** Requested `?tab=` value of the page address. */
-  tab?: string;
 }
 
-export async function BookDetailView({ slug, tab }: BookDetailViewProps) {
+export async function BookDetailView({ slug }: BookDetailViewProps) {
   const book = await getBook(slug);
 
   if (!book) {
@@ -58,47 +53,8 @@ export async function BookDetailView({ slug, tab }: BookDetailViewProps) {
     book.isbn ? { term: 'ISBN', value: book.isbn } : null,
   ].filter((d): d is Detail => d !== null);
 
-  // Tabs: «Экранизации» exists (and is the default) only with visible
-  // adaptations; the requested `?tab=` is applied in the server render.
   const adaptationItems = adaptations?.items ?? [];
   const hasAdaptations = adaptationItems.length > 0;
-  const initialTab = resolveInitialTab(tab, hasAdaptations);
-  const tabs: BookTabDef[] = [
-    ...(hasAdaptations
-      ? [
-          {
-            id: 'adaptations' as const,
-            label: `Экранизации (${adaptationItems.length})`,
-            panel: (
-              <BookAdaptations
-                items={adaptationItems}
-                headingHidden
-                intro={<AdaptationVotePrompt bookId={book.id} slug={book.slug} />}
-                renderExtra={(adaptation) => (
-                  <AdaptationVerdict bookId={book.id} screenWorkId={adaptation.id} />
-                )}
-              />
-            ),
-          },
-        ]
-      : []),
-    {
-      id: 'reviews' as const,
-      label: 'Рецензии',
-      panel: <ReviewsSection bookId={book.id} slug={book.slug} headingHidden />,
-    },
-    {
-      id: 'similar' as const,
-      label: 'Похожие книги',
-      panel: (
-        <SimilarBooks
-          bookId={book.id}
-          headingHidden
-          emptyFallback={<p className="text-muted-foreground">Похожих книг пока нет.</p>}
-        />
-      ),
-    },
-  ];
 
   // `<` is escaped so a title/description can never close the script tag.
   const jsonLd = JSON.stringify(buildBookJsonLd(book))
@@ -158,14 +114,14 @@ export async function BookDetailView({ slug, tab }: BookDetailViewProps) {
               reviewsCount={book.reviewsCount}
             />
             {hasAdaptations && (
-              <BookTabLink
-                tab="adaptations"
+              <a
+                href="#adaptations"
                 className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
               >
                 <Clapperboard className="h-4 w-4" aria-hidden="true" />
                 {adaptationItems.length}{' '}
                 {pluralRu(adaptationItems.length, ['экранизация', 'экранизации', 'экранизаций'])}
-              </BookTabLink>
+              </a>
             )}
           </div>
         </div>
@@ -205,8 +161,16 @@ export async function BookDetailView({ slug, tab }: BookDetailViewProps) {
             </div>
           )}
 
-          <div className="pt-4">
-            <BookTabs tabs={tabs} initialTab={initialTab} />
+          <div className="space-y-8 pt-4">
+            <BookAdaptations
+              items={adaptationItems}
+              intro={<AdaptationVotePrompt bookId={book.id} slug={book.slug} />}
+              renderExtra={(adaptation) => (
+                <AdaptationVerdict bookId={book.id} screenWorkId={adaptation.id} />
+              )}
+            />
+            <SimilarBooks bookId={book.id} />
+            <ReviewsSection bookId={book.id} slug={book.slug} />
           </div>
         </div>
       </div>

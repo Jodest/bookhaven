@@ -35,7 +35,7 @@ export function buildBookMetadata(book: Book): Metadata {
   return {
     title,
     description,
-    // The book address without `?tab=`, so tab variants are not duplicates.
+    // The book address without a query string, so variants are not duplicates.
     alternates: { canonical: `${getSiteUrl()}/books/${book.slug}` },
     openGraph: {
       type: 'book',
