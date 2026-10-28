@@ -96,10 +96,33 @@ describe('BookAdaptations', () => {
     expect(heading.nextElementSibling).toHaveTextContent('intro text');
   });
 
-  it('renders a hidden heading and the adaptations anchor', () => {
-    const { container } = render(<BookAdaptations items={[item()]} headingHidden />);
-    expect(screen.getByRole('heading', { name: 'Экранизации' })).toHaveClass('sr-only');
+  it('renders a visible heading and the adaptations anchor', () => {
+    const { container } = render(<BookAdaptations items={[item()]} />);
+    expect(screen.getByRole('heading', { name: 'Экранизации' })).not.toHaveClass('sr-only');
     expect(container.querySelector('section#adaptations')).not.toBeNull();
+  });
+
+  it('has no show-all button for 4 items', () => {
+    const items = [1, 2, 3, 4].map((n) => item({ id: `w${n}`, title: `Фильм ${n}` }));
+    render(<BookAdaptations items={items} />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('keeps all 6 cards in the output and reveals them with the show-all button', () => {
+    const items = [1, 2, 3, 4, 5, 6].map((n) => item({ id: `w${n}`, title: `Фильм ${n}` }));
+    render(<BookAdaptations items={items} />);
+    expect(screen.getAllByRole('listitem')).toHaveLength(6);
+    const button = screen.getByRole('button', { name: 'Показать все (6)' });
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('list')).toHaveAttribute('data-expanded', 'false');
+    expect(screen.getByRole('list')).toHaveClass('[&>li:nth-child(n+5)]:data-[expanded=false]:hidden');
+    expect(button).toHaveAttribute('aria-controls', screen.getByRole('list').id);
+
+    fireEvent.click(button);
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByRole('list')).toHaveAttribute('data-expanded', 'true');
+    expect(screen.getAllByRole('listitem')[4]).toHaveFocus();
   });
 
   it('shows a placeholder with the type icon and the year when there is no poster', () => {

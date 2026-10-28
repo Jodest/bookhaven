@@ -1,6 +1,5 @@
 import { pluralRu } from '@/shared/lib/plural-ru';
 import { Star } from 'lucide-react';
-import { BookTabLink } from './book-tab-link';
 
 interface RatingSummaryProps {
   rating: number;
@@ -27,11 +26,11 @@ export function RatingSummary({ rating, ratingsCount, reviewsCount }: RatingSumm
         <span>Пока нет оценок</span>
       )}
       <span aria-hidden="true">·</span>
-      <BookTabLink tab="reviews" className="text-primary hover:underline">
+      <a href="#reviews" className="text-primary hover:underline">
         {reviewsCount > 0
           ? `${reviewsCount} ${pluralRu(reviewsCount, ['рецензия', 'рецензии', 'рецензий'])}`
           : 'Написать рецензию'}
-      </BookTabLink>
+      </a>
     </p>
   );
 }
