@@ -31,7 +31,7 @@ export function ScreenWorkPoster({ title, kind, year, poster: posterProp }: Scre
           src={poster.url}
           alt={title}
           fill
-          sizes="(min-width: 1024px) 200px, (min-width: 640px) 30vw, 45vw"
+          sizes="72px"
           unoptimized={/^https?:\/\//.test(poster.url)}
           className="object-cover"
           onError={() => setFailedUrl(poster.url)}
@@ -39,10 +39,10 @@ export function ScreenWorkPoster({ title, kind, year, poster: posterProp }: Scre
       ) : (
         <div
           data-testid="poster-placeholder"
-          className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-muted to-secondary/60 p-2 text-muted-foreground"
+          className="flex h-full w-full flex-col items-center justify-center gap-1 bg-gradient-to-br from-muted to-secondary/60 p-1 text-muted-foreground"
         >
-          <Icon className="h-10 w-10" aria-hidden="true" />
-          {year ? <span className="text-sm font-medium">{year}</span> : null}
+          <Icon className="h-6 w-6" aria-hidden="true" />
+          {year ? <span className="text-xs font-medium">{year}</span> : null}
         </div>
       )}
     </div>

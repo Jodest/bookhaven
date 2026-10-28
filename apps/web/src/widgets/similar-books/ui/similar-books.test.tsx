@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Book } from '@bookhaven/api-client';
-import type { ComponentProps, ImgHTMLAttributes } from 'react';
+import type { ImgHTMLAttributes } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SimilarBooks } from './similar-books';
 
@@ -12,7 +12,7 @@ vi.mock('next/image', () => ({
   default: ({ fill: _fill, ...props }: ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean }) => <img {...props} />,
 }));
 
-// Keep the real BookCard; replace only the API call.
+// Replace only the API call.
 vi.mock('@/entities/book', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/entities/book')>();
   return {
@@ -57,11 +57,11 @@ function makeBook(n: number): Book {
   };
 }
 
-function renderSimilar(props: Partial<ComponentProps<typeof SimilarBooks>> = {}) {
+function renderSimilar() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <SimilarBooks bookId="src-id" {...props} />
+      <SimilarBooks bookId="src-id" />
     </QueryClientProvider>
   );
 }
@@ -87,8 +87,11 @@ describe('SimilarBooks', () => {
     expect(screen.getByRole('heading', { name: 'Похожие книги' })).toBeInTheDocument();
     const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
     expect(hrefs).toEqual(['/books/book-1', '/books/book-2', '/books/book-3']);
-    expect(screen.getByRole('img', { name: 'Книга 1' })).toHaveAttribute('sizes', '176px');
+    expect(screen.getByRole('img', { name: 'Книга 1' })).toHaveAttribute('sizes', '112px');
     expect(screen.queryByTestId('similar-books-skeleton')).not.toBeInTheDocument();
+    const list = screen.getByRole('list');
+    expect(list).toHaveAttribute('tabindex', '0');
+    expect(list).toHaveAccessibleName('Похожие книги');
     expect(similarMock).toHaveBeenCalledWith('src-id', { limit: 8 });
   });
 
@@ -104,22 +107,5 @@ describe('SimilarBooks', () => {
     const { container } = renderSimilar();
     await waitFor(() => expect(similarMock).toHaveBeenCalled());
     await waitFor(() => expect(container).toBeEmptyDOMElement());
-  });
-
-  it('renders the fallback instead of nothing for an empty result or an error', async () => {
-    similarMock.mockResolvedValue({ items: [] });
-    const first = renderSimilar({ emptyFallback: <p>Похожих книг пока нет.</p> });
-    expect(await screen.findByText('Похожих книг пока нет.')).toBeInTheDocument();
-    first.unmount();
-
-    similarMock.mockRejectedValue(new Error('boom'));
-    renderSimilar({ emptyFallback: <p>Похожих книг пока нет.</p> });
-    expect(await screen.findByText('Похожих книг пока нет.')).toBeInTheDocument();
-  });
-
-  it('hides the heading visually when asked', async () => {
-    similarMock.mockResolvedValue({ items: [makeBook(1)] });
-    renderSimilar({ headingHidden: true });
-    expect(await screen.findByRole('heading', { name: 'Похожие книги' })).toHaveClass('sr-only');
   });
 });

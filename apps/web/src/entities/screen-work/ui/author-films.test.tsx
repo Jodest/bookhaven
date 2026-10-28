@@ -37,7 +37,9 @@ describe('AuthorFilms', () => {
     expect(screen.getByRole('heading', { name: 'Фильмы об авторе' })).toBeInTheDocument();
     const [first, second] = screen.getAllByRole('listitem');
     expect(within(first).getByText('Толкин')).toBeInTheDocument();
-    expect(within(first).getByText('2019 · Фильм')).toBeInTheDocument();
+    expect(within(first).getByText('Режиссёр: Доме Каруко').closest('p')).toHaveTextContent(
+      '2019·Фильм·Режиссёр: Доме Каруко·Кинопоиск·IMDb',
+    );
     expect(within(first).queryByText(/Документальный/)).not.toBeInTheDocument();
     expect(within(first).getByText('Режиссёр: Доме Каруко')).toBeInTheDocument();
     const kp = within(first).getByRole('link', { name: 'Кинопоиск' });
@@ -49,7 +51,7 @@ describe('AuthorFilms', () => {
       'https://www.imdb.com/title/tt3416828/',
     );
 
-    expect(within(second).getByText('2011 · Телефильм · Документальный')).toBeInTheDocument();
+    expect(within(second).getByText('Документальный').closest('p')).toHaveTextContent('2011·Телефильм·Документальный');
     expect(within(second).queryByRole('link')).not.toBeInTheDocument();
   });
 

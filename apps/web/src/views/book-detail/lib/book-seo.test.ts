@@ -31,7 +31,7 @@ const book: Book = {
 };
 
 describe('buildBookMetadata', () => {
-  it('canonical address is the book page without ?tab=', () => {
+  it('canonical address is the book page without a query', () => {
     vi.stubEnv('SITE_URL', 'https://bookhaven.example');
     expect(buildBookMetadata(book).alternates?.canonical).toBe(
       'https://bookhaven.example/books/fathers-and-sons'
