@@ -185,6 +185,12 @@ func (s *Service) ListBooks(ctx context.Context, filter repository.BookFilter) (
 	return s.repo.ListBooks(ctx, filter)
 }
 
+// ListBooksWithOpenLibraryCover returns books of every status and source whose
+// cover link is an Open Library cover-id link, with authors and genres.
+func (s *Service) ListBooksWithOpenLibraryCover(ctx context.Context) ([]catalogDomain.Book, error) {
+	return s.repo.ListBooksWithOpenLibraryCover(ctx)
+}
+
 // GetBook returns a book by ID including hidden records.
 func (s *Service) GetBook(ctx context.Context, id uuid.UUID) (*catalogDomain.Book, error) {
 	book, err := s.repo.GetBookByID(ctx, id)

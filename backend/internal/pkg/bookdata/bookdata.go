@@ -86,6 +86,9 @@ var (
 type ExternalBookRecord struct {
 	// Title is the book's title as reported by the source.
 	Title string
+	// TitleEn is the English Wikidata label of the work, when the query read
+	// it. Used only for matching external search results; never persisted.
+	TitleEn string
 	// Authors are author display names as reported by the source.
 	Authors []string
 	// AuthorRefs are the same authors paired with their source identity
@@ -129,6 +132,9 @@ type ExternalBookRecord struct {
 type ExternalAuthor struct {
 	Name string
 	QID  string
+	// NameEn is the English Wikidata label, when the query read it. Used only
+	// for matching; never persisted.
+	NameEn string
 }
 
 // ExternalGenre is one genre of an ExternalBookRecord paired with its

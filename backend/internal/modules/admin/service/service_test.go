@@ -211,6 +211,10 @@ func (f *fakeRepository) UpdateBook(ctx context.Context, book *catalogDomain.Boo
 	return errors.New("record not found")
 }
 
+func (f *fakeRepository) ListBooksWithOpenLibraryCover(ctx context.Context) ([]catalogDomain.Book, error) {
+	return nil, nil
+}
+
 func (f *fakeRepository) BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
 	return f.bookSlugExists, nil
 }
