@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { genresApi } from '@/entities/genre';
 import { useAuthStore } from '@/entities/session';
@@ -93,17 +94,25 @@ export function Footer() {
 
       <div className="border-t border-background/10">
         <div className="container mx-auto space-y-1 px-4 py-4 text-center text-xs text-background/60 sm:px-6 lg:px-8">
+          <p>Постеры фильмов — Wikimedia Commons и TMDB.</p>
           <p>
-            Постеры фильмов — Wikimedia Commons и{' '}
             <a
               href="https://www.themoviedb.org"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline-offset-2 hover:text-background hover:underline"
+              className="mr-2 inline-block align-middle"
             >
-              TMDB
+              <Image
+                src="/brands/tmdb.svg"
+                alt="TMDB"
+                width={92}
+                height={12}
+                unoptimized
+                className="h-3 w-auto"
+              />
             </a>
-            . This product uses the TMDB API but is not endorsed or certified by TMDB.
+            BookHaven uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise
+            approved by TMDB.
           </p>
           <p>© {new Date().getFullYear()} BookHaven</p>
         </div>

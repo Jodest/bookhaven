@@ -20,6 +20,30 @@ func WithPosterStore(store coverstore.Store) Option {
 	return func(s *Service) { s.posters = store }
 }
 
+// PosterMirrorEnqueuer queues the copy of a work's Commons or TMDB poster into
+// the cover store. Satisfied by covers/service.Enqueuer; defined here so the
+// module does not import covers.
+type PosterMirrorEnqueuer interface {
+	EnqueuePosterMirror(ctx context.Context, workID uuid.UUID) error
+}
+
+// WithPosterMirror queues poster copies after the sync saves a poster. A
+// failure to queue never fails the sync: the covers sweep copies it later.
+func WithPosterMirror(e PosterMirrorEnqueuer) Option {
+	return func(s *Service) { s.posterMirror = e }
+}
+
+func (s *Service) enqueuePosterCopies(ctx context.Context, ids []uuid.UUID) {
+	if s.posterMirror == nil {
+		return
+	}
+	for _, id := range ids {
+		if err := s.posterMirror.EnqueuePosterMirror(ctx, id); err != nil {
+			s.log.Warn("wikidata adaptation sync: queue poster copy failed", zap.String("screen_work_id", id.String()), zap.Error(err))
+		}
+	}
+}
+
 // WithTMDB enables the TMDB poster lookup of the adaptation sync.
 func WithTMDB(l PosterLookup) Option {
 	return func(s *Service) { s.tmdb = l }

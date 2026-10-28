@@ -17,7 +17,7 @@ import (
 // Books and authors tables are read only here.
 
 const workListSelect = `w.id, w.title, w.original_title, w.kind, w.year, w.director, w.imdb_id, w.kinopoisk_id,
-w.external_id AS qid, w.manually_edited_at, w.poster_source, w.poster_url, w.poster_path, w.poster_author, w.poster_license, w.poster_license_url, w.poster_source_url,
+w.external_id AS qid, w.manually_edited_at, w.poster_source, w.poster_url, w.poster_path, w.poster_author, w.poster_license, w.poster_license_url, w.poster_source_url, w.poster_copy_path, w.poster_copy_status, w.poster_copy_source_url,
 (SELECT COUNT(*) FROM book_screen_works b WHERE b.screen_work_id = w.id) AS book_count,
 (SELECT COUNT(*) FROM author_screen_works a WHERE a.screen_work_id = w.id) AS author_count`
 
@@ -219,7 +219,9 @@ func (r *GormRepository) SetManualPoster(ctx context.Context, id uuid.UUID, path
 		prev = p
 		now := time.Now()
 		return tx.Exec(`UPDATE screen_works SET poster_source = ?, poster_path = ?, poster_url = NULL, poster_author = NULL,
-  poster_license = NULL, poster_license_url = NULL, poster_source_url = NULL, poster_updated_at = ?, updated_at = ?
+  poster_license = NULL, poster_license_url = NULL, poster_source_url = NULL, poster_copy_source_url = NULL, poster_copy_path = NULL, poster_copy_status = NULL, poster_copy_error = NULL,
+  poster_copy_attempts = 0, poster_copy_next_attempt_at = NULL, poster_copy_fetched_at = NULL, poster_copy_checked_at = NULL,
+  poster_tmdb_ref = NULL, poster_verified_at = NULL, poster_refresh_at = NULL, poster_updated_at = ?, updated_at = ?
 WHERE id = ?`, domain.PosterSourceManual, path, now, now, id).Error
 	})
 	if err != nil {
@@ -248,7 +250,9 @@ func (r *GormRepository) RemovePoster(ctx context.Context, id uuid.UUID) (*strin
 		}
 		now := time.Now()
 		return tx.Exec(`UPDATE screen_works SET poster_source = ?, poster_path = NULL, poster_url = NULL, poster_author = NULL,
-  poster_license = NULL, poster_license_url = NULL, poster_source_url = NULL, poster_updated_at = ?, updated_at = ?
+  poster_license = NULL, poster_license_url = NULL, poster_source_url = NULL, poster_copy_source_url = NULL, poster_copy_path = NULL, poster_copy_status = NULL, poster_copy_error = NULL,
+  poster_copy_attempts = 0, poster_copy_next_attempt_at = NULL, poster_copy_fetched_at = NULL, poster_copy_checked_at = NULL,
+  poster_tmdb_ref = NULL, poster_verified_at = NULL, poster_refresh_at = NULL, poster_updated_at = ?, updated_at = ?
 WHERE id = ?`, next, now, now, id).Error
 	})
 	if err != nil {

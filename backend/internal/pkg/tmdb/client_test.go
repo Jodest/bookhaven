@@ -25,7 +25,7 @@ func TestPoster_Found(t *testing.T) {
 		_, _ = w.Write([]byte(`{"poster_path":"/abc_DEF-1.jpg"}`))
 	})
 	got, err := c.Poster(context.Background(), KindMovie, "603")
-	if err != nil || got != "https://image.tmdb.org/t/p/w342/abc_DEF-1.jpg" {
+	if err != nil || got != "https://image.tmdb.org/t/p/w500/abc_DEF-1.jpg" {
 		t.Fatalf("got %q, %v", got, err)
 	}
 	if gotPath != "/movie/603" || gotKey != testKey || gotLang != "ru-RU" {

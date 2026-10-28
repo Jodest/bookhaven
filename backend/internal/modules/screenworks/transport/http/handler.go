@@ -37,6 +37,8 @@ type adaptationResponse struct {
 }
 
 type posterResponse struct {
+	// URL is an own /covers/... path once a copy of a Commons or TMDB poster is stored, otherwise the source link;
+	// an uploaded poster is /posters/...
 	URL        string  `json:"url"`
 	Source     string  `json:"source" enums:"manual,commons,tmdb"`
 	Author     *string `json:"author"`

@@ -158,8 +158,9 @@ func (s *Service) tmdbPosters(ctx context.Context, todo []bookdata.ExternalScree
 				continue
 			}
 			out[w.QID] = &domain.PosterInput{
-				Source: domain.PosterSourceTMDB,
-				URL:    u,
+				Source:  domain.PosterSourceTMDB,
+				URL:     u,
+				TMDBRef: t.kind + "/" + t.id,
 			}
 			break
 		}

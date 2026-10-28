@@ -180,7 +180,7 @@ func TestFetch_URLRules(t *testing.T) {
 	for _, u := range []string{
 		"ftp://archive.org/x", "file:///etc/passwd", "https://evil.example/x", "https://archive.org:8443/x",
 		"http://127.0.0.1/x", "https://10.0.0.5/x", "https://archive.org.evil.com/x", "https://user:pw@archive.org/x",
-		"https://archive.org@evil.com/x", "", "://bad", "https://notarchive.org/x",
+		"https://archive.org@evil.com/x", "", "://bad", "https://notarchive.org/x", "https://x.image.tmdb.org/x",
 	} {
 		_, err := f.Fetch(context.Background(), u)
 		if c, tr := code(t, err); c != CodeHostNotAllowed || tr {
@@ -192,13 +192,13 @@ func TestFetch_URLRules(t *testing.T) {
 	f = newFetcher(func(r *http.Request) (*http.Response, error) { reached++; return resp(r, 200, jpegBytes, nil), nil })
 	for _, u := range []string{
 		"http://archive.org/x", "https://ia800000.us.archive.org/x", "https://archive.org:443/x",
-		"https://UPLOAD.wikimedia.org/x", "https://covers.openlibrary.org:80/x",
+		"https://UPLOAD.wikimedia.org/x", "https://covers.openlibrary.org:80/x", "https://image.tmdb.org/t/p/w500/a.jpg",
 	} {
 		if _, err := f.Fetch(context.Background(), u); err != nil {
 			t.Errorf("%q: %v", u, err)
 		}
 	}
-	if reached != 5 {
+	if reached != 6 {
 		t.Fatalf("reached %d", reached)
 	}
 }
@@ -302,8 +302,8 @@ func TestCheckDialAddress(t *testing.T) {
 
 func TestMatchHost(t *testing.T) {
 	al := ParseHosts(DefaultAllowedHosts)
-	yes := []string{"covers.openlibrary.org", "archive.org", "ia1.us.archive.org", "Upload.Wikimedia.org", "archive.org."}
-	no := []string{"", "openlibrary.org", "evil.org", "archive.org.evil.com", "evilarchive.org", "wikimedia.org", "x.upload.wikimedia.org"}
+	yes := []string{"covers.openlibrary.org", "archive.org", "ia1.us.archive.org", "Upload.Wikimedia.org", "archive.org.", "image.tmdb.org"}
+	no := []string{"", "openlibrary.org", "evil.org", "archive.org.evil.com", "evilarchive.org", "wikimedia.org", "x.upload.wikimedia.org", "x.image.tmdb.org"}
 	for _, h := range yes {
 		if !MatchHost(al, h) {
 			t.Errorf("%q must match", h)

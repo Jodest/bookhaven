@@ -41,7 +41,7 @@ const (
 )
 
 // DefaultAllowedHosts is the default allowlist.
-const DefaultAllowedHosts = "covers.openlibrary.org,archive.org,*.archive.org,upload.wikimedia.org"
+const DefaultAllowedHosts = "covers.openlibrary.org,archive.org,*.archive.org,upload.wikimedia.org,image.tmdb.org"
 
 // Error is a classified download failure.
 type Error struct {

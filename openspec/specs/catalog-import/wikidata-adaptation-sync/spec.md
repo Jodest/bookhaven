@@ -72,7 +72,7 @@ For each adaptation the sync SHALL take:
 - **Directors.** Up to three director names (P57), each by its Russian label, else its English label, sorted by name and joined with «, ».
 - **IMDb id.** The first IMDb id (P345) of the form `tt` followed by digits.
 - **Kinopoisk id.** The first Kinopoisk film id (P2603) made only of digits.
-- **Poster hints.** One film poster file (P3383), one image file (P18), one TMDB movie id (P4947) and one TMDB TV series id (P4983). The TMDB ids are digits only. They are only used to find a poster (see «Adaptation posters») and are not stored.
+- **Poster hints.** One film poster file (P3383), one image file (P18), one TMDB movie id (P4947) and one TMDB TV series id (P4983). The TMDB ids are digits only. They are only used to find a poster (see «Adaptation posters»). Only the one TMDB id whose poster the work actually gets is kept, together with that poster, so that the poster can be re-checked later (see `screen-works/poster-copies`). It is not shown anywhere.
 
 A missing or malformed value leaves that field empty without failing the item.
 
@@ -252,19 +252,19 @@ It MUST NOT replace or remove any existing poster, in particular one uploaded by
    - Commons returns a thumbnail on a Wikimedia upload host;
    - for CC BY and CC BY-SA, its author is known.
 
-   The poster keeps the author, the licence, the licence URL and the file page. The image is linked from Wikimedia and not copied.
-2. **TMDB**, only when a TMDB API key is configured. It takes the poster of the TMDB movie id (P4947) or of the TMDB TV series id (P4983); the TV id is tried first for series and animated series. The poster is requested for the Russian language. The image is linked from TMDB's image server at width 342 and not copied. Without a key this step is skipped silently, and TMDB is never called.
+   The poster keeps the author, the licence, the licence URL and the file page. The Wikimedia thumbnail is the poster's source link. The image is copied to the site's own storage (see `screen-works/poster-copies`).
+2. **TMDB**, only when a TMDB API key is configured. It takes the poster of the TMDB movie id (P4947) or of the TMDB TV series id (P4983); the TV id is tried first for series and animated series. The poster is requested for the Russian language. The poster's source link is on TMDB's image server at width 500. The image is copied to the site's own storage, and the TMDB id it came from is kept for the re-check (see `screen-works/poster-copies`). Without a key this step is skipped silently, and TMDB is never called.
 3. Otherwise the work stays without a poster, and a later sync tries again.
 
-The sync covers works that are already linked, so re-running it fills the posters of existing adaptations. This applies to a single book, a bulk sync, the catalog sync job and the sync after a harvest. A Commons or TMDB failure MUST NOT change a book's outcome, its `added` or the HTTP status, and the affected work stays without a poster. One chunk of up to 50 books makes at most 100 TMDB lookups; the remaining works wait for a later sync. The film sync of authors does not fetch posters.
+Every poster the sync fills queues a copy of it. A failure to queue does not change the sync's result. The sync covers works that are already linked, so re-running it fills the posters of existing adaptations. This applies to a single book, a bulk sync, the catalog sync job and the sync after a harvest. A Commons or TMDB failure MUST NOT change a book's outcome, its `added` or the HTTP status, and the affected work stays without a poster. One chunk of up to 50 books makes at most 100 TMDB lookups; the remaining works wait for a later sync. The film sync of authors does not fetch posters.
 
 #### Scenario: Commons film poster
 - **WHEN** a synced adaptation has a public-domain film poster file on Commons
-- **THEN** the work gets a poster with `source: "commons"` linking a Wikimedia thumbnail, and its item counts it in `posters`
+- **THEN** the work gets a poster with `source: "commons"` whose source link is a Wikimedia thumbnail, a copy of it is queued, and its item counts it in `posters`
 
 #### Scenario: Non-free image falls back to TMDB
 - **WHEN** an adaptation's only Commons image is not free, it has a TMDB movie id and the TMDB key is configured
-- **THEN** the work gets a poster with `source: "tmdb"`
+- **THEN** the work gets a poster with `source: "tmdb"` whose source link starts with `https://image.tmdb.org/t/p/w500/`
 
 #### Scenario: No TMDB key
 - **WHEN** the TMDB key is not configured and an adaptation has only a TMDB movie id
