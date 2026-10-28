@@ -26,6 +26,8 @@ const makeWork = (patch: Partial<AdminScreenWorkDetail> = {}): AdminScreenWorkDe
   author_count: 0,
   books: [],
   authors: [],
+  poster: null,
+  poster_removed: false,
   ...patch,
 });
 

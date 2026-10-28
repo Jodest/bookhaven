@@ -19,3 +19,9 @@ func TestBodyLimitOverrides_Import(t *testing.T) {
 		t.Errorf("import override = %d", got)
 	}
 }
+
+func TestBodyLimitOverrides_PosterUpload(t *testing.T) {
+	if got := BodyLimitOverrides()["PUT /api/v1/admin/screen-works/:id/poster"]; got != 6<<20 {
+		t.Errorf("poster override = %d, want %d", got, 6<<20)
+	}
+}

@@ -30,6 +30,7 @@ const item = (id: string, source: 'wikidata' | 'manual', title: string): AdminBo
   director: null,
   imdb_url: null,
   kinopoisk_url: null,
+  poster: null,
   hidden: false,
   source,
   qid: source === 'wikidata' ? 'Q1' : null,

@@ -178,5 +178,12 @@ func (s *Service) UpdateWork(ctx context.Context, id uuid.UUID, work domain.Work
 
 // DeleteWork deletes a work without links.
 func (s *Service) DeleteWork(ctx context.Context, id uuid.UUID) error {
-	return s.repo.DeleteWorkIfUnlinked(ctx, id)
+	posterPath, err := s.repo.DeleteWorkIfUnlinked(ctx, id)
+	if err != nil {
+		return err
+	}
+	if posterPath != nil {
+		s.collectPoster(ctx, *posterPath)
+	}
+	return nil
 }

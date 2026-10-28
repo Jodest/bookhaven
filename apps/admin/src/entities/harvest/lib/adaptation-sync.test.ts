@@ -14,6 +14,7 @@ const report = (over: Partial<AdminAdaptationSyncResult> = {}): AdminAdaptationS
   processed: 683,
   updated: 40,
   added: 75,
+  posters: 0,
   unchanged: 640,
   skipped: 3,
   failed: 0,
@@ -22,6 +23,12 @@ const report = (over: Partial<AdminAdaptationSyncResult> = {}): AdminAdaptationS
 });
 
 describe('adaptation sync helpers', () => {
+  it('adds the poster count to the summary only when above 0', () => {
+    expect(adaptationSyncSummary({ adaptation_sync: report({ posters: 12 }) })).toBe(
+      'Книг: 683 из 683, обновлено: 40, добавлено экранизаций: 75, добавлено постеров: 12, ошибок: 0'
+    );
+  });
+
   it('detects catalog sync jobs', () => {
     expect(isAdaptationSyncJob({ kind: 'adaptation_sync' })).toBe(true);
     expect(isAdaptationSyncJob({ kind: 'harvest' })).toBe(false);

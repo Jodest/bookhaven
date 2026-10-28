@@ -25,9 +25,14 @@ type Handler struct {
 func NewHandler(store coverstore.Store) *Handler { return &Handler{store: store} }
 
 // Register adds GET and HEAD /covers/:shard/:file.
-func (h *Handler) Register(e *echo.Echo) {
-	e.GET("/covers/:shard/:file", h.Serve)
-	e.HEAD("/covers/:shard/:file", h.Serve)
+func (h *Handler) Register(e *echo.Echo) { h.RegisterAt(e, "/covers") }
+
+// RegisterAt adds GET and HEAD <prefix>/:shard/:file, so the same content
+// addressed file server also serves other stores (screen work posters at
+// /posters).
+func (h *Handler) RegisterAt(e *echo.Echo, prefix string) {
+	e.GET(prefix+"/:shard/:file", h.Serve)
+	e.HEAD(prefix+"/:shard/:file", h.Serve)
 }
 
 // Serve streams one cover file: 200 with the image and immutable cache

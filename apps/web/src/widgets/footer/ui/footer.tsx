@@ -92,8 +92,20 @@ export function Footer() {
       </div>
 
       <div className="border-t border-background/10">
-        <div className="container mx-auto px-4 py-4 text-center text-xs text-background/60 sm:px-6 lg:px-8">
-          © {new Date().getFullYear()} BookHaven
+        <div className="container mx-auto space-y-1 px-4 py-4 text-center text-xs text-background/60 sm:px-6 lg:px-8">
+          <p>
+            Постеры фильмов — Wikimedia Commons и{' '}
+            <a
+              href="https://www.themoviedb.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline-offset-2 hover:text-background hover:underline"
+            >
+              TMDB
+            </a>
+            . This product uses the TMDB API but is not endorsed or certified by TMDB.
+          </p>
+          <p>© {new Date().getFullYear()} BookHaven</p>
         </div>
       </div>
     </footer>

@@ -32,6 +32,27 @@ type adaptationResponse struct {
 	Director      *string `json:"director"`
 	IMDbURL       *string `json:"imdb_url"`
 	KinopoiskURL  *string `json:"kinopoisk_url"`
+	// Poster is null when the work has no poster.
+	Poster *posterResponse `json:"poster"`
+}
+
+type posterResponse struct {
+	URL        string  `json:"url"`
+	Source     string  `json:"source" enums:"manual,commons,tmdb"`
+	Author     *string `json:"author"`
+	License    *string `json:"license"`
+	LicenseURL *string `json:"license_url"`
+	SourceURL  *string `json:"source_url"`
+}
+
+func toPosterResponse(p *domain.Poster) *posterResponse {
+	if p == nil {
+		return nil
+	}
+	return &posterResponse{
+		URL: p.URL, Source: p.Source, Author: p.Author, License: p.License,
+		LicenseURL: p.LicenseURL, SourceURL: p.SourceURL,
+	}
 }
 
 type adaptationsResponse struct {
@@ -57,6 +78,7 @@ func toResponse(w domain.LinkedWork) adaptationResponse {
 	return adaptationResponse{
 		ID: w.ID.String(), Title: w.Title, OriginalTitle: w.OriginalTitle, Kind: w.Kind,
 		Year: w.Year, Director: w.Director, IMDbURL: w.IMDbURL(), KinopoiskURL: w.KinopoiskURL(),
+		Poster: toPosterResponse(w.Poster()),
 	}
 }
 

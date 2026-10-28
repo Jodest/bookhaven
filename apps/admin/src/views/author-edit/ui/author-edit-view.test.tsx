@@ -64,6 +64,7 @@ function makeFilm(overrides: Partial<AdminAuthorFilm> = {}): AdminAuthorFilm {
     director: 'Доме Каруко',
     imdb_url: null,
     kinopoisk_url: null,
+    poster: null,
     hidden: false,
     source: 'wikidata',
     qid: 'Q42689885',

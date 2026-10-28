@@ -181,6 +181,7 @@ type WorkListItem struct {
 	ManuallyEditedAt *time.Time `gorm:"column:manually_edited_at"`
 	BookCount        int        `gorm:"column:book_count"`
 	AuthorCount      int        `gorm:"column:author_count"`
+	PosterColumns
 }
 
 // WorkBookLink is a book linked to a work.

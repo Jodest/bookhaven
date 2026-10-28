@@ -3,6 +3,7 @@ package bookdata
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -81,7 +82,30 @@ var (
 var (
 	imdbIDPattern      = regexp.MustCompile(`^tt[0-9]+$`)
 	kinopoiskIDPattern = regexp.MustCompile(`^[0-9]+$`)
+	tmdbIDPattern      = regexp.MustCompile(`^[0-9]{1,10}$`)
 )
+
+const commonsFilePathMarker = "Special:FilePath/"
+
+// commonsFileName extracts the file name from a Wikidata commonsMedia value
+// (http://commons.wikimedia.org/wiki/Special:FilePath/<url-encoded name>).
+// It returns "" for an empty name or one containing "|".
+func commonsFileName(raw string) string {
+	raw = strings.TrimSpace(raw)
+	i := strings.Index(raw, commonsFilePathMarker)
+	if i < 0 {
+		return ""
+	}
+	name, err := url.PathUnescape(raw[i+len(commonsFilePathMarker):])
+	if err != nil {
+		return ""
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || strings.Contains(name, "|") || strings.ContainsAny(name, "\r\n") {
+		return ""
+	}
+	return name
+}
 
 // ExternalScreenWork is one adaptation of a book found in Wikidata.
 type ExternalScreenWork struct {
@@ -93,6 +117,14 @@ type ExternalScreenWork struct {
 	Director      string // up to three names joined with ", "
 	IMDbID        string // empty when absent or malformed
 	KinopoiskID   string // empty when absent or malformed
+	// PosterFile and ImageFile are Commons file names of P3383 (film poster)
+	// and P18 (image); empty when absent or unusable.
+	PosterFile string
+	ImageFile  string
+	// TMDBMovieID (P4947) and TMDBTVID (P4983) are numeric TMDB ids; empty
+	// when absent or malformed.
+	TMDBMovieID string
+	TMDBTVID    string
 }
 
 // classifyAdaptation maps the P31 classes of an item to a screen kind. ok is
@@ -128,6 +160,8 @@ func buildAdaptationsQuery(bookQIDs []string) string {
        (GROUP_CONCAT(DISTINCT ?imdb; separator="|") AS ?imdbIds)
        (GROUP_CONCAT(DISTINCT ?kp; separator="|") AS ?kpIds)
        (GROUP_CONCAT(DISTINCT COALESCE(?dirRu, ?dirEn); separator="|") AS ?directors)
+       (SAMPLE(?posterF) AS ?posterFile) (SAMPLE(?imageF) AS ?imageFile)
+       (SAMPLE(?tmdbM) AS ?tmdbMovie) (SAMPLE(?tmdbT) AS ?tmdbTv)
 WHERE {
   VALUES ?book {` + b.String() + ` }
   ?work wdt:P144 ?book ; wdt:P31 ?cls .
@@ -137,6 +171,10 @@ WHERE {
   OPTIONAL { ?work wdt:P577 ?date }
   OPTIONAL { ?work wdt:P345 ?imdb }
   OPTIONAL { ?work wdt:P2603 ?kp }
+  OPTIONAL { ?work wdt:P3383 ?posterF }
+  OPTIONAL { ?work wdt:P18 ?imageF }
+  OPTIONAL { ?work wdt:P4947 ?tmdbM }
+  OPTIONAL { ?work wdt:P4983 ?tmdbT }
   OPTIONAL { ?work wdt:P57 ?dir .
              OPTIONAL { ?dir rdfs:label ?dirRu FILTER(LANG(?dirRu) = "ru") }
              OPTIONAL { ?dir rdfs:label ?dirEn FILTER(LANG(?dirEn) = "en") } }
@@ -195,6 +233,11 @@ func parseAdaptationBindings(bindings []map[string]sparqlValue) map[string][]Ext
 			Director:    joinDirectors(row["directors"].Value),
 			IMDbID:      firstMatching(row["imdbIds"].Value, imdbIDPattern),
 			KinopoiskID: firstMatching(row["kpIds"].Value, kinopoiskIDPattern),
+
+			PosterFile:  commonsFileName(row["posterFile"].Value),
+			ImageFile:   commonsFileName(row["imageFile"].Value),
+			TMDBMovieID: firstMatching(row["tmdbMovie"].Value, tmdbIDPattern),
+			TMDBTVID:    firstMatching(row["tmdbTv"].Value, tmdbIDPattern),
 		}
 		if orig := strings.TrimSpace(row["origTitle"].Value); orig != "" && orig != title {
 			w.OriginalTitle = orig

@@ -6,11 +6,12 @@ Shows readers the films made about an author, both fiction biopics and documenta
 ## Requirements
 
 ### Requirement: Public author films endpoint
-`GET /api/v1/authors/{id}/screen-works` SHALL be open to everyone without a token. `{id}` is the author's id, not the slug. It returns 200 with `{items, total}`, the author's visible films without pagination. Each item is `{id, title, original_title, kind, relation, year, director, imdb_url, kinopoisk_url}`:
+`GET /api/v1/authors/{id}/screen-works` SHALL be open to everyone without a token. `{id}` is the author's id, not the slug. It returns 200 with `{items, total}`, the author's visible films without pagination. Each item is `{id, title, original_title, kind, relation, year, director, imdb_url, kinopoisk_url, poster}`:
 - `kind` is one of `film`, `tv_film`, `series`, `animated_film`, `animated_series` and `teleplay`.
 - `relation` is `biopic` for a fiction film about the author and `documentary` for a documentary.
 - Fields without a value are `null`.
 - `imdb_url` is `https://www.imdb.com/title/<imdb id>/` and `kinopoisk_url` is `https://www.kinopoisk.ru/film/<kinopoisk id>/`.
+- `poster` is the work's poster with the same shape and rules as in the public adaptations endpoint (see `screen-works/book-adaptations`), or `null`. A work shared with a book adaptation has the same poster on both pages.
 
 Items are ordered by year, oldest first, with works without a year last, then by title. A link hidden by an admin MUST NOT be returned. A malformed id returns 400 «invalid author id». An unknown author, or an author that is not published, returns 404 «author not found».
 
@@ -30,15 +31,20 @@ Items are ordered by year, oldest first, with works without a year last, then by
 - **WHEN** anyone requests `/api/v1/authors/tolkien/screen-works`
 - **THEN** the response is 400 «invalid author id»
 
+#### Scenario: Poster of a shared work
+- **WHEN** a work with an uploaded poster is both a book adaptation and a film about the book's author
+- **THEN** the author's item for that work has the same `poster` as the book's item
+
 ### Requirement: Films block on the author page
-The public author page SHALL show a block «Фильмы об авторе» when the author has at least one visible film. Each film shows:
+The public author page SHALL show a block «Фильмы об авторе» when the author has at least one visible film. The films are a grid of cards with the same poster frame, placeholder and Commons caption as the adaptation cards of the book page (see `screen-works/book-adaptations`). Each card shows:
+- the poster in a 2:3 frame, or the placeholder with the type's icon and the year;
 - its title;
 - its year and its type, shown as «Фильм», «Телефильм», «Сериал», «Мультфильм», «Мультсериал» or «Телеспектакль»;
 - the mark «Документальный» when it is a documentary;
 - «Режиссёр: <names>» when directors are known;
 - the links «Кинопоиск» and «IMDb» for the ids it has, opening in a new tab.
 
-No poster is shown. When there is no visible film, or the films cannot be loaded, the block MUST NOT be rendered and the rest of the page is unaffected.
+When there is no visible film, or the films cannot be loaded, the block MUST NOT be rendered and the rest of the page is unaffected.
 
 #### Scenario: Author with a biopic and a documentary
 - **WHEN** a reader opens a published author with a visible biopic that has a Kinopoisk id and an IMDb id, and a visible documentary with neither
@@ -51,6 +57,10 @@ No poster is shown. When there is no visible film, or the films cannot be loaded
 #### Scenario: Films fail to load
 - **WHEN** the films request fails while a reader opens an author page
 - **THEN** the page shows the author and the author's books without a «Фильмы об авторе» block
+
+#### Scenario: Film without a poster
+- **WHEN** a reader opens an author with a visible documentary from 2011 that has no poster
+- **THEN** its card shows the placeholder with the type icon and «2011»
 
 ### Requirement: Admin author film links
 `GET /api/v1/admin/authors/{id}/screen-works` SHALL require the `admin` role. It returns every linked film of an author of any status, including hidden ones, in the public order. Each item has the public fields plus `hidden`, `source` (`wikidata` or `manual`), `qid` (the work's Wikidata QID or `null`), `imdb_id` and `kinopoisk_id`. An unknown author returns 404.

@@ -32,11 +32,11 @@ const nextConfig = {
   },
   // Stable in Next 15.5 (was experimental).
   typedRoutes: true,
-  // Excludes the proxied /api and /covers so backend headers are not duplicated.
+  // Excludes the proxied /api, /covers and /posters so backend headers are not duplicated.
   async headers() {
     return [
       {
-        source: '/((?!api/|covers/).*)',
+        source: '/((?!api/|covers/|posters/).*)',
         headers: securityHeaders({
           isDev: process.env.NODE_ENV === 'development',
           apiUrl: process.env.NEXT_PUBLIC_API_URL,
@@ -55,6 +55,11 @@ const nextConfig = {
       {
         source: '/covers/:path*',
         destination: `${process.env.API_URL || 'http://localhost:8080'}/covers/:path*`,
+      },
+      // Uploaded screen work posters are served by the backend (public files).
+      {
+        source: '/posters/:path*',
+        destination: `${process.env.API_URL || 'http://localhost:8080'}/posters/:path*`,
       },
     ];
   },

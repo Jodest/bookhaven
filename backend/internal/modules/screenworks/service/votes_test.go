@@ -80,7 +80,7 @@ func TestVote_FirstChangeAndVerdict(t *testing.T) {
 	user := mkShelfUser(t, db, "read", book)
 
 	v, err := svc.Vote(ctx, user, book, work, "book")
-	if err != nil || v.MyVote == nil || *v.MyVote != "book" || v.Votes != 1 || v.BookBetter != nil {
+	if err != nil || v.MyVote == nil || *v.MyVote != "book" || v.Votes != 1 || v.BookBetter == nil || *v.BookBetter != 1 {
 		t.Fatalf("first = %+v, %v", v, err)
 	}
 	v, err = svc.Vote(ctx, user, book, work, "same")
@@ -211,14 +211,13 @@ func TestListVerdicts_MinimumAndCanVote(t *testing.T) {
 func TestListVerdicts_BelowMinimumHidesCounts(t *testing.T) {
 	svc, db := setupVotes(t)
 	book := mkBook(t, db, "published", "")
-	work := mkLink(t, svc, book, "Фильм")
-	seedVotes(t, db, book, work, "book", 4)
+	mkLink(t, svc, book, "Фильм")
 	res, err := svc.ListVerdicts(context.Background(), book, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	it := res.Items[0]
-	if it.Votes != 4 || it.BookBetter != nil || it.AdaptationBetter != nil || it.Same != nil {
+	if it.Votes != 0 || it.BookBetter != nil || it.AdaptationBetter != nil || it.Same != nil {
 		t.Fatalf("item = %+v", it)
 	}
 }

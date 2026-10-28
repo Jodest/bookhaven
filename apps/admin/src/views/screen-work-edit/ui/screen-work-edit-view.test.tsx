@@ -42,6 +42,8 @@ const makeWork = (patch: Partial<AdminScreenWorkDetail> = {}): AdminScreenWorkDe
   author_count: 0,
   books: [],
   authors: [],
+  poster: null,
+  poster_removed: false,
   ...patch,
 });
 
@@ -85,6 +87,14 @@ describe('ScreenWorkEditView', () => {
     deleteMock.mockReset();
     vi.restoreAllMocks();
     window.sessionStorage.clear();
+  });
+
+  it('shows the poster section apart from the data form', async () => {
+    getMock.mockResolvedValue(makeWork({ poster_removed: true }));
+    renderView();
+    expect(await screen.findByRole('heading', { name: 'Постер' })).toBeTruthy();
+    expect(screen.getByText('Постера нет.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Загрузить постер' })).toBeTruthy();
   });
 
   it('falls back to the list for a malicious back', async () => {

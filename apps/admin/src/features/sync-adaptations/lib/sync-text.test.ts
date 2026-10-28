@@ -10,6 +10,7 @@ function item(overrides: Partial<AdminAdaptationSyncItem> = {}): AdminAdaptation
     outcome: 'added',
     found: 3,
     added: 3,
+    posters: 0,
     notes: [],
     message: '',
     ...overrides,
@@ -49,6 +50,7 @@ describe('bulkSyncSummary', () => {
       processed: 6,
       updated: 1,
       added: 3,
+      posters: 0,
       items: [
         item(),
         item({ book_id: 'b2', title: 'А', outcome: 'skipped', notes: ['no_qid'] }),
@@ -68,7 +70,7 @@ describe('bulkSyncSummary', () => {
   });
 
   it('is just the counts when everything went fine', () => {
-    expect(bulkSyncSummary({ processed: 1, updated: 1, added: 2, items: [item({ added: 2 })] })).toBe(
+    expect(bulkSyncSummary({ processed: 1, updated: 1, added: 2, posters: 0, items: [item({ added: 2 })] })).toBe(
       'Обновлено книг: 1 из 1, добавлено экранизаций: 2.'
     );
   });
@@ -80,5 +82,25 @@ describe('syncErrorMessage', () => {
     expect(syncErrorMessage(new ApiError(503, 'Unavailable', 'x'))).toBe('Поиск экранизаций не настроен.');
     expect(syncErrorMessage(new ApiError(400, 'Bad Request', 'x'))).toBe('Не удалось найти экранизации.');
     expect(syncErrorMessage(new Error('boom'))).toBe('Не удалось найти экранизации.');
+  });
+});
+
+describe('poster counts in the banners', () => {
+  it('appends the poster count to a single result when above 0', () => {
+    expect(syncItemText(item({ posters: 2 }))).toBe(
+      'Книга «Мастер и Маргарита»: добавлено экранизаций — 3. Добавлено постеров: 2.'
+    );
+    expect(syncItemText(item({ outcome: 'unchanged', added: 0, posters: 2 }))).toBe(
+      'Книга «Мастер и Маргарита»: новых экранизаций нет. Добавлено постеров: 2.'
+    );
+    expect(syncItemText(item({ outcome: 'unchanged', added: 0, posters: 0 }))).toBe(
+      'Книга «Мастер и Маргарита»: новых экранизаций нет.'
+    );
+  });
+
+  it('appends the top-level poster count to the bulk banner', () => {
+    expect(
+      bulkSyncSummary({ processed: 3, updated: 1, added: 2, posters: 4, items: [item({ added: 2 })] }, 2)
+    ).toBe('Обновлено книг: 1 из 3, добавлено экранизаций: 2. Добавлено постеров: 4. Без QID пропущено: 2.');
   });
 });
