@@ -1,5 +1,6 @@
 import { HomeReview } from '@bookhaven/api-client';
 import { formatTimestampDayMonth } from '@/shared/lib/format-date-ru';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 import { Star } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -69,6 +70,7 @@ export function RecentReviews({ reviews, className }: RecentReviewsProps) {
                       fill
                       className="object-cover"
                       sizes="48px"
+                      unoptimized={isHotlinkCoverUrl(review.book.coverUrl)}
                     />
                   )}
                 </Link>

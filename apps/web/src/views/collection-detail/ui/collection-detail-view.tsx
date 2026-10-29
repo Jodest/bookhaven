@@ -14,6 +14,7 @@ import { Button } from '@bookhaven/ui';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 interface CollectionDetailViewProps {
   slug: string;
@@ -110,7 +111,7 @@ export function CollectionDetailView({ slug }: CollectionDetailViewProps) {
                   <Link href={`/books/${book.slug}`} className="shrink-0">
                     <div className="relative h-24 w-16 overflow-hidden rounded-md bg-muted">
                       {book.coverUrl && (
-                        <Image src={book.coverUrl} alt={book.title} fill className="object-cover" sizes="64px" />
+                        <Image src={book.coverUrl} unoptimized={isHotlinkCoverUrl(book.coverUrl)} alt={book.title} fill className="object-cover" sizes="64px" />
                       )}
                     </div>
                   </Link>

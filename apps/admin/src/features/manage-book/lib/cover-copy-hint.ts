@@ -27,6 +27,8 @@ export function coverCopyHint(copy: AdminCoverCopy | null | undefined): string |
     }
     case 'absent':
       return 'По этой ссылке нет обложки. На сайте показывается «Нет обложки».';
+    case 'linked':
+      return 'Обложка показывается по ссылке с сайта-источника. Копия на нашем сервере не сохраняется.';
     default:
       return null;
   }

@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 const editShelfSchema = z.object({
   name: z.string().trim().min(2, 'Минимум 2 символа').max(100, 'Максимум 100 символов'),
@@ -228,6 +229,7 @@ export function ShelfDetailView({ id }: ShelfDetailViewProps) {
                     {book.coverUrl ? (
                       <Image
                         src={book.coverUrl}
+                        unoptimized={isHotlinkCoverUrl(book.coverUrl)}
                         alt={book.title}
                         fill
                         className="object-cover"

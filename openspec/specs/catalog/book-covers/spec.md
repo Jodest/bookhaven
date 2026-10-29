@@ -10,7 +10,8 @@ The cover link stored on a book SHALL remain the source of its cover. The system
 - `pending`: not made yet for the current link, or a retry is due;
 - `stored`: a file is kept;
 - `failed`: the download was refused or gave up;
-- `absent`: the source says there is no cover.
+- `absent`: the source says there is no cover;
+- `linked`: the link is on a link-only host (see "Link-only cover hosts"), so no copy is made and the link is shown as it is.
 
 When the book's link changes, a copy made from the old link MUST NOT be shown again.
 
@@ -22,13 +23,17 @@ When the book's link changes, a copy made from the old link MUST NOT be shown ag
 - **WHEN** an admin clears the cover link of a book that had a stored copy
 - **THEN** the book has no cover and shows «Нет обложки» on the site
 
+#### Scenario: Stored copy replaced by a FantLab link
+- **WHEN** an admin changes the cover link of a book with a stored copy to `https://fantlab.ru/images/editions/big/16469`
+- **THEN** the copy becomes `linked`, the book shows the FantLab link, and the old copy is never shown again
+
 ### Requirement: Displayed cover link
 Every API response that shows a book's cover SHALL return the displayed link and not the raw source. This covers the public book, catalog, shelf, home, review and collection responses, the `cover_urls` of collections, and the admin collection screens. The displayed link is:
 - the relative path `/covers/{file}` when a copy of the current link is stored;
 - `null` when the copy is `absent`;
-- the source link in every other case: no copy yet, pending or failed.
+- the source link in every other case: no copy yet, pending, failed or linked.
 
-A book with no cover link has `null`. The admin book record is the only exception (see `catalog-admin/book-editing`). A book whose copy is `absent` MUST count as a book without a cover everywhere a cover matters, for example the book-of-the-day pools.
+A book with no cover link has `null`. The admin book record is the only exception (see `catalog-admin/book-editing`). A book whose copy is `absent` MUST count as a book without a cover everywhere a cover matters, for example the book-of-the-day pools. A book whose copy is `linked` counts as a book with a cover.
 
 #### Scenario: Copied cover
 - **WHEN** a visitor opens a book whose current cover link has a stored copy
@@ -42,14 +47,18 @@ A book with no cover link has `null`. The admin book record is the only exceptio
 - **WHEN** Open Library answers that the book's cover link has no image
 - **THEN** the book's `cover_url` is `null` and the book is not in the «books with a cover» pools of the book of the day
 
+#### Scenario: Linked cover
+- **WHEN** a visitor opens a book whose cover link is `https://fantlab.ru/images/editions/big/16469`
+- **THEN** the book's `cover_url` is that FantLab link, and the book is in the «books with a cover» pools of the book of the day
+
 ### Requirement: Queuing a copy
 Every save that writes a non-empty cover link SHALL queue a copy of that book once the save is committed. This covers:
 - an admin creating or updating a book;
 - each row of a CSV/JSON book import;
-- a book created by a Wikidata harvest, including a cover filled in from Open Library by ISBN, by Open Library ID or by the title search;
-- a cover link set by the cover backfill by Open Library ID (see `catalog-import/wikidata-book-harvest`).
+- a book created by a Wikidata harvest, including a cover filled in from Open Library by ISBN, by Open Library ID or by the title search, or from a FantLab edition;
+- a cover link set by the cover backfill (see `catalog-import/wikidata-book-harvest`).
 
-An admin update that keeps the same link queues a copy only when no copy of it is stored. A copy queued by a save is attempted even after an earlier failure of that link. Queuing MUST NOT delay or fail the save: if it fails, the save still succeeds and the periodic sweep makes the copy later.
+An admin update that keeps the same link queues a copy only when no copy of it is stored. A copy queued by a save is attempted even after an earlier failure of that link. Queuing MUST NOT delay or fail the save: if it fails, the save still succeeds and the periodic sweep makes the copy later. For a link on a link-only host, the queued copy only records the `linked` state and downloads nothing.
 
 #### Scenario: File import
 - **WHEN** an admin imports a CSV file whose three created rows have cover links
@@ -66,6 +75,10 @@ An admin update that keeps the same link queues a copy only when no copy of it i
 #### Scenario: Backfilled cover
 - **WHEN** the cover backfill sets the Open Library cover link of a book that had none
 - **THEN** a copy is queued for that book, the book shows the Open Library link until the copy is stored, and a `/covers/…` path afterwards
+
+#### Scenario: Harvested FantLab cover
+- **WHEN** a harvest creates a book with the cover link `https://fantlab.ru/images/editions/big/16469`
+- **THEN** a copy is queued, the copy becomes `linked` without any request to fantlab.ru, and the book keeps showing the FantLab link
 
 ### Requirement: Download rules
 The download of a cover link, or of a screen work poster link (see `screen-works/poster-copies`), SHALL follow all of these rules:
@@ -161,3 +174,31 @@ A name that is malformed or unknown returns 404. There is no directory listing, 
 #### Scenario: Path traversal
 - **WHEN** a client requests `/covers/../../etc/passwd` or `/covers/`
 - **THEN** the response is 404 and nothing outside the stored covers is read
+
+### Requirement: Link-only cover hosts
+The system SHALL keep a list of link-only cover hosts. The default is `fantlab.ru` with its subdomains, and the list is configurable. Hosts are matched the same way as the download allowlist. A host on both lists counts as link-only. This list applies to book covers only. Screen work posters keep the download rules unchanged.
+
+For a book whose current cover link is on a link-only host:
+- the system MUST NOT request the link, neither for a copy nor for any check. No download, redirect or retry is made, and the copy does not use the 1-second download pacing;
+- the copy is `linked`, with no error, no file and no attempts;
+- the book shows its source link, as "Displayed cover link" requires;
+- the sweep takes a `linked` copy again only once 7 days have passed since it was recorded. If the host is still link-only by then, it records `linked` again without any request. If the host has been taken off the list, the copy is handled like a `pending` one under the normal download rules;
+- a file stored for an earlier link of the book is cleaned up under "Storage and cleanup".
+
+The public site MUST show a cover on a link-only host as a direct link: the visitor's browser loads the image from that host. Neither the site's server nor its image optimizer fetches, resizes or caches it.
+
+#### Scenario: FantLab link never downloaded
+- **WHEN** a book gets the cover link `https://fantlab.ru/images/editions/big/16469` and its copy is processed
+- **THEN** no request goes to fantlab.ru, the copy is `linked` with no error, and the book's `cover_url` is the FantLab link
+
+#### Scenario: Weekly re-check without a request
+- **WHEN** a sweep runs 8 days after a book's FantLab copy became `linked`, and `fantlab.ru` is still link-only
+- **THEN** the copy stays `linked`, it is due again 7 days later, and no request goes to fantlab.ru
+
+#### Scenario: Host taken off the list
+- **WHEN** an operator removes `fantlab.ru` from the link-only list, adds it to the download allowlist, and the book's `linked` copy is due
+- **THEN** the sweep downloads the FantLab image and stores a copy, and the book shows a `/covers/…` path afterwards
+
+#### Scenario: Browser loads the FantLab cover
+- **WHEN** a visitor opens a catalog page that shows a book with a FantLab cover link
+- **THEN** the image request goes from the visitor's browser to fantlab.ru, not through the site's image optimizer

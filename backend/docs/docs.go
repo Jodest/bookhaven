@@ -11982,7 +11982,8 @@ const docTemplate = `{
                         "pending",
                         "stored",
                         "failed",
-                        "absent"
+                        "absent",
+                        "linked"
                     ]
                 },
                 "stored_at": {

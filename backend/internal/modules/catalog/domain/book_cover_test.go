@@ -24,6 +24,7 @@ func TestDisplayCoverURL(t *testing.T) {
 		{"absent mismatch", sp(other), sp(src), nil, sp(CoverStatusAbsent), sp(other)},
 		{"pending", sp(src), sp(src), nil, sp(CoverStatusPending), sp(src)},
 		{"failed", sp(src), sp(src), nil, sp(CoverStatusFailed), sp(src)},
+		{"linked", sp(src), sp(src), nil, sp(CoverStatusLinked), sp(src)},
 		{"no copy", sp(src), nil, nil, nil, sp(src)},
 	}
 	for _, c := range cases {

@@ -2,6 +2,7 @@ import type { CuratedCollection } from '@bookhaven/api-client';
 import Image from 'next/image';
 import Link from 'next/link';
 import { formatBooksCount, formatSource } from '../lib/format-source';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 interface CollectionCardProps {
   collection: CuratedCollection;
@@ -23,7 +24,7 @@ export function CollectionCard({ collection, headingLevel = 'h2' }: CollectionCa
       <div className="grid grid-cols-4 gap-2" aria-hidden={covers.length === 0}>
         {covers.map((url) => (
           <div key={url} className="relative aspect-[2/3] overflow-hidden rounded-md bg-muted">
-            <Image src={url} alt="" fill className="object-cover" sizes="100px" />
+            <Image src={url} unoptimized={isHotlinkCoverUrl(url)} alt="" fill className="object-cover" sizes="100px" />
           </div>
         ))}
       </div>

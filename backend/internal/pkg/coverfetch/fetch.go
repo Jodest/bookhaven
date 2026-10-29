@@ -43,6 +43,11 @@ const (
 // DefaultAllowedHosts is the default allowlist.
 const DefaultAllowedHosts = "covers.openlibrary.org,archive.org,*.archive.org,upload.wikimedia.org,image.tmdb.org"
 
+// DefaultLinkOnlyHosts is the default list of hosts whose covers are shown by
+// link and never downloaded (see covers/service WithLinkOnlyHosts). Matched
+// with MatchHost.
+const DefaultLinkOnlyHosts = "fantlab.ru,*.fantlab.ru"
+
 // Error is a classified download failure.
 type Error struct {
 	Code string

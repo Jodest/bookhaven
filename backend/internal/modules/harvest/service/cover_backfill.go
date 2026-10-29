@@ -28,30 +28,43 @@ type OpenLibraryIDSource interface {
 	FetchOpenLibraryIDs(ctx context.Context, qids []string) (map[string][]string, error)
 }
 
+// FantLabIDSource reads FantLab work IDs (P7439) from Wikidata
+// (bookdata.WikidataClient satisfies it).
+type FantLabIDSource interface {
+	FetchFantLabWorkIDs(ctx context.Context, qids []string) (map[string][]string, error)
+}
+
 // CoverByIDFinder finds a cover by Open Library IDs (bookdata.OpenLibraryClient
 // satisfies it).
 type CoverByIDFinder = openLibraryCoverFinder
 
 // CoverBackfillOptions controls a run. Without Apply the backfill is read-only.
 // IDs, when not empty, limits Apply to those book IDs.
+//
+// FantLab and FantLabIDs, both set, add the FantLab step: books without an
+// Open Library finding are looked up on FantLab by their P7439 work IDs. Either
+// nil skips the step.
 type CoverBackfillOptions struct {
-	Apply bool
-	IDs   []uuid.UUID
+	Apply      bool
+	IDs        []uuid.UUID
+	FantLab    FantLabCoverFinder
+	FantLabIDs FantLabIDSource
 }
 
 // CoverBackfillFinding is one candidate for which a cover was found.
 type CoverBackfillFinding struct {
-	Book  catalogDomain.Book
-	QID   string
-	OLID  string
-	Cover string
+	Book catalogDomain.Book
+	QID  string
+	// SourceID is the Open Library ID, or "fantlab:<work>/<edition>".
+	SourceID string
+	Cover    string
 }
 
 // CoverBackfillLine is a candidate with no cover found or a failed check.
 type CoverBackfillLine struct {
 	Book    catalogDomain.Book
 	QID     string
-	OLIDs   []string
+	OLIDs   []string // Open Library IDs, or "fantlab:<ids>" for a FantLab miss
 	Message string
 }
 
@@ -65,15 +78,20 @@ type CoverBackfillApplyResult struct {
 type CoverBackfillReport struct {
 	Candidates int
 	WithIDs    int
-	Findings   []CoverBackfillFinding
-	NoCover    []CoverBackfillLine
-	Errors     []CoverBackfillLine
-	Skipped    []CoverBackfillLine
-	Applied    []CoverBackfillApplyResult
+	// WithFantLabIDs counts the books tried on FantLab; FoundFantLab the
+	// findings that came from FantLab (they are part of Findings too).
+	WithFantLabIDs int
+	FoundFantLab   int
+	Findings       []CoverBackfillFinding
+	NoCover        []CoverBackfillLine
+	Errors         []CoverBackfillLine
+	Skipped        []CoverBackfillLine
+	Applied        []CoverBackfillApplyResult
 }
 
 // RunCoverBackfill finds Wikidata books without a cover link, reads their Open
-// Library IDs from Wikidata in batches and looks for a cover by those IDs.
+// Library IDs from Wikidata in batches and looks for a cover by those IDs;
+// books left without a finding are then tried on FantLab (opts.FantLab).
 // With opts.Apply it sets the cover link of the findings (all, or only
 // opts.IDs) through the normal book save. A per-book or per-batch failure is
 // recorded and never aborts the run.
@@ -134,10 +152,16 @@ func RunCoverBackfill(ctx context.Context, books CoverBackfillBooks, ids OpenLib
 			case err != nil:
 				report.Errors = append(report.Errors, CoverBackfillLine{Book: b, QID: qid, OLIDs: olids, Message: err.Error()})
 			default:
-				f := CoverBackfillFinding{Book: b, QID: qid, OLID: used, Cover: cover}
+				f := CoverBackfillFinding{Book: b, QID: qid, SourceID: used, Cover: cover}
 				report.Findings = append(report.Findings, f)
 				findings[b.ID] = f
 			}
+		}
+		if opts.FantLab != nil && opts.FantLabIDs != nil {
+			if err := ctx.Err(); err != nil {
+				return report, err
+			}
+			tryFantLab(ctx, report, findings, batch, opts)
 		}
 	}
 
@@ -153,6 +177,66 @@ func RunCoverBackfill(ctx context.Context, books CoverBackfillBooks, ids OpenLib
 		}
 	}
 	return report, nil
+}
+
+// tryFantLab looks the batch books that have no finding yet up on FantLab. A
+// FantLab finding replaces the earlier no-cover or error lines of the book.
+func tryFantLab(ctx context.Context, report *CoverBackfillReport, findings map[uuid.UUID]CoverBackfillFinding, batch []catalogDomain.Book, opts CoverBackfillOptions) {
+	var need []catalogDomain.Book
+	var qids []string
+	for _, b := range batch {
+		if _, found := findings[b.ID]; found {
+			continue
+		}
+		need = append(need, b)
+		qids = append(qids, *b.ExternalID)
+	}
+	if len(need) == 0 {
+		return
+	}
+	idsByQID, err := opts.FantLabIDs.FetchFantLabWorkIDs(ctx, qids)
+	if err != nil {
+		for _, b := range need {
+			report.Errors = append(report.Errors, CoverBackfillLine{Book: b, QID: *b.ExternalID, Message: "wikidata: " + err.Error()})
+		}
+		return
+	}
+	for _, b := range need {
+		if ctx.Err() != nil {
+			return
+		}
+		qid := *b.ExternalID
+		workIDs := idsByQID[qid]
+		if len(workIDs) == 0 {
+			continue
+		}
+		report.WithFantLabIDs++
+		marker := []string{"fantlab:" + strings.Join(workIDs, ",")}
+		cover, used, err := opts.FantLab.FindSelfTitledEditionCover(ctx, b.Title, workIDs)
+		switch {
+		case errors.Is(err, bookdata.ErrNotFound):
+			report.NoCover = append(report.NoCover, CoverBackfillLine{Book: b, QID: qid, OLIDs: marker})
+		case err != nil:
+			report.Errors = append(report.Errors, CoverBackfillLine{Book: b, QID: qid, OLIDs: marker, Message: "fantlab: " + err.Error()})
+		default:
+			report.NoCover = withoutBook(report.NoCover, b.ID)
+			report.Errors = withoutBook(report.Errors, b.ID)
+			f := CoverBackfillFinding{Book: b, QID: qid, SourceID: "fantlab:" + used, Cover: cover}
+			report.Findings = append(report.Findings, f)
+			report.FoundFantLab++
+			findings[b.ID] = f
+		}
+	}
+}
+
+func withoutBook(lines []CoverBackfillLine, id uuid.UUID) []CoverBackfillLine {
+	out := lines[:0]
+	for _, l := range lines {
+		if l.Book.ID != id {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 func applyListed(ctx context.Context, books CoverBackfillBooks, byID map[uuid.UUID]catalogDomain.Book, findings map[uuid.UUID]CoverBackfillFinding, id uuid.UUID) string {
@@ -204,7 +288,7 @@ func setCover(ctx context.Context, books CoverBackfillBooks, f CoverBackfillFind
 // error and apply result, then the totals.
 func (r *CoverBackfillReport) Write(w io.Writer) {
 	for _, f := range r.Findings {
-		fmt.Fprintf(w, "found %s %s %s %s %s %s\n", f.Book.ID, f.Book.Status, f.QID, f.OLID, f.Cover, f.Book.Title)
+		fmt.Fprintf(w, "found %s %s %s %s %s %s\n", f.Book.ID, f.Book.Status, f.QID, f.SourceID, f.Cover, f.Book.Title)
 	}
 	for _, l := range r.NoCover {
 		fmt.Fprintf(w, "nocover %s %s %s %s\n", l.Book.ID, l.QID, strings.Join(l.OLIDs, ","), l.Book.Title)
@@ -218,6 +302,6 @@ func (r *CoverBackfillReport) Write(w io.Writer) {
 	for _, a := range r.Applied {
 		fmt.Fprintf(w, "%s %s\n", a.ID, a.Result)
 	}
-	fmt.Fprintf(w, "candidates=%d with_ids=%d found=%d nocover=%d errors=%d\n",
-		r.Candidates, r.WithIDs, len(r.Findings), len(r.NoCover), len(r.Errors))
+	fmt.Fprintf(w, "candidates=%d with_ids=%d with_fantlab_ids=%d found=%d found_fantlab=%d nocover=%d errors=%d\n",
+		r.Candidates, r.WithIDs, r.WithFantLabIDs, len(r.Findings)-r.FoundFantLab, r.FoundFantLab, len(r.NoCover), len(r.Errors))
 }

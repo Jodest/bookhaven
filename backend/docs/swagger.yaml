@@ -701,6 +701,7 @@ definitions:
         - stored
         - failed
         - absent
+        - linked
         type: string
       stored_at:
         type: string

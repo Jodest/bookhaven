@@ -309,7 +309,7 @@ export interface AdminDashboard {
 export type AdminBookStatus = 'pending' | 'published' | 'rejected';
 
 /** State of a book's self-hosted cover copy (openspec catalog/book-covers). */
-export type AdminCoverCopyStatus = 'pending' | 'stored' | 'failed' | 'absent';
+export type AdminCoverCopyStatus = 'pending' | 'stored' | 'failed' | 'absent' | 'linked';
 
 export interface AdminCoverCopy {
   status: AdminCoverCopyStatus;

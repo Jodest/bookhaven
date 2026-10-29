@@ -75,6 +75,10 @@ var (
 	// (e.g. HTTP 400, or an empty/invalid query built locally) and was not
 	// retried.
 	ErrInvalidQuery = errors.New("bookdata: invalid query")
+
+	// ErrBudgetExhausted indicates a client's request budget (see
+	// FantLabClient.SetRequestBudget) is spent; no request was made.
+	ErrBudgetExhausted = errors.New("bookdata: request budget exhausted")
 )
 
 // ExternalBookRecord is the normalized shape returned by both WikidataClient
@@ -93,6 +97,10 @@ type ExternalBookRecord struct {
 	// harvest query read them. Raw values; use OrderOpenLibraryIDs before
 	// lookups. Never persisted.
 	OpenLibraryIDs []string
+	// FantLabWorkIDs are the work's FantLab work IDs (Wikidata P7439), when the
+	// harvest query read them. Raw values; use OrderFantLabWorkIDs before
+	// lookups. Never persisted.
+	FantLabWorkIDs []string
 	// Authors are author display names as reported by the source.
 	Authors []string
 	// AuthorRefs are the same authors paired with their source identity

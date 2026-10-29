@@ -67,6 +67,9 @@ const (
 	CoverStatusStored  = "stored"
 	CoverStatusFailed  = "failed"
 	CoverStatusAbsent  = "absent"
+	// CoverStatusLinked: the link is on a link-only host; it is shown as it is
+	// and never downloaded.
+	CoverStatusLinked = "linked"
 )
 
 // CoverPublicPrefix is the public path prefix of self-hosted covers.

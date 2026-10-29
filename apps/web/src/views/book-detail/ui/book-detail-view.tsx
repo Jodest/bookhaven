@@ -17,6 +17,7 @@ import { getBook } from '../api/get-book';
 import { buildBookJsonLd } from '../lib/book-seo';
 import { BookDescription } from './book-description';
 import { RatingSummary } from './rating-summary';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 interface BookDetailViewProps {
   slug: string;
@@ -72,6 +73,7 @@ export async function BookDetailView({ slug }: BookDetailViewProps) {
             {book.coverUrl ? (
               <Image
                 src={book.coverUrl}
+                unoptimized={isHotlinkCoverUrl(book.coverUrl)}
                 alt={book.title}
                 fill
                 className="object-cover"

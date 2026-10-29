@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/rand"
+	"net/url"
 	"strings"
 	"time"
 
@@ -56,6 +57,9 @@ type Service struct {
 	tmdb PosterLookup
 	// rnd returns a value in [0, 1) for the re-check jitter.
 	rnd func() float64
+	// linkOnly lists hosts whose book covers are shown by link and never
+	// downloaded (see WithLinkOnlyHosts).
+	linkOnly []string
 }
 
 // Option configures Service.
@@ -69,6 +73,13 @@ func WithClock(now func() time.Time, sleep func(ctx context.Context, d time.Dura
 // WithTMDB enables the TMDB poster re-check with the given client.
 func WithTMDB(l PosterLookup) Option {
 	return func(s *Service) { s.tmdb = l }
+}
+
+// WithLinkOnlyHosts sets the hosts whose book covers are never downloaded: the
+// copy is recorded as "linked" and the source link is shown. Entries follow the
+// allowlist syntax (coverfetch.MatchHost). Posters are not affected.
+func WithLinkOnlyHosts(hosts []string) Option {
+	return func(s *Service) { s.linkOnly = hosts }
 }
 
 // WithRand overrides the random source of the re-check jitter (tests).
@@ -130,6 +141,10 @@ func (s *Service) MirrorOne(ctx context.Context, owner domain.Owner, id uuid.UUI
 		attempts = sub.Attempts
 	}
 
+	if owner == domain.OwnerBook && s.isLinkOnly(link) {
+		return s.recordLinked(ctx, owner, id, link)
+	}
+
 	if err := s.pace(ctx); err != nil {
 		return err
 	}
@@ -189,6 +204,38 @@ func (s *Service) MirrorOne(ctx context.Context, owner domain.Owner, id uuid.UUI
 		return nil
 	}
 	if prev != nil && *prev != newName {
+		s.collect(ctx, *prev)
+	}
+	return nil
+}
+
+// linkedRecheck is how long a linked copy waits before the sweep looks at it
+// again (the host may have left the link-only list by then).
+const linkedRecheck = 7 * 24 * time.Hour
+
+func (s *Service) isLinkOnly(link string) bool {
+	if len(s.linkOnly) == 0 {
+		return false
+	}
+	u, err := url.Parse(link)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	return coverfetch.MatchHost(s.linkOnly, u.Hostname())
+}
+
+// recordLinked records that link is on a link-only host: no request is made,
+// the old stored file of an earlier link (if any) is collected.
+func (s *Service) recordLinked(ctx context.Context, owner domain.Owner, id uuid.UUID, link string) error {
+	now := s.clock()
+	next := now.Add(linkedRecheck)
+	applied, prev, err := s.repo.SaveState(ctx, owner, id, repository.StateUpdate{
+		SourceURL: link, Status: catalogDomain.CoverStatusLinked, NextAttemptAt: &next, Now: now,
+	})
+	if err != nil {
+		return err
+	}
+	if applied && prev != nil {
 		s.collect(ctx, *prev)
 	}
 	return nil
