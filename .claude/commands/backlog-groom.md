@@ -1,6 +1,6 @@
 ---
 description: Periodic backlog grooming — researches new candidate work, files each as a trackable GitHub issue, and notifies the human; never plans, ranks, or implements anything itself
-argument-hint: (none — runs standalone, typically on a schedule; headless-safe, does not need a human answer mid-run)
+argument-hint: "[focus] [N cycles] — optional, e.g. 'security', 'ops', 'deps', 'spec-drift', '3 cycles'; headless-safe, does not need a human answer mid-run"
 ---
 
 Run BookHaven's backlog-grooming pass. This command only researches, files, and notifies — it never invokes `feature-planner`, never ranks candidates, and never implements anything. Picking and implementing the next item happens later, in `/backlog-next` (a separate, interactive command — do not run that one headless).
@@ -13,7 +13,9 @@ Run `git fetch origin` and make sure you're starting from an up-to-date `main`.
 
 ## Step 2 — Research
 
-Invoke the `backlog-researcher` subagent (Agent tool, `subagent_type: "backlog-researcher"`) with no extra arguments — it knows its own sources, opens a `proposal`-labeled GitHub issue per new candidate, and writes a matching line into `docs/ROADMAP.md`.
+Invoke the `backlog-researcher` subagent (Agent tool, `subagent_type: "backlog-researcher"`) — it knows its own sources, opens a `proposal`-labeled GitHub issue per new candidate, and writes a matching line into `docs/ROADMAP.md`. Pass `$ARGUMENTS`' focus (if any) as `Focus: <focus>`; with no focus, pass no extra arguments.
+
+If `$ARGUMENTS` asks for several cycles, run them strictly one after another, giving each cycle a different focus (the one named, or rotate through `spec`, `spec-drift`, `review-followup`, `deps`, `code`, `ops`, `competitive`), all on one branch with one PR at the end. Stop early after two consecutive cycles return `STATUS: NO_NEW_CANDIDATES`.
 
 ## Step 3 — Read back the full pending list
 
