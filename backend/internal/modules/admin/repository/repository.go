@@ -31,6 +31,9 @@ type Repository interface {
 	// whose cover link is an Open Library cover-id link, with authors and
 	// genres preloaded (olcoveraudit).
 	ListBooksWithOpenLibraryCover(ctx context.Context) ([]catalogDomain.Book, error)
+	// ListWikidataBooksWithoutCover lists non-rejected Wikidata books with no
+	// cover link, authors and genres preloaded (olcoverbackfill).
+	ListWikidataBooksWithoutCover(ctx context.Context) ([]catalogDomain.Book, error)
 	// SetBookStatus updates only status (and updated_at) of one book, plus
 	// published_at = COALESCE(published_at, now) when publishing (#245).
 	// found is false when no book has that id.

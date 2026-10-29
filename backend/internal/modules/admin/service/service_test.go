@@ -1357,3 +1357,7 @@ func (f *fakeRepository) GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]re
 	}
 	return out, nil
 }
+
+func (f *fakeRepository) ListWikidataBooksWithoutCover(ctx context.Context) ([]catalogDomain.Book, error) {
+	return nil, nil
+}

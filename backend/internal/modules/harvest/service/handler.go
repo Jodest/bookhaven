@@ -550,25 +550,46 @@ func enrichRecord(ctx context.Context, rec *bookdata.ExternalBookRecord, enrich 
 		return
 	}
 
-	var enrichedRec *bookdata.ExternalBookRecord
+	var isbnFound bool
 	if rec.ISBN != nil {
-		if found, err := enrich.FindByISBN(ctx, *rec.ISBN); err == nil {
-			enrichedRec = found
+		if found, err := enrich.FindByISBN(ctx, *rec.ISBN); err == nil && found != nil {
+			isbnFound = true
+			mergeEnrichment(rec, found)
 		}
 	}
-	if enrichedRec == nil && strings.TrimSpace(rec.Title) != "" {
-		// Strict title+author match only: a loose "first search result" is
-		// never accepted (it attached unrelated covers/ISBNs, issue #687).
-		if matcher, ok := enrich.(titleAuthorMatcher); ok {
-			if found, err := matcher.FindMatchByTitleAuthor(ctx, buildTitleAuthorQuery(rec)); err == nil {
-				enrichedRec = found
+
+	// Cover by Open Library ID (Wikidata P648): an exact lookup, tried before
+	// the title search. Any failure is ignored. The cover may belong to an
+	// edition in another language (accepted, issue #688). Only the cover is
+	// taken from this step.
+	if rec.CoverURL == nil && len(rec.OpenLibraryIDs) > 0 {
+		if finder, ok := enrich.(openLibraryCoverFinder); ok {
+			if coverURL, _, err := finder.FindCoverByOpenLibraryIDs(ctx, rec.OpenLibraryIDs); err == nil && coverURL != "" {
+				rec.CoverURL = &coverURL
 			}
 		}
 	}
-	if enrichedRec == nil {
-		return
-	}
 
+	if !isbnFound && strings.TrimSpace(rec.Title) != "" {
+		// Strict title+author match only: a loose "first search result" is
+		// never accepted (it attached unrelated covers/ISBNs, issue #687).
+		if matcher, ok := enrich.(titleAuthorMatcher); ok {
+			if found, err := matcher.FindMatchByTitleAuthor(ctx, buildTitleAuthorQuery(rec)); err == nil && found != nil {
+				mergeEnrichment(rec, found)
+			}
+		}
+	}
+}
+
+// openLibraryCoverFinder is implemented by enrichment clients that can look a
+// cover up by Open Library work/edition ID (bookdata.OpenLibraryClient).
+type openLibraryCoverFinder interface {
+	FindCoverByOpenLibraryIDs(ctx context.Context, ids []string) (coverURL string, usedID string, err error)
+}
+
+// mergeEnrichment copies fields from an enrichment record into rec, only where
+// rec's own value is nil.
+func mergeEnrichment(rec, enrichedRec *bookdata.ExternalBookRecord) {
 	if rec.CoverURL == nil {
 		rec.CoverURL = enrichedRec.CoverURL
 	}

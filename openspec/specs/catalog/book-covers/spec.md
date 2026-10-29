@@ -46,7 +46,8 @@ A book with no cover link has `null`. The admin book record is the only exceptio
 Every save that writes a non-empty cover link SHALL queue a copy of that book once the save is committed. This covers:
 - an admin creating or updating a book;
 - each row of a CSV/JSON book import;
-- a book created by a Wikidata harvest, including a cover filled in from Open Library.
+- a book created by a Wikidata harvest, including a cover filled in from Open Library by ISBN, by Open Library ID or by the title search;
+- a cover link set by the cover backfill by Open Library ID (see `catalog-import/wikidata-book-harvest`).
 
 An admin update that keeps the same link queues a copy only when no copy of it is stored. A copy queued by a save is attempted even after an earlier failure of that link. Queuing MUST NOT delay or fail the save: if it fails, the save still succeeds and the periodic sweep makes the copy later.
 
@@ -61,6 +62,10 @@ An admin update that keeps the same link queues a copy only when no copy of it i
 #### Scenario: Re-saving a failed cover
 - **WHEN** an admin saves a book again, unchanged, after its cover copy failed
 - **THEN** the copy is attempted again
+
+#### Scenario: Backfilled cover
+- **WHEN** the cover backfill sets the Open Library cover link of a book that had none
+- **THEN** a copy is queued for that book, the book shows the Open Library link until the copy is stored, and a `/covers/…` path afterwards
 
 ### Requirement: Download rules
 The download of a cover link, or of a screen work poster link (see `screen-works/poster-copies`), SHALL follow all of these rules:

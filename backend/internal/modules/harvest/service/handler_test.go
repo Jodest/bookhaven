@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	adminrepository "github.com/bookhaven/backend/internal/modules/admin/repository"
@@ -325,6 +326,26 @@ type fakeEnrichClient struct {
 	byTitleAuthor map[string]*bookdata.ExternalBookRecord
 	// matchQueries records every FindMatchByTitleAuthor query.
 	matchQueries []bookdata.TitleAuthorQuery
+	// olidCover is the cover returned by FindCoverByOpenLibraryIDs; empty
+	// means ErrNotFound, olidErr overrides it with an error.
+	olidCover string
+	olidErr   error
+	// olidCalls records the ID lists passed to FindCoverByOpenLibraryIDs.
+	olidCalls [][]string
+	// order records the lookups in call order: "isbn", "ids", "title".
+	order []string
+}
+
+func (f *fakeEnrichClient) FindCoverByOpenLibraryIDs(ctx context.Context, ids []string) (string, string, error) {
+	f.order = append(f.order, "ids")
+	f.olidCalls = append(f.olidCalls, ids)
+	if f.olidErr != nil {
+		return "", "", f.olidErr
+	}
+	if f.olidCover == "" {
+		return "", "", bookdata.ErrNotFound
+	}
+	return f.olidCover, ids[0], nil
 }
 
 // FindMatchByTitleAuthor is the strict title search the harvest uses; the
@@ -332,6 +353,7 @@ type fakeEnrichClient struct {
 // passed the title/author match.
 func (f *fakeEnrichClient) FindMatchByTitleAuthor(ctx context.Context, q bookdata.TitleAuthorQuery) (*bookdata.ExternalBookRecord, error) {
 	f.matchQueries = append(f.matchQueries, q)
+	f.order = append(f.order, "title")
 	if rec, ok := f.byTitleAuthor[q.Title]; ok {
 		return rec, nil
 	}
@@ -354,6 +376,7 @@ func (l legacyEnrichClient) FindByTitleAuthor(ctx context.Context, title, author
 func (f *fakeEnrichClient) SourceName() string { return "openlibrary" }
 
 func (f *fakeEnrichClient) FindByISBN(ctx context.Context, isbn string) (*bookdata.ExternalBookRecord, error) {
+	f.order = append(f.order, "isbn")
 	if rec, ok := f.byISBN[isbn]; ok {
 		return rec, nil
 	}
@@ -1315,5 +1338,136 @@ func (f *fakeAdminRepository) ListGenreAnalysisCandidates(ctx context.Context) (
 }
 
 func (f *fakeAdminRepository) GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]adminrepository.GenreStateRow, error) {
+	return nil, nil
+}
+
+func idCoverRecord(sourceID string) bookdata.ExternalBookRecord {
+	return bookdata.ExternalBookRecord{
+		Title:          "Хоббит",
+		Language:       "ru",
+		SourceName:     "wikidata",
+		SourceID:       sourceID,
+		OpenLibraryIDs: []string{"OL27479W", "OL27455W"},
+	}
+}
+
+const idCover = "https://covers.openlibrary.org/b/id/111-L.jpg"
+const titleCover = "https://covers.openlibrary.org/b/id/222-L.jpg"
+
+func TestProcessRecord_IDCoverBeatsTitleSearchCover(t *testing.T) {
+	admin, repo := newTestAdmin()
+	enrich := &fakeEnrichClient{
+		olidCover: idCover,
+		byTitleAuthor: map[string]*bookdata.ExternalBookRecord{
+			"Хоббит": {CoverURL: strPtr(titleCover), Description: strPtr("Повесть о хоббите Бильбо Бэггинсе и его путешествии")},
+		},
+	}
+	if _, err := processRecord(context.Background(), idCoverRecord("Q10"), enrich, admin); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if c := repo.books[0].CoverURL; c == nil || *c != idCover {
+		t.Errorf("CoverURL = %v, want the ID cover", c)
+	}
+	if repo.books[0].Description == nil {
+		t.Error("title search must still fill the description")
+	}
+	if want := []string{"ids", "title"}; !reflect.DeepEqual(enrich.order, want) {
+		t.Errorf("call order = %v, want %v", enrich.order, want)
+	}
+}
+
+func TestProcessRecord_IDsWithoutCoverFallBackToTitleCover(t *testing.T) {
+	admin, repo := newTestAdmin()
+	enrich := &fakeEnrichClient{
+		byTitleAuthor: map[string]*bookdata.ExternalBookRecord{"Хоббит": {CoverURL: strPtr(titleCover)}},
+	}
+	if _, err := processRecord(context.Background(), idCoverRecord("Q11"), enrich, admin); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if c := repo.books[0].CoverURL; c == nil || *c != titleCover {
+		t.Errorf("CoverURL = %v, want the title-search cover", c)
+	}
+}
+
+func TestProcessRecord_IDLookupErrorStillCreatesAndSearchesTitle(t *testing.T) {
+	admin, repo := newTestAdmin()
+	enrich := &fakeEnrichClient{
+		olidErr:       bookdata.ErrSourceUnavailable,
+		byTitleAuthor: map[string]*bookdata.ExternalBookRecord{"Хоббит": {CoverURL: strPtr(titleCover)}},
+	}
+	outcome, err := processRecord(context.Background(), idCoverRecord("Q12"), enrich, admin)
+	if err != nil || outcome != outcomeCreated {
+		t.Fatalf("outcome=%v err=%v", outcome, err)
+	}
+	if c := repo.books[0].CoverURL; c == nil || *c != titleCover {
+		t.Errorf("CoverURL = %v, want the title-search cover", c)
+	}
+	if want := []string{"ids", "title"}; !reflect.DeepEqual(enrich.order, want) {
+		t.Errorf("call order = %v, want %v", enrich.order, want)
+	}
+}
+
+func TestProcessRecord_WikidataOrISBNCoverSkipsIDStep(t *testing.T) {
+	t.Run("wikidata cover", func(t *testing.T) {
+		admin, repo := newTestAdmin()
+		rec := idCoverRecord("Q13")
+		rec.CoverURL = strPtr("https://wikidata.example/c.jpg")
+		enrich := &fakeEnrichClient{olidCover: idCover}
+		if _, err := processRecord(context.Background(), rec, enrich, admin); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(enrich.olidCalls) != 0 {
+			t.Errorf("ID step called: %v", enrich.olidCalls)
+		}
+		if c := repo.books[0].CoverURL; c == nil || *c != "https://wikidata.example/c.jpg" {
+			t.Errorf("CoverURL = %v", c)
+		}
+	})
+	t.Run("isbn cover", func(t *testing.T) {
+		admin, repo := newTestAdmin()
+		rec := idCoverRecord("Q14")
+		rec.ISBN = strPtr("9780140447934")
+		enrich := &fakeEnrichClient{
+			olidCover: idCover,
+			byISBN:    map[string]*bookdata.ExternalBookRecord{"9780140447934": {CoverURL: strPtr(titleCover)}},
+		}
+		if _, err := processRecord(context.Background(), rec, enrich, admin); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if len(enrich.olidCalls) != 0 {
+			t.Errorf("ID step called: %v", enrich.olidCalls)
+		}
+		if c := repo.books[0].CoverURL; c == nil || *c != titleCover {
+			t.Errorf("CoverURL = %v", c)
+		}
+	})
+}
+
+func TestProcessRecord_IDStepTakesOnlyTheCover(t *testing.T) {
+	admin, repo := newTestAdmin()
+	enrich := &fakeEnrichClient{olidCover: idCover}
+	if _, err := processRecord(context.Background(), idCoverRecord("Q15"), enrich, admin); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	b := repo.books[0]
+	if b.Description != nil || b.ISBN != nil || b.PageCount != nil {
+		t.Errorf("description/isbn/pages must stay empty: %v %v %v", b.Description, b.ISBN, b.PageCount)
+	}
+}
+
+func TestProcessRecord_NoIDsMakesNoIDCall(t *testing.T) {
+	admin, _ := newTestAdmin()
+	rec := idCoverRecord("Q16")
+	rec.OpenLibraryIDs = nil
+	enrich := &fakeEnrichClient{olidCover: idCover}
+	if _, err := processRecord(context.Background(), rec, enrich, admin); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if len(enrich.olidCalls) != 0 {
+		t.Errorf("ID step called: %v", enrich.olidCalls)
+	}
+}
+
+func (f *fakeAdminRepository) ListWikidataBooksWithoutCover(ctx context.Context) ([]catalogDomain.Book, error) {
 	return nil, nil
 }
