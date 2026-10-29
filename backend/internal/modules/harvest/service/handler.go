@@ -53,6 +53,7 @@ import (
 	catalogDomain "github.com/bookhaven/backend/internal/modules/catalog/domain"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
+	"go.uber.org/zap"
 )
 
 // TaskTypeHarvestWikidataQuery is the asynq task type for a Wikidata bulk
@@ -171,6 +172,40 @@ type Handler struct {
 	syncer   AdaptationSyncer
 	// filmSyncer syncs films about the authors a job created.
 	filmSyncer AuthorFilmSyncer
+	// fantlab finds covers on FantLab (nil = step off); log reports the
+	// per-job request cap being hit.
+	fantlab FantLabCoverFinder
+	log     *zap.Logger
+}
+
+// MaxFantLabRequestsPerJob caps the FantLab requests one harvest job makes.
+const MaxFantLabRequestsPerJob = 250
+
+// FantLabCoverFinder finds a cover link on FantLab by the Wikidata FantLab
+// work IDs and the book's title (bookdata.FantLabClient satisfies it).
+type FantLabCoverFinder interface {
+	FindSelfTitledEditionCover(ctx context.Context, title string, workIDs []string) (coverURL, usedID string, err error)
+}
+
+// fantLabBudgeter is implemented by finders with a request budget
+// (bookdata.FantLabClient); the handler resets it at the start of every job.
+type fantLabBudgeter interface {
+	SetRequestBudget(n int)
+}
+
+// budgetCountingFantLab counts the works skipped because the job's request
+// budget was spent.
+type budgetCountingFantLab struct {
+	FantLabCoverFinder
+	skipped int
+}
+
+func (b *budgetCountingFantLab) FindSelfTitledEditionCover(ctx context.Context, title string, workIDs []string) (string, string, error) {
+	u, id, err := b.FantLabCoverFinder.FindSelfTitledEditionCover(ctx, title, workIDs)
+	if errors.Is(err, bookdata.ErrBudgetExhausted) {
+		b.skipped++
+	}
+	return u, id, err
 }
 
 // AdaptationSyncer syncs screen adaptations of the books a job created.
@@ -207,6 +242,18 @@ func WithAdaptationSyncer(s AdaptationSyncer) HandlerOption {
 // author film counters.
 func WithAuthorFilmSyncer(s AuthorFilmSyncer) HandlerOption {
 	return func(h *Handler) { h.filmSyncer = s }
+}
+
+// WithFantLabCovers enables the FantLab cover step of enrichment (after the
+// Open Library ID cover, before the title search). Without it the step is
+// off. Finders with a request budget get MaxFantLabRequestsPerJob per job.
+func WithFantLabCovers(f FantLabCoverFinder) HandlerOption {
+	return func(h *Handler) { h.fantlab = f }
+}
+
+// WithLogger sets the logger for job-level notices (default: none).
+func WithLogger(l *zap.Logger) HandlerOption {
+	return func(h *Handler) { h.log = l }
 }
 
 // NewHandler builds a Handler. enrich may be nil to disable enrichment
@@ -292,9 +339,21 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progre
 	result := HarvestResult{Total: len(records), Errors: []HarvestRecordError{}, SkippedRecords: []HarvestSkippedRecord{}}
 	reportProgress(progress, result)
 
+	// FantLab: a fresh request budget per job; the counter reports how many
+	// works the cap left without a lookup.
+	var fantlab FantLabCoverFinder
+	var counting *budgetCountingFantLab
+	if h.fantlab != nil {
+		if bg, ok := h.fantlab.(fantLabBudgeter); ok {
+			bg.SetRequestBudget(MaxFantLabRequestsPerJob)
+		}
+		counting = &budgetCountingFantLab{FantLabCoverFinder: h.fantlab}
+		fantlab = counting
+	}
+
 	var createdAuthors, createdBooks []uuid.UUID
 	for i, rec := range records {
-		outcome, created, bookID, procErr := processHarvestRecord(ctx, rec, h.enrich, h.admin)
+		outcome, created, bookID, procErr := processHarvestRecord(ctx, rec, h.enrich, fantlab, h.admin)
 		createdAuthors = append(createdAuthors, created...)
 		if bookID != uuid.Nil {
 			createdBooks = append(createdBooks, bookID)
@@ -319,6 +378,11 @@ func (h *Handler) runHarvest(ctx context.Context, payload HarvestPayload, progre
 		}
 		result.Processed++
 		reportProgress(progress, result)
+	}
+
+	if counting != nil && counting.skipped > 0 && h.log != nil {
+		h.log.Info("harvest: FantLab request cap reached, works left without a FantLab cover lookup",
+			zap.Int("cap", MaxFantLabRequestsPerJob), zap.Int("skipped_works", counting.skipped))
 	}
 
 	if h.admin.HasAuthorEnrichmentSource() {
@@ -391,7 +455,7 @@ const (
 // It is a package-level function (not a Handler method) so it can be unit
 // tested directly with fakes, without constructing a Handler/asynq.Task.
 func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich bookdata.Client, admin *adminservice.Service) (recordOutcome, error) {
-	outcome, _, _, err := processHarvestRecord(ctx, rec, enrich, admin)
+	outcome, _, _, err := processHarvestRecord(ctx, rec, enrich, nil, admin)
 	return outcome, err
 }
 
@@ -400,7 +464,7 @@ func processRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich 
 // reported even when the book creation then fails, so the job still
 // enriches them (docs/features/author-wikidata-enrichment.md rule 4b). It
 // also returns the id of the created book (uuid.Nil when none was created).
-func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich bookdata.Client, admin *adminservice.Service) (recordOutcome, []uuid.UUID, uuid.UUID, error) {
+func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, enrich bookdata.Client, fantlab FantLabCoverFinder, admin *adminservice.Service) (recordOutcome, []uuid.UUID, uuid.UUID, error) {
 	sourceID := strings.TrimSpace(rec.SourceID)
 	if sourceID == "" {
 		return 0, nil, uuid.Nil, errors.New("record has no source id")
@@ -416,7 +480,7 @@ func processHarvestRecord(ctx context.Context, rec bookdata.ExternalBookRecord, 
 
 	enriched := rec
 	if enrich != nil {
-		enrichRecord(ctx, &enriched, enrich)
+		enrichRecord(ctx, &enriched, enrich, fantlab)
 	}
 
 	resolution, err := admin.ResolveHarvestAuthorRefs(ctx, harvestAuthorRefs(enriched))
@@ -545,7 +609,7 @@ func buildTitleAuthorQuery(rec *bookdata.ExternalBookRecord) bookdata.TitleAutho
 // record: the book is still created using whatever Wikidata provided.
 // Description is additionally filtered to (heuristically) Russian text
 // before being copied - see the inline comment below for the rationale.
-func enrichRecord(ctx context.Context, rec *bookdata.ExternalBookRecord, enrich bookdata.Client) {
+func enrichRecord(ctx context.Context, rec *bookdata.ExternalBookRecord, enrich bookdata.Client, fantlab FantLabCoverFinder) {
 	if rec.CoverURL != nil && rec.Description != nil && rec.PageCount != nil && rec.ISBN != nil {
 		return
 	}
@@ -567,6 +631,15 @@ func enrichRecord(ctx context.Context, rec *bookdata.ExternalBookRecord, enrich 
 			if coverURL, _, err := finder.FindCoverByOpenLibraryIDs(ctx, rec.OpenLibraryIDs); err == nil && coverURL != "" {
 				rec.CoverURL = &coverURL
 			}
+		}
+	}
+
+	// Cover from a FantLab edition named exactly like the book (Wikidata
+	// P7439): tried after the Open Library ID and before the title search.
+	// Only the cover is taken; any failure is ignored.
+	if rec.CoverURL == nil && len(rec.FantLabWorkIDs) > 0 && fantlab != nil && strings.TrimSpace(rec.Title) != "" {
+		if coverURL, _, err := fantlab.FindSelfTitledEditionCover(ctx, rec.Title, rec.FantLabWorkIDs); err == nil && coverURL != "" {
+			rec.CoverURL = &coverURL
 		}
 	}
 

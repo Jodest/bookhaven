@@ -8,6 +8,7 @@ import { useMutation } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 interface PickRandomBookProps {
   /** Genres for the filter, passed from the server-rendered page. */
@@ -93,7 +94,7 @@ export function PickRandomBook({ genres, className }: PickRandomBookProps) {
               className="relative block aspect-[2/3] w-16 shrink-0 overflow-hidden rounded bg-muted"
             >
               {book.coverUrl && (
-                <Image src={book.coverUrl} alt="" fill className="object-cover" sizes="64px" />
+                <Image src={book.coverUrl} unoptimized={isHotlinkCoverUrl(book.coverUrl)} alt="" fill className="object-cover" sizes="64px" />
               )}
             </Link>
             <div className="min-w-0 flex-1">

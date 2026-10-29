@@ -157,6 +157,8 @@ services:
       COVERS_SWEEP_CRON: ${COVERS_SWEEP_CRON-*/15 * * * *}
       COVERS_SWEEP_BATCH: ${COVERS_SWEEP_BATCH:-50}
       COVERS_ALLOWED_HOSTS: ${COVERS_ALLOWED_HOSTS:-covers.openlibrary.org,archive.org,*.archive.org,upload.wikimedia.org,image.tmdb.org}
+      # Link-only hosts: covers are shown by link, never copied (FantLab, no permission for copies).
+      COVERS_LINK_ONLY_HOSTS: ${COVERS_LINK_ONLY_HOSTS-fantlab.ru,*.fantlab.ru}
       # Optional TMDB posters for the adaptation sync (empty = skipped).
       TMDB_API_KEY: ${TMDB_API_KEY:-}
     volumes:

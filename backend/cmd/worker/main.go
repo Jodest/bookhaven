@@ -231,7 +231,9 @@ func main() {
 	screenWorksService := screenworksservice.NewService(screenworksrepository.NewGormRepository(db), wikidataClient, logger, screenWorksOpts...)
 	harvestHandler := harvestservice.NewHandler(wikidataClient, openLibraryClient, adminService,
 		harvestservice.WithAdaptationSyncer(screenWorksService),
-		harvestservice.WithAuthorFilmSyncer(screenWorksService))
+		harvestservice.WithAuthorFilmSyncer(screenWorksService),
+		harvestservice.WithFantLabCovers(bookdata.NewFantLabClient()),
+		harvestservice.WithLogger(logger))
 
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(harvestservice.TaskTypeHarvestWikidataQuery, harvestHandler.HandleTask)
@@ -544,7 +546,7 @@ func main() {
 		// TMDB re-check of poster copies (TMDB API terms): its own client, so
 		// the limiter is per client and both stay under 10 rps. Without a key
 		// the sweep drops TMDB posters that fall due.
-		var coversOpts []coversservice.Option
+		coversOpts := []coversservice.Option{coversservice.WithLinkOnlyHosts(cfg.CoversLinkOnlyHosts)}
 		if cfg.TMDBAPIKey != "" {
 			coversOpts = append(coversOpts, coversservice.WithTMDB(tmdb.New(cfg.TMDBAPIKey)))
 		}
@@ -565,7 +567,8 @@ func main() {
 		logger.Info("self-hosted covers enabled",
 			zap.String("queue", coversservice.QueueName),
 			zap.String("dir", cfg.CoversDir),
-			zap.Strings("allowed_hosts", cfg.CoversAllowedHosts))
+			zap.Strings("allowed_hosts", cfg.CoversAllowedHosts),
+			zap.Strings("link_only_hosts", cfg.CoversLinkOnlyHosts))
 	} else {
 		logger.Info("self-hosted covers mirroring disabled")
 	}

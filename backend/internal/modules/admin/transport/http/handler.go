@@ -159,11 +159,12 @@ type bookResponse struct {
 }
 
 // coverCopyResponse is the state of a book's self-hosted cover copy.
-// Status is pending, stored, failed or absent; Error is a cover_error code
+// Status is pending, stored, failed, absent or linked (the link is on a
+// link-only host and is shown without a copy); Error is a cover_error code
 // (host_not_allowed, blocked_address, too_many_redirects, too_large,
 // not_image, http_error, timeout, network) or null.
 type coverCopyResponse struct {
-	Status   string     `json:"status" enums:"pending,stored,failed,absent"`
+	Status   string     `json:"status" enums:"pending,stored,failed,absent,linked"`
 	Error    *string    `json:"error"`
 	StoredAt *time.Time `json:"stored_at"`
 }

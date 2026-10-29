@@ -10,6 +10,10 @@ const nextConfig = {
     // Open Library links are stable per id, so optimized images can be kept
     // for 30 days (the default is 60 s, per width, and lost on deploy).
     minimumCacheTTL: 2592000,
+    // fantlab.ru is deliberately NOT listed: its covers are link-only (backend
+    // COVERS_LINK_ONLY_HOSTS) and rendered `unoptimized` (shared/lib/hotlink-cover),
+    // because the optimizer would fetch and cache them for 30 days, which is a
+    // stored copy we have no permission for.
     remotePatterns: [
       {
         protocol: 'https',

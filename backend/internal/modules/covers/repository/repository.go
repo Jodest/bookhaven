@@ -268,7 +268,7 @@ func (r *GormRepository) DueCandidates(ctx context.Context, now time.Time, limit
 		d := descriptors[o]
 		parts = append(parts, fmt.Sprintf(`SELECT '%s' AS owner, id, %s AS next_at, created_at AS created FROM %s
 			WHERE %s IS NOT NULL AND %s <> ''%s
-			AND (COALESCE(%s, '') <> %s OR (%s IN ('pending', 'failed') AND %s <= ?))`,
+			AND (COALESCE(%s, '') <> %s OR (%s IN ('pending', 'failed', 'linked') AND %s <= ?))`,
 			o, d.next, d.table, d.link, d.link, d.and(), d.source, d.link, d.status, d.next))
 		args = append(args, now)
 	}

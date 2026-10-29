@@ -7,6 +7,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePersonalHome } from '../model/use-personal-home';
 import { CardSkeleton } from './row-skeleton';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 interface WantToReadCardProps {
   shelfId: string;
@@ -63,7 +64,7 @@ function WantToReadCard({ shelfId, total, book }: WantToReadCardProps) {
           className="relative block aspect-[2/3] w-20 shrink-0 overflow-hidden rounded-lg bg-muted shadow-sm"
         >
           {book.coverUrl ? (
-            <Image src={book.coverUrl} alt="" fill className="object-cover" sizes="80px" />
+            <Image src={book.coverUrl} unoptimized={isHotlinkCoverUrl(book.coverUrl)} alt="" fill className="object-cover" sizes="80px" />
           ) : (
             <span className="flex h-full items-center justify-center p-1 text-center text-xs text-muted-foreground">
               Нет обложки

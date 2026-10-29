@@ -411,6 +411,8 @@ func TestBuildAuthorListQuery(t *testing.T) {
 			"AS ?authorsEn)",
 			"?item wdt:P648 ?olid",
 			"AS ?olids)",
+			"?item wdt:P7439 ?fantlab",
+			"AS ?fantlabIds)",
 			"LIMIT 250",
 		} {
 			if !strings.Contains(query, want) {
@@ -638,5 +640,28 @@ func TestParseSparqlBindings_OpenLibraryIDs(t *testing.T) {
 	}
 	if len(recs[1].OpenLibraryIDs) != 0 {
 		t.Errorf("second record OpenLibraryIDs = %v, want none", recs[1].OpenLibraryIDs)
+	}
+}
+
+func TestParseSparqlBindings_FantLabWorkIDs(t *testing.T) {
+	recs := parseSparqlBindings([]map[string]sparqlValue{
+		{
+			"item":       {Value: "http://www.wikidata.org/entity/Q1"},
+			"itemLabel":  {Value: "Книга"},
+			"fantlabIds": {Value: "363346| 3657 ||"},
+		},
+		{
+			"item":      {Value: "http://www.wikidata.org/entity/Q2"},
+			"itemLabel": {Value: "Другая"},
+		},
+	})
+	if len(recs) != 2 {
+		t.Fatalf("records = %d", len(recs))
+	}
+	if got := recs[0].FantLabWorkIDs; len(got) != 2 || got[0] != "363346" || got[1] != "3657" {
+		t.Errorf("FantLabWorkIDs = %v", got)
+	}
+	if len(recs[1].FantLabWorkIDs) != 0 {
+		t.Errorf("second record FantLabWorkIDs = %v, want none", recs[1].FantLabWorkIDs)
 	}
 }

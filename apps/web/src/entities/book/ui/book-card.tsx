@@ -3,6 +3,7 @@ import { Book } from '@bookhaven/api-client';
 import { Star } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 interface BookCardProps {
   book: Book;
@@ -25,6 +26,7 @@ export function BookCard({ book, imageSizes = DEFAULT_IMAGE_SIZES }: BookCardPro
           {book.coverUrl ? (
             <Image
               src={book.coverUrl}
+              unoptimized={isHotlinkCoverUrl(book.coverUrl)}
               alt={book.title}
               fill
               className="object-cover transition-transform group-hover:scale-105"

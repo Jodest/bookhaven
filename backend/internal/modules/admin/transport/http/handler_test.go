@@ -1230,3 +1230,14 @@ func TestListBooks_CoverCopy(t *testing.T) {
 		t.Fatalf("no cover: %+v", it[3].CoverCopy)
 	}
 }
+
+// A link on a link-only host is shown as it is: cover_copy is linked with no
+// error and no stored_at.
+func TestToCoverCopy_Linked(t *testing.T) {
+	link := "https://fantlab.ru/images/editions/big/77"
+	linked := catalogDomain.CoverStatusLinked
+	got := toCoverCopy(catalogDomain.Book{CoverURL: &link, CoverSourceURL: &link, CoverStatus: &linked})
+	if got == nil || got.Status != "linked" || got.Error != nil || got.StoredAt != nil {
+		t.Fatalf("linked: %+v", got)
+	}
+}

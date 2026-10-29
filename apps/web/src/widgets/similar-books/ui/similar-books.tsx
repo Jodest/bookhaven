@@ -4,6 +4,7 @@ import { booksApi } from '@/entities/book';
 import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 const SIMILAR_LIMIT = 8;
 const SKELETON_COUNT = 4;
@@ -64,6 +65,7 @@ export function SimilarBooks({ bookId, className }: SimilarBooksProps) {
                 {book.coverUrl ? (
                   <Image
                     src={book.coverUrl}
+                    unoptimized={isHotlinkCoverUrl(book.coverUrl)}
                     alt={book.title}
                     fill
                     sizes="112px"

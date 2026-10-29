@@ -1,6 +1,9 @@
 // Command olcoverbackfill finds Wikidata books without a cover, reads their
 // Open Library IDs (P648) from Wikidata and sets the cover from the Open
-// Library work or edition record (issue #688). It has no HTTP endpoint on
+// Library work or edition record (issue #688). Books still without a cover are
+// then tried on FantLab: the Wikidata FantLab work ID (P7439) leads to a
+// Russian paper edition named exactly like the book, and its cover is linked,
+// not copied (issue #686). It has no HTTP endpoint on
 // purpose. By default it only reports; -apply sets the cover links through the
 // normal book save, which queues a cover copy.
 //
@@ -8,7 +11,8 @@
 //	apply:  ... /app/olcoverbackfill -apply [-ids=<uuid,uuid>]
 //	dev:    go run ./cmd/olcoverbackfill
 //
-// See docs/DEPLOYMENT.md (Open Library cover backfill).
+// Do not run it while a harvest job is active: both pace FantLab requests on
+// their own. See docs/DEPLOYMENT.md (Open Library cover backfill).
 package main
 
 import (
@@ -65,8 +69,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Wikidata and Open Library pacing is about one request per second.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	// Wikidata and Open Library pace about one request per second, FantLab one
+	// per 1.2 s with up to 4 requests per book (about 365 works).
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Minute)
 	defer cancel()
 
 	var adminOpts []adminservice.Option
@@ -77,8 +82,9 @@ func main() {
 	}
 	books := adminservice.NewService(adminrepository.NewGormRepository(db), adminOpts...)
 
-	report, err := harvestservice.RunCoverBackfill(ctx, books, bookdata.NewWikidataClient(), bookdata.NewOpenLibraryClient(),
-		harvestservice.CoverBackfillOptions{Apply: *apply, IDs: ids})
+	wikidata := bookdata.NewWikidataClient()
+	report, err := harvestservice.RunCoverBackfill(ctx, books, wikidata, bookdata.NewOpenLibraryClient(),
+		harvestservice.CoverBackfillOptions{Apply: *apply, IDs: ids, FantLab: bookdata.NewFantLabClient(), FantLabIDs: wikidata})
 	if report != nil {
 		report.Write(os.Stdout)
 	}
