@@ -957,3 +957,7 @@ func (f *fakeImportRepository) ListGenreAnalysisCandidates(ctx context.Context) 
 func (f *fakeImportRepository) GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]repository.GenreStateRow, error) {
 	return nil, nil
 }
+
+func (f *fakeImportRepository) ListWikidataBooksWithoutCover(ctx context.Context) ([]catalogDomain.Book, error) {
+	return nil, nil
+}

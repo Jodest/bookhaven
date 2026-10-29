@@ -1175,3 +1175,9 @@ func parseDate(s string) (*time.Time, error) {
 	}
 	return &t, nil
 }
+
+// ListWikidataBooksWithoutCover returns non-rejected Wikidata books with no
+// cover link, with authors and genres (olcoverbackfill).
+func (s *Service) ListWikidataBooksWithoutCover(ctx context.Context) ([]catalogDomain.Book, error) {
+	return s.repo.ListWikidataBooksWithoutCover(ctx)
+}

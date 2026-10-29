@@ -545,3 +545,7 @@ func (f *fakeMergeAuthorsRepository) ListGenreAnalysisCandidates(ctx context.Con
 func (f *fakeMergeAuthorsRepository) GenresByIDs(ctx context.Context, ids []uuid.UUID) ([]repository.GenreStateRow, error) {
 	return nil, nil
 }
+
+func (f *fakeMergeAuthorsRepository) ListWikidataBooksWithoutCover(ctx context.Context) ([]catalogDomain.Book, error) {
+	return nil, nil
+}

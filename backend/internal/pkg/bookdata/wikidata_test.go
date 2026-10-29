@@ -409,6 +409,8 @@ func TestBuildAuthorListQuery(t *testing.T) {
 			`FILTER(LANG(?authorEn) = "en")`,
 			"AS ?itemLabelEn)",
 			"AS ?authorsEn)",
+			"?item wdt:P648 ?olid",
+			"AS ?olids)",
 			"LIMIT 250",
 		} {
 			if !strings.Contains(query, want) {
@@ -606,5 +608,35 @@ func TestParseSparqlBindings_EnglishLabels(t *testing.T) {
 	}
 	if len(r.AuthorRefs) != 2 || r.AuthorRefs[0].NameEn != "Jack London" || r.AuthorRefs[1].NameEn != "" {
 		t.Errorf("AuthorRefs = %+v", r.AuthorRefs)
+	}
+}
+
+func TestParseSparqlBindings_OpenLibraryIDs(t *testing.T) {
+	recs := parseSparqlBindings([]map[string]sparqlValue{
+		{
+			"item":      {Value: "http://www.wikidata.org/entity/Q1"},
+			"itemLabel": {Value: "Книга"},
+			"olids":     {Value: "OL27479W| OL27516W ||OL27455W"},
+		},
+		{
+			"item":      {Value: "http://www.wikidata.org/entity/Q2"},
+			"itemLabel": {Value: "Другая"},
+		},
+	})
+	if len(recs) != 2 {
+		t.Fatalf("records = %d", len(recs))
+	}
+	got := recs[0].OpenLibraryIDs
+	want := []string{"OL27479W", "OL27516W", "OL27455W"}
+	if len(got) != len(want) {
+		t.Fatalf("OpenLibraryIDs = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("OpenLibraryIDs[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if len(recs[1].OpenLibraryIDs) != 0 {
+		t.Errorf("second record OpenLibraryIDs = %v, want none", recs[1].OpenLibraryIDs)
 	}
 }

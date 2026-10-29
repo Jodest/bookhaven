@@ -89,6 +89,10 @@ type ExternalBookRecord struct {
 	// TitleEn is the English Wikidata label of the work, when the query read
 	// it. Used only for matching external search results; never persisted.
 	TitleEn string
+	// OpenLibraryIDs are the work's Open Library IDs (Wikidata P648), when the
+	// harvest query read them. Raw values; use OrderOpenLibraryIDs before
+	// lookups. Never persisted.
+	OpenLibraryIDs []string
 	// Authors are author display names as reported by the source.
 	Authors []string
 	// AuthorRefs are the same authors paired with their source identity
