@@ -166,6 +166,7 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [ ] Form errors and the review star picker are not exposed to assistive tech or keyboard users — no `aria-invalid`/`aria-describedby`/`role=alert` on login, register, profile and review forms, review stars have no focus ring or selected state [code] (proposed 2026-10-23, #627)
 - [ ] Harvest and sync jobs cannot be cancelled or retried from the admin — a wrong or stuck job (30 min timeout, 3 retries) blocks the single harvest worker slot for up to ~2 hours; `/import/jobs` only lists jobs [code] (proposed 2026-10-23, #628)
 - [ ] Self-host author photos through the cover mirror — author photos are hotlinked Wikimedia Commons thumbnails, so every view hits upload.wikimedia.org and exposes readers' IPs; copy them into the shared cover store like covers and posters [tech-debt] (proposed 2026-10-28, #676)
+- [ ] Attribution link and referrer policy for FantLab-hotlinked covers — the add-fantlab-covers change deferred a FantLab edition-page link on the book page and the `referrerPolicy="no-referrer"` decision for hotlinked covers; neither is implemented or tracked [spec] (proposed 2026-10-29, #700)
 
 ## Technical Debt
 
