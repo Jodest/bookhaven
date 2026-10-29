@@ -82,6 +82,10 @@ func (f *fakeAdminRepository) UpdateBook(ctx context.Context, book *catalogDomai
 	return errors.New("record not found")
 }
 
+func (f *fakeAdminRepository) ListBooksWithOpenLibraryCover(ctx context.Context) ([]catalogDomain.Book, error) {
+	return nil, nil
+}
+
 func (f *fakeAdminRepository) BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
 	for _, b := range f.books {
 		if b.Slug == slug && (excludeID == nil || b.ID != *excludeID) {
@@ -319,6 +323,32 @@ func (f *fakeWikidataQuerier) Query(ctx context.Context, sparql string) ([]bookd
 type fakeEnrichClient struct {
 	byISBN        map[string]*bookdata.ExternalBookRecord
 	byTitleAuthor map[string]*bookdata.ExternalBookRecord
+	// matchQueries records every FindMatchByTitleAuthor query.
+	matchQueries []bookdata.TitleAuthorQuery
+}
+
+// FindMatchByTitleAuthor is the strict title search the harvest uses; the
+// canned byTitleAuthor entry (keyed by title) stands for a doc that already
+// passed the title/author match.
+func (f *fakeEnrichClient) FindMatchByTitleAuthor(ctx context.Context, q bookdata.TitleAuthorQuery) (*bookdata.ExternalBookRecord, error) {
+	f.matchQueries = append(f.matchQueries, q)
+	if rec, ok := f.byTitleAuthor[q.Title]; ok {
+		return rec, nil
+	}
+	return nil, bookdata.ErrNotFound
+}
+
+// legacyEnrichClient implements only bookdata.Client (no strict matcher) and
+// fails the test if the loose title search is ever used.
+type legacyEnrichClient struct{ t *testing.T }
+
+func (l legacyEnrichClient) SourceName() string { return "openlibrary" }
+func (l legacyEnrichClient) FindByISBN(ctx context.Context, isbn string) (*bookdata.ExternalBookRecord, error) {
+	return nil, bookdata.ErrNotFound
+}
+func (l legacyEnrichClient) FindByTitleAuthor(ctx context.Context, title, author string) (*bookdata.ExternalBookRecord, error) {
+	l.t.Error("loose FindByTitleAuthor must not be called by the harvest")
+	return nil, bookdata.ErrNotFound
 }
 
 func (f *fakeEnrichClient) SourceName() string { return "openlibrary" }
@@ -497,6 +527,75 @@ func TestProcessRecord_TitleAuthorEnrichmentDescriptionFlowsThroughRussianFilter
 	wantDescription := "Роман-эпопея о жизни русского общества в эпоху войн против Наполеона"
 	if book.Description == nil || *book.Description != wantDescription {
 		t.Errorf("Description = %v, want Open Library's (Russian) FindByTitleAuthor-sourced value %q", book.Description, wantDescription)
+	}
+}
+
+func TestProcessRecord_NoStrictMatch_CreatesBookWithoutOpenLibraryData(t *testing.T) {
+	admin, repo := newTestAdmin()
+	rec := bookdata.ExternalBookRecord{
+		Title:      "История Петра I",
+		TitleEn:    "History of Peter I",
+		Authors:    []string{"Александр Пушкин"},
+		AuthorRefs: []bookdata.ExternalAuthor{{Name: "Александр Пушкин", NameEn: "Alexander Pushkin"}},
+		Language:   "ru",
+		SourceName: "wikidata",
+		SourceID:   "Q1",
+	}
+	enrich := &fakeEnrichClient{}
+
+	outcome, err := processRecord(context.Background(), rec, enrich, admin)
+	if err != nil || outcome != outcomeCreated {
+		t.Fatalf("outcome=%v err=%v", outcome, err)
+	}
+	book := repo.books[0]
+	if book.CoverURL != nil || book.Description != nil || book.ISBN != nil {
+		t.Errorf("expected no Open Library data, got cover=%v desc=%v isbn=%v", book.CoverURL, book.Description, book.ISBN)
+	}
+	if len(enrich.matchQueries) != 1 {
+		t.Fatalf("matchQueries = %d", len(enrich.matchQueries))
+	}
+	q := enrich.matchQueries[0]
+	if len(q.AltTitles) != 1 || q.AltTitles[0] != "History of Peter I" || len(q.Authors) != 2 || q.Authors[1] != "Alexander Pushkin" {
+		t.Errorf("unexpected query %+v", q)
+	}
+}
+
+func TestProcessRecord_MatchFillsOnlyEmptyFields(t *testing.T) {
+	admin, repo := newTestAdmin()
+	rec := bookdata.ExternalBookRecord{
+		Title:      "Белый Клык",
+		CoverURL:   strPtr("https://wikidata.example/cover.jpg"),
+		Language:   "ru",
+		SourceName: "wikidata",
+		SourceID:   "Q2",
+	}
+	enrich := &fakeEnrichClient{byTitleAuthor: map[string]*bookdata.ExternalBookRecord{
+		"Белый Клык": {
+			Title:       "Белый Клык",
+			CoverURL:    strPtr("https://covers.openlibrary.org/b/id/2-L.jpg"),
+			Description: strPtr("Повесть о волке-собаке на Аляске и его хозяевах"),
+		},
+	}}
+	if _, err := processRecord(context.Background(), rec, enrich, admin); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	book := repo.books[0]
+	if book.CoverURL == nil || *book.CoverURL != "https://wikidata.example/cover.jpg" {
+		t.Errorf("CoverURL = %v, want Wikidata value kept", book.CoverURL)
+	}
+	if book.Description == nil {
+		t.Error("Description should be filled from the matched record")
+	}
+}
+
+func TestProcessRecord_EnrichClientWithoutMatcher_SkipsTitleLookup(t *testing.T) {
+	admin, repo := newTestAdmin()
+	rec := bookdata.ExternalBookRecord{Title: "Белый Клык", Language: "ru", SourceName: "wikidata", SourceID: "Q3"}
+	if _, err := processRecord(context.Background(), rec, legacyEnrichClient{t: t}, admin); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if repo.books[0].CoverURL != nil {
+		t.Error("cover must stay nil")
 	}
 }
 

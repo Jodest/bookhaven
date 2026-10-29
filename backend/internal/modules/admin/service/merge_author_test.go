@@ -61,6 +61,10 @@ func (f *fakeMergeAuthorsRepository) UpdateBook(ctx context.Context, book *catal
 	return nil
 }
 
+func (f *fakeMergeAuthorsRepository) ListBooksWithOpenLibraryCover(ctx context.Context) ([]catalogDomain.Book, error) {
+	return nil, nil
+}
+
 func (f *fakeMergeAuthorsRepository) BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {
 	return false, nil
 }

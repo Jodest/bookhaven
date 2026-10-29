@@ -509,6 +509,35 @@ func harvestGenreRefs(rec bookdata.ExternalBookRecord) []adminservice.GenreRef {
 	return refs
 }
 
+// titleAuthorMatcher is implemented by enrichment clients that can do a
+// strict title+author search (bookdata.OpenLibraryClient).
+type titleAuthorMatcher interface {
+	FindMatchByTitleAuthor(ctx context.Context, q bookdata.TitleAuthorQuery) (*bookdata.ExternalBookRecord, error)
+}
+
+// buildTitleAuthorQuery builds the strict Open Library query for a harvested
+// record: the Russian title and first author are searched; the English labels
+// and the other authors are used only for matching.
+func buildTitleAuthorQuery(rec *bookdata.ExternalBookRecord) bookdata.TitleAuthorQuery {
+	q := bookdata.TitleAuthorQuery{Title: rec.Title}
+	if en := strings.TrimSpace(rec.TitleEn); en != "" {
+		q.AltTitles = []string{en}
+	}
+	if len(rec.AuthorRefs) > 0 {
+		for _, ref := range rec.AuthorRefs {
+			q.Authors = append(q.Authors, ref.Name)
+		}
+		for _, ref := range rec.AuthorRefs {
+			if en := strings.TrimSpace(ref.NameEn); en != "" {
+				q.Authors = append(q.Authors, en)
+			}
+		}
+	} else {
+		q.Authors = append(q.Authors, rec.Authors...)
+	}
+	return q
+}
+
 // enrichRecord fills CoverURL, Description, PageCount and ISBN from enrich
 // (Open Library, in production) but only where rec's own value is nil -
 // Wikidata's own values are never overwritten. Enrichment lookup failures
@@ -528,12 +557,12 @@ func enrichRecord(ctx context.Context, rec *bookdata.ExternalBookRecord, enrich 
 		}
 	}
 	if enrichedRec == nil && strings.TrimSpace(rec.Title) != "" {
-		author := ""
-		if len(rec.Authors) > 0 {
-			author = rec.Authors[0]
-		}
-		if found, err := enrich.FindByTitleAuthor(ctx, rec.Title, author); err == nil {
-			enrichedRec = found
+		// Strict title+author match only: a loose "first search result" is
+		// never accepted (it attached unrelated covers/ISBNs, issue #687).
+		if matcher, ok := enrich.(titleAuthorMatcher); ok {
+			if found, err := matcher.FindMatchByTitleAuthor(ctx, buildTitleAuthorQuery(rec)); err == nil {
+				enrichedRec = found
+			}
 		}
 	}
 	if enrichedRec == nil {

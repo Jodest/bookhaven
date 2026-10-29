@@ -313,7 +313,9 @@ func BuildAuthorListQuery(authorQIDs []string, limit int) (string, error) {
 	}
 
 	return fmt.Sprintf(`SELECT ?item ?itemLabel
+  (SAMPLE(?itemEn) AS ?itemLabelEn)
   (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?author), "/entity/"), "\t", ?authorLabel); separator="|") AS ?authors)
+  (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?author), "/entity/"), "\t", ?authorEn); separator="|") AS ?authorsEn)
   (GROUP_CONCAT(DISTINCT CONCAT(STRAFTER(STR(?genre), "/entity/"), "\t", ?genreLabel); separator="|") AS ?genres)
   (SAMPLE(?isbn13) AS ?isbn)
   (SAMPLE(?pubDate) AS ?published)
@@ -326,6 +328,8 @@ WHERE {
   FILTER(LANG(?itemLabel) = "ru")
   ?author rdfs:label ?authorLabel .
   FILTER(LANG(?authorLabel) = "ru")
+  OPTIONAL { ?item rdfs:label ?itemEn . FILTER(LANG(?itemEn) = "en") }
+  OPTIONAL { ?author rdfs:label ?authorEn . FILTER(LANG(?authorEn) = "en") }
   OPTIONAL {
     ?item wdt:P136 ?genre .
     ?genre rdfs:label ?genreLabel .
@@ -404,8 +408,22 @@ func parseSparqlBindings(bindings []map[string]sparqlValue) []ExternalBookRecord
 			SourceID:   extractWikidataID(itemValue.Value),
 		}
 
+		if v, ok := binding["itemLabelEn"]; ok {
+			record.TitleEn = strings.TrimSpace(v.Value)
+		}
 		if v, ok := binding["authors"]; ok && v.Value != "" {
 			record.AuthorRefs = parseAuthorPairs(v.Value)
+			if en, ok := binding["authorsEn"]; ok && en.Value != "" {
+				names := make(map[string]string)
+				for _, p := range parseQIDPairs(en.Value) {
+					if p.QID != "" {
+						names[p.QID] = p.Name
+					}
+				}
+				for i := range record.AuthorRefs {
+					record.AuthorRefs[i].NameEn = names[record.AuthorRefs[i].QID]
+				}
+			}
 			record.Authors = make([]string, 0, len(record.AuthorRefs))
 			for _, ref := range record.AuthorRefs {
 				record.Authors = append(record.Authors, ref.Name)
