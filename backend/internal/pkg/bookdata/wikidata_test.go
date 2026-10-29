@@ -405,6 +405,10 @@ func TestBuildAuthorListQuery(t *testing.T) {
 			"?item wdt:P50 ?author",
 			`FILTER(LANG(?itemLabel) = "ru")`,
 			`FILTER(LANG(?authorLabel) = "ru")`,
+			`FILTER(LANG(?itemEn) = "en")`,
+			`FILTER(LANG(?authorEn) = "en")`,
+			"AS ?itemLabelEn)",
+			"AS ?authorsEn)",
 			"LIMIT 250",
 		} {
 			if !strings.Contains(query, want) {
@@ -582,5 +586,25 @@ func TestQueryBuilders_UsePairedAuthorAggregate(t *testing.T) {
 		if !strings.Contains(q, paired) {
 			t.Errorf("%s query lacks paired author aggregate:\n%s", name, q)
 		}
+	}
+}
+
+func TestParseSparqlBindings_EnglishLabels(t *testing.T) {
+	recs := parseSparqlBindings([]map[string]sparqlValue{{
+		"item":        {Value: "http://www.wikidata.org/entity/Q1"},
+		"itemLabel":   {Value: "Белый Клык"},
+		"itemLabelEn": {Value: "White Fang"},
+		"authors":     {Value: "Q10\tДжек Лондон|Q11\tИван Иванов"},
+		"authorsEn":   {Value: "Q10\tJack London"},
+	}})
+	if len(recs) != 1 {
+		t.Fatalf("records = %d", len(recs))
+	}
+	r := recs[0]
+	if r.TitleEn != "White Fang" {
+		t.Errorf("TitleEn = %q", r.TitleEn)
+	}
+	if len(r.AuthorRefs) != 2 || r.AuthorRefs[0].NameEn != "Jack London" || r.AuthorRefs[1].NameEn != "" {
+		t.Errorf("AuthorRefs = %+v", r.AuthorRefs)
 	}
 }

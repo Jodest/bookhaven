@@ -440,3 +440,74 @@ func TestCoverURL_NoNetworkCall(t *testing.T) {
 	// documentation/compile-time proof of that contract.
 	_ = CoverURL("x", CoverIDTypeOLID, CoverSizeSmall)
 }
+
+func TestOpenLibraryFindByTitleAuthor_IgnoredQuery_ReturnsErrNotFound(t *testing.T) {
+	client := newOpenLibraryTestClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return newTestResponse(http.StatusOK, `{"numFound":907849,"docs":[{"title":"I, Robot","key":"/works/OL1W"}]}`, nil), nil
+	}))
+	_, err := client.FindByTitleAuthor(context.Background(), "История Петра I", "Пушкин")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+const olMatchFixture = `{"numFound": 3, "docs": [
+  {"title": "I, Robot", "author_name": ["Isaac Asimov"], "key": "/works/OL1W", "cover_i": 1},
+  {"title": "White Fang", "author_name": ["Jack London"], "key": "/works/OL2W", "cover_i": 2},
+  {"title": "White Fang", "author_name": ["Jack London"], "key": "/works/OL3W", "cover_i": 3}
+]}`
+
+func TestOpenLibraryFindMatchByTitleAuthor_PicksMatchingDocAndFetchesOnlyItsDescription(t *testing.T) {
+	var paths []string
+	client := NewOpenLibraryClient(
+		WithHTTPClient(&http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			paths = append(paths, req.URL.Path)
+			if req.URL.Path == "/works/OL2W.json" {
+				return newTestResponse(http.StatusOK, `{"description":"desc"}`, nil), nil
+			}
+			return newTestResponse(http.StatusOK, olMatchFixture, nil), nil
+		})}),
+		withLimiter(&fakeLimiter{}),
+		withSleep(func(d time.Duration) {}),
+		WithMaxRetries(0),
+		WithWorkDescriptionLookup(),
+	)
+	rec, err := client.FindMatchByTitleAuthor(context.Background(), TitleAuthorQuery{
+		Title: "Белый Клык", AltTitles: []string{"White Fang"}, Authors: []string{"Джек Лондон", "Jack London"},
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if rec.SourceID != "OL2W" || rec.CoverURL == nil || !strings.Contains(*rec.CoverURL, "/id/2-L") {
+		t.Fatalf("unexpected record: %+v", rec)
+	}
+	if rec.Description == nil || *rec.Description != "desc" {
+		t.Errorf("description = %v", rec.Description)
+	}
+	for _, p := range paths {
+		if strings.HasPrefix(p, "/works/") && p != "/works/OL2W.json" {
+			t.Errorf("unexpected work request %s", p)
+		}
+	}
+}
+
+func TestOpenLibraryFindMatchByTitleAuthor_NoMatchAndIgnoredQuery(t *testing.T) {
+	cases := map[string]string{
+		"unrelated":  `{"numFound": 2, "docs": [{"title":"I, Robot","author_name":["Isaac Asimov"],"key":"/works/OL1W"},{"title":"Dune","author_name":["Frank Herbert"],"key":"/works/OL2W"}]}`,
+		"numFound":   `{"numFound": 907849, "docs": [{"title":"White Fang","author_name":["Jack London"],"key":"/works/OL1W"}]}`,
+		"empty docs": `{"numFound": 0, "docs": []}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			client := newOpenLibraryTestClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return newTestResponse(http.StatusOK, body, nil), nil
+			}))
+			_, err := client.FindMatchByTitleAuthor(context.Background(), TitleAuthorQuery{
+				Title: "White Fang", Authors: []string{"Jack London"},
+			})
+			if !errors.Is(err, ErrNotFound) {
+				t.Fatalf("err = %v, want ErrNotFound", err)
+			}
+		})
+	}
+}

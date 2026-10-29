@@ -27,6 +27,10 @@ type Repository interface {
 	CreateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error
 	UpdateBook(ctx context.Context, book *catalogDomain.Book, authorIDs, genreIDs []uuid.UUID) error
 	BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error)
+	// ListBooksWithOpenLibraryCover lists books of every status and source
+	// whose cover link is an Open Library cover-id link, with authors and
+	// genres preloaded (olcoveraudit).
+	ListBooksWithOpenLibraryCover(ctx context.Context) ([]catalogDomain.Book, error)
 	// SetBookStatus updates only status (and updated_at) of one book, plus
 	// published_at = COALESCE(published_at, now) when publishing (#245).
 	// found is false when no book has that id.
@@ -490,6 +494,22 @@ func (r *GormRepository) replaceBookGenres(tx *gorm.DB, bookID uuid.UUID, genreI
 		values = append(values, map[string]interface{}{"book_id": bookID, "genre_id": id})
 	}
 	return tx.Table("book_genres").Create(values).Error
+}
+
+// OpenLibraryCoverPrefix is the start of an Open Library cover-id link.
+const OpenLibraryCoverPrefix = "https://covers.openlibrary.org/b/id/"
+
+func (r *GormRepository) ListBooksWithOpenLibraryCover(ctx context.Context) ([]catalogDomain.Book, error) {
+	var books []catalogDomain.Book
+	if err := r.db.WithContext(ctx).
+		Preload("Authors").
+		Preload("Genres").
+		Where("cover_url LIKE ?", OpenLibraryCoverPrefix+"%").
+		Order("title").
+		Find(&books).Error; err != nil {
+		return nil, err
+	}
+	return books, nil
 }
 
 func (r *GormRepository) BookSlugExists(ctx context.Context, slug string, excludeID *uuid.UUID) (bool, error) {

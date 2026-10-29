@@ -109,6 +109,52 @@ func (c *OpenLibraryClient) FindByISBN(ctx context.Context, isbn string) (*Exter
 // Search API (/search.json?title=...&author=...), returning the first
 // (highest-ranked) result. Returns ErrNotFound if there are no matches.
 func (c *OpenLibraryClient) FindByTitleAuthor(ctx context.Context, title, author string) (*ExternalBookRecord, error) {
+	docs, err := c.searchDocs(ctx, title, author)
+	if err != nil {
+		return nil, err
+	}
+	return c.finishSearchRecord(ctx, docs[0]), nil
+}
+
+// TitleAuthorQuery describes a strict Open Library title search. Title and
+// the first of Authors are what is searched; AltTitles and the rest of
+// Authors are used only for matching the results.
+type TitleAuthorQuery struct {
+	Title     string
+	AltTitles []string
+	Authors   []string
+}
+
+// FindMatchByTitleAuthor searches Open Library by title and first author and
+// returns the first of the top results whose title matches Title/AltTitles and
+// whose authors share a surname with Authors. Returns ErrNotFound when nothing
+// matches (or when Open Library ignored the query).
+func (c *OpenLibraryClient) FindMatchByTitleAuthor(ctx context.Context, q TitleAuthorQuery) (*ExternalBookRecord, error) {
+	author := ""
+	if len(q.Authors) > 0 {
+		author = q.Authors[0]
+	}
+	docs, err := c.searchDocs(ctx, q.Title, author)
+	if err != nil {
+		return nil, err
+	}
+	titles := append([]string{q.Title}, q.AltTitles...)
+	for _, doc := range docs {
+		if TitleMatches(doc.Title, titles) && AuthorMatches(doc.AuthorName, q.Authors) {
+			return c.finishSearchRecord(ctx, doc), nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+// olIgnoredQueryThreshold is the numFound above which a title search is
+// treated as "Open Library ignored the query" (it then returns ~the whole
+// index).
+const olIgnoredQueryThreshold = 10000
+
+// searchDocs runs the title(+author) Search API request and returns a
+// non-empty doc list, or ErrNotFound.
+func (c *OpenLibraryClient) searchDocs(ctx context.Context, title, author string) ([]olSearchDoc, error) {
 	if strings.TrimSpace(title) == "" {
 		return nil, ErrInvalidQuery
 	}
@@ -154,26 +200,22 @@ func (c *OpenLibraryClient) FindByTitleAuthor(ctx context.Context, title, author
 		return nil, fmt.Errorf("bookdata: parse open library search response: %w", err)
 	}
 
-	if len(parsed.Docs) == 0 {
+	if len(parsed.Docs) == 0 || parsed.NumFound > olIgnoredQueryThreshold {
 		return nil, ErrNotFound
 	}
+	return parsed.Docs, nil
+}
 
-	record := mapOLSearchDoc(parsed.Docs[0])
-
-	// Opt-in follow-up: the Search API response (olSearchDoc) has no
-	// description field at all, so most search-matched (non-ISBN) records
-	// would otherwise always have a nil Description. When enabled, and only
-	// when the doc's key structurally looks like an Open Library work key
-	// (not an edition or author key), fetch the work-level description as a
-	// best-effort follow-up. A failure here must never fail the overall
-	// lookup - the already-successfully-matched record is returned as-is.
+// finishSearchRecord maps the matched doc and, when enabled, fetches the
+// work-level description (best-effort; a failure never fails the lookup).
+func (c *OpenLibraryClient) finishSearchRecord(ctx context.Context, doc olSearchDoc) *ExternalBookRecord {
+	record := mapOLSearchDoc(doc)
 	if c.cfg.fetchWorkDescription && record.Description == nil && workKeyPattern.MatchString(record.SourceID) {
 		if desc, err := c.FetchWorkDescription(ctx, record.SourceID); err == nil && desc != nil {
 			record.Description = desc
 		}
 	}
-
-	return record, nil
+	return record
 }
 
 // workKeyPattern matches an Open Library work key (e.g. "OL262461W"), as
@@ -339,7 +381,8 @@ type olExcerpt struct {
 // olSearchResponse mirrors the relevant subset of the Open Library Search
 // API response shape.
 type olSearchResponse struct {
-	Docs []olSearchDoc `json:"docs"`
+	NumFound int           `json:"numFound"`
+	Docs     []olSearchDoc `json:"docs"`
 }
 
 type olSearchDoc struct {
