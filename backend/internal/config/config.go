@@ -116,6 +116,9 @@ type Config struct {
 	CoversSweepCron     string
 	CoversSweepBatch    int
 	CoversAllowedHosts  []string
+	// CoversLinkOnlyHosts are hosts whose book covers are shown by link and
+	// never downloaded (COVERS_LINK_ONLY_HOSTS; empty = none).
+	CoversLinkOnlyHosts []string
 
 	// Screen work posters. PostersDir is the storage root of admin-uploaded
 	// posters (the api writes and serves). TMDBAPIKey enables the TMDB poster
@@ -367,6 +370,12 @@ func Load() (*Config, error) {
 		hosts = coverfetch.ParseHosts(coverfetch.DefaultAllowedHosts)
 	}
 	cfg.CoversAllowedHosts = hosts
+	// An explicitly empty COVERS_LINK_ONLY_HOSTS means no link-only hosts.
+	if raw, ok := os.LookupEnv("COVERS_LINK_ONLY_HOSTS"); ok {
+		cfg.CoversLinkOnlyHosts = coverfetch.ParseHosts(raw)
+	} else {
+		cfg.CoversLinkOnlyHosts = coverfetch.ParseHosts(coverfetch.DefaultLinkOnlyHosts)
+	}
 
 	cfg.AuthCookieSecure = parseAuthCookieSecure(cfg.Env)
 

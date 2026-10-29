@@ -588,6 +588,11 @@ func setCoversEnv(t *testing.T, env map[string]string) {
 	if err := os.Unsetenv("COVERS_SWEEP_CRON"); err != nil {
 		t.Fatal(err)
 	}
+	// Unset means the default link-only hosts; an empty value means none.
+	t.Setenv("COVERS_LINK_ONLY_HOSTS", "")
+	if err := os.Unsetenv("COVERS_LINK_ONLY_HOSTS"); err != nil {
+		t.Fatal(err)
+	}
 	for k, v := range env {
 		t.Setenv(k, v)
 	}
@@ -603,6 +608,9 @@ func TestLoad_Covers(t *testing.T) {
 		t.Errorf("unexpected defaults: %q %v %q %d", cfg.CoversDir, cfg.CoversMirrorEnabled, cfg.CoversSweepCron, cfg.CoversSweepBatch)
 	}
 	want := []string{"covers.openlibrary.org", "archive.org", "*.archive.org", "upload.wikimedia.org", "image.tmdb.org"}
+	if lo := cfg.CoversLinkOnlyHosts; len(lo) != 2 || lo[0] != "fantlab.ru" || lo[1] != "*.fantlab.ru" {
+		t.Errorf("default link-only hosts = %v", lo)
+	}
 	if len(cfg.CoversAllowedHosts) != len(want) {
 		t.Fatalf("hosts = %v", cfg.CoversAllowedHosts)
 	}
@@ -622,6 +630,22 @@ func TestLoad_Covers(t *testing.T) {
 	}
 	if len(cfg.CoversAllowedHosts) != 2 || cfg.CoversAllowedHosts[0] != "a.example" || cfg.CoversAllowedHosts[1] != "*.b.example" {
 		t.Errorf("hosts = %v", cfg.CoversAllowedHosts)
+	}
+
+	for env, want := range map[string][]string{
+		"":                           {},
+		" a.example , *.b.example ,": {"a.example", "*.b.example"},
+	} {
+		setCoversEnv(t, map[string]string{"COVERS_LINK_ONLY_HOSTS": env})
+		cfg, _ = Load()
+		if len(cfg.CoversLinkOnlyHosts) != len(want) {
+			t.Errorf("COVERS_LINK_ONLY_HOSTS=%q: hosts = %v, want %v", env, cfg.CoversLinkOnlyHosts, want)
+		}
+		for i := range want {
+			if i < len(cfg.CoversLinkOnlyHosts) && cfg.CoversLinkOnlyHosts[i] != want[i] {
+				t.Errorf("COVERS_LINK_ONLY_HOSTS=%q: host %d = %q, want %q", env, i, cfg.CoversLinkOnlyHosts[i], want[i])
+			}
+		}
 	}
 
 	for raw, wantN := range map[string]int{"10": 10, "0": 1, "abc": 50} {

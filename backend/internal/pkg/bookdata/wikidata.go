@@ -321,6 +321,7 @@ func BuildAuthorListQuery(authorQIDs []string, limit int) (string, error) {
   (SAMPLE(?pubDate) AS ?published)
   (SAMPLE(?languageLabel) AS ?language)
   (GROUP_CONCAT(DISTINCT ?olid; separator="|") AS ?olids)
+  (GROUP_CONCAT(DISTINCT ?fantlab; separator="|") AS ?fantlabIds)
 WHERE {
   VALUES ?author { %s }
   ?item wdt:P31/wdt:P279* wd:Q7725634 .
@@ -339,6 +340,7 @@ WHERE {
   OPTIONAL { ?item wdt:P212 ?isbn13 . }
   OPTIONAL { ?item wdt:P577 ?pubDate . }
   OPTIONAL { ?item wdt:P648 ?olid . }
+  OPTIONAL { ?item wdt:P7439 ?fantlab . }
   OPTIONAL {
     ?item wdt:P407 ?language .
     ?language rdfs:label ?languageLabel .
@@ -412,6 +414,13 @@ func parseSparqlBindings(bindings []map[string]sparqlValue) []ExternalBookRecord
 
 		if v, ok := binding["itemLabelEn"]; ok {
 			record.TitleEn = strings.TrimSpace(v.Value)
+		}
+		if v, ok := binding["fantlabIds"]; ok && v.Value != "" {
+			for _, id := range strings.Split(v.Value, "|") {
+				if id = strings.TrimSpace(id); id != "" {
+					record.FantLabWorkIDs = append(record.FantLabWorkIDs, id)
+				}
+			}
 		}
 		if v, ok := binding["olids"]; ok && v.Value != "" {
 			for _, id := range strings.Split(v.Value, "|") {

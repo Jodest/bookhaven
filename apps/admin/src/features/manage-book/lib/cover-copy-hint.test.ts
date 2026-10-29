@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { coverCopyHint } from './cover-copy-hint';
 
-const copy = (status: 'pending' | 'stored' | 'failed' | 'absent', error: string | null = null) => ({
+const copy = (status: 'pending' | 'stored' | 'failed' | 'absent' | 'linked', error: string | null = null) => ({
   status,
   error,
   stored_at: null,
@@ -26,6 +26,12 @@ describe('coverCopyHint', () => {
   it('absent', () => {
     expect(coverCopyHint(copy('absent'))).toBe(
       'По этой ссылке нет обложки. На сайте показывается «Нет обложки».'
+    );
+  });
+
+  it('linked', () => {
+    expect(coverCopyHint(copy('linked'))).toBe(
+      'Обложка показывается по ссылке с сайта-источника. Копия на нашем сервере не сохраняется.'
     );
   });
 

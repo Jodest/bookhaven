@@ -118,7 +118,7 @@ func TestRunCoverBackfill_ReportOnlyChangesNothing(t *testing.T) {
 	r.Write(&buf)
 	out := buf.String()
 	if !strings.Contains(out, "found "+a.ID.String()) || !strings.Contains(out, "nocover "+b.ID.String()) ||
-		!strings.Contains(out, "candidates=3 with_ids=2 found=1 nocover=1 errors=0") {
+		!strings.Contains(out, "candidates=3 with_ids=2 with_fantlab_ids=0 found=1 found_fantlab=0 nocover=1 errors=0") {
 		t.Fatalf("output:\n%s", out)
 	}
 }

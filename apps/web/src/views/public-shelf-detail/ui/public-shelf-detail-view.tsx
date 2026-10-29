@@ -7,6 +7,7 @@ import { Badge, Button } from '@bookhaven/ui';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 interface PublicShelfDetailViewProps {
   id: string;
@@ -118,6 +119,7 @@ export function PublicShelfDetailView({ id }: PublicShelfDetailViewProps) {
                     {book.coverUrl ? (
                       <Image
                         src={book.coverUrl}
+                        unoptimized={isHotlinkCoverUrl(book.coverUrl)}
                         alt={book.title}
                         fill
                         className="object-cover"

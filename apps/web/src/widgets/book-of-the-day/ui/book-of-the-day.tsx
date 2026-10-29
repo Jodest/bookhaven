@@ -5,6 +5,7 @@ import { formatRatingSummary } from '@/shared/lib/format-date-ru';
 import { Star } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { isHotlinkCoverUrl } from '@/shared/lib/hotlink-cover';
 
 interface BookOfTheDayProps {
   data: HomeBookOfTheDay | null;
@@ -41,6 +42,7 @@ export function BookOfTheDay({ data, className }: BookOfTheDayProps) {
           {book.coverUrl ? (
             <Image
               src={book.coverUrl}
+              unoptimized={isHotlinkCoverUrl(book.coverUrl)}
               alt=""
               fill
               priority
