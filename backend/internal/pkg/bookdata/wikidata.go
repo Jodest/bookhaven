@@ -320,6 +320,7 @@ func BuildAuthorListQuery(authorQIDs []string, limit int) (string, error) {
   (SAMPLE(?isbn13) AS ?isbn)
   (SAMPLE(?pubDate) AS ?published)
   (SAMPLE(?languageLabel) AS ?language)
+  (GROUP_CONCAT(DISTINCT ?olid; separator="|") AS ?olids)
 WHERE {
   VALUES ?author { %s }
   ?item wdt:P31/wdt:P279* wd:Q7725634 .
@@ -337,6 +338,7 @@ WHERE {
   }
   OPTIONAL { ?item wdt:P212 ?isbn13 . }
   OPTIONAL { ?item wdt:P577 ?pubDate . }
+  OPTIONAL { ?item wdt:P648 ?olid . }
   OPTIONAL {
     ?item wdt:P407 ?language .
     ?language rdfs:label ?languageLabel .
@@ -410,6 +412,13 @@ func parseSparqlBindings(bindings []map[string]sparqlValue) []ExternalBookRecord
 
 		if v, ok := binding["itemLabelEn"]; ok {
 			record.TitleEn = strings.TrimSpace(v.Value)
+		}
+		if v, ok := binding["olids"]; ok && v.Value != "" {
+			for _, id := range strings.Split(v.Value, "|") {
+				if id = strings.TrimSpace(id); id != "" {
+					record.OpenLibraryIDs = append(record.OpenLibraryIDs, id)
+				}
+			}
 		}
 		if v, ok := binding["authors"]; ok && v.Value != "" {
 			record.AuthorRefs = parseAuthorPairs(v.Value)
