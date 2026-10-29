@@ -177,6 +177,9 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [ ] Host disk space and resource alerting is absent — monitoring is an external uptime ping only; nothing warns before the VPS disk fills from Postgres, covers, posters, backups and Docker images [ops] (proposed 2026-10-29, #711)
 - [ ] Server bootstrap does not enable unattended security upgrades — `server-setup.sh` runs `apt-get upgrade` once at provisioning, so a long-lived VPS on 22/80/443 stays unpatched [ops] (proposed 2026-10-29, #712)
 - [ ] Container images are not scanned for OS-package vulnerabilities — CI runs govulncheck and pnpm audit, but the built backend/web/admin images and the floating postgres/redis/caddy base images are never scanned for CVEs [ops] (proposed 2026-10-29, #713)
+- [ ] First-run onboarding for new readers (goal, favourite genres, currently reading) — a new verified reader lands on an empty home page; Fable's onboarding asks for a reading goal and the current book, which would also seed «Вам может понравиться» [competitive] (proposed 2026-10-29, #714)
+- [ ] Shareable year-in-review reading recap — Yandex Books (итоги года) and Fable Wrapped give readers an annual recap to share; BookHaven has only a challenge count and no year-end retention moment (distinct from stats dashboard #97) [competitive] (proposed 2026-10-29, #715)
+- [ ] Reading achievements and awards — Yandex Books has an awards section and MyBook runs rewarded challenges; BookHaven has no badge or milestone mechanic (distinct from streaks #123 and themed challenges #211) [competitive] (proposed 2026-10-29, #716)
 
 ## Technical Debt
 
