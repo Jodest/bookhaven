@@ -173,6 +173,10 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [ ] Upgrade vitest 2 → current to drop vite 5.4 and its allowlisted advisories — vitest ^2 pins vite 5.4.21 (1 high + 7 moderate dev-server advisories, two allowlisted until 2027-01-15) and Dependabot ignores majors [deps] (proposed 2026-10-29, #707)
 - [ ] No rate limit or per-user quota on signed-in write endpoints — rate limiting covers only auth endpoints; one verified account can create unlimited custom shelves (shelf aggregates scale with them), spam review likes/notifications, reviews and votes [code] (proposed 2026-10-29, #708)
 - [ ] Missing DB indexes: ratings by user and normalized ISBN in moderation hints — the uncached `/home/me` seeds query filters `ratings.user_id` with no index, and the moderation duplicate-ISBN hint filters on an `upper(replace(...))` expression no index serves [code] (proposed 2026-10-29, #709)
+- [ ] Deploy has no pre-migration snapshot and no automatic rollback on a failed readiness check — `migrate up` runs against the live DB with only the nightly backup behind it, and a failed `/health/ready` leaves new containers and the migrated schema in place for a manual rollback [ops] (proposed 2026-10-29, #710)
+- [ ] Host disk space and resource alerting is absent — monitoring is an external uptime ping only; nothing warns before the VPS disk fills from Postgres, covers, posters, backups and Docker images [ops] (proposed 2026-10-29, #711)
+- [ ] Server bootstrap does not enable unattended security upgrades — `server-setup.sh` runs `apt-get upgrade` once at provisioning, so a long-lived VPS on 22/80/443 stays unpatched [ops] (proposed 2026-10-29, #712)
+- [ ] Container images are not scanned for OS-package vulnerabilities — CI runs govulncheck and pnpm audit, but the built backend/web/admin images and the floating postgres/redis/caddy base images are never scanned for CVEs [ops] (proposed 2026-10-29, #713)
 
 ## Technical Debt
 
