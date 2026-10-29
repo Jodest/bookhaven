@@ -169,6 +169,7 @@ Email notifications (#121, in Proposed) can build on the mailer from #157.
 - [ ] Attribution link and referrer policy for FantLab-hotlinked covers — the add-fantlab-covers change deferred a FantLab edition-page link on the book page and the `referrerPolicy="no-referrer"` decision for hotlinked covers; neither is implemented or tracked [spec] (proposed 2026-10-29, #700)
 - [ ] Web login and register show raw English backend errors — a failed login shows «invalid credentials» and register other raw server messages; the login-throttle change deferred it as pre-existing, #387 covers only admin forms [spec] (proposed 2026-10-29, #704)
 - [ ] Go tests run only against SQLite or hand-written fakes, never real PostgreSQL — repositories use Postgres-only SQL (xmax, ON CONFLICT, row locks) that SQLite cannot exercise, though CI already has a postgres service [spec] (proposed 2026-10-29, #705)
+- [ ] Home page and public profile views have no tests for their spec scenarios — `home/home-page` and `users/public-profile` define page scenarios the code implements, but `apps/web/src/views/home` and `views/public-profile` have no test file (related to #202) [spec-drift] (proposed 2026-10-29, #706)
 
 ## Technical Debt
 
